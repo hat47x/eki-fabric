@@ -4,6 +4,16 @@ EKI Fabricは、異質で一時的な計算資源を、安全性・利用者影�
 
 現段階は**上流要件の具体化**にあります。実装方式や特定ミドルウェアを先に固定せず、利用主体・提供主体の双方が悪意を持ち得ること、善意のアドホック参加者を受け入れること、企業内利用から組織間・公益利用まで同じ基本モデルで扱えることを前提に、要件と脅威モデルを先に固めます。
 
+## どこから読むか
+
+- [Product Value](product/value.md) — EKIが長期に守る価値
+- [Product Principles](product/principles.md) — Requirement / Architecture判断の原則
+- [Product Requirements](requirements/PRODUCT_REQUIREMENTS.md) — 現時点の要求正本
+- [Threat Model](requirements/THREAT_MODEL.md) — malicious Client / Workerを含む脅威境界
+- [Upstream Acceptance Scenarios](requirements/ACCEPTANCE_SCENARIOS.md) — 要求の利用・攻撃場面による圧力試験
+- [Reference Systems Research](research/reference-systems.md) — BOINC / Nomad / SPIFFE / Sigstore等からの学び
+- [Upstream Plan](plan/UPSTREAM_PLAN.md) — Architectureへ入るまでのGate
+
 ## 現時点の中心仮説
 
 - SEI Cognition、TEI、SUIなど既知のOSSだけでなく、未知のOSS・Webアプリ・他社ソフトウェアから利用できる。
@@ -21,4 +31,4 @@ EKI Fabricは、異質で一時的な計算資源を、安全性・利用者影�
 
 要件定義前半です。Architectureや具体的なプロトコル、Queue、Sandbox、Identity製品等は、要件とThreat Modelの成立後に選定します。
 
-上流工程の正本は今後 `product/`、`requirements/`、`research/`、`plan/` に分離して管理します。
+文書の正本関係とArchitecture Entry Gateは [AGENTS.md](AGENTS.md) と [Upstream Plan](plan/UPSTREAM_PLAN.md) を参照してください。
