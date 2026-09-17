@@ -4,7 +4,7 @@
 
 EKI Fabricでは、実装しやすい技術を先に選び、その制約へRequirementを合わせる進め方を避けます。
 
-Product Value、利用形態、Threat Model、Product Requirements、Acceptance Scenario、Assurance Modelを十分に具体化し、特にリスクの高い点だけを小さな実証で確認してからArchitectureへ入ります。
+Product Value、利用形態、Threat Model、Product Requirements、Acceptance Scenario、Assurance Model、Quality Attributeを十分に具体化し、特にリスクの高い点だけを小さな実証で確認してからArchitectureへ入ります。
 
 期限は設けません。各Phaseの終了条件とArchitecture Entry Gateの成立をもって進みます。
 
@@ -26,7 +26,7 @@ Product Value、利用形態、Threat Model、Product Requirements、Acceptance 
 
 状態: **初版成立 / 継続レビュー**
 
-`docs/for-readers.md`、`docs/glossary.md`、`requirements/README.md`を追加し、参画に必要な前提知識を文書側で補う導線を整備しました。
+`docs/for-readers.md`、`docs/glossary.md`、`requirements/README.md`を用意し、参画に必要な前提知識を文書側で補う導線を整備済みです。
 
 ## Phase 1 — Requirements & threat discovery
 
@@ -41,16 +41,20 @@ Product Value、利用形態、Threat Model、Product Requirements、Acceptance 
 ### 終了条件
 
 - malicious Client / malicious Worker / modified Agent / Sybil / collusion / resource exhaustionを扱う。
-- compromised Validator / Verifier、replay、意図しないBrowser resource useもThreat Modelで扱う。
-- endpoint opt-out / human-first / network impactがRequirement化されている。
+- compromised Validator / Verifier、replay、意図しないBrowser resource useを扱う。
+- malicious Artifact / parser abuse、Federation namespace substitutionを扱う。
+- Control Plane部分侵害とroot authority全体侵害を区別する。
+- endpoint opt-out / human-first / network impact / energy / thermal safetyがRequirement化されている。
 - unknown OSS / native / browser / external organizationがRequirement上で扱える。
 - Compute Grant / Contribution / external value mappingがCore economic systemへ逸脱していない。
 - 実現不能な絶対保証を避け、保証不能条件を記述している。
 - 副作用Taskや非決定的AI Taskについて、EKIが保証できない部分を誇張しない。
 
-状態: **第二巡目進行中**
+状態: **第三巡目成立 / Open Questionの収束継続**
 
-初版41 Requirementから第二巡目で48 Requirementへ拡張しました。現在はRequirement同士の重複、保証水準の整合、追加PASからのgapを継続確認します。
+初版41 Requirementから、第二巡目で48 Requirement、第三巡目で53 Requirementへ拡張しました。第三巡目ではFederation Identity namespace、Artifact expansion、Control Plane authority separation、mass reclaim、Energy / thermal / device safetyを正式要求へ反映しています。
+
+今後はRequirement数を増やすこと自体を目的にせず、残るOpen QuestionがArchitecture比較へ必要な粒度まで具体化されているかを確認します。
 
 ## Phase 2 — Acceptance Scenarios
 
@@ -80,6 +84,11 @@ Product Value、利用形態、Threat Model、Product Requirements、Acceptance 
 20. side-effect Taskの実行済み状態不明
 21. stale Evidence / Leaseのreplay
 22. Security capabilityの虚偽自己申告
+23. Federation namespace / Trust Material substitution
+24. Artifact expansion bomb / path escape
+25. compromised Scheduler component
+26. Public-interest Compute Grantのmass reclaim
+27. Endpoint thermal / power emergency reduction
 
 ### 終了条件
 
@@ -87,34 +96,36 @@ Product Value、利用形態、Threat Model、Product Requirements、Acceptance 
 - Scenarioが新しい本質要求を発見した場合、Requirementを先に更新する。
 - 特定Architectureでしか成立しないScenario記述を避ける。
 - 主要Scenarioについて、正常経路だけでなくabuse pathと残る保証限界を説明できる。
+- enterprise / ad-hoc / federation / public-interestのいずれか一つだけに最適化したRequirement集合になっていない。
 
-状態: **第一巡目成立 / 第二巡目継続**
+状態: **第三巡目成立 / 横断品質評価へ移行**
 
-次はFederation namespace confusion、Artifact parser bomb、Control Plane内部component侵害、Compute Grantの大量reclaimなどを追加候補として圧力試験します。
+今後はScenarioを機械的に増やすより、既存27 ScenarioをPhase 3のQuality AttributeとPhase 4のSpikeへ接続します。
 
 ## Phase 3 — Quality attributes / assurance model
-
-次の品質特性を、少なくともArchitecture候補同士で比較できる形にします。
-
-- Security assurance
-- Result integrity assurance
-- Confidentiality assurance
-- Availability / retry behavior
-- Endpoint user impact
-- Network overhead
-- Data locality
-- Resource accounting accuracy
-- Scalability
-- Operability
-- Interoperability
-
-Worker Assuranceは、単純な`trusted / untrusted`や一本のLevelではなく、Identity、Execution Environment、Confidentiality、Result Integrity、Independence、Operational History、Resource Measurementを分けて評価します。
 
 ### 成果物
 
 - `requirements/ASSURANCE_MODEL.md`
+- `requirements/QUALITY_ATTRIBUTES.md`
 - Assurance gapとOpen Question
 - Architecture比較へ使えるQuality Attribute一覧
+
+Worker Assuranceは、単純な`trusted / untrusted`や一本のLevelではなく、Identity、Execution Environment、Confidentiality、Result Integrity、Independence、Operational History、Resource Measurement、Verification Authority、Evidence Freshnessを分けて評価します。
+
+Quality Attributeでは、Securityだけでなく次を比較対象にします。
+
+- Result assurance honesty
+- Confidentiality fit
+- Endpoint user impact
+- Network efficiency
+- Recoverability under churn
+- Resource efficiency
+- Energy / device safety
+- Interoperability
+- Operability / explainability
+- Contribution measurement integrity
+- Deployment proportionality
 
 ### 終了条件
 
@@ -123,29 +134,87 @@ Worker Assuranceは、単純な`trusted / untrusted`や一本のLevelではな�
 - Sybil / collusion条件下で、単純多数決の保証上限を説明できる。
 - non-deterministic AI Taskについて、EKIが保証できる範囲と上位判断へ残す範囲を説明できる。
 - Contributionに利用するResource Measurementのassuranceを表現できる。
+- Requirementを満たす複数Architecture案について、Endpoint impact、Network overhead、Recoverability、Deployment burden等を比較できる。
+- 小規模な社内構成と大規模Federationで、必要な運用負荷を無条件に同一化しない。
 
-状態: **初版成立 / 深掘り継続**
+状態: **Quality Attribute初版成立 / 定量化・Spike接続を継続**
 
 ## Phase 4 — Feasibility research / spikes
 
 Architecture採用前に、Requirement上のリスクが高く、文書検討だけでは判断できない点を小さなSpikeで確認します。
 
-優先候補:
+### 優先候補
 
-- heterogeneous Workerのresource detectionとlocal governor
-- Browser Worker lifecycleと実効resource limit
-- Result Validator / replication cost
-- Sybil-resistant independence constraints
-- signed Executor / content digest admission
-- Artifact locality / transfer-cost scheduling
-- malicious input parser / resource bounds
-- TEE remote attestation abstraction
-- verifiable computationの現実的適用範囲
-- side-effect Taskのuncertain outcome model
+1. **Local Governor**
+   - user return / opt-out後の停止時間
+   - CPU / GPU / Memory制限
+   - Battery / AC / thermal変化への追随
+
+2. **Browser Worker lifecycle**
+   - tab background / suspension / close
+   - resource limitの実効性
+   - explicit participation UX
+
+3. **Artifact locality / transfer cost**
+   - cache hit時とmiss時のnetwork cost
+   - model / dataset prefetch
+   - transfer-aware placement
+
+4. **Result verification cost**
+   - deterministic validator
+   - replication / quorum
+   - managed recomputation
+   - assurance向上に対する追加compute量
+
+5. **Sybil-resistant independence constraints**
+   - principal / trust domain / device / operatorの表現可能性
+   - privacyとのTrade-off
+
+6. **Artifact ingest safety**
+   - expanded size / file count / nestingの制限
+   - parser crashの隔離
+   - path escape防止
+
+7. **Executor provenance / content admission**
+   - digest固定
+   - signed / attested Artifactのverification
+   - provenanceとsafe processingの分離
+
+8. **Federation trust binding**
+   - Trust Domain / Issuer / Trust Materialのbinding
+   - revocation / rotation
+   - namespace collision
+
+9. **Control Plane authority separation**
+   - Scheduler、Admission、Capability発行、Executor admissionを最小構成でどこまで分けられるか
+   - 一部component compromise時のblast radius
+
+10. **Mass reclaim recovery**
+    - 多数Worker同時離脱後のretry amplification
+    - Network / Queue / Artifact Storeへの二次負荷
+
+11. **TEE Remote Attestation abstraction**
+    - Evidence / Verifier / Relying Partyの分離
+    - freshness / revocation
+    - Vendor差の吸収範囲
+
+12. **Verifiable computation**
+    - 実用的なTask範囲
+    - proof生成cost
+    - GPU / AI workloadへの適用限界
+
+13. **Side-effect Task uncertain outcome**
+    - 実行済みか不明な状態
+    - idempotencyあり / なしの差
+    - Recovery boundary
+
+14. **Contribution measurement**
+    - self-reported / control-observed / attested measurement
+    - Privacyと測定精度
 
 Spikeは採用Architectureを既成事実化しません。確認したいRequirement上の仮説、実験条件、観測結果、一般化してよい範囲を残します。
 
-状態: **未着手**
+状態: **未着手 — 次Phaseの主線**
 
 ## Gate U — Architecture Entry Gate
 
@@ -158,6 +227,10 @@ Spikeは採用Architectureを既成事実化しません。確認したいRequir
 - Reference Systemを「似ているから採る」のではなく、EKI Requirementに照らして採否判断できる。
 - Browser / Native / managed / ad-hoc / federated Workerの差を、単一の曖昧なTrust Levelへ押し込めず説明できる。
 - Result VerificationとConfidentialityの信頼基盤を分けて説明できる。
+- Federation Identityのnamespace bindingを説明できる。
+- ArtifactのProvenance / Integrity / Safe Processingを分けて説明できる。
+- Control Planeの一部侵害とroot authority侵害を分けて説明できる。
+- mass reclaimとEndpoint Safetyを通常運用の一部として扱える。
 - 初見の開発者が文書導線から主要な設計判断へ辿れる。
 
 ## Architecture段階で比較する領域
@@ -167,14 +240,16 @@ Gate Uまでは採用を確定しませんが、後段で少なくとも次を�
 - external API contract: HTTP / gRPC / schema format
 - Task Admission / internal WorkOrder representation
 - queue / lease / scheduling substrate
-- Artifact addressing / registry / cache
+- Artifact addressing / registry / cache / safe ingest
 - Worker Identity / Workload Identity / Federation
 - Executor packaging: Native / WASM / Container / Browser
 - Sandbox enforcement
 - Result Verification Provider
+- Control Plane authority / signing boundary
 - Telemetry / Audit
 - Contribution accounting event model
 - Browser participation UX / local resource control
+- reclaim / backpressure / recovery model
 
 ## 作業原則
 
@@ -185,3 +260,4 @@ Gate Uまでは採用を確定しませんが、後段で少なくとも次を�
 - 一つのReference Systemへ全体Architectureを寄せすぎない。
 - 文書の自然な日本語と背景説明を重視し、専門知識がないことを読者側の責任にしない。
 - 説明を厚くしても、Requirement、Threat、ADRの正本を複製しない。
+- 作業ブランチは目的単位で作成し、完了した変更は元の`main`へPR経由で収束させる。後続作業を未マージbranchから派生させて履歴を断片化しない。
