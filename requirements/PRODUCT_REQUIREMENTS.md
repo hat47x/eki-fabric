@@ -58,11 +58,15 @@ EKIの目的は遊休資源を最大限使い切ることではない。利用�
 
 中央Control Planeとの通信が不安定または切断されている場合でも、ローカル側だけで新規Taskの受付停止や資源提供の縮小を実施できる必要がある。
 
+この停止権は単なるUX上の機能ではなく、中央側が誤動作・侵害された場合にもEndpointを守るためのSecurity boundaryの一つとして扱う。
+
 ### RQ-007 — Effective capacity is bounded locally — Baseline
 
-中央側が許可した上限より厳しい制約を、ローカルPolicy、利用者設定、温度、電力、ネットワークなどの安全判断が適用できなければならない。
+中央側が許可した上限より厳しい制約を、ローカルPolicy、利用者設定、温度、電力、電源種別、ネットワーク、端末保護などの安全判断が適用できなければならない。
 
 中央Control Planeが「60%まで利用可能」と判断していても、端末側が「現在は0%」と判断した場合、そのローカル上限を中央側が強制的に拡大できることを前提にしない。
+
+Local Governorは性能最適化の補助ではなく、Endpoint側に残るResource Enforcement Boundaryとして扱う。
 
 ### RQ-008 — Network-aware scheduling — Baseline
 
@@ -228,6 +232,8 @@ Clientが指定した任意URL、filesystem path、network endpointなどを、W
 
 Federation関係を結んだこと自体が、相手Trust Domainの全Identity、全Worker、全Dataへの包括的な信頼や権限を意味してはならない。
 
+Federation関係は明示的に構成し、相手Domainがさらに別DomainとFederationしていることを理由に、推移的な包括Trustを自動生成しない。
+
 ### RQ-032 — Ad-hoc benevolent participation — Baseline
 
 個人や一時的なBrowser/Native Workerが、強い事前審査なしでも、公開または低機密で、必要な方法により結果を検証できるTaskへ貢献できる構造を許容する。
@@ -346,6 +352,44 @@ Workerが自己申告した性能値やcapabilityだけを、高保証TaskのSec
 
 具体的なnonce、counter、timestamp、clock sourceなどの方式はArchitectureで決定する。
 
+### RQ-049 — Federation identity namespace binding — Baseline
+
+FederationされたIdentityは、どのTrust DomainまたはIdentity Authorityが発行したものかというbindingを失ってはならない。
+
+複数DomainのTrust Materialを単純に一つへ混ぜ、「どれかの鍵で検証できたから有効」と扱ってはならない。Identity namespaceの衝突やTrust Domainの取り違えによって、別組織のIdentityへ権限が移ることを防げる必要がある。
+
+Federation設定自体も高価値なTrust設定として扱い、通常のClient入力から変更できることを前提にしない。
+
+### RQ-050 — Bounded artifact ingestion and expansion — Baseline
+
+Artifactの受理、検査、展開、変換、索引付けなど、Task実行前後の処理もResource Budgetの対象にしなければならない。
+
+圧縮Artifactでは受信byte数だけでなく、展開後サイズ、file数、入れ子の深さ、処理時間などを制限できる必要がある。Archive entry名やpathを指定しただけで、Sandbox外のHost filesystemへ書き込めてはならない。
+
+ArtifactのProvenance、Content Integrity、安全に処理できることは別の保証として扱う。
+
+### RQ-051 — Control-plane authority separation — Baseline
+
+Control Plane内部の一部Componentが侵害・誤動作しても、その役割に不要なauthorityまで自動的に得られない構造を選べなければならない。
+
+Task admission、placement、data authority、Executor admission、Federation administration、Verification authority、Contribution確定など、影響範囲の異なる権限を論理的に分離できることを要求する。
+
+これは必ずMicroserviceへ分割するという意味ではない。一つのProcess内であっても、権限境界を設計上区別できればよい。
+
+### RQ-052 — Coordinated reclaim without retry amplification — Baseline
+
+Providerや端末利用者によるResource reclaimはTask完遂より優先されなければならない一方、大量Workerの同時離脱後にretryやmigrationが集中し、別のResource Exhaustionを無制限に引き起こしてはならない。
+
+大量のGrant縮小、拠点停止、勤務開始などによるまとまったcapacity lossを、Fabricで起こり得る通常Eventとして扱える必要がある。
+
+具体的なbackoff、jitter、priority、queue disciplineはArchitectureで決定する。
+
+### RQ-053 — Energy / thermal / device-safety aware resource policy — Baseline
+
+Resource availabilityをCPU / GPUのidle率だけで決めてはならない。
+
+ProviderまたはEndpoint側が、Energy budget、Battery / AC状態、利用時間帯、Thermal state、端末保護などを理由にcapacityを縮小・停止できなければならない。Contributionや外部Creditの仕組みが存在しても、それを理由にローカルSafety Governorの上限を迂回できてはならない。
+
 ---
 
 ## K. 明示的な非目標
@@ -363,6 +407,8 @@ Workerが自己申告した性能値やcapabilityだけを、高保証TaskのSec
 - Cryptocurrency、token market、現金決済基盤
 - 一時Workerに渡した平文データの完全な事後回収を保証すること
 - 正解を定義できないTaskについて、EKIが意味上の絶対的な正しさを保証すること
+- あらゆるControl Plane componentを相互不信のByzantine fault tolerant構成へすること
+- すべてのArtifact形式をEKI Core自身で安全に解析できるようにすること
 
 ## Architectureへ入る前の主な未決事項
 
@@ -378,3 +424,8 @@ Workerが自己申告した性能値やcapabilityだけを、高保証TaskのSec
 8. Validator / Verifier compromiseに対し、保証Profileごとにどこまで独立性を要求するか。
 9. 非決定的AI Taskについて、EKI共通の検証語彙をどこまで持つべきか。
 10. 副作用TaskをEKIの主要用途へ含めるか、限定的な拡張用途として扱うか。
+11. Federation Trust chainをどこまで許容し、どのbinding情報を外部契約へ露出するか。
+12. Artifact展開・Parser隔離の最低保証を、Worker profileごとにどこまで共通化するか。
+13. Control Plane内部のauthority分割を、最小構成と大規模構成でどのように両立させるか。
+14. Mass reclaim時の再配置制御を、Task priority / deadline / Provider policyとどう整合させるか。
+15. Energy / thermal policyを、OS・hardware差を吸収しつつどこまで共通Resource Modelへ含めるか。
