@@ -218,7 +218,11 @@ Spikeは採用Architectureを既成事実化しません。確認したいRequir
 
 最初のSpikeとして `spikes/local-governor/README.md` を作成しました。Windows Job Object / EcoQoS、Linux cgroup v2、ローカルopt-outの停止境界を調査し、Resourceごとに `HARD / BEST_EFFORT / OBSERVE_ONLY / UNAVAILABLE` の保証種別を区別する必要性を確認しています。
 
-現時点ではCPU / Memory / Process数について主要OSの強制機構を利用できる見込みが高い一方、GPU、Network、Disk I/Oは同じ強さの共通制御を仮定できません。次は小さな実装で、実際に設定した上限と観測される挙動が一致するかを確認します。
+現時点ではCPU / Memory / Process数について主要OSの強制機構を利用できる見込みが高い一方、GPU、Network、Disk I/Oは同じ強さの共通制御を仮定できません。
+
+Linuxでは、delegation済みcgroupを対象に制約を書き込み、Workloadをattachし、`cpu.stat`と停止時間を観測する実験Harnessまで追加しました。Unit Testと、制御Authorityがない環境で安全側に失敗するnegative pathは確認済みです。実際のCPU / Memory / PID / I/O hard enforcement値は、delegation済みhostでの測定を残しています。
+
+Phase 4では、このように「APIが存在すること」ではなく、**要求した制約・実際の観測・広告するAssuranceが一致するか**をSpikeの成立条件にします。
 
 ## Gate U — Architecture Entry Gate
 

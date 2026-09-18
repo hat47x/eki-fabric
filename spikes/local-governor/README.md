@@ -442,11 +442,20 @@ Remote Assurance
 
 ---
 
-# 8. 次の実装Spike
+# 8. 実装Spikeの現在地
 
 この調査だけでLocal Governorを成立済みとはしません。
 
-次は小さな実装で、少なくとも次を確認します。
+Linuxについては、`enforce/linux-cgroup` にdelegation済みcgroupを対象とする測定Harnessを追加しました。CPU quota、Memory / PID / I/O limitの設定、Workloadのcgroup attach、`cpu.stat`による実測、`cgroup.kill`を使ったLocal opt-out相当の停止を一つの実験経路で確認できるようにしています。
+
+現在の検証環境ではcgroup filesystemがread-onlyであるため、hard limitの実効値そのものはまだ測定できていません。一方、制御Authorityがない環境ではhard enforcement成立と誤認せず明示的に失敗すること、Harnessのunit testが通ることは確認済みです。
+
+詳細は次を参照してください。
+
+- `enforce/linux-cgroup/README.md`
+- `enforce/linux-cgroup/RESULTS_2026-09-18.md`
+
+残る実測では、少なくとも次を確認します。
 
 ## Windows
 
