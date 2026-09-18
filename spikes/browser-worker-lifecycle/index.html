@@ -1,0 +1,27 @@
+<!doctype html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>EKI Browser Worker Lifecycle Spike</title>
+  <style>
+    body { font-family: system-ui, sans-serif; max-width: 900px; margin: 2rem auto; padding: 0 1rem; }
+    button { margin-right: .5rem; padding: .6rem 1rem; }
+    pre { background: #f3f3f3; padding: 1rem; overflow: auto; }
+    #log { min-height: 18rem; max-height: 28rem; }
+  </style>
+</head>
+<body>
+  <h1>EKI Browser Worker Lifecycle Spike</h1>
+  <p>計算資源の提供は明示的な「参加開始」操作でのみ始まります。停止操作はローカルで即時にWorkerを終了します。</p>
+  <p>
+    <button id="start">参加開始</button>
+    <button id="stop">停止</button>
+  </p>
+  <h2>State</h2>
+  <pre id="status"></pre>
+  <h2>Lifecycle / heartbeat log</h2>
+  <pre id="log"></pre>
+  <script type="module" src="./app.js"></script>
+</body>
+</html>
