@@ -33,9 +33,15 @@ EKIでは、こうしたTrade-offを「実装してから気付く」のでは�
 - Artifact parser / Executor failureが高権限領域へ波及しないか
 - Control Plane部分侵害時のblast radius
 
+### 将来の測定候補
+
+- `single_component_reachable_authorities`
+- `cross_role_forgery_rejection`
+- `high_value_authority_overlap`
+
 ### 注意
 
-「暗号化している」「mTLSである」「Attestationがある」といった技術の有無だけで評価しません。どの攻撃経路が、どの境界で止まるかを確認します。
+「暗号化している」「mTLSである」「Attestationがある」といった技術の有無だけで評価しません。どの攻撃経路が、どの境界で止まるかを確認します。特にSchedulerのような複雑なOptimization Componentへ、Placement提案以外の高価値Authorityをどこまで同居させるかをblast radiusの観点で比較します。
 
 ---
 
