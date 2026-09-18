@@ -244,6 +244,10 @@ Mass reclaim recoveryについては、`spikes/mass-reclaim-recovery/` に1,000 
 
 このSpikeではplanned reclaim noticeをOptimization、無通知reclaimでも成立するbounded recoveryを保証側として分離しています。またpriority / deadlineは再入場順序に利用しても、Network BudgetやRetry Budgetを越えるauthorityにはしません。実Queue、dynamic capacity recovery、cache locality変化、priority starvation、複数Provider同時reclaimは後続検証に残します。
 
+Control Plane authority separationについては、`spikes/control-plane-authority-separation/` にAdmission、Scheduler Proposal、Placement Guard、Artifact Authority、WorkOrder Authorityを分けた署名付き最小Modelを追加しました。Scheduler自身には署名Authorityを与えず、Confidential TaskをSecurity要件未達Workerへ提案してもPlacement Guardが拒否し、SchedulerがData Classを下げた偽Admission、任意Artifact Grant、WorkOrderを単独生成できないことをUnit Testで確認しています。
+
+初期レビューでは、Placement Guardの検証用Trust Rootを呼び出し側から渡すAPIが権限境界を壊し得ることを検出し、依存Authorityの公開鍵をGuard内部へ固定しました。このSpikeはMicroservice数やEd25519採用を決めるものではなく、一つのBinaryでもAuthority / key handle / interface / audit eventを論理分離できるかをArchitecture比較へ持ち越します。
+
 ## Gate U — Architecture Entry Gate
 
 次を満たした時点で、初めてArchitecture baselineを作成します。
