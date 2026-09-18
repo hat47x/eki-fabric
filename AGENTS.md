@@ -8,6 +8,7 @@ EKI Fabricの文書構成と上流工程の管理ルールです。
 product/          守る価値・Vision・原則
 requirements/     満たすべきProduct RequirementとThreat Model
 research/         外部事例・標準・比較調査。要求や設計の正本ではない
+spikes/           Architecture採用前の小さな実現可能性検証。仮説・条件・観測・限界を記録する
 plan/             上流工程、Acceptance Scenario、Gate、ADR、作業計画
   adr/            長く残る設計判断（設計段階以降）
 docs/             初見の読者、利用者、実装者向けの説明と用語整理
@@ -15,7 +16,8 @@ docs/             初見の読者、利用者、実装者向けの説明と用�
 
 ## 正本ルール
 
-- 価値判断は`product/`、要求は`requirements/`、外部調査は`research/`、工程・Gate・判断履歴は`plan/`を正本とする。
+- 価値判断は`product/`、要求は`requirements/`、外部調査は`research/`、実現可能性検証は`spikes/`、工程・Gate・判断履歴は`plan/`を正本とする。
+- `spikes/`の結果は、その実験条件で観測した事実と一般化可能な範囲を分けて記す。Spikeだけを根拠にProduct RequirementやArchitectureを暗黙に変更しない。
 - 同じ要求を複数文書へ複製しない。説明文書は要求IDや正本文書を参照する。
 - `docs/`は理解を助けるための説明層であり、Product RequirementやSecurity Invariantの第二正本にしない。
 - 現段階ではArchitectureを確定しない。特定製品・ライブラリ・プロトコルを要求から直接固定しない。
