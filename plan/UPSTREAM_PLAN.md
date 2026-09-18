@@ -214,7 +214,11 @@ Architecture採用前に、Requirement上のリスクが高く、文書検討だ
 
 Spikeは採用Architectureを既成事実化しません。確認したいRequirement上の仮説、実験条件、観測結果、一般化してよい範囲を残します。
 
-状態: **未着手 — 次Phaseの主線**
+状態: **着手済み — Local Governor初期Spikeを進行中**
+
+最初のSpikeとして `spikes/local-governor/README.md` を作成しました。Windows Job Object / EcoQoS、Linux cgroup v2、ローカルopt-outの停止境界を調査し、Resourceごとに `HARD / BEST_EFFORT / OBSERVE_ONLY / UNAVAILABLE` の保証種別を区別する必要性を確認しています。
+
+現時点ではCPU / Memory / Process数について主要OSの強制機構を利用できる見込みが高い一方、GPU、Network、Disk I/Oは同じ強さの共通制御を仮定できません。次は小さな実装で、実際に設定した上限と観測される挙動が一致するかを確認します。
 
 ## Gate U — Architecture Entry Gate
 
