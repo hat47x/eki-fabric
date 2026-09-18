@@ -1,0 +1,8 @@
+{
+  "name": "eki-browser-worker-lifecycle-spike",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "node --test"
+  }
+}
