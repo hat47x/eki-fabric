@@ -32,9 +32,13 @@ EKI Fabricは、**本来は失われる一時的・分散的な計算余力を�
 
 余剰計算資源は、単なるコスト削減ではなく、通常は費用対効果の理由で省略される観察、比較、分類、検証、探索、再索引、候補生成などへ投入できるものと考えます。計算余力が増えるほど、組織が行える認知活動の厚みを増せる構造を志向します。
 
+ここでいう認知処理は、大型LLMだけを意味しません。小型分類器、embedding、異常検知、疎な連想・再帰型ネットワーク、ローカル軽量LLM、より大きな推論モデルなど、計算特性の異なる処理をCPU / GPU / NPUその他の資源へ適切に配置できることを含みます。
+
+ただし、EKIが認知処理の意味や正しさを所有するわけではありません。どの認知を行うべきか、結果をObservation・Hypothesis・Decision等のどの意味として扱うかは、利用側Product / workload contractの責務です。
+
 ### Interoperability before ecosystem lock-in
 
-SEI Cognition、TEI、SUIは重要な初期利用者ですが、EKIをそれらの内部実装にはしません。未知のOSS、他社製品、Webアプリ、異なる言語・Runtimeから同じ基盤を利用できることを重視します。
+SEI Cognition、TEI、SUI Sensemakingは重要な初期利用者ですが、EKIをそれらの内部実装にはしません。未知のOSS、他社製品、Webアプリ、異なる言語・Runtimeから同じ基盤を利用できることを重視します。
 
 ### Verifiable contribution
 
@@ -43,6 +47,24 @@ SEI Cognition、TEI、SUIは重要な初期利用者ですが、EKIをそれら�
 ### Public-interest extensibility
 
 企業、クラウド事業者、個人等が余剰計算資源を公益性の高い活動へ提供できる構造を妨げません。提供者と受益者が互いを全面的に信頼しなくても協力できることを価値とします。
+
+## 隣接Productとの境界
+
+SUI Sensemaking、SEI Cognition、TEIから認知・検証・生成・Simulation等のworkloadを受け取る場合でも、EKIが所有するのは**計算を安全かつ合理的に実行可能な資源へ配置し、その実行を検証可能に扱う境界**です。
+
+```text
+SUI / SEI / TEI
+  = application / cognition / formal meaning
+
+EKI
+  = compute placement / execution fabric
+```
+
+そのため、EKI CoreへSUIのHypothesis、SEIのDecision、TEIのCanonical business meaning等を複製しません。EKIが必要とする場合は、それらをapplication semanticsとして理解するのではなく、resource requirement、data locality、trust / isolation requirement、deadline、preemption可否、result verification等のworkload contractへ投影して受け取ります。
+
+逆に、EKIがあるWorkerを選んだこと、計算が成功したこと、複数Workerの結果が一致したことだけで、利用側の意味上の判断が正しかったことにはしません。
+
+この分離により、認知系OSSが進化してworkloadの種類が変わっても、EKIは汎用distributed compute fabricとして独立して利用できます。
 
 ## EKIが価値としないもの
 
@@ -53,3 +75,4 @@ SEI Cognition、TEI、SUIは重要な初期利用者ですが、EKIをそれら�
 - 匿名参加者を善意と仮定すること
 - 独自経済圏や投機市場を形成すること
 - 一つのクラウド、Runtime、言語、GPUベンダーへ利用者を固定すること
+- 認知・判断・sensemaking・業務モデルの意味をEKI Coreの正本として所有すること
