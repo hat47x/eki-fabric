@@ -128,6 +128,7 @@ Data Classに応じて、Workerへ開示してよい情報を適切に制限で�
 - `artifact_cache_hit_ratio`
 - `duplicate_artifact_transfer_ratio`
 - `reclaim_recovery_network_amplification`
+- `recovery_transfer_bytes_per_window`
 
 ---
 
@@ -145,9 +146,18 @@ Workerのsleep、shutdown、Browser close、拠点停止、大規模Grant reclai
 - side-effect Taskの不明状態の扱い
 - Control Plane restart後の状態復元
 
+### 将来の測定候補
+
+- `reclaim_reentry_rate`
+- `recovery_queue_age`
+- `retry_attempt_amplification_ratio`
+- `mass_reclaim_recovery_time`
+
 ### 注意
 
 「すぐ再実行する」ことを常に高いRecoverabilityとは評価しません。副作用Taskでは再実行しないことが安全な場合があります。
+
+また、backoffで時刻を散らしただけでは、残存capacityやNetwork Budgetを超える再入場を防げるとは限りません。Recovery Queueから実行系へ戻す境界自体のrate / transfer制約も比較対象にします。
 
 ---
 
