@@ -248,6 +248,10 @@ Control Plane authority separationについては、`spikes/control-plane-author
 
 初期レビューでは、Placement Guardの検証用Trust Rootを呼び出し側から渡すAPIが権限境界を壊し得ることを検出し、依存Authorityの公開鍵をGuard内部へ固定しました。このSpikeはMicroservice数やEd25519採用を決めるものではなく、一つのBinaryでもAuthority / key handle / interface / audit eventを論理分離できるかをArchitecture比較へ持ち越します。
 
+Federation trust bindingについては、`spikes/federation-trust-binding/` にTrust DomainごとのBundle分離、Federation Administrator署名、Bundle Version、Identity expiryを扱う最小Modelを追加しました。Company CのIdentityをCompany Bとして受理しないこと、同一Keyをprod / stageで共有していてもnamespaceを統合しないこと、未Federation Domainを推移的にTrustしないこと、古いBundle Versionのrollbackを拒否すること、rotation overlap後に旧Keyを削除できることをUnit Testで確認しています。
+
+SPIFFE Federationの`<Trust Domain, Bundle>` binding原則を参考にしつつ、SPIFFE / SPIRE採用はまだ決めません。Bundle内容の正当性と「このBundleをこのTrust Domainへ対応付けてよい」という設定Authorityを分け、callerがTrust Rootを差し替えられないことをArchitecture比較の条件として残します。
+
 ## Gate U — Architecture Entry Gate
 
 次を満たした時点で、初めてArchitecture baselineを作成します。
