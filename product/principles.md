@@ -32,7 +32,9 @@ Workerが返す実行結果、資源量、実行時間、キャッシュ状態�
 
 ### 7. Core knows compute semantics, not application semantics
 
-EKI CoreはTask、Resource、Artifact、Policy、Result、Contribution等を扱います。KJ法、業務画面、LLM認知等の意味論は利用OSS側の責務とします。
+EKI CoreはTask、Resource、Artifact、Policy、Result、Contribution等を扱います。SUI Sensemakingの関係・仮説・統合、SEI CognitionのObservation・Decision、TEIのCanonical business meaning、個別LLMや認知手法の意味論は利用側の責務とします。
+
+利用側の意味をEKIへそのまま複製するのではなく、必要な情報だけをresource requirement、data locality、trust / isolation requirement、deadline、preemption、result verification等のcompute semanticsへ投影します。
 
 ### 8. Open protocol, replaceable implementation
 
