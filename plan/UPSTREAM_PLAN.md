@@ -295,6 +295,55 @@ Gate Uまでは採用を確定しませんが、後段で少なくとも次を�
 - Browser participation UX / local resource control
 - reclaim / backpressure / recovery model
 
+## TEI適用方針 — Control / Application Planeは候補、Compute Kernelは個別判断
+
+自作OSS群では、UI、Interaction、設定・Policy編集、Projection、業務／domain logic等のApplication PlaneをTEIで実装する方針を基本とする。
+
+ただしEKIは本質的にdistributed compute infrastructureであり、全体をTEIへ移すことを既定にはしない。
+
+### TEI-firstで検討する領域
+
+将来、次のような人間向け・管理向けsurfaceを実装するときは、独自Web UIや管理frameworkを先に増やさず、TEIで実現できるかを第一候補として評価する。
+
+- operator / administrator console
+- Worker / Provider参加状態のinspection
+- Policy / placement constraint / budget等の設定・review
+- Contribution / Grant / Evidenceの可視化
+- Task / Result / UNKNOWN / recovery状態のProjection
+- local endpoint participation UXのうちApplicationとして表現できる部分
+- audit / diagnostic / operational review surface
+
+### native-firstで扱う領域
+
+次は、TEI採用を既定としない。
+
+- scheduler / lease / queue / retry / backpressure
+- Worker Agent / Local Governor
+- protocol / identity / federation / attestation
+- sandbox / executor / artifact safe processing
+- result verification kernel
+- network / cache / locality optimization
+- Browser Workerのlifecycle controlそのもの
+- device / OS level resource enforcement
+- security root / signing authority
+
+これらはEKIのInfrastructure / Kernel Planeであり、TEI Application surfaceから操作・観測されることはあっても、TEIのApplication modelへ内部意味を押し込まない。
+
+### 不足機能の扱い
+
+EKIの管理surfaceでTEIに不足が見つかった場合も、EKI専用要求を直接TEI Coreへ追加しない。
+
+```text
+existing TEI
+  -> reusable Plugin / Adapter / Capability
+  -> native EKI integration
+  -> cross-application Evidenceがある場合だけTEI Core gap候補
+```
+
+SUI SensemakingのReference Adoptionで得られるPlugin / Target / Projectionの知見を先に再利用し、EKI独自の管理UI基盤を新設する必要があるかを後から判断する。
+
+この方針はGate U以前にTEIをArchitectureへ採用する決定ではない。EKI Core Architectureは引き続きRequirement / Scenario / Assurance / SpikeのEvidenceから比較し、TEI利用は主にApplication / Control surfaceの実装候補として扱う。
+
 ## 作業原則
 
 - Requirementの不確実性を減らす作業を優先する。
