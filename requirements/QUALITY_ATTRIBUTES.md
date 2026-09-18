@@ -32,12 +32,17 @@ EKIでは、こうしたTrade-offを「実装してから気付く」のでは�
 - untrusted Workerの偽ResultをAccepted Resultへ直接昇格させないか
 - Artifact parser / Executor failureが高権限領域へ波及しないか
 - Control Plane部分侵害時のblast radius
+- Executor supply-chain substitutionが実行前にどの境界で止まるか
+- stale / revoked Executor approvalが再利用されないか
 
 ### 将来の測定候補
 
 - `single_component_reachable_authorities`
 - `cross_role_forgery_rejection`
 - `high_value_authority_overlap`
+- `executor_digest_mismatch_rejection`
+- `stale_executor_approval_rejection`
+- `executor_revocation_propagation_delay`
 
 ### 注意
 
