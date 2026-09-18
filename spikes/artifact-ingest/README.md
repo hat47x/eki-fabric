@@ -28,6 +28,8 @@ Content Digestや署名が正しくても、展開・解析時に大量のResour
 - special file
 - 既存destinationへの上書き
 - streaming中に実測した展開byte数
+- 実展開時の必須有限limit（設定漏れを無制限として扱わない）
+- `a/../b`のように正規化で別名になる曖昧なpath
 
 ## なぜ事前検査だけでは足りないか
 
@@ -51,7 +53,9 @@ central directoryを使った事前検査
 実際にdecompressしながらbyte数を制限
 ```
 
-の二段階にしています。
+の二段階にしています。さらに、実際に展開する`Extract`では、file数、archive全体の展開後byte数、1 fileの展開後byte数、path深度について有限の上限を必須とします。設定漏れを「無制限でよい」という意味にはしません。
+
+なお、このSpikeは`zip.Reader`を受け取った後の境界を検証しています。圧縮済みarchive自体の受信byte数やcentral directoryを読み込む前段の負荷は別途Ingress側で制限する必要があり、この点はまだ本Spikeの実装範囲外です。
 
 ## Pathを文字列のまま信用しない
 
@@ -100,11 +104,13 @@ Archive内symlinkは、それ自体が展開先の外へ出ていなくても、
 - `../../` traversalの拒否
 - backslash traversalの拒否
 - `C:/`形式のdrive path拒否
+- `a/../b`のような非canonical pathの拒否
 - symlink拒否
 - file count超過
 - total expanded size超過
 - 高compression ratio
 - 既存destinationへの展開拒否
+- 実展開時に有限limitが指定されていない場合の拒否
 
 テストでは巨大なZIP bombを実際に作りません。
 
@@ -126,6 +132,7 @@ Archive内symlinkは、それ自体が展開先の外へ出ていなくても、
 - CPU time / MemoryをOS levelで制限したParser実行
 - Malware scanの位置付け
 - Unicode normalizationやPlatform固有reserved nameの完全な扱い
+- raw archive byte数とcentral directory parseのIngress側上限
 - 同一UIDの攻撃Processが展開directoryを同時に操作する場合
 - Windows実機でのpath semantics
 
