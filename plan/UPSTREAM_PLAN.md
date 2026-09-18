@@ -256,6 +256,10 @@ Executor provenance / content admissionについては、`spikes/executor-proven
 
 Publisher署名やProvenanceが暗号学的に正しいこと自体はExecutor Admissionを意味しないものとし、信頼Publisher、Builder、Source、Commit、Runtime ClassをPolicyへ照合してから別のAdmission AuthorityがApprovalを発行します。Digest revocation、Approval expiry、Policy Revision更新も実行時Guardで確認します。OCI Descriptor、Sigstore、SLSA / in-totoは有力なAdapter候補ですが、Core Contractへ固定せず、Supply-chain EvidenceとSafe Executionを別保証としてArchitecture比較へ持ち越します。
 
+Side-effect Task uncertain outcomeについては、`spikes/side-effect-uncertain-outcome/` に外部副作用の有無、dispatch済みか、外部側の権威あるReceiptで確認できたかを分離する最小Recovery Modelを追加しました。non-idempotentな副作用をdispatchした後にWorkerが消え、Receiptを確認できない場合は`failed`や`retryable`へ丸めず`UNKNOWN`として保持します。一方、外部System側でidempotencyが成立するTaskは、同じOperation IDとRequest Digestを維持する場合に限ってretry可能とします。
+
+Worker自己申告は外部副作用の確定根拠にせず、Effect AuthorityのReceiptをTask Intentへbindingして検証します。Cancellationもdispatch済みnon-idempotent effectのUNKNOWNを消しません。またidempotencyがあってもretry budgetは別に適用します。このSpikeはgeneric exactly-onceを保証するものではなく、effect semantics、stable operation identity、authoritative confirmation、UNKNOWN stateをTask Contractへどう表現するかをArchitecture比較へ残します。
+
 ## Gate U — Architecture Entry Gate
 
 次を満たした時点で、初めてArchitecture baselineを作成します。
