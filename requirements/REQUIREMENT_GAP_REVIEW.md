@@ -1,35 +1,107 @@
-# EKI Fabric 要求ギャップレビュー — 第二巡目
+# EKI Fabric 要求ギャップレビュー — 第三巡目
 
 ## 役割
 
-この文書は、初版のProduct Requirements、Threat Model、Worker Assurance Model、Acceptance Scenariosを横断し、Architectureへ進む前に不足している要求を洗い出すためのレビュー記録です。
+この文書は、Product Requirements、Threat Model、Worker Assurance Model、Acceptance Scenariosを横断し、Architectureへ進む前に残っている要求の抜けを確認するためのレビュー記録です。
 
-新しいRequirementの正本ではありません。ここで「追加が必要」と判断した項目は、`PRODUCT_REQUIREMENTS.md`や`THREAT_MODEL.md`へ反映して初めて正式な要求になります。
+ここでの結論はRequirementそのものではありません。追加が必要と判断した項目は、`PRODUCT_REQUIREMENTS.md`や`THREAT_MODEL.md`へ反映して初めて正式な要求になります。
 
-## 今回の見方
+第二巡目では、Browser参加の可視性、悪意あるWorkerに渡したDataの事後削除非保証、Validator / Verifierの信頼境界、非決定的AI Resultの保証上限、副作用Taskのretry境界などを追加しました。
 
-初版では、次の大きな境界はすでにRequirement化されています。
-
-- 特定の利用OSSや言語へ依存しない
-- 業務端末では利用者を優先する
-- ネットワーク負荷とデータ局所性を考慮する
-- ClientもWorkerも悪意を持ち得る
-- Workerの結果を検証前に正しいとみなさない
-- Sybilを単純多数決で解決したことにしない
-- アドホック参加と機密Taskを両立させる
-- Compute GrantとContributionを通貨・市場から分離する
-
-第二巡目では、「この原則を実際の境界条件へ当てはめたとき、暗黙の前提が残っていないか」を確認します。
+第三巡目では、それらを前提に、複数組織・大量Artifact・Control Plane内部・大規模Resource Reclaim・Endpoint保護という、より運用に近い境界を確認します。
 
 ---
 
-## GAP-01 — Browser参加者の意思がRequirementとして弱い
+## GAP-01 — FederationでIdentity namespaceのbindingが失われる危険
 
 ### 問題
 
-RQ-005〜RQ-007では業務端末の利用者を優先し、RQ-032ではアドホック参加を許容しています。しかし、Browser Workerが本人の明示的な意思なしに起動されないことは、独立した要求として明記されていません。
+RQ-031では複数Trust Domainの限定的なFederationを要求しています。しかし、「外部Identityを検証できること」と「どのAuthorityが発行したIdentityかを取り違えないこと」は、より明示的に分けた方が安全です。
 
-Webページは通常のコンテンツ閲覧と計算資源提供を同じ実行環境で行えます。そのため、技術的に実行可能であることと、利用者が資源提供へ同意していることを分ける必要があります。
+複数Trust Domainの公開鍵やBundleを単純に一つの集合へ混ぜ、どれかの鍵で署名が検証できればよいとすると、異なるDomain間のIdentityを取り違える可能性があります。
+
+SPIFFE Federationでも、Trust Domain名とBundleのbindingを保つこと、Federation設定そのものの改変が大きなSecurity riskになることが明示されています。
+
+### 結論
+
+**新しいProduct RequirementとSecurity Invariantを追加する。**
+
+要求する方向:
+
+- FederationされたIdentityは発行Trust Domain / Authorityとのbindingを保持する
+- 異なるIdentity namespaceを暗黙に併合しない
+- Federation設定は通常Client入力から変更できない
+- FederationはIdentity validationを可能にするものであり、Authorization Grantとは分離する
+- Trust chainを利用する場合、どのauthority chainを根拠にしたかを追跡できる余地を持つ
+
+関連: RQ-031, RQ-039, SEC-010
+
+調査: `research/federation-namespace-safety.md`
+
+---
+
+## GAP-02 — Artifact取込・展開処理そのものがDoS面になる
+
+### 問題
+
+RQ-017はClientによるResource Exhaustion、RQ-027はArtifactのContent Integrityを扱っています。しかし、Artifactを受理した後の展開・解析・変換処理が、独立した攻撃面としてはまだ弱いです。
+
+数MBの圧縮Artifactが巨大な展開後サイズになる、数百万fileを生成する、深い入れ子でParserを消耗させる、Archive entryで展開先外へ書き込もうとする、といった攻撃は、Task本体を実行する前でもFabricを消耗させます。
+
+### 結論
+
+**新しいProduct RequirementとSecurity Invariantを追加する。**
+
+要求する方向:
+
+- Artifactの受理・検査・展開・変換もresource budgetの対象にする
+- compressed sizeだけでなくexpanded size、file count、nesting、処理時間等を制限できる
+- Archive entry名やpathだけでHost filesystem authorityが成立しない
+- Parser / ConverterのfailureがControl Plane全体へ無制限に波及しない
+- Provenance、Content Integrity、Safe Processingを別の保証として扱う
+
+関連: RQ-009, RQ-017, RQ-027, RQ-029
+
+調査: `research/artifact-ingest-safety.md`
+
+---
+
+## GAP-03 — Control Plane内部を一枚岩の完全信頼領域にしない
+
+### 問題
+
+Threat ModelではControl Planeのroot signing authority等まで侵害された場合を通常保証の外に置いています。この境界自体は必要です。
+
+一方、Scheduler、Policy評価、Artifact capability発行、Executor admission、Federation administration、Verificationなど、Control Plane内部には性質の異なる権限が存在します。
+
+一つのComponentが侵害されたとき、それだけで他のすべての権限まで得られる構造を前提にする必要はありません。
+
+### 結論
+
+**新しいProduct RequirementとThreat Actor / Security Invariantを追加する。**
+
+要求する方向:
+
+- Control Planeの一部componentも、その役割に不要なauthorityを持たない構成を選べる
+- Task admission、placement、data authority、executor admission、federation administration、verification authority等を分離可能にする
+- 高価値なTrust設定変更を通常Task実行経路から分離できる
+- 内部の重要なauthority transitionを監査できる
+
+これは最初から大量Microserviceへ分割する要求ではありません。論理的な権限境界を一つのProcess内で実現するArchitectureも候補に残します。
+
+関連: RQ-016, RQ-039〜RQ-041, RQ-044
+
+調査: `research/control-plane-compromise.md`
+
+---
+
+## GAP-04 — 大規模Resource ReclaimがRetry stormを起こす
+
+### 問題
+
+RQ-006、RQ-035ではUser / Providerが資源提供を停止できることを要求しています。これはEKIの中心原則です。
+
+しかし、大規模Compute Grantや数百台のEndpointが同時にreclaimされた場合、未完了Taskを一斉に再実行すると、残ったWorker、Artifact Store、Network、Control Planeへ負荷が集中し、二次障害を起こす可能性があります。
 
 ### 結論
 
@@ -37,209 +109,146 @@ Webページは通常のコンテンツ閲覧と計算資源提供を同じ実�
 
 要求する方向:
 
-- Browserや個人端末によるアドホック資源提供は、利用者に認識可能であること
-- 停止方法が明確であること
-- hidden iframe等による意図しない資源提供を標準利用形態にしないこと
-- Provider側Policyが許していても、利用者側の停止権を不要にしないこと
+- Provider / Userのreclaim権を維持したまま、reclaim後のretry / migrationがresource amplificationを起こさない
+- 大量離脱を異常な単一障害ではなく、起こり得るFabric eventとして扱う
+- Task priorityやdeadline等に応じて再配置を抑制・遅延できる余地を持つ
+- ReclaimのためにProvider側がTask完遂を待ち続けることを要求しない
 
-関連: RQ-005〜RQ-007, RQ-032
+具体的なbackoff、jitter、queue disciplineはArchitectureで決めます。
+
+関連: RQ-006, RQ-010, RQ-013, RQ-017, RQ-035
+
+調査: `research/reclaim-energy-and-endpoint-safety.md`
 
 ---
 
-## GAP-02 — Browser Workerの可用性をNative Workerと同一視しない要求が弱い
+## GAP-05 — Energy / Thermal / Device wearがResource Policy上弱い
 
 ### 問題
 
-RQ-010で随時離脱を正常系として扱うことは要求していますが、Browserにはbackground throttling、tab close、browser/OSによるsuspension等、EKIが制御できない実行制約があります。
+RQ-007では温度・電力・Networkをローカル安全判断の例に挙げています。しかし、EKIの思想では社員PCをリッチにし、その余剰GPUを組織の認知資源へ還流させることを重要な利用形態としています。
 
-Browser実装の細部をProduct Requirementへ固定する必要はありません。しかし、Browser Workerを長時間常駐サービスと同じ可用性で扱わないことは明文化した方が安全です。
+この場合、単にCPU/GPUがidleであることだけを「利用可能」とみなすと、Battery、消費電力、Fan noise、Thermal throttling、Hardware wearなどを無視してしまいます。
+
+Compute GrantやContributionが普及した場合、Credit獲得などの外部動機がEndpointの安全上限を押し上げようとする可能性もあります。
 
 ### 結論
 
-**既存RQ-010を補強する。**
+**RQ-007を補強し、新しいResource Policy Requirementを追加する。**
 
-Browser固有の実装方式を要求するのではなく、「Worker profileごとに期待できるlifecycleを区別し、保証されないbackground executionをdeadlineや可用性の根拠にしない」とする。
+要求する方向:
 
-関連調査: `research/browser-worker-lifecycle.md`
+- Energy budget、power source、thermal state、device safetyをResource availabilityへ反映できる
+- local Safety Governorは中央Schedulerより厳しい上限を適用できる
+- Providerは時間帯やEnergy policyによって提供量を制限できる
+- Contributionや外部Credit policyがローカルSafety上限を迂回できない
+
+関連: RQ-005〜RQ-007, RQ-036〜RQ-038
+
+調査: `research/reclaim-energy-and-endpoint-safety.md`
 
 ---
 
-## GAP-03 — 悪意あるWorkerへ渡したデータの削除を保証できない
+## GAP-06 — Supply-chain provenanceとArtifact安全性を混同しない
 
 ### 問題
 
-RQ-024は、平文機密データを悪意Workerへ渡した後から機密性を回復できないことを明示しています。
+RQ-026 / RQ-027ではExecutor provenanceとContent Integrityを扱っています。しかし、署名やAttestationがあるArtifactであっても、脆弱なParserへ与えれば危険な入力になり得ます。
 
-同じ理由で、Task終了時にWorkerが「入力を削除した」と報告しても、通常のuntrusted Workerについてその削除を一般には確認できません。
-
-ここを曖昧にすると、`retention = none`のような指定を付けただけで、実際の情報漏えい耐性が得られたと誤解する可能性があります。
+出所の確認と、安全に処理できることは別です。
 
 ### 結論
 
-**新しいProduct Requirementを追加する。**
+**新Requirement追加ではなく、Artifact safety Requirementの理由として明示する。**
 
-- untrusted Workerの事後削除を機密性の根拠にしない
-- 削除保証が必要なTaskは、管理境界、Confidential Computing、暗号学的に利用不能化できる設計等、別の信頼根拠を必要とする
-- retention policyは運用上の要求と、技術的に検証できる保証を区別する
+EKIでは少なくとも次を分けます。
+
+```text
+Provenance
+  誰が・どこから作ったか
+
+Integrity
+  byte列が期待したものか
+
+Safe Processing
+  現在のParser / Runtimeで許可されたResource内に処理できるか
+```
+
+関連: RQ-026, RQ-027
 
 ---
 
-## GAP-04 — Validator / Verifier自身が攻撃者になる場合の境界が弱い
+## GAP-07 — FederationのTrust chainを無意識に推移させない
 
 ### 問題
 
-現在はWorkerが返す結果をValidator、replication、attestation、proof等で検証する方針です。
+AがBとFederationし、BがCとFederationしているとき、AがCを暗黙に信頼する構成は、信頼境界を予想以上に広げます。
 
-しかし、Validatorそのものが改変されていれば、偽ResultをAcceptedResultへ昇格できます。Remote Attestationでも、VerifierがEvidenceを誤って評価すれば同様です。
-
-IETF RATSでもAttester、Verifier、Relying Partyを役割として分離し、Evidenceの評価Policyを明示的な構成要素として扱っています。
+これはSPIFFE固有の問題ではなく、複数組織のIdentity基盤を連結する一般的な問題です。
 
 ### 結論
 
-**新しいProduct RequirementとThreat Actorを追加する。**
+**Federation Requirementへ非推移性を補強する。**
 
-- Resultを受理する際、どのVerifier / Validator / Policy authorityを信頼基盤にしているか追跡できること
-- Worker自身が自分のValidatorを自由に選んで保証を成立させないこと
-- 高保証Taskでは、一つの低保証Validatorだけを無条件なroot of trustにしない構成を選べる余地を持つこと
+- Federation関係は明示的に構成する
+- 他DomainのFederation関係を継承して包括的Trustを自動生成しない
+- chainを許す場合は、どのchainを信頼根拠にしたか追跡できる
 
-すべてのValidatorをByzantine tolerantにすることまでは要求しない。どこを信頼基盤に置いたかを隠さないことを要求する。
+関連: RQ-031
 
 ---
 
-## GAP-05 — Remote AttestationのEvidence自体が情報漏えい面になり得る
+## GAP-08 — Security上のローカル停止はControl Plane障害時にも成立すべき
 
 ### 問題
 
-Remote AttestationはWorkerの状態を確認するために有用ですが、Evidenceにはhardware、software version、device構成など、内部情報が含まれる可能性があります。
+RQ-006 / RQ-007はすでにlocal opt-outとlocal boundを要求しています。
 
-Topology confidentialityを守りながら、必要以上のAttestation情報をClientへ開示しない境界が必要です。
-
-### 結論
-
-**RQ-040 Audit without unnecessary disclosureを補強し、Assurance Evidenceにも適用する。**
-
-Clientが必要とするのは通常、「このTaskの必要条件を満たしたか」という判断結果であり、生のEvidence全部ではありません。
-
----
-
-## GAP-06 — 非決定的AI処理について「検証不能なら保証を下げる」がRequirement本文で弱い
-
-### 問題
-
-Threat ModelとAssurance Modelには、非決定的AI出力をbitwise quorumで保証しないことが書かれています。しかしProduct RequirementsではRQ-021の「Task特性に応じた検証方式」の中に埋もれています。
-
-将来SEI Cognition等が主要利用者になる場合、ここは重要な境界です。
+第三巡目でControl Plane部分侵害を考えると、これは単なるUXではなくSecurity boundaryでもあります。中央Componentが誤動作・侵害された場合でも、Endpoint側のSafety GovernorがCPU / GPU / Memory / Network / Thermal上限を超えないことが重要です。
 
 ### 結論
 
-**新しいProduct Requirementを追加する。**
+**新Requirement追加ではなく、RQ-006 / RQ-007のSecurity rationaleを補強する。**
 
-- 「正しい答え」を機械的に判定できないTaskについて、EKIが完全なsemantic correctnessを偽ってはならない
-- validation可能な性質、provenance、複数候補、独立実行など、確認できた事実だけを返せること
-- 利用アプリケーションが最終判断を担うTaskを表現できること
+Local GovernorはCentral Schedulerの性能最適化機能ではなく、Endpoint側に残る最後のResource Enforcement Boundaryの一つとして扱う。
 
 ---
 
-## GAP-07 — 再実行と外部副作用の関係が弱い
+# 第三巡目で正式要求へ反映する項目
 
-### 問題
+Product Requirementsへ次を追加・補強します。
 
-RQ-011、RQ-012はretryabilityやexactly-once非保証を定義しています。しかし、Taskが外部API呼び出し、メール送信、DB更新などの副作用を持つ場合、Worker消失後の自動再実行が二重実行を起こす可能性があります。
+1. Federation Identity namespace binding
+2. Bounded Artifact ingestion / expansion
+3. Control Plane authority separation
+4. Coordinated reclaim without retry amplification
+5. Energy / thermal / device-safety aware resource policy
 
-EKIは高throughput計算を主対象にしていますが、未知のOSSから利用される以上、副作用Taskが投入される可能性を無視できません。
+Threat Modelへ次を追加・補強します。
 
-### 結論
+1. malicious Artifact / parser abuse
+2. compromised Control Plane component
+3. Federation configuration / namespace substitution
+4. mass reclaimを利用したresource amplification
+5. local resource safety enforcementの無効化
 
-**新しいProduct Requirementを追加する。**
+Acceptance Scenarioへ次を追加します。
 
-- 外部副作用を持つTaskは、その事実と再実行条件を明示できること
-- idempotency等の安全根拠がないTaskを、EKIが勝手にretryableと判断しないこと
-- 実行済みか不明な状態を、必ず再実行するだけで処理しないこと
-
----
-
-## GAP-08 — Workerの能力自己申告を安全上の配置根拠へ使う境界が弱い
-
-### 問題
-
-Assurance ModelではResource Measurementの自己申告を信用しないことを明示しています。一方、Workerが「Confidential Runtimeがある」「特定GPUである」「このExecutorを隔離できる」と偽る場合について、Product Requirementの配置条件はやや間接的です。
-
-### 結論
-
-**RQ-019 / RQ-024 / RQ-025を補強する。**
-
-性能最適化のための自己申告と、機密性や結果保証のためのcapability assertionを区別する。高保証配置に使うcapabilityは、必要に応じて外部Evidenceまたは管理Policyによる根拠を持つことを要求する。
-
----
-
-## GAP-09 — 古いEvidence、Lease、WorkOrder等のreplay境界をSecurity Invariantへ上げたい
-
-### 問題
-
-Network attackerとしてreplayは想定済みで、Security Eventとしても記録対象です。しかし、「一度正しかった権限やEvidenceを期限後に再利用して権限を復活させてはならない」という不変条件が独立していません。
-
-Remote AttestationでもEvidenceのfreshnessは重要な要素です。
-
-### 結論
-
-**Security Invariantを追加する。**
-
-- expiry、revocation、freshnessを持つauthority / evidenceについて、古い情報のreplayで失効済み権限を復活させない
-- 具体的なnonce、timestamp、counter方式はArchitectureで決める
-
----
-
-## GAP-10 — Contributionの「測定事実」と「価値」をさらに明確に分ける
-
-### 問題
-
-RQ-036〜RQ-038はすでにかなり明確です。ただしContributionが将来外部Creditへ接続されると、「EKIが記録した=価値がある」と誤読される可能性があります。
-
-たとえば自作自演Taskでも、計算を実行したという事実自体は正しいかもしれません。しかし、それを公益貢献や相互Creditとして評価するかは別問題です。
-
-### 結論
-
-**新Requirement追加ではなく、RQ-036 / RQ-037の理由と境界を補強する。**
-
-Contribution Recordは観測・検証できた事実とassuranceを記録し、価値判断は外部Policyへ委ねる。
-
----
-
-# 第二巡目で追加・補強する項目
-
-Product Requirementsへ次を反映する。
-
-1. Browser / ad-hoc参加の明示性と停止権
-2. untrusted Workerに対する事後削除非保証
-3. Verification authorityの明示
-4. 非決定的・意味的に検証困難なTaskの保証上限
-5. 外部副作用を持つTaskの再実行安全性
-6. Worker capability claimとsecurity placementの根拠分離
-7. Contribution Recordは価値そのものではないことの補強
-
-Threat Modelへ次を反映する。
-
-1. malicious / compromised Validator・Verifier
-2. stale Evidence / replayによる権限復活
-3. Browserでの意図しない資源利用
-
-Acceptance Scenarioへ次を追加または補強する。
-
-1. Browser Workerのtab suspensionと明示的参加
-2. Workerが入力削除を偽るケース
-3. compromised Validatorが偽Resultを受理するケース
-4. side-effect Taskの実行済み状態が不明なケース
-5. non-deterministic AI結果を最終判断へ直接昇格させないケース
+1. Federation bundle / namespace substitution
+2. archive bomb / path escape
+3. compromised SchedulerまたはVerifier component
+4. Compute Grantのmass reclaim
+5. Endpointのthermal / power emergency reduction
 
 ## Architectureへ持ち越すもの
 
-次は重要ですが、現段階でProduct Requirementへ方式を固定しません。
+次は重要ですが、方式をRequirementへ固定しません。
 
-- Browser Workerの具体的なCPU/GPU利用制限方法
-- Validatorを複数化する具体方式
-- Attestation EvidenceのformatとVerifier構成
-- replay防止のnonce / counter / time source
-- side-effect Taskのidempotency key format
-- secure deletionやcryptographic erasureの具体方式
-
-これらはRequirementを満たすためのArchitecture候補として後段で比較します。
+- SPIFFEを採用するか、別のFederation identity modelを採るか
+- Artifact parser isolationにprocess、container、WASM等のどれを使うか
+- compressed / expanded resource limitの具体値
+- Control Planeを何Process / Serviceへ分けるか
+- high-value operationへmulti-party approvalを要求するか
+- reclaim backoff / jitter / queue algorithm
+- thermal sensorの取得方法
+- Energy accountingの精度とOS / hardware依存の扱い

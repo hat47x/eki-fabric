@@ -1,8 +1,8 @@
 # EKI Fabric 要求文書の読み方
 
-このディレクトリには、EKI Fabricが満たすべき要求、安全上の前提、Workerに求める保証の考え方を置きます。
+このディレクトリには、EKI Fabricが満たすべき要求、安全上の前提、Workerに求める保証の考え方、Architecture候補を比較するための品質特性を置きます。
 
-ここにある文書は単なるアイデア集ではありません。一方で、まだArchitectureを確定する段階でもありません。現在は、「何を守る必要があるか」「どのような失敗や攻撃に耐える必要があるか」「どの範囲まで保証できるか」を、具体的な実装方式から切り離して詰めている段階です。
+ここにある文書は単なるアイデア集ではありません。一方で、まだArchitectureを確定する段階でもありません。現在は、「何を守る必要があるか」「どのような失敗や攻撃に耐える必要があるか」「どの範囲まで保証できるか」「成立する複数案を何で比較するか」を、具体的な実装方式から切り離して詰めている段階です。
 
 ## まず全体像を知りたい場合
 
@@ -24,6 +24,11 @@
 - 悪意のあるClientやWorkerを前提にすること
 - Browserや一時Workerの離脱を通常状態として扱うこと
 - アドホック参加者や複数組織を受け入れられること
+- FederationでIdentity namespaceを取り違えないこと
+- Artifactの取込・展開処理もresource-boundedであること
+- Control Plane内部でも不要な全権限を一箇所へ集めないこと
+- 大規模なResource reclaimをretry stormへ増幅させないこと
+- Energy / thermal / device-safetyをResource Policyへ含められること
 - Compute Grantや資源提供実績を扱えること
 - 副作用を持つTaskを無条件に再実行しないこと
 - 非決定的AI Taskについて、確認できない正しさを誇張しないこと
@@ -34,14 +39,14 @@ Requirementには「何を満たすか」を書きます。NATS、SPIFFE、WASM�
 
 [THREAT_MODEL.md](THREAT_MODEL.md) は、何を攻撃者として想定し、何を安全上の不変条件として守るかの正本です。
 
-匿名の攻撃者だけでなく、正規Credentialを持ったClient、改変された公式Worker、多数Identityを作るSybil operator、侵害されたValidator / Verifier、意図しないBrowser resource useなども想定します。
+匿名の攻撃者だけでなく、正規Credentialを持ったClient、改変された公式Worker、多数Identityを作るSybil operator、侵害されたValidator / Verifier、悪意あるArtifact、侵害されたControl Plane component、Federation設定のすり替えなども想定します。
 
 Threat Modelを読むときは、「あらゆる攻撃を完全に防げるか」ではなく、次を確認してください。
 
 1. どこまでをEKIの保護対象にしているか
 2. 何を明示的な信頼基盤として置いているか
 3. どの信頼基盤まで壊れた場合は保証外なのか
-4. 単一の主体やCredentialが、許可された境界を越えて被害を広げられないか
+4. 単一の主体やCredential、Componentが、許可された境界を越えて被害を広げられないか
 
 ### Worker Assurance Model
 
@@ -69,13 +74,23 @@ Threat Modelを読むときは、「あらゆる攻撃を完全に防げるか�
 
 Requirementを増やすためのチェックリストではありません。実際の場面を考えたときに、現在の要求だけで必要な判断ができるかを確認します。
 
+現在は、社内Endpoint pool、悪意あるClient / Worker、Sybil、Browser Worker、Federation、Compute Grant、非決定的AI、Artifact expansion、Control Plane部分侵害、mass reclaimなどを扱っています。
+
+### Quality Attributes
+
+[QUALITY_ATTRIBUTES.md](QUALITY_ATTRIBUTES.md) は、Requirementを満たす複数のArchitecture候補を比較するための品質特性です。
+
+Securityだけを最大化した案、throughputだけを最大化した案を選ぶのではなく、Endpoint user impact、Network efficiency、Recoverability、Interoperability、Operability、Energy / device safetyなどを並べてTrade-offを確認します。
+
+ここでの測定候補はproduction SLOではありません。Architecture候補を比較できる状態にするための基線です。
+
 ### Requirement Gap Review
 
-[REQUIREMENT_GAP_REVIEW.md](REQUIREMENT_GAP_REVIEW.md) は、初版の要求群を横断して不足を洗い出したレビュー記録です。
+[REQUIREMENT_GAP_REVIEW.md](REQUIREMENT_GAP_REVIEW.md) は、要求群を横断して不足を洗い出したレビュー記録です。
+
+現在は第三巡目まで進み、Federation namespace、Artifact parser / expansion、Control Plane authority separation、大規模Resource reclaim、Energy / thermal boundaryまで確認しています。
 
 ここに書かれた提案自体は正本ではありません。必要と判断した内容はProduct RequirementsやThreat Modelへ反映して初めて正式な要求になります。
-
-「なぜこのRequirementが追加されたのか」を追いたい場合の補助資料として利用します。
 
 ## 要求レビューで確認したいこと
 
@@ -103,13 +118,15 @@ Remote Attestationが成功しても、Applicationの意味上の結果まで必
 
 Resultが正しくても、Workerが申告したGPU時間まで正しいとは限りません。
 
+署名済みArtifactであっても、脆弱なParserにとって安全な入力とは限りません。
+
 「何を確認できたか」と「そこから何を保証できるか」の間に飛躍がないことを確認します。
 
 ### 失敗時の振る舞いが分かるか
 
 EKIでは、Workerの離脱やTask失敗を完全にはなくしません。
 
-そのため、「失敗しないこと」だけではなく、失敗したときに再実行できるのか、安全側に止まるのか、実行済みか不明な状態として上位へ返すのか、といった境界がRequirementから読み取れる必要があります。
+そのため、「失敗しないこと」だけではなく、失敗したときに再実行できるのか、安全側に止まるのか、実行済みか不明な状態として上位へ返すのか、大量離脱時にretryを抑制するのか、といった境界がRequirementから読み取れる必要があります。
 
 ### 信頼基盤が隠れていないか
 

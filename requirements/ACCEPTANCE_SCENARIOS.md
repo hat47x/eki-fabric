@@ -173,7 +173,7 @@ Company AとCompany Bが、それぞれのIdentity Authorityを維持し、一�
 - Identity namespaceの衝突や混同を防げる。
 - AのClient CredentialがBのWorker / Control Plane Roleへ変換されない。
 
-Trace: RQ-030, RQ-031, SEC-001, SEC-010
+Trace: RQ-030, RQ-031, RQ-049, SEC-001, SEC-010, SEC-019
 
 ---
 
@@ -375,21 +375,103 @@ Trace: RQ-048, SEC-015
 
 Trace: RQ-019, RQ-024, RQ-025, RQ-047
 
+---
+
+## PAS-23 — Federation namespace / Trust Materialのすり替え
+
+### 状況
+
+Company AはCompany BとFederationしている。攻撃者はFederation設定を改変し、Company CのTrust MaterialをCompany Bのnamespaceへ対応付けようとする。
+
+### 受け入れ条件
+
+- Identity verification時に、Trust Domain / Identity AuthorityとTrust Materialのbindingを保持する。
+- 「登録済みのどれかの鍵で検証できた」ことだけでBのIdentityとして扱わない。
+- Federation設定の変更を通常Client権限から行えない。
+- BがCとFederationしていることを理由に、AからCへの包括的Trustを自動生成しない。
+
+Trace: RQ-031, RQ-049, RQ-051, SEC-019
+
+---
+
+## PAS-24 — 圧縮Artifactによる展開爆弾とpath escape
+
+### 状況
+
+Clientが数MBの圧縮Artifactを投入する。展開すると数十GBになり、膨大なfile数と深い入れ子を含む。さらに一部entryは展開先の外を指すpathを持つ。
+
+### 受け入れ条件
+
+- 受信byte数だけをResource Budgetに使わない。
+- 展開後サイズ、file count、nesting、処理時間などに上限を持てる。
+- Archive entry名だけでSandbox外へ書き込めない。
+- Parser / Converterが失敗してもControl Plane全体が巻き込まれない境界を選べる。
+- Artifactの署名やDigestが正しいことを、安全にparseできる根拠と誤認しない。
+
+Trace: RQ-009, RQ-017, RQ-027, RQ-029, RQ-050, SEC-020
+
+---
+
+## PAS-25 — Schedulerだけが侵害される
+
+### 状況
+
+Control PlaneのScheduler componentが侵害され、攻撃者は任意Workerへの配置を試みる。一方、Artifact capability発行、Executor admission、Federation administrationの各authorityは侵害されていない。
+
+### 受け入れ条件
+
+- Scheduler侵害だけで任意Artifact read capabilityやExecutor approvalを発行できない構成を選べる。
+- 機密TaskをSecurity要件未達Workerへ配置しようとした場合、別Enforcement boundaryで拒否できる余地を持つ。
+- どのComponent / authorityがPlacementやCapability発行を行ったか追跡できる。
+- 「Control Plane内部だから全権」という単一Credential依存を必須としない。
+
+Trace: RQ-039〜RQ-041, RQ-044, RQ-051, SEC-021
+
+---
+
+## PAS-26 — 大規模Compute Grantの一斉reclaim
+
+### 状況
+
+大手Providerが多数GPUを公益Compute Grantへ提供している。通常需要が急増し、数千Taskを実行中のWorker群からcapacityを短時間でreclaimする。
+
+### 受け入れ条件
+
+- ProviderはTask完遂を待たず、許可された条件でcapacityを取り戻せる。
+- 大量のTask離脱をFabricで起こり得る通常Eventとして扱う。
+- 未完了Taskを一斉retryし、残存Worker、Artifact Store、Network、Control Planeへ無制限な負荷を掛けない。
+- Taskのpriority、deadline、retryability等に応じて再配置を調整できる余地を持つ。
+
+Trace: RQ-010, RQ-013, RQ-017, RQ-035, RQ-052, SEC-023
+
+---
+
+## PAS-27 — Endpointの温度上昇と電力Policy変更
+
+### 状況
+
+業務用GPUワークステーションが夜間Taskを処理している。GPU温度が上昇し、同時に端末はBattery駆動へ切り替わる。中央Schedulerはまだ高いcapacityを利用可能と見ている。
+
+### 受け入れ条件
+
+- Local Governorだけでcapacityを縮小または0へできる。
+- 中央Scheduler、Task priority、Contribution獲得を理由にローカル安全上限を上書きしない。
+- Energy budget、power source、thermal state等をResource Policyへ反映できる。
+- Task側はWorker離脱として安全に扱える。
+
+Trace: RQ-005〜RQ-007, RQ-010, RQ-053, SEC-022
+
 ## 次の圧力試験
 
-次の巡回では、各PASへ必要に応じて以下を加えます。
+第三巡目で、前回残していたFederation namespace、Artifact expansion、Control Plane部分侵害、mass reclaim、Energy / thermal boundaryをScenario化しました。
 
-- 前提条件とActor
-- 保護対象Asset
-- 正常経路
-- Abuse path
-- 必要なEvidence
-- 残るRequirement gap
+Architecture Entry Gateへ向けて残る主要論点は、Scenario数を増やすことよりも、次の横断テーマを比較可能なQuality Attributeへ落とすことです。
 
-また、次の場面は追加候補として残します。
-
-- malicious Federation peerがIdentity namespaceを混同させる
-- Artifact decompression bombがWorker resource limitを迂回する
-- Control Plane内部componentの一つだけが侵害された場合のblast radius
-- 大規模Compute GrantでProvider reclaimが連鎖し、大量Taskが同時再配置される
-- Energy / thermal budgetを含むProvider Policyが変動する
+- Worker independence / Sybil耐性の保証水準
+- Browser / Native / managed EndpointごとのResource Enforcement精度
+- Artifact processingの最大影響と隔離境界
+- Control Plane authority separationの最小構成
+- FederationのTrust bindingとrevocation
+- Result Verification costとSecurity assuranceの釣り合い
+- Contribution measurement accuracyとPrivacy
+- mass reclaim時の回復性とNetwork overhead
