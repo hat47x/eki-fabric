@@ -252,6 +252,10 @@ Federation trust bindingについては、`spikes/federation-trust-binding/` に
 
 SPIFFE Federationの`<Trust Domain, Bundle>` binding原則を参考にしつつ、SPIFFE / SPIRE採用はまだ決めません。Bundle内容の正当性と「このBundleをこのTrust Domainへ対応付けてよい」という設定Authorityを分け、callerがTrust Rootを差し替えられないことをArchitecture比較の条件として残します。
 
+Executor provenance / content admissionについては、`spikes/executor-provenance-admission/` にContent Digest、Publisher署名、Build Provenance、EKI Executor Admission、実行時の取得byte列再検証を分離した最小Modelを追加しました。可変alias / tagの参照先がAdmission後に別内容へ変わっても、ApprovalをDigest / Size / Runtime Class / Policy Revision / Expiryへbindingし、Worker側で実byte列を再hashすることで拒否できることをUnit Testで確認しています。
+
+Publisher署名やProvenanceが暗号学的に正しいこと自体はExecutor Admissionを意味しないものとし、信頼Publisher、Builder、Source、Commit、Runtime ClassをPolicyへ照合してから別のAdmission AuthorityがApprovalを発行します。Digest revocation、Approval expiry、Policy Revision更新も実行時Guardで確認します。OCI Descriptor、Sigstore、SLSA / in-totoは有力なAdapter候補ですが、Core Contractへ固定せず、Supply-chain EvidenceとSafe Executionを別保証としてArchitecture比較へ持ち越します。
+
 ## Gate U — Architecture Entry Gate
 
 次を満たした時点で、初めてArchitecture baselineを作成します。
