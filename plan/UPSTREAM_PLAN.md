@@ -236,6 +236,10 @@ Artifact locality / transfer costについては、`spikes/artifact-locality-cos
 
 LocalityはOptimizationに限定し、Security / Data Class / Resource feasibilityのhard constraintを先に適用します。Cache情報もContent IntegrityやAuthorityの根拠にはせず、staleまたは誤った場合にPerformance degradationへ閉じる構造を目指します。現段階ではcongestion、shared link、prefetch、cache eviction、egress cost、mass retry時のduplicate transferなどを扱っておらず、後続検証に残します。
 
+Browser Worker lifecycleについては、`spikes/browser-worker-lifecycle/` にBrowser参加状態とControl Plane側Leaseを分離した最小state machine、および実Browserでvisibility / freeze / resume / pagehide / discard復帰とheartbeat gapを観察するHarnessを追加しました。Background timer throttlingやdiscard時の通知不能を前提に、Lifecycle eventは早期回収のhintとして使い、最終的な回収は短いLeaseのheartbeat timeoutに依存する構造を確認しています。
+
+初期Profileはvisible-onlyとし、tabがhiddenになればLocal Workerを停止して、visible復帰時にも古いLeaseを再利用せず新しいLeaseを取得します。明示的なStopは参加intent自体を解除し、後のvisibility changeで自動復帰しません。background-opt-inも表現できますが、可用性保証は引き上げません。Node 22で7 Unit Testが通過済みです。実Browserごとのheartbeat gap、freeze / discard、mobile backgrounding、multi-tab ownershipは後続の実測に残します。
+
 ## Gate U — Architecture Entry Gate
 
 次を満たした時点で、初めてArchitecture baselineを作成します。
