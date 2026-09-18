@@ -120,8 +120,23 @@ func TestRejectCompressionRatio(t *testing.T) {
 func TestDestinationMustBeNew(t *testing.T) {
 	zr := makeZip(t, map[string]string{"a": "1"}, "")
 	dest := t.TempDir()
-	_, err := Extract(zr, dest, Limits{})
+	_, err := Extract(zr, dest, Limits{MaxFiles: 10, MaxTotalBytes: 1024, MaxFileBytes: 1024, MaxDepth: 4})
 	if err == nil {
 		t.Fatal("expected destination creation failure")
+	}
+}
+
+func TestExtractRequiresFiniteLimits(t *testing.T) {
+	zr := makeZip(t, map[string]string{"a": "1"}, "")
+	dest := filepath.Join(t.TempDir(), "out")
+	if _, err := Extract(zr, dest, Limits{}); err == nil {
+		t.Fatal("expected finite limit requirement")
+	}
+}
+
+func TestRejectNonCanonicalPath(t *testing.T) {
+	zr := makeZip(t, map[string]string{"a/../b": "x"}, "")
+	if _, err := Inspect(zr, Limits{}); err == nil {
+		t.Fatal("expected non-canonical path rejection")
 	}
 }
