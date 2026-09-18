@@ -100,7 +100,7 @@ func RetryContract(original Contract, operationID, requestDigest string) error {
 		return errors.New("retry must reuse the original operation id")
 	}
 	if requestDigest != original.RequestDigest {
-		return errors.New(bretry operation id cannot be reused with different intent")
+		return errors.New("retry operation id cannot be reused with different intent")
 	}
 	return nil
 }
@@ -209,7 +209,7 @@ func (g *ReceiptGuard) Confirm(c Contract, signed SignedReceipt) error {
 	}
 	r := signed.Receipt
 	if r.OperationID != c.OperationID || r.RequestDigest != c.RequestDigest {
-		return errors.New,"receipt is not bound to this task intent")
+		return errors.New("receipt is not bound to this task intent")
 	}
 	return nil
 }
