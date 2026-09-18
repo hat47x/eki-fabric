@@ -224,6 +224,10 @@ Linuxでは、delegation済みcgroupを対象に制約を書き込み、Workload
 
 Phase 4では、このように「APIが存在すること」ではなく、**要求した制約・実際の観測・広告するAssuranceが一致するか**をSpikeの成立条件にします。
 
+Artifact ingestについてもSpikeを開始し、`spikes/artifact-ingest/` にZIPを対象とした最小の安全取込実装を追加しました。file数、展開後size、path深度、compression ratioを事前検査しつつ、実際の展開時にもstreamingでbyte上限を再確認します。directory traversal、backslashによる越境、drive-qualified path、symlink、special file、既存destinationへの上書きも初期状態では拒否します。
+
+このSpikeでは、Artifactの署名・Digest・provenanceが正しいことと、安全に展開・解析できることを別の保証として扱えることを確認しています。現段階ではZIPだけを対象としており、TAR / gzip / 7z、nested archive、PDF / Office / Image / Model parserのProcess隔離、OS levelのCPU / Memory制約などは後続検証に残します。
+
 ## Gate U — Architecture Entry Gate
 
 次を満たした時点で、初めてArchitecture baselineを作成します。
