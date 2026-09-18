@@ -214,7 +214,7 @@ Architecture採用前に、Requirement上のリスクが高く、文書検討だ
 
 Spikeは採用Architectureを既成事実化しません。確認したいRequirement上の仮説、実験条件、観測結果、一般化してよい範囲を残します。
 
-状態: **着手済み — Local Governor初期Spikeを進行中**
+状態: **着手済み — 高リスクSpikeを順次実証中**
 
 最初のSpikeとして `spikes/local-governor/README.md` を作成しました。Windows Job Object / EcoQoS、Linux cgroup v2、ローカルopt-outの停止境界を調査し、Resourceごとに `HARD / BEST_EFFORT / OBSERVE_ONLY / UNAVAILABLE` の保証種別を区別する必要性を確認しています。
 
@@ -239,6 +239,10 @@ LocalityはOptimizationに限定し、Security / Data Class / Resource feasibili
 Browser Worker lifecycleについては、`spikes/browser-worker-lifecycle/` にBrowser参加状態とControl Plane側Leaseを分離した最小state machine、および実Browserでvisibility / freeze / resume / pagehide / discard復帰とheartbeat gapを観察するHarnessを追加しました。Background timer throttlingやdiscard時の通知不能を前提に、Lifecycle eventは早期回収のhintとして使い、最終的な回収は短いLeaseのheartbeat timeoutに依存する構造を確認しています。
 
 初期Profileはvisible-onlyとし、tabがhiddenになればLocal Workerを停止して、visible復帰時にも古いLeaseを再利用せず新しいLeaseを取得します。明示的なStopは参加intent自体を解除し、後のvisibility changeで自動復帰しません。background-opt-inも表現できますが、可用性保証は引き上げません。Node 22で7 Unit Testが通過済みです。実Browserごとのheartbeat gap、freeze / discard、mobile backgrounding、multi-tab ownershipは後続の実測に残します。
+
+Mass reclaim recoveryについては、`spikes/mass-reclaim-recovery/` に1,000 Taskの同時reclaimを扱う最小Modelとsimulationを追加しました。retryable / attempt budgetを満たすTaskだけをRecovery Queueへ入れ、backoff + jitterでretry eligibilityを散らしたうえで、時間窓ごとのrelease件数とestimated Artifact transfer bytesを別々に上限化します。64 MiB transferを要する1,000 Taskでは、素朴な即時retryが約62.5 GiBのtransfer demandを同時に作るのに対し、2 GiB / windowの例では32 Taskだけをreleaseし、残り968 Taskをdeferできることを確認しました。
+
+このSpikeではplanned reclaim noticeをOptimization、無通知reclaimでも成立するbounded recoveryを保証側として分離しています。またpriority / deadlineは再入場順序に利用しても、Network BudgetやRetry Budgetを越えるauthorityにはしません。実Queue、dynamic capacity recovery、cache locality変化、priority starvation、複数Provider同時reclaimは後続検証に残します。
 
 ## Gate U — Architecture Entry Gate
 
