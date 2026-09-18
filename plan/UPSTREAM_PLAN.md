@@ -228,6 +228,10 @@ Artifact ingestについてもSpikeを開始し、`spikes/artifact-ingest/` にZ
 
 このSpikeでは、Artifactの署名・Digest・provenanceが正しいことと、安全に展開・解析できることを別の保証として扱えることを確認しています。現段階ではZIPだけを対象としており、TAR / gzip / 7z、nested archive、PDF / Office / Image / Model parserのProcess隔離、OS levelのCPU / Memory制約などは後続検証に残します。
 
+Result Verification / Sybil耐性については、`spikes/result-verification-independence/` に決定論的な完全一致Resultを対象とする最小モデルを追加しました。単純なWorker台数quorumが同一Principalの複数Sybilに支配され得ることを再現し、matching Claim数とは別にdistinct Principal、distinct Trust Domain、managed anchor等をPolicy条件として扱えることを確認しています。
+
+このSpikeはPrincipalやTrust Domainの独立性そのものを証明する方式ではありません。重要なのは、Result equivalenceとindependence evidenceを別の保証として保持し、複数の競合Result群が同時に条件を満たす場合には無理にAccepted Resultへ昇格させないことです。Identity / Attestation / Federationから独立性根拠をどう作るか、collusionへの保証限界、fuzzy / non-deterministic Result、追加replication costは後続検証に残します。
+
 ## Gate U — Architecture Entry Gate
 
 次を満たした時点で、初めてArchitecture baselineを作成します。
