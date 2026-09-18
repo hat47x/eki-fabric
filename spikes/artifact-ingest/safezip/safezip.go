@@ -50,6 +50,10 @@ func validateName(name string, maxDepth int) (string, error) {
 		return "", fmt.Errorf("absolute or drive-qualified archive path: %q", name)
 	}
 	clean := path.Clean(name)
+	trimmed := strings.TrimSuffix(name, "/")
+	if clean != trimmed {
+		return "", fmt.Errorf("archive path is not canonical: %q", name)
+	}
 	if clean == "." || clean == ".." || strings.HasPrefix(clean, "../") {
 		return "", fmt.Errorf("archive path escapes destination: %q", name)
 	}
@@ -110,7 +114,26 @@ func Inspect(r *zip.Reader, limits Limits) (Report, error) {
 	return rep, nil
 }
 
+func validateExtractionLimits(limits Limits) error {
+	if limits.MaxFiles <= 0 {
+		return errors.New("MaxFiles must be a positive finite limit")
+	}
+	if limits.MaxTotalBytes == 0 {
+		return errors.New("MaxTotalBytes must be a positive finite limit")
+	}
+	if limits.MaxFileBytes == 0 {
+		return errors.New("MaxFileBytes must be a positive finite limit")
+	}
+	if limits.MaxDepth <= 0 {
+		return errors.New("MaxDepth must be a positive finite limit")
+	}
+	return nil
+}
+
 func Extract(r *zip.Reader, dest string, limits Limits) (Report, error) {
+	if err := validateExtractionLimits(limits); err != nil {
+		return Report{}, err
+	}
 	rep, err := Inspect(r, limits)
 	if err != nil {
 		return Report{}, err
