@@ -185,9 +185,21 @@ func run(target string, policy Policy, workloadDuration, stopAfter time.Duration
 	}
 
 	rep.Files = applyPolicy(target, policy)
-	if policy.CPUMax != "" && rep.Files["cpu.max"].After == "" {
-		rep.Error = "cpu.max was requested but could not be applied"
-		return rep
+	requested := map[string]string{
+		"cpu.max":    policy.CPUMax,
+		"memory.max": policy.MemoryMax,
+		"pids.max":   policy.PidsMax,
+		"io.max":     policy.IOMax,
+	}
+	for name, value := range requested {
+		if value == "" {
+			continue
+		}
+		st := rep.Files[name]
+		if st.Error != "" || st.After == "" {
+			rep.Error = name + " was requested but could not be applied"
+			return rep
+		}
 	}
 	if !rep.Files["cgroup.procs"].Writable {
 		rep.Error = "cgroup.procs is not writable; target is not delegated to this process"
