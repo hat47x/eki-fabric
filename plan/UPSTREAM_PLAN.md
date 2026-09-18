@@ -232,6 +232,10 @@ Result Verification / Sybil耐性については、`spikes/result-verification-i
 
 このSpikeはPrincipalやTrust Domainの独立性そのものを証明する方式ではありません。重要なのは、Result equivalenceとindependence evidenceを別の保証として保持し、複数の競合Result群が同時に条件を満たす場合には無理にAccepted Resultへ昇格させないことです。Identity / Attestation / Federationから独立性根拠をどう作るか、collusionへの保証限界、fuzzy / non-deterministic Result、追加replication costは後続検証に残します。
 
+Artifact locality / transfer costについては、`spikes/artifact-locality-cost/` に最小のPlacement cost modelを追加しました。Input ArtifactのDigest / size、Worker側cache、download / upload throughput、予測compute time、Taskのtransfer budgetから、missing input transfer・expected output transfer・computeを合わせた概算完了時間を比較します。8 GiB級Artifactではcache済みの遅いWorkerが高速なremote Workerより有利になり得る一方、小さなArtifactではcompute性能差が勝つことをUnit Testで確認しています。
+
+LocalityはOptimizationに限定し、Security / Data Class / Resource feasibilityのhard constraintを先に適用します。Cache情報もContent IntegrityやAuthorityの根拠にはせず、staleまたは誤った場合にPerformance degradationへ閉じる構造を目指します。現段階ではcongestion、shared link、prefetch、cache eviction、egress cost、mass retry時のduplicate transferなどを扱っておらず、後続検証に残します。
+
 ## Gate U — Architecture Entry Gate
 
 次を満たした時点で、初めてArchitecture baselineを作成します。
