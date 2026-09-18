@@ -155,6 +155,8 @@ Workerのsleep、shutdown、Browser close、拠点停止、大規模Grant reclai
 - checkpoint利用可能性
 - retry storm抑制
 - side-effect Taskの不明状態の扱い
+- 外部副作用のUNKNOWNを自動retry可能なfailureへ誤分類しないか
+- idempotent retryでOperation IdentityとRequest IntentをAttempt間で維持できるか
 - Control Plane restart後の状態復元
 
 ### 将来の測定候補
@@ -163,12 +165,18 @@ Workerのsleep、shutdown、Browser close、拠点停止、大規模Grant reclai
 - `recovery_queue_age`
 - `retry_attempt_amplification_ratio`
 - `mass_reclaim_recovery_time`
+- `unknown_side_effect_outcomes`
+- `automatic_retry_suppressed_unknown_outcome`
+- `idempotent_effect_duplicate_application_count`
+- `side_effect_reconciliation_time`
 
 ### 注意
 
 「すぐ再実行する」ことを常に高いRecoverabilityとは評価しません。副作用Taskでは再実行しないことが安全な場合があります。
 
 また、backoffで時刻を散らしただけでは、残存capacityやNetwork Budgetを超える再入場を防げるとは限りません。Recovery Queueから実行系へ戻す境界自体のrate / transfer制約も比較対象にします。
+
+外部副作用を伴うTaskでは、Worker disappearance、timeout、cancelを「副作用が失敗した」という証拠にしません。non-idempotentな操作で結果確認不能となった場合、回復速度より二重副作用を避けることを優先し、UNKNOWN / reconciliationへ退避できる案を高く評価します。
 
 ---
 
