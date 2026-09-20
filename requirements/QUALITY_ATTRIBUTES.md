@@ -287,10 +287,28 @@ EKIでは、運用上の概念を理解するために分散システム専門�
 - Resource Class差
 - self-dealing / farmingの検出材料
 - Privacyとの両立
+- Observerが主張可能なAssuranceをPolicyで上限化できるか
+- Accepted ResultとResource量の測定を別Evidenceとして扱えるか
+- 同一Attempt / Metricの重複・競合Recordを二重計上しないか
+- MeasurementのMetric / Unitを保証範囲より強い名称へ読み替えないか
+- EKI CoreがUniversal Scoreや金銭価値を暗黙に生成していないか
+
+### 注意
+
+### 将来の測定候補
+
+- `self_report_rejected_for_stronger_policy`
+- `measurement_observer_forgery_rejection`
+- `measurement_assurance_ceiling_rejection`
+- `duplicate_contribution_record_suppression`
+- `conflicting_measurement_rejection`
+- `measurement_basis_preservation`
 
 ### 注意
 
 Contributionの記録精度と、そのContributionに外部制度が与える価値は別です。
+
+Accepted Resultの有無をContribution発行条件として利用する場合でも、それをCPU / GPU時間等の測定値そのものの根拠にはしません。また、高保証なContribution測定を導入しても、Local Safety Governor、user opt-out、thermal / energy制約をContribution incentiveで上書きできるとは評価しません。
 
 ---
 
