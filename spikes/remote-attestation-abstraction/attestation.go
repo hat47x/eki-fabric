@@ -206,5 +206,12 @@ func (rp *RelyingParty) AuthorizePlacement(now time.Time, req PlacementRequireme
 }
 
 func SignEvidence(k KeyPair, keyID string, e Evidence) (EvidenceEnvelope, error) {
-	if keyID == "" || e.AttesterIDOHK\ÝÛXZ[OHK[\ÛY[Û\ÜÈOHKYX\Ý\[Y[OHKÛÙHOHKÛÛXÝY]\Ö\Ê
-HÂ]\]Y[ÙQ[[Ü^ßK\ÜË]ÊÛÛ\]H]Y[ÙHY[È\H\]Z\YBB\Ë\HÚYÛËJBZY\OH[ÂB\]\]Y[ÙQ[[Ü^ßK\_B\]\]Y[ÙQ[[Ü^ÒÙ^RQÙ^RQÚYÛYßK[B
+	if keyID == "" || e.AttesterID == "" || e.TrustDomain == "" || e.EnvironmentClass == "" || e.Measurement == "" || e.Nonce == "" || e.CollectedAt.IsZero() {
+		return EvidenceEnvelope{}, errors.New("complete evidence fields are required")
+	}
+	s, err := sign(k, e)
+	if err != nil {
+		return EvidenceEnvelope{}, err
+	}
+	return EvidenceEnvelope{KeyID: keyID, Signed: s}, nil
+}
