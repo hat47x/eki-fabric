@@ -34,6 +34,9 @@ EKIでは、こうしたTrade-offを「実装してから気付く」のでは�
 - Control Plane部分侵害時のblast radius
 - Executor supply-chain substitutionが実行前にどの境界で止まるか
 - stale / revoked Executor approvalが再利用されないか
+- Worker自己申告をAttestation Resultとして受理しないか
+- Attestation Resultが別Worker / Trust Domainへ流用されないか
+- stale Evidence / stale Verifier Policy / expired Attestation Resultを拒否できるか
 
 ### 将来の測定候補
 
@@ -43,6 +46,9 @@ EKIでは、こうしたTrade-offを「実装してから気付く」のでは�
 - `executor_digest_mismatch_rejection`
 - `stale_executor_approval_rejection`
 - `executor_revocation_propagation_delay`
+- `attestation_replay_rejection`
+- `stale_attestation_result_rejection`
+- `attestation_policy_revision_rejection`
 
 ### 注意
 
@@ -84,11 +90,14 @@ Data Classに応じて、Workerへ開示してよい情報を適切に制限で�
 - Dataを渡す前のplacement判断
 - Worker側のSecurity capabilityに根拠があるか
 - Raw Attestation Evidence等の不要な開示を避けられるか
+- Vendor固有のRaw EvidenceをScheduler / Clientへ渡さず、normalized Resultへ縮約できるか
 - Federation先へのData流出範囲
 
 ### 注意
 
 一度untrusted Workerへ渡した平文を、事後削除だけで回収できるとは評価しません。
+
+Remote Attestationを使う場合も、Raw Evidenceの量が多いほど高保証とは評価しません。Relying Partyが必要とする判断結果とprovenanceだけを渡し、Vendor固有Evidenceや端末識別情報の露出範囲を比較します。
 
 ---
 
