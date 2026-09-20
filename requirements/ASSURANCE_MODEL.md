@@ -144,6 +144,12 @@ Resultが正しいことと、申告された量のcomputeを本当に提供し�
 
 価値交換に利用するContributionでは、どの測定方式だったかをRecordへ残せる必要があります。
 
+Measurement Assuranceは、測定値の意味を自由に強くするためのTrust Scoreではありません。たとえばControl Planeが観測できる`lease-wall-time`は、同じ時間の`gpu-active-time`やCPU timeを意味しません。Metric、Unit、Observer、Assuranceを一体として保持し、「何を観測したか」を保証範囲より強い名称へ読み替えないことを要求します。
+
+また、Accepted ResultはResource Measurementの代替Evidenceではありません。Resultが正しいことと、申告されたResource量が正しいことは独立して評価します。一方、Contribution Policyがself-dealingや無意味なWorkを抑えるためAccepted Resultを発行条件にすることは許容します。この場合も、Result Acceptanceは測定精度を引き上げるのではなく別の条件です。
+
+Contribution RecordはResource Class、Metric、Unit、Quantity、Measurement Assurance、Observer、Work provenanceを保持し、EKI Core共通のUniversal Scoreへ変換しない方針を優先します。金銭・Credit・社会的価値への換算は外部Policyの責務です。
+
 ---
 
 ## Axis H — Verification Authority Assurance
