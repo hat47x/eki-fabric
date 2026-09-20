@@ -264,6 +264,10 @@ Remote Attestation abstractionについては、`spikes/remote-attestation-abstr
 
 VerifierがEvidenceを受理したことと、Task固有のPlacementを許可することは別Decisionとして維持します。Relying PartyはPinned Verifier Trust Root、Worker binding、必要Environment Class、最低Policy Revision、expiryを再評価します。またRaw MeasurementをRelying Party contractへ出さず、normalized Environment ClassとEvidence Digestだけを渡せることを確認しました。RFC 9334 / RFC 9711を参照しつつ、特定TEEやEAT形式はCoreへ固定せず、Vendor-specific Evidence Adapter、Endorsement / Reference Value、Key Release、GPU / I/O AttestationはArchitecture比較へ残します。
 
+Contribution measurementについては、`spikes/contribution-measurement/` にResource Measurement、Result Evidence、Contribution Decisionを分離した最小Modelを追加しました。Measurement Observerごとに公開鍵と最大Assuranceをbindingし、Worker self-reportがcontrol-observed Policyを満たせないこと、WorkerがControl Plane Observerを偽装できないこと、Control observerがpayloadだけでattested-meteringへ昇格できないことをUnit Testで確認しています。Accepted ResultはResource量の測定根拠へ読み替えず、必要な場合はContribution Policyの別条件として扱います。
+
+同一Provider / Worker / Task / Attempt / Metricの同一Measurement再送は同じRecordへ収束させ、競合するMeasurementは拒否します。RecordにはResource Class、Metric、Unit、Quantity、Measurement Assurance、Observer、Work provenanceを保持し、EKI Core共通のUniversal Score、Credit、金銭価値は生成しません。外部価値制度への換算はRQ-037 / RQ-038どおり外部Policyへ委ねます。実OS / GPU meter、cross-validation、Sybil / self-dealing、Privacy-preserving aggregationは後続検証へ残します。
+
 ## Gate U — Architecture Entry Gate
 
 次を満たした時点で、初めてArchitecture baselineを作成します。
