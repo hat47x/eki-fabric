@@ -260,6 +260,10 @@ Side-effect Task uncertain outcomeについては、`spikes/side-effect-uncertai
 
 Worker自己申告は外部副作用の確定根拠にせず、Effect AuthorityのReceiptをTask Intentへbindingして検証します。Cancellationもdispatch済みnon-idempotent effectのUNKNOWNを消しません。またidempotencyがあってもretry budgetは別に適用します。このSpikeはgeneric exactly-onceを保証するものではなく、effect semantics、stable operation identity、authoritative confirmation、UNKNOWN stateをTask Contractへどう表現するかをArchitecture比較へ残します。
 
+Remote Attestation abstractionについては、`spikes/remote-attestation-abstraction/` にAttester / Evidence / Verifier / Attestation Result / Relying Partyを分離した最小Modelを追加しました。Evidence署名鍵をAttester / Trust Domainへbindingし、Challenge Nonce、Evidence age、Nonce replay、Verifier Policy Revision、Attestation Result expiryを別々のfreshness境界として扱います。Go 1.23.2でUnit Testを通過し、Worker自己署名の偽Attestation Result、別WorkerへのResult流用、Trust Domainすり替え、stale Evidence / Resultを拒否できることを確認しました。
+
+VerifierがEvidenceを受理したことと、Task固有のPlacementを許可することは別Decisionとして維持します。Relying PartyはPinned Verifier Trust Root、Worker binding、必要Environment Class、最低Policy Revision、expiryを再評価します。またRaw MeasurementをRelying Party contractへ出さず、normalized Environment ClassとEvidence Digestだけを渡せることを確認しました。RFC 9334 / RFC 9711を参照しつつ、特定TEEやEAT形式はCoreへ固定せず、Vendor-specific Evidence Adapter、Endorsement / Reference Value、Key Release、GPU / I/O AttestationはArchitecture比較へ残します。
+
 ## Gate U — Architecture Entry Gate
 
 次を満たした時点で、初めてArchitecture baselineを作成します。
