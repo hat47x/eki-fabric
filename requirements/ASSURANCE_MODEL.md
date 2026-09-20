@@ -163,6 +163,8 @@ EKIでは少なくとも、次を追跡できる必要があります。
 
 重要なのは、Verifierを暗黙の絶対的信頼へ置かず、「この保証はどのVerification Authorityへ依存しているか」を隠さないことです。
 
+Remote Attestationでは、RFC 9334の用語でいうEvidenceの評価とAttestation Resultの利用を分けます。VerifierはEvidenceへAppraisal Policyを適用してAttestation Resultを作り、Relying PartyはそのResultへ別の用途別Policyを適用します。したがって、`Verifier accepted`をそのまま`Task placement authorized`へ読み替えません。Verifier Identity、Verifier Policy Revision、Attester / Trust Domain bindingを追跡できることをAssurance上の条件とします。
+
 ---
 
 ## Axis I — Evidence Freshness / Revocation
@@ -259,6 +261,8 @@ BOINCのAdaptive Replicationのように、検証コストとthroughputのバラ
 Remote Attestationなどを使い、要求された実行環境状態についてVerifierがEvidenceを評価します。
 
 AttestationはExecution Environment Assuranceを強めますが、「そのApplication Resultが意味的に正しい」ことを常に保証するわけではありません。
+
+また、Attestation ResultはWorker全体へ恒久的な`trusted=true`を付与するものではありません。Evidenceのfreshness、VerifierのAppraisal Policy、Result expiry、Task側が要求するEnvironment Classを別々に扱います。Raw EvidenceにはVendor固有情報や端末識別情報が含まれ得るため、Relying Partyへは必要に応じてnormalized Resultのみを渡し、Evidence Digest等でprovenanceを保持する構成を許容します。
 
 ## RA-5 — Cryptographically verifiable execution
 
