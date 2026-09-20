@@ -293,8 +293,6 @@ EKIでは、運用上の概念を理解するために分散システム専門�
 - MeasurementのMetric / Unitを保証範囲より強い名称へ読み替えないか
 - EKI CoreがUniversal Scoreや金銭価値を暗黙に生成していないか
 
-### 注意
-
 ### 将来の測定候補
 
 - `self_report_rejected_for_stronger_policy`
