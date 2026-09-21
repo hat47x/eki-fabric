@@ -315,6 +315,27 @@ func TestPrimaryIsClearedWhenKeyLeavesActiveState(t *testing.T) {
 	}
 }
 
+func TestRegistryRejectsLifecycleTimeReversal(t *testing.T) {
+	now := time.Date(2026, 9, 22, 0, 0, 0, 0, time.UTC)
+	registry := NewRegistry(now)
+	key := mustKey(t, ed25519Config("kid-time-reversal", 1, now), now)
+
+	if err := registry.Register(key, now); err != nil {
+		t.Fatalf("Register() error = %v", err)
+	}
+	activation := now.Add(time.Hour)
+	if err := registry.Activate(key.ID(), activation); err != nil {
+		t.Fatalf("Activate() error = %v", err)
+	}
+
+	if err := registry.SetVerifyOnly(key.ID(), activation.Add(-time.Nanosecond)); !errors.Is(err, ErrInvalidTransition) {
+		t.Fatalf("SetVerifyOnly(backward) error = %v, want ErrInvalidTransition", err)
+	}
+	if err := registry.Revoke(key.ID(), activation.Add(-time.Nanosecond)); !errors.Is(err, ErrInvalidTransition) {
+		t.Fatalf("Revoke(backward) error = %v, want ErrInvalidTransition", err)
+	}
+}
+
 func TestRegistryRevisionAdvancesOnAdministrativeMutation(t *testing.T) {
 	now := time.Date(2026, 9, 22, 0, 0, 0, 0, time.UTC)
 	registry := NewRegistry(now)
