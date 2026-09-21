@@ -132,6 +132,9 @@ func (r *Registry) SetPrimary(id KeyID, now time.Time) error {
 		return fmt.Errorf("%w: only ACTIVE key may be primary, got %s", ErrInvalidTransition, record.state)
 	}
 	now = now.UTC()
+	if record.activatedAt.IsZero() || now.Before(record.activatedAt) {
+		return fmt.Errorf("%w: primary selection time precedes key activation", ErrInvalidTransition)
+	}
 	if now.Before(record.signingNotBefore) || !now.Before(record.signingNotAfter) {
 		return fmt.Errorf("%w: primary key must be inside signing validity window", ErrInvalidTransition)
 	}
@@ -156,6 +159,9 @@ func (r *Registry) resolveForSigning(scope signingScope, now time.Time) (KeyReco
 		return KeyRecord{}, ErrNoSigningKey
 	}
 	now = now.UTC()
+	if record.activatedAt.IsZero() || now.Before(record.activatedAt) {
+		return KeyRecord{}, ErrNoSigningKey
+	}
 	if now.Before(record.signingNotBefore) || !now.Before(record.signingNotAfter) {
 		return KeyRecord{}, ErrNoSigningKey
 	}
