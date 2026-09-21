@@ -28,6 +28,29 @@ func TestRegistryRejectsKeyIDReuse(t *testing.T) {
 	}
 }
 
+func TestRegistryTreatsChangedValidityOrPolicyAsKeyIDReuse(t *testing.T) {
+	now := time.Date(2026, 9, 22, 0, 0, 0, 0, time.UTC)
+	registry := NewRegistry(now)
+
+	baseCfg := ed25519Config("kid-metadata-reuse", 1, now)
+	base := mustKey(t, baseCfg, now)
+	if err := registry.Register(base, now); err != nil {
+		t.Fatalf("Register(base) error = %v", err)
+	}
+
+	changedValidity := baseCfg
+	changedValidity.SigningNotAfter = changedValidity.SigningNotAfter.Add(time.Hour)
+	if err := registry.Register(mustKey(t, changedValidity, now), now); !errors.Is(err, ErrKeyIDReused) {
+		t.Fatalf("changed validity error = %v, want ErrKeyIDReused", err)
+	}
+
+	changedPolicy := baseCfg
+	changedPolicy.PolicyRevision = "policy-2"
+	if err := registry.Register(mustKey(t, changedPolicy, now), now); !errors.Is(err, ErrKeyIDReused) {
+		t.Fatalf("changed policy error = %v, want ErrKeyIDReused", err)
+	}
+}
+
 func TestRegistrySelectsOnlyPrimaryActiveKeyForSigning(t *testing.T) {
 	now := time.Date(2026, 9, 22, 0, 0, 0, 0, time.UTC)
 	registry := NewRegistry(now)
@@ -62,6 +85,29 @@ func TestRegistrySelectsOnlyPrimaryActiveKeyForSigning(t *testing.T) {
 	}
 	if got.ID() != k2.ID() {
 		t.Fatalf("signing key = %q, want %q", got.ID(), k2.ID())
+	}
+}
+
+func TestSetPrimaryRejectsKeyOutsideSigningWindow(t *testing.T) {
+	now := time.Date(2026, 9, 22, 0, 0, 0, 0, time.UTC)
+	registry := NewRegistry(now)
+
+	futureCfg := ed25519Config("kid-future-primary", 1, now)
+	futureCfg.SigningNotBefore = now.Add(time.Hour)
+	futureCfg.SigningNotAfter = now.Add(2 * time.Hour)
+	future := mustKey(t, futureCfg, now)
+	registerActivate(t, registry, future, now)
+	if err := registry.SetPrimary(future.ID(), now); !errors.Is(err, ErrInvalidTransition) {
+		t.Fatalf("SetPrimary(future) error = %v, want ErrInvalidTransition", err)
+	}
+
+	expiredCfg := ed25519Config("kid-expired-primary", 2, now)
+	expiredCfg.SigningNotBefore = now.Add(-2 * time.Hour)
+	expiredCfg.SigningNotAfter = now.Add(-time.Hour)
+	expired := mustKey(t, expiredCfg, now)
+	registerActivate(t, registry, expired, now)
+	if err := registry.SetPrimary(expired.ID(), now); !errors.Is(err, ErrInvalidTransition) {
+		t.Fatalf("SetPrimary(expired) error = %v, want ErrInvalidTransition", err)
 	}
 }
 
