@@ -68,7 +68,9 @@ Architectureでは、使用製品やProcess数より先に次を固定します�
 
 Architecture Baseline 0.1の主要6領域を横断レビューし、`BASELINE_REVIEW_2026-09-21.md` で重大な責務矛盾がないことを確認しました。`MVP_IMPLEMENTATION_PLAN.md` では、BaselineのSecurity / State semanticsを維持した最小vertical slice、M0〜M5、Definition of Doneを定義しています。
 
-次はProtocol technology比較、P0 machine-readable schema、実装Repository layoutの順にImplementation Entryを進めます。
+`plan/adr/0001-protocol-surfaces-and-canonical-encoding.md` でProtocol Surfaceを決定しました。External Client PlaneはHTTPS + JSON + OpenAPI、Worker / out-of-process Adapter PlaneはProtobuf IDL + Connect reference transport、signed Authority Decisionはdeterministic CBOR + CDDL + COSE_Sign1をBaselineとします。Protobuf serializationはsignature / generic fingerprintのcanonical bytesには使いません。
+
+次はP0 machine-readable schema、実装Repository layoutの順にImplementation Entryを進めます。
 
 ## Logical AuthorityとProcessを分ける
 
