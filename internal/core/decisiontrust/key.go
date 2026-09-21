@@ -146,10 +146,13 @@ func validateAndCanonicalizePublicKey(cfg KeyConfig) ([]byte, crypto.PublicKey, 
 			return nil, nil, fmt.Errorf("%w: ES256 requires EC2 / P-256", ErrInvalidKeyRecord)
 		}
 		key, ok := cfg.PublicKey.(*ecdsa.PublicKey)
-		if !ok || key == nil || key.X == nil || key.Y == nil {
+		if !ok || key == nil || key.X == nil || key.Y == nil || key.Curve == nil {
 			return nil, nil, fmt.Errorf("%w: invalid ES256 public key", ErrInvalidKeyRecord)
 		}
 		p256 := elliptic.P256()
+		if key.Curve != p256 {
+			return nil, nil, fmt.Errorf("%w: ES256 public key curve metadata is not P-256", ErrInvalidKeyRecord)
+		}
 		if !p256.IsOnCurve(key.X, key.Y) {
 			return nil, nil, fmt.Errorf("%w: ES256 public key is not on P-256", ErrInvalidKeyRecord)
 		}
@@ -170,6 +173,20 @@ func validateText(name, value string, maxBytes int) error {
 		return fmt.Errorf("%w: invalid %s", ErrInvalidKeyRecord, name)
 	}
 	return nil
+}
+
+func (r KeyRecord) sameRegistration(other KeyRecord) bool {
+	return r.id == other.id &&
+		r.authorityRole == other.authorityRole &&
+		r.authorityPrincipal == other.authorityPrincipal &&
+		r.trustDomain == other.trustDomain &&
+		r.algorithm == other.algorithm &&
+		r.keyType == other.keyType &&
+		r.curve == other.curve &&
+		r.publicKeyDigest == other.publicKeyDigest &&
+		r.signingNotBefore.Equal(other.signingNotBefore) &&
+		r.signingNotAfter.Equal(other.signingNotAfter) &&
+		r.policyRevision == other.policyRevision
 }
 
 func (r KeyRecord) ID() KeyID                       { return r.id }
