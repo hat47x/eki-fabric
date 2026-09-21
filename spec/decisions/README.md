@@ -101,7 +101,7 @@ Fieldを追加・意味変更する場合は新しいDecision schema versionを�
 
 を署名対象に含めます。
 
-Authority roleはArchitectureのLogical Authorityです。COSE `kid`だけからAuthority roleを推測してpayloadから省略しません。
+Authority roleはArchitectureのLogical Authority identifier（`EXE-1` / `PLC-1` / `LSE-1` / `DAT-1` / `WOR-1`）そのものを署名payloadへ含めます。localな数値aliasにはしません。COSE `kid`だけからAuthority roleを推測してpayloadから省略しません。
 
 Verifierは:
 
@@ -117,13 +117,15 @@ Verifierは:
 
 ## Decision reference
 
-WorkOrderは前提Decisionをinlineで意味的にコピーせず、`decision-ref`で:
+WorkOrderは前提Decisionをinlineで意味的にコピーせず、kind-specificなDecision refで:
 
-- kind
+- expected kind
 - decision ID
 - deterministic payload digest
 
 へbindingします。
+
+Placement欄にLease ref、Lease欄にExecutor Approval refのような別kindを入れられないよう、CDDL自体でReference型を分けます。
 
 P1 `WorkOrderDelivery.prerequisite_decisions`で運ばれたCOSE objectについて、Workerはpayload digestを再計算し、WorkOrder内refと一致するものだけを利用します。
 
