@@ -92,6 +92,8 @@ Hostile TaskRequestをTaskIRへ変換するlogic。HTTP parsing自体は置き�
 
 Logical AuthorityごとのDecision interface / validation。SchedulerがSignerを自由に使えるgeneric interfaceを置きません。
 
+P2実装ではArchitecture Authority roleとsigned Decision kindの最小対応表をここへ置き、`decisiontrust`等のSecurity boundaryから再利用します。
+
 ### `taskstate/`
 
 Task / Attempt / Lease / Cancellation / Result state transitionの正本。QueueやHTTP handlerから直接stateを書き換えません。
@@ -107,6 +109,10 @@ Worker loss、reclaim、retry、Recovery Candidate、bounded release。
 ### `budget/`
 
 Compute / Network / Retry / Output等のreservation / consumption model。
+
+### `decisiontrust/`
+
+signed Authority Decisionに必要なpublic-key metadata、Authority role/Decision kind binding、algorithm/key type/curve整合、key lifecycle、typed signing/verification key selectionを扱います。Client/Worker authenticationや一般的なsemantic trustを集約するRegistryにはしません。in-memory RegistryはM0 semantics / trust snapshot用であり、durable Administrative source-of-truthは後続Adapterとして分離します。
 
 ## 5. `internal/control/`
 
