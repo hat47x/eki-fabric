@@ -25,8 +25,19 @@ type Algorithm string
 
 const (
 	AlgorithmEdDSA Algorithm = "EdDSA"
-	AlgorithmES256   Algorithm = "ES256"
+	AlgorithmES256 Algorithm = "ES256"
 )
+
+func (a Algorithm) COSEIdentifier() (int64, bool) {
+	switch a {
+	case AlgorithmEdDSA:
+		return -8, true
+	case AlgorithmES256:
+		return -7, true
+	default:
+		return 0, false
+	}
+}
 
 type KeyType string
 
