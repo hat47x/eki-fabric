@@ -20,7 +20,7 @@ func TestNewEd25519KeyRecord(t *testing.T) {
 	if record.State() != KeyStatePending {
 		t.Fatalf("State() = %q, want %q", record.State(), KeyStatePending)
 	}
-	if record.Algorithm() != AlgorithmEd25519 || record.KeyType() != KeyTypeOKP || record.Curve() != CurveEd25519 {
+	if record.Algorithm() != AlgorithmEdDSA || record.KeyType() != KeyTypeOKP || record.Curve() != CurveEd25519 {
 		t.Fatalf("unexpected key profile: %q/%q/%q", record.Algorithm(), record.KeyType(), record.Curve())
 	}
 	if record.PublicKeyDigest().IsZero() {
@@ -54,7 +54,7 @@ func TestNewKeyRecordRejectsAlgorithmConfusion(t *testing.T) {
 	}
 
 	es := es256Config("kid-confused-es", now)
-	es.Algorithm = AlgorithmEd25519
+	es.Algorithm = AlgorithmEdDSA
 	es.KeyType = KeyTypeOKP
 	es.Curve = CurveEd25519
 	if _, err := NewKeyRecord(es, now); !errors.Is(err, ErrInvalidKeyRecord) {
@@ -114,7 +114,7 @@ func ed25519Config(id string, seedByte byte, now time.Time) KeyConfig {
 		AuthorityRole:      authority.RoleWorkOrder,
 		AuthorityPrincipal: "authority:workorder:local",
 		TrustDomain:        "local.example",
-		Algorithm:          AlgorithmEd25519,
+		Algorithm:          AlgorithmEdDSA,
 		KeyType:            KeyTypeOKP,
 		Curve:              CurveEd25519,
 		PublicKey:          public,
