@@ -1,0 +1,32 @@
+{
+  "schema": "eki.task-request/v1",
+  "executor": {
+    "id": "dev.example.transform",
+    "version_constraint": "^1"
+  },
+  "inputs": [
+    {
+      "name": "source",
+      "artifact_id": "art_01"
+    }
+  ],
+  "parameters": {
+    "mode": "normalize"
+  },
+  "resources": {
+    "cpu_millis": 1000,
+    "memory_bytes": 268435456,
+    "wall_time_seconds": 300,
+    "output_bytes_max": 16777216,
+    "network_bytes_max": 134217728
+  },
+  "reliability": {
+    "retryable": true,
+    "preemptible": true,
+    "checkpointable": false,
+    "deterministic": true,
+    "max_attempts": 3,
+    "effect_mode": "none"
+  },
+  "priority": "normal"
+}
