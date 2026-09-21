@@ -96,9 +96,11 @@ func (r *Registry) SetVerifyOnly(id KeyID, now time.Time) error {
 	if record.state != KeyStateActive {
 		return fmt.Errorf("%w: %s -> %s", ErrInvalidTransition, record.state, KeyStateVerifyOnly)
 	}
+	now = now.UTC()
 	record.state = KeyStateVerifyOnly
+	record.verifyOnlyAt = now
 	record.revision++
-	record.stateChangedAt = now.UTC()
+	record.stateChangedAt = now
 	r.keys[id] = record
 	if r.primary[record.scope()] == id {
 		delete(r.primary, record.scope())
@@ -166,13 +168,20 @@ func (r *Registry) resolveForVerification(id KeyID, issuedAt time.Time) (KeyReco
 		return KeyRecord{}, fmt.Errorf("%w: key %q", ErrKeyNotFound, id)
 	}
 	switch record.state {
-	case KeyStateActive, KeyStateVerifyOnly:
+	case KeyStateActive:
+	case KeyStateVerifyOnly:
+		if record.verifyOnlyAt.IsZero() {
+			return KeyRecord{}, fmt.Errorf("%w: VERIFY_ONLY key lacks retirement time", ErrKeyNotVerifiable)
+		}
 	default:
 		return KeyRecord{}, fmt.Errorf("%w: key %q is %s", ErrKeyNotVerifiable, id, record.state)
 	}
 	issuedAt = issuedAt.UTC()
 	if record.activatedAt.IsZero() || issuedAt.Before(record.activatedAt) {
 		return KeyRecord{}, fmt.Errorf("%w: issued time precedes key activation", ErrKeyNotVerifiable)
+	}
+	if record.state == KeyStateVerifyOnly && !issuedAt.Before(record.verifyOnlyAt) {
+		return KeyRecord{}, fmt.Errorf("%w: issued time is not before key retirement", ErrKeyNotVerifiable)
 	}
 	if issuedAt.Before(record.signingNotBefore) || !issuedAt.Before(record.signingNotAfter) {
 		return KeyRecord{}, fmt.Errorf("%w: issued time outside signing validity", ErrKeyNotVerifiable)
