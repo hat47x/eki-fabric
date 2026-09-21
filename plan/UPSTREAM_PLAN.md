@@ -268,6 +268,10 @@ Contribution measurementについては、`spikes/contribution-measurement/` に
 
 同一Provider / Worker / Task / Attempt / Metricの同一Measurement再送は同じRecordへ収束させ、競合するMeasurementは拒否します。RecordにはResource Class、Metric、Unit、Quantity、Measurement Assurance、Observer、Work provenanceを保持し、EKI Core共通のUniversal Score、Credit、金銭価値は生成しません。外部価値制度への換算はRQ-037 / RQ-038どおり外部Policyへ委ねます。実OS / GPU meter、cross-validation、Sybil / self-dealing、Privacy-preserving aggregationは後続検証へ残します。
 
+Verifiable computationについては、`spikes/verifiable-computation-contract/` にExecution Claim、Proof Artifact、Proof System Adapter相当、Verification Authority、normalized Verification Result、Relying Party Requirementを分離した最小Contractを追加しました。Program / Input / Output / Attempt binding、Verifier署名、Proof System許可、Policy Revision / expiry、private-input requirementをUnit Testで確認し、valid Proofでも未承認Programを実行許可へ昇格できないことを実証しています。MockProofはContract Test用のstand-inであり、実zkVM proofではありません。
+
+実prover benchmarkは現在runnerにRust / Cargo / GPU環境がないため未実施です。`BENCHMARK_PLAN.md` にnative baseline、guest cycles / trace、preprocessing、prove / verify time、peak RSS、proof bytes、Privacy mode、Hardware / version固定を含む再現可能な測定Protocolを定義しました。Phase 4の`proof生成cost`および`GPU / AI workloadへの適用限界`は、この実測が得られるまで未解決として残します。
+
 ## Gate U — Architecture Entry Gate
 
 次を満たした時点で、初めてArchitecture baselineを作成します。
