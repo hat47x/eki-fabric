@@ -297,6 +297,7 @@ Verifiable computationについては、`spikes/verifiable-computation-contract/
 Issue #19（learned scheduling / resource prediction）とIssue #23（実zkVM prover benchmark）は継続研究として残します。ただし、前者はSecurity / Authorization / Data localityのhard filter後段でshadow modeから扱い、後者はoptional Result Assurance extensionの実測です。いずれも未解決部分をBaselineへ先取りして固定しないことを条件に、Architecture baselineの作成開始を妨げないと判断しました。
 
 Gate PASSは全研究の完了を意味しません。Architectureが未解決研究を前提に特定実装・特定保証へ固定しようとした場合は、Requirement / Assurance Modelへ戻って再評価します。
+
 ## Architecture段階で比較する領域
 
 Gate Uまでは採用を確定しませんが、後段で少なくとも次を比較します。
