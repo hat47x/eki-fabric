@@ -42,7 +42,8 @@ message OpenSessionResponse {
 }
 
 message PostEventsRequest {
-  repeated WorkerEvent events = 1;
+  string session_id = 1;
+  repeated WorkerEvent events = 2;
 }
 
 message PostEventsResponse {
@@ -78,11 +79,10 @@ message WatchCommandsRequest {
 }
 
 message WorkerEvent {
-  string session_id = 1;
-  string event_id = 2;
-  // Monotonic within a session for diagnostics and stale/replay detection.
-  // It does not create execution authority.
-  uint64 sequence = 3;
+  string event_id = 1;
+  // Monotonic within the PostEventsRequest session for diagnostics and
+  // stale/replay detection. It does not create execution authority.
+  uint64 sequence = 2;
 
   oneof event {
     ResourceAdvertisement resource_advertisement = 10;
