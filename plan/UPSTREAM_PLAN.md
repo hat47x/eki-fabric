@@ -410,6 +410,10 @@ P2 Signed Authority Decisionsは`spec/decisions/v1/decisions.cddl`へ定義し�
 
 Signed Decision Security Profileは`plan/adr/0004-signed-decision-cryptographic-profile.md`で定義しました。M0 software referenceはEd25519 / EdDSA、Enterprise/KMS互換profileはES256 / P-256を第一級にし、Authority roleごとに別keyを持ちます。`kid`はAdmin-managed Key Registryのopaque selectorであり、COSE messageからTrust Rootを持ち込みません。Key stateはPENDING / ACTIVE / VERIFY_ONLY / REVOKED / COMPROMISEDを区別し、rotation・revocation・trust bundle freshness・Verifier順序を明文化しています。
 
+Go Coreでは`internal/core/authority`と`internal/core/decisiontrust`へ最小domain boundaryを追加しました。P2 Decision kindとAuthority roleの対応をGo constantsでも固定し、Signer/Verifierのkey selectionはDecision kindを含むtyped requestだけを公開しています。Key RegistryはEdDSA/Ed25519とES256/P-256のalgorithm/curve整合、`kid`再利用禁止、primary signing key、PENDING→ACTIVE→VERIFY_ONLY等のlifecycleを扱います。初回activation以前のDecision、およびVERIFY_ONLY移行後に新規発行されたDecisionはverification対象にしません。現在のRegistryはM0 in-memory semantics / worker trust snapshotであり、Administrative durable source-of-truthではありません。
+
+次の独立Work Unitはsigned Decision verifier boundaryです。Trust Bundle revision/freshness、verification reason taxonomy、time/lifetime policyをstandard libraryだけで先に固定し、COSE/CBOR concrete dependencyはGo toolingでlock/testできる環境で導入します。
+
 ## 作業原則
 
 - Requirementの不確実性を減らす作業を優先する。
