@@ -36,7 +36,7 @@ func TestVerifierBoundaryRejectsStaleTrustBundle(t *testing.T) {
 	req := validPreCryptoRequest(key, now)
 	req.TrustBundle.ValidatedAt = now.Add(-31 * time.Minute)
 
-	assertVerificationReason(t, verifier.ResolvePreCrypto(req), ReasonTrustBundleStale)
+	assertResolveReason(t, verifier, req, ReasonTrustBundleStale)
 }
 
 func TestVerifierBoundaryRejectsInvalidTrustBundleMetadata(t *testing.T) {
@@ -49,11 +49,11 @@ func TestVerifierBoundaryRejectsInvalidTrustBundleMetadata(t *testing.T) {
 	req := validPreCryptoRequest(key, now)
 	req.TrustBundle.Revision = 0
 
-	assertVerificationReason(t, verifier.ResolvePreCrypto(req), ReasonTrustBundleInvalid)
+	assertResolveReason(t, verifier, req, ReasonTrustBundleInvalid)
 
 	req = validPreCryptoRequest(key, now)
 	req.TrustBundle.ValidatedAt = now.Add(time.Minute)
-	assertVerificationReason(t, verifier.ResolvePreCrypto(req), ReasonTrustBundleInvalid)
+	assertResolveReason(t, verifier, req, ReasonTrustBundleInvalid)
 }
 
 func TestVerifierBoundaryRejectsNotYetValidExpiredAndOverlongDecision(t *testing.T) {
@@ -67,27 +67,27 @@ func TestVerifierBoundaryRejectsNotYetValidExpiredAndOverlongDecision(t *testing
 		req := validPreCryptoRequest(key, now)
 		req.Key.IssuedAt = now.Add(time.Minute)
 		req.ExpiresAt = now.Add(5 * time.Minute)
-		assertVerificationReason(t, verifier.ResolvePreCrypto(req), ReasonNotYetValid)
+		assertResolveReason(t, verifier, req, ReasonNotYetValid)
 	})
 
 	t.Run("expired", func(t *testing.T) {
 		req := validPreCryptoRequest(key, now)
 		req.Key.IssuedAt = now.Add(-10 * time.Minute)
 		req.ExpiresAt = now.Add(-time.Minute)
-		assertVerificationReason(t, verifier.ResolvePreCrypto(req), ReasonExpired)
+		assertResolveReason(t, verifier, req, ReasonExpired)
 	})
 
 	t.Run("overlong", func(t *testing.T) {
 		req := validPreCryptoRequest(key, now)
 		req.Key.IssuedAt = now
 		req.ExpiresAt = now.Add(11 * time.Minute)
-		assertVerificationReason(t, verifier.ResolvePreCrypto(req), ReasonStaleDecision)
+		assertResolveReason(t, verifier, req, ReasonStaleDecision)
 	})
 
 	t.Run("invalid window", func(t *testing.T) {
 		req := validPreCryptoRequest(key, now)
 		req.ExpiresAt = req.Key.IssuedAt
-		assertVerificationReason(t, verifier.ResolvePreCrypto(req), ReasonTimeWindowInvalid)
+		assertResolveReason(t, verifier, req, ReasonTimeWindowInvalid)
 	})
 }
 
@@ -101,7 +101,7 @@ func TestVerifierBoundaryRejectsDisabledAlgorithmBeforeKeyResolution(t *testing.
 	req := validPreCryptoRequest(key, now)
 	req.Key.ProtectedAlgorithm = AlgorithmES256
 
-	assertVerificationReason(t, verifier.ResolvePreCrypto(req), ReasonAlgorithmNotAllowed)
+	assertResolveReason(t, verifier, req, ReasonAlgorithmNotAllowed)
 }
 
 func TestVerifierBoundaryMapsRegistryFailuresToStableReasons(t *testing.T) {
@@ -114,7 +114,7 @@ func TestVerifierBoundaryMapsRegistryFailuresToStableReasons(t *testing.T) {
 		verifier := mustVerifierBoundary(t, registry)
 		req := validPreCryptoRequest(key, now)
 		req.Key.KeyID = KeyID("kid-missing")
-		assertVerificationReason(t, verifier.ResolvePreCrypto(req), ReasonUnknownKey)
+		assertResolveReason(t, verifier, req, ReasonUnknownKey)
 	})
 
 	t.Run("key not active", func(t *testing.T) {
@@ -126,7 +126,7 @@ func TestVerifierBoundaryMapsRegistryFailuresToStableReasons(t *testing.T) {
 		}
 		verifier := mustVerifierBoundary(t, registry)
 		req := validPreCryptoRequest(key, now)
-		assertVerificationReason(t, verifier.ResolvePreCrypto(req), ReasonKeyNotActiveForVerify)
+		assertResolveReason(t, verifier, req, ReasonKeyNotActiveForVerify)
 	})
 
 	t.Run("authority role", func(t *testing.T) {
@@ -136,7 +136,7 @@ func TestVerifierBoundaryMapsRegistryFailuresToStableReasons(t *testing.T) {
 		verifier := mustVerifierBoundary(t, registry)
 		req := validPreCryptoRequest(key, now)
 		req.Key.DecisionKind = authority.DecisionLease
-		assertVerificationReason(t, verifier.ResolvePreCrypto(req), ReasonAuthorityRoleMismatch)
+		assertResolveReason(t, verifier, req, ReasonAuthorityRoleMismatch)
 	})
 
 	t.Run("subject", func(t *testing.T) {
@@ -146,7 +146,7 @@ func TestVerifierBoundaryMapsRegistryFailuresToStableReasons(t *testing.T) {
 		verifier := mustVerifierBoundary(t, registry)
 		req := validPreCryptoRequest(key, now)
 		req.Key.AuthorityPrincipal = "authority:workorder:other"
-		assertVerificationReason(t, verifier.ResolvePreCrypto(req), ReasonSubjectMismatch)
+		assertResolveReason(t, verifier, req, ReasonSubjectMismatch)
 	})
 }
 
@@ -205,8 +205,9 @@ func validPreCryptoRequest(key KeyRecord, now time.Time) PreCryptoVerificationRe
 	}
 }
 
-func assertVerificationReason(t testing.TB, _ KeyRecord, err error, want VerificationReason) {
+func assertResolveReason(t testing.TB, verifier *VerifierBoundary, req PreCryptoVerificationRequest, want VerificationReason) {
 	t.Helper()
+	_, err := verifier.ResolvePreCrypto(req)
 	if err == nil {
 		t.Fatalf("expected verification failure %q", want)
 	}
