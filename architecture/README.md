@@ -70,7 +70,9 @@ Architecture Baseline 0.1の主要6領域を横断レビューし、`BASELINE_RE
 
 `plan/adr/0001-protocol-surfaces-and-canonical-encoding.md` でProtocol Surfaceを決定しました。External Client PlaneはHTTPS + JSON + OpenAPI、Worker / out-of-process Adapter PlaneはProtobuf IDL + Connect reference transport、signed Authority Decisionはdeterministic CBOR + CDDL + COSE_Sign1をBaselineとします。Protobuf serializationはsignature / generic fingerprintのcanonical bytesには使いません。
 
-次はP0 machine-readable schema、実装Repository layoutの順にImplementation Entryを進めます。
+`spec/external/openapi.json` にP0 External Client Planeのmachine-readable schemaを追加しました。Task submit/status/cancel/resultとArtifact ingest/upload/descriptorだけを固定し、Worker / Lease / WorkOrder / ArtifactGrant token等のInternal概念は露出していません。`spec/external/README.md` とnegative fixtureでhostile-input boundaryも明文化しています。
+
+次はP0 schemaをmainへ収束させた後、実装Repository layoutの作業単位へ進みます。
 
 ## Logical AuthorityとProcessを分ける
 

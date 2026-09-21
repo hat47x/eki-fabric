@@ -1,0 +1,28 @@
+{
+  "schema": "eki.task-request/v1",
+  "executor": {
+    "id": "dev.example.transform",
+    "version_constraint": "^1"
+  },
+  "inputs": [
+    {
+      "name": "source",
+      "artifact_id": "art_01",
+      "url": "http://169.254.169.254/latest/meta-data"
+    }
+  ],
+  "parameters": {},
+  "resources": {
+    "cpu_millis": 1000,
+    "memory_bytes": 268435456,
+    "wall_time_seconds": 60,
+    "output_bytes_max": 1024,
+    "network_bytes_max": 1024
+  },
+  "reliability": {
+    "retryable": true,
+    "preemptible": true,
+    "max_attempts": 2,
+    "effect_mode": "none"
+  }
+}
