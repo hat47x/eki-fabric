@@ -293,4 +293,4 @@ Repository Layout merge後、最新 `main` からM0 executable skeleton branch�
 6. `internal/spi/statestore`
 7. Reference in-memory / durable adapterの比較
 
-State Store製品はM0 skeleton branchで比較・決定します。まずbinaryがbuildできる状態を作り、その後Task APIを載せます。
+State Storeは`ADR-0003`で、M0 / DP-1向けReference AdapterとしてSQLiteを採用しました。実装は`internal/adapters/reference/statestore/sqlite/`へ置き、Coreは引き続き`internal/spi/statestore`だけへ依存します。まずrestart / CAS / migration semanticsを実証し、その後Task APIを載せます。
