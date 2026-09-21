@@ -324,6 +324,9 @@ Verifierはmachine-readable reason categoryを持ちます。
 - SUBJECT_MISMATCH
 - STALE_DECISION
 - POLICY_REVOKED
+- TRUST_BUNDLE_INVALID
+- TRUST_BUNDLE_STALE
+- TIME_WINDOW_INVALID
 
 WorkerからClientへ内部詳細をそのまま公開することは標準にしません。
 
