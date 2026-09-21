@@ -11,6 +11,25 @@ import (
 	"github.com/hat47x/eki-fabric/internal/core/authority"
 )
 
+func TestAlgorithmCOSEIdentifiers(t *testing.T) {
+	tests := []struct {
+		algorithm Algorithm
+		want      int64
+	}{
+		{AlgorithmEdDSA, -8},
+		{AlgorithmES256, -7},
+	}
+	for _, tt := range tests {
+		got, ok := tt.algorithm.COSEIdentifier()
+		if !ok || got != tt.want {
+			t.Fatalf("COSEIdentifier(%q) = %d/%v, want %d/true", tt.algorithm, got, ok, tt.want)
+		}
+	}
+	if _, ok := Algorithm("UNKNOWN").COSEIdentifier(); ok {
+		t.Fatal("unknown algorithm unexpectedly has a COSE identifier")
+	}
+}
+
 func TestNewEd25519KeyRecord(t *testing.T) {
 	now := time.Date(2026, 9, 22, 0, 0, 0, 0, time.UTC)
 	record, err := NewKeyRecord(ed25519Config("kid-ed-1", 1, now), now)
