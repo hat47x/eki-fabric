@@ -92,6 +92,8 @@ Hostile TaskRequestをTaskIRへ変換するlogic。HTTP parsing自体は置き�
 
 Logical AuthorityごとのDecision interface / validation。SchedulerがSignerを自由に使えるgeneric interfaceを置きません。
 
+P2実装ではArchitecture Authority roleとsigned Decision kindの最小対応表をここへ置き、`decisiontrust`等のSecurity boundaryから再利用します。
+
 ### `taskstate/`
 
 Task / Attempt / Lease / Cancellation / Result state transitionの正本。QueueやHTTP handlerから直接stateを書き換えません。
@@ -107,6 +109,10 @@ Worker loss、reclaim、retry、Recovery Candidate、bounded release。
 ### `budget/`
 
 Compute / Network / Retry / Output等のreservation / consumption model。
+
+### `decisiontrust/`
+
+signed Authority Decisionに必要なpublic-key metadata、Authority role/Decision kind binding、algorithm/key type/curve整合、key lifecycle、typed signing/verification key selectionを扱います。Client/Worker authenticationや一般的なsemantic trustを集約するRegistryにはしません。in-memory RegistryはM0 semantics / trust snapshot用であり、durable Administrative source-of-truthは後続Adapterとして分離します。
 
 ## 5. `internal/control/`
 
@@ -293,4 +299,4 @@ Repository Layout merge後、最新 `main` からM0 executable skeleton branch�
 6. `internal/spi/statestore`
 7. Reference in-memory / durable adapterの比較
 
-State Store製品はM0 skeleton branchで比較・決定します。まずbinaryがbuildできる状態を作り、その後Task APIを載せます。
+State Storeは`ADR-0003`で、M0 / DP-1向けReference AdapterとしてSQLiteを採用しました。実装は`internal/adapters/reference/statestore/sqlite/`へ置き、Coreは引き続き`internal/spi/statestore`だけへ依存します。まずrestart / CAS / migration semanticsを実証し、その後Task APIを載せます。

@@ -394,7 +394,27 @@ Architecture Baseline 0.1とP0 External Protocolまで収束したため、実�
 - 初期Repositoryでは`pkg/`を作らず、Go内部型をpublic compatibility boundaryへ昇格させない。
 - 空packageを大量作成せず、M0で必要になった順にdirectoryを追加する。
 
-次のWork UnitはM0 executable skeletonです。まず`go.mod`、`eki-control` / `eki-agent`のbuildable entry point、ID / Task Stateの最小型、State Store SPIを作り、その後Task APIへ進みます。
+M0 executable skeletonの最初の作業単位として、`go.mod`、buildableな`eki-control` / `eki-agent`、typed Task / Attempt / Lease ID、SHA-256 Digest、TaskRecordの基本不変条件、State Store SPI、revision CASを持つin-memory reference adapterを追加しました。in-memory Storeはrestart耐性を持たないためM0完成条件には含めず、次のwork unitでdurable Storeを追加します。
+
+ローカルでは`go test ./...`、`go vet ./...`、両binaryの`--version`を確認しています。検証環境のGo 1.23.2でもsource compatibility smoke testが通りましたが、Repositoryの要求versionはGo 1.27.0です。
+
+`plan/adr/0003-m0-reference-state-store.md` で、M0 / DP-1向けReference durable State StoreとしてSQLiteを採用し、Go driverはcgo不要の`modernc.org/sqlite`を第一候補としました。適用範囲は単一Control Plane host + local filesystemに限定し、DP-2 multi-instance HAやnetwork filesystem共有をSQLiteへ背負わせません。WALは同一host制約を明示し、将来のPostgreSQL等は同じState Store SPIの別Adapterとして扱います。
+
+SQLite Adapter実装に先立ち、`conformance/statestoretest`へBackend共通のState Store conformance harnessを追加しました。Create / Load / duplicate / CAS / stale revision / concurrent CAS / invalid record / cancellationを全Adapter共通契約とし、durable Adapter向けにはclose/reopen後のTask / revision保持を別契約として定義しています。in-memory Adapterも共通契約へ移行し、ローカルで`go test ./...`と`go vet ./...`を通しています。
+
+次のConcrete Work UnitはSQLite durable State Store reference adapterの実装です。依存はGo toolingで`go.mod` / `go.sum`を生成・検証できる環境で導入し、共通conformanceに加えてmigration / WAL / restart testを通してからmerge対象にします。現在の実行環境は外部Go module取得を許可していないため、未検証のdependency lockはcommitしません。
+
+SQLite依存導入と並行せずに進められるProtocol workとして、P1 Worker Planeを`spec/worker/v1/worker.proto`へ定義しました。Worker Identityは認証contextに置き、messageに`worker_id`を持たせません。Worker→Controlはidempotentな`PostEvents`、Control→Workerは`WatchCommands` server-streamingまたは`PollCommands` fallbackとし、HeartbeatとLease Renewalを分離しています。WorkOrder / Lease等のSecurity-sensitive payloadはProtobufへ署名せず、P2 COSE payloadを`SignedDecisionCarrier`で運ぶ構造です。
+
+P2 Signed Authority Decisionsは`spec/decisions/v1/decisions.cddl`へ定義しました。Placement Approval、Lease、Executor Approval、Artifact Read/Write Grant、WorkOrderをdeterministic CBOR payloadとして閉じたschemaにし、Architecture上のAuthority role identifier（EXE-1 / PLC-1 / LSE-1 / DAT-1 / WOR-1）を署名対象へ直接bindingします。WorkOrderの前提Decision refはkind-specific型とし、Decision IDに加えてdeterministic payload digestへbindingします。P1 ProtobufはCOSE_Sign1 bytesのcarrierに限定し、Security Authorityをtransport serializationへ依存させません。
+
+Signed Decision Security Profileは`plan/adr/0004-signed-decision-cryptographic-profile.md`で定義しました。M0 software referenceはEd25519 / EdDSA、Enterprise/KMS互換profileはES256 / P-256を第一級にし、Authority roleごとに別keyを持ちます。`kid`はAdmin-managed Key Registryのopaque selectorであり、COSE messageからTrust Rootを持ち込みません。Key stateはPENDING / ACTIVE / VERIFY_ONLY / REVOKED / COMPROMISEDを区別し、rotation・revocation・trust bundle freshness・Verifier順序を明文化しています。
+
+Go Coreでは`internal/core/authority`と`internal/core/decisiontrust`へ最小domain boundaryを追加しました。P2 Decision kindとAuthority roleの対応をGo constantsでも固定し、Signer/Verifierのkey selectionはDecision kindを含むtyped requestだけを公開しています。Key RegistryはEdDSA/Ed25519とES256/P-256のalgorithm/curve整合、`kid`再利用禁止、primary signing key、PENDING→ACTIVE→VERIFY_ONLY等のlifecycleを扱います。初回activation以前のDecision、およびVERIFY_ONLY移行後に新規発行されたDecisionはverification対象にしません。現在のRegistryはM0 in-memory semantics / worker trust snapshotであり、Administrative durable source-of-truthではありません。
+
+Signed Decision verifier boundaryのpre-crypto層を追加しました。Trust Bundle revision/freshness、Deployment algorithm allowlist、Decision issued/expires、種類別maximum lifetimeをstandard libraryだけで検証し、Registry lookupをmachine-readableなverification reasonへ正規化します。signature validityをAuthorizationへ読み替えず、COSE/CBOR/cryptographic verificationより前にfail-closedで停止できる境界です。
+
+次の独立Work Unitはcanonical Decision payload decoder / COSE protected-header parser / Ed25519 software Reference Signer・Verifierの接続です。COSE/CBOR concrete dependencyはGo toolingでlock/testできる環境でのみ導入します。
 
 ## 作業原則
 
