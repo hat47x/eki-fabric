@@ -108,6 +108,8 @@ PENDING / ACTIVE / VERIFY_ONLY / REVOKED
 
 `VERIFY_ONLY -> ACTIVE`の再昇格は許可しません。signingへ戻す必要がある場合は新しい`kid`を発行します。
 
+Administrative state transitionの時刻は現在stateの`stateChangedAt`より前へ戻せません。activation / retirement / revocationの履歴を、後から古い時刻で上書きしないためです。
+
 `REVOKED -> COMPROMISED`だけは、後からprivate key compromiseが判明した場合の意味強化として許可します。
 
 ## Signing key selection
@@ -143,6 +145,7 @@ Control Planeの永続的なAdministrative source-of-truthをin-memory Mapへ固
 - validity / policy変更を同一registrationとみなさない
 - primary signing keyの明示選択
 - validity外keyをprimaryにしない
+- key lifecycleの時刻逆行を拒否
 - activation前に発行されたDecisionのverification禁止
 - VERIFY_ONLYのsigning再利用禁止
 - VERIFY_ONLY移行後に発行されたDecisionのverification禁止
