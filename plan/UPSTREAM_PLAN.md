@@ -414,7 +414,9 @@ Go Coreでは`internal/core/authority`と`internal/core/decisiontrust`へ最小d
 
 Signed Decision verifier boundaryのpre-crypto層を追加しました。Trust Bundle revision/freshness、Deployment algorithm allowlist、Decision issued/expires、種類別maximum lifetimeをstandard libraryだけで検証し、Registry lookupをmachine-readableなverification reasonへ正規化します。signature validityをAuthorizationへ読み替えず、COSE/CBOR/cryptographic verificationより前にfail-closedで停止できる境界です。
 
-次の独立Work Unitはcanonical Decision payload decoder / COSE protected-header parser / Ed25519 software Reference Signer・Verifierの接続です。COSE/CBOR concrete dependencyはGo toolingでlock/testできる環境でのみ導入します。
+その後段としてstandard-library cryptographic primitive boundaryを追加しました。M0 Reference Software SignerはRegistry-selected primary keyだけを使い、EdDSA/Ed25519とES256/P-256を実装します。ES256はCOSEの64-byte raw `R || S`形式へ固定し、private/public key binding、policy revision、sign前後のRegistry再検査を行います。Verifierはpre-crypto gate→signature verification→pre-crypto再検査の順とし、途中revocationを可能な範囲でfail-closedにします。Software Signerはprocess memoryへprivate keyを保持するM0/DP-1 referenceに限定し、DP-2はKMS/HSM Adapterを前提とします。
+
+次の独立Work Unitはcanonical Decision payload decoder / COSE protected-header parserです。raw COSE_Sign1をClient入力から安全にparseし、protected `alg` / `kid` / profile、deterministic payload、CDDL validationを現在のVerifier boundaryへ接続します。COSE/CBOR concrete dependencyはGo toolingでlock/testできる環境でのみ導入します。
 
 ## 作業原則
 
