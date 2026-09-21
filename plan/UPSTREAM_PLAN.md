@@ -404,6 +404,8 @@ SQLite Adapter実装に先立ち、`conformance/statestoretest`へBackend共通�
 
 次のConcrete Work UnitはSQLite durable State Store reference adapterの実装です。依存はGo toolingで`go.mod` / `go.sum`を生成・検証できる環境で導入し、共通conformanceに加えてmigration / WAL / restart testを通してからmerge対象にします。現在の実行環境は外部Go module取得を許可していないため、未検証のdependency lockはcommitしません。
 
+SQLite依存導入と並行せずに進められるProtocol workとして、P1 Worker Planeを`spec/worker/v1/worker.proto`へ定義しました。Worker Identityは認証contextに置き、messageに`worker_id`を持たせません。Worker→Controlはidempotentな`PostEvents`、Control→Workerは`WatchCommands` server-streamingまたは`PollCommands` fallbackとし、HeartbeatとLease Renewalを分離しています。WorkOrder / Lease等のSecurity-sensitive payloadはProtobufへ署名せず、P2 COSE payloadを`SignedDecisionCarrier`で運ぶ構造です。
+
 ## 作業原則
 
 - Requirementの不確実性を減らす作業を優先する。
