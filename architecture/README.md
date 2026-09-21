@@ -61,8 +61,9 @@ Architectureでは、使用製品やProcess数より先に次を固定します�
 
 1. `AUTHORITY_BOUNDARIES.md` — 誰が何を確定・許可できるか
 2. `CONTRACT_BOUNDARIES.md` — External / Internal Contractの意味変換とbinding
+3. `CONTROL_DATA_PLANE.md` — Control metadataとbulk Artifact transferの分離、Data access / cache / transfer境界
 
-後続でControl Plane / Data Plane、Deployment Profile、State / Lease、Extension SPIを追加します。
+後続でDeployment Profile、State / Lease、Extension SPIを追加します。
 
 ## Logical AuthorityとProcessを分ける
 
