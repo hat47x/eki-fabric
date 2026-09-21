@@ -71,8 +71,7 @@ func (r *Registry) Register(record KeyRecord, now time.Time) error {
 	defer r.mu.Unlock()
 
 	if existing, ok := r.keys[record.id]; ok {
-		if existing.publicKeyDigest == record.publicKeyDigest &&
-			existing.scope() == record.scope() {
+		if existing.sameRegistration(record) {
 			return fmt.Errorf("%w: key %q", ErrKeyAlreadyExists, record.id)
 		}
 		return fmt.Errorf("%w: key %q", ErrKeyIDReused, record.id)
@@ -126,6 +125,10 @@ func (r *Registry) SetPrimary(id KeyID, now time.Time) error {
 	}
 	if record.state != KeyStateActive {
 		return fmt.Errorf("%w: only ACTIVE key may be primary, got %s", ErrInvalidTransition, record.state)
+	}
+	now = now.UTC()
+	if now.Before(record.signingNotBefore) || !now.Before(record.signingNotAfter) {
+		return fmt.Errorf("%w: primary key must be inside signing validity window", ErrInvalidTransition)
 	}
 	r.primary[record.scope()] = id
 	r.bump(now)
