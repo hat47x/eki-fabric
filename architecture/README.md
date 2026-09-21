@@ -66,7 +66,9 @@ Architectureでは、使用製品やProcess数より先に次を固定します�
 5. `TASK_STATE_MODEL.md` — Task / Attempt / Lease / Result / External Effect / Recoveryの状態機械
 6. `EXTENSION_SPI.md` — Queue / State / Storage / Identity / Runtime / Verification等の差し替え境界
 
-これでArchitecture Baseline 0.1の主要6領域が揃いました。次は横断レビューとMVP cutへ進みます。
+Architecture Baseline 0.1の主要6領域を横断レビューし、`BASELINE_REVIEW_2026-09-21.md` で重大な責務矛盾がないことを確認しました。`MVP_IMPLEMENTATION_PLAN.md` では、BaselineのSecurity / State semanticsを維持した最小vertical slice、M0〜M5、Definition of Doneを定義しています。
+
+次はProtocol technology比較、P0 machine-readable schema、実装Repository layoutの順にImplementation Entryを進めます。
 
 ## Logical AuthorityとProcessを分ける
 

@@ -1,0 +1,821 @@
+# MVP Implementation Plan — Architecture Baseline 0.1
+
+Status: **Planning Baseline — 2026-09-21**
+
+## 1. 目的
+
+本書は、Architecture Baseline 0.1を実装へ移す最初のMVP cutを定義します。
+
+MVPの目的は機能数を増やすことではありません。
+
+最小のvertical sliceで、EKI Fabricの中心Invariantが実際に成立することを確認します。
+
+中心的なE2E Goal:
+
+```text
+untrusted Client
+  ↓
+strict TaskRequest / Admission
+  ↓
+durable Task / Attempt
+  ↓
+policy-constrained Placement
+  ↓
+signed WorkOrder
+  ↓
+2+ outbound Workers
+  ↓
+Artifact Grant / Digest verification
+  ↓
+approved Executor
+  ↓
+ResultClaim
+  ↓
+Verification / Acceptance
+  ↓
+Worker reclaim / loss
+  ↓
+bounded retry to another Worker
+  ↓
+AcceptedResult
+```
+
+この経路を通すことで、個別技術のデモではなくFabricとしての意味を検証します。
+
+---
+
+# 2. MVPで必ず守るもの
+
+## 2.1 Security
+
+- authenticated Clientもuntrusted
+- Client RequestをWorkerへ直接渡さない
+- Clientがconcrete Workerを指定できない
+- arbitrary code / arbitrary URL / arbitrary filesystem pathを標準Task APIから実行できない
+- approved Executor Digestへbinding
+- ArtifactGrantとTask submission authorityを分離
+- WorkOrder signerだけで前提Authorityを捏造できない
+- Worker local verification
+- Local Governor veto
+- ResultClaimをAcceptedResultへ直接昇格しない
+
+## 2.2 Reliability
+
+- Task != Attempt
+- retry = new Attempt
+- at-least-once delivery
+- duplicate WorkOrder delivery tolerance
+- Lease expiry / fencing
+- Control Plane restart recovery
+- Worker lossを通常状態として扱う
+- bounded retry
+
+## 2.3 Network / Data
+
+- bulk ArtifactをControl metadata pathへ通さない
+- Artifact Digest verification
+- cache localityはoptimization hintのみ
+- input / output transfer budget
+- Workerへlong-lived storage credentialを渡さない
+
+## 2.4 Operability
+
+- Task / Attempt / Lease / Worker / Decision correlation
+- placement rejection reason
+- reclaim / retry reason
+- structured logs / metrics
+- operatorが内部状態を追える
+
+---
+
+# 3. 初回MVPに含める機能
+
+## 3.1 External Client API
+
+最低限:
+
+- Task submit
+- Task get/status
+- Task cancel
+- Result retrieval
+- Artifact ingest intent / upload
+
+Task APIはlanguage-neutral contractとします。
+
+具体Transportは別比較で決めますが、MVPではBrowser以外のClientからも扱いやすく、企業proxyと共存しやすいSurfaceを優先します。
+
+## 3.2 Task Admission
+
+実装するもの:
+
+- strict schema validation
+- Principal binding
+- Idempotency Key + request digest
+- Executor logical requirement resolution
+- input Artifact authorization
+- resource budget
+- retry budget
+- Data Class
+- side-effect mode = none を初期標準
+
+初回MVPではexternal side-effect executionは必須にしません。
+
+State Model上のUNKNOWNは保持しますが、実side-effect Adapterは後続milestoneへ送ります。
+
+## 3.3 Durable Task / Attempt / Lease State
+
+必要Property:
+
+- unique Task ID
+- TaskIR Digest
+- Attempt ID
+- state revision / conditional update
+- Lease ID / revision / expiry
+- cancellation intent
+- retry budget
+- restart recovery
+- durable WorkOrder intent
+
+Queueだけを正本にしません。
+
+## 3.4 Baseline Scheduler
+
+初回はdeterministic heuristicとします。
+
+Hard filter:
+
+- Worker online / eligible
+- Executor support
+- Data Class / worker profile
+- resource feasibility
+- Artifact / network budget
+
+Soft ranking:
+
+- cache locality
+- estimated transfer bytes
+- simple compute capacity
+
+ML / learned estimatorはMVP必須にしません。
+
+## 3.5 Placement Authorization
+
+Scheduler Proposalを別境界で再評価します。
+
+少なくとも:
+
+- Task / Attempt binding
+- Worker Identity
+- Executor support
+- Data Class
+- active Provider / Worker state
+- resource feasibility
+
+を確認します。
+
+## 3.6 WorkOrder
+
+初回WorkOrderは少なくとも:
+
+- WorkOrder ID
+- Task ID / TaskIR Digest
+- Attempt ID
+- Worker ID
+- Placement Approval ref
+- Lease ref
+- Executor Approval ref / Digest
+- ArtifactGrant refs
+- resource limits
+- network policy
+- output binding
+- expiry
+
+へbindingします。
+
+署名形式の具体方式はProtocol / Signer実装で決めます。
+
+## 3.7 Worker Agent
+
+2台以上のNative WorkerでE2E Testします。
+
+Worker Agent責務:
+
+- outbound session
+- Worker Identity
+- Resource Advertisement
+- WorkOrder verification
+- Local Governor
+- Artifact fetch / Digest check
+- Executor Runtime
+- ResultClaim
+- Lease heartbeat / renewal request
+- local stop / reclaim
+
+## 3.8 Local Governor
+
+初期対象:
+
+- manual opt-out
+- worker enabled / disabled
+- CPU availability
+- memory ceiling
+- user-active simulation / hook
+- WorkOrder wall-time stop
+
+Platform-specific hard enforcementはReference Runtime capabilityとして段階導入します。
+
+未実証ResourceをHARDと広告しません。
+
+## 3.9 Executor Runtime
+
+最初は**approved command executor**をReference Runtimeとします。
+
+安全条件:
+
+- Admin登録済みcommand / binaryだけ
+- Client supplied command line executable pathは禁止
+- exact Executor Digest / version
+- parameter schema
+- bounded working directory
+- no network by default
+- output bound
+
+WASMはEarly Optionalとして次milestone候補にします。
+
+## 3.10 Artifact Store
+
+Reference implementationは小規模Profileで動く単純なbackendから開始します。
+
+必要Property:
+
+- immutable content
+- digest
+- size
+- scoped read/write
+- upload finalization
+- output storage
+
+Filesystem-backed reference implementationを候補とし、S3-compatible AdapterをEarly Optionalとします。
+
+## 3.11 ArtifactGrant / Data Access Resolver
+
+最低限:
+
+- Task / Attempt / Worker binding
+- Artifact Digest
+- read / write operation
+- expiry
+- output size limit
+
+を強制します。
+
+初回Referenceでは同一Hostのsimple object serviceでも構いませんが、Workerへroot filesystem pathやstore-wide credentialを渡しません。
+
+## 3.12 Result Verification / Acceptance
+
+初回Verification method:
+
+- Result Artifact Digest / structural validity
+- Executor-specific deterministic validator
+
+少なくとも一つのdemo workloadでは、同一Inputに対するexpected deterministic resultをvalidatorで確認します。
+
+Worker success exit codeだけをAcceptance根拠にしません。
+
+## 3.13 Telemetry / Audit
+
+初回から最低限:
+
+- Task ID
+- Attempt ID
+- Worker ID
+- Lease ID
+- WorkOrder ID
+- placement reason
+- rejection reason
+- retry reason
+- reclaim reason
+- Artifact transfer bytes
+- Result acceptance
+
+を追跡します。
+
+OpenTelemetry semantic attributesをReference方向とします。
+
+---
+
+# 4. 初回MVPに含めないもの
+
+Architecture上のExtension Pointは保持しますが、初回MVP完成条件には含めません。
+
+- Browser Worker
+- Federation
+- Public-interest cross-organization Grant実運用
+- Remote Attestation
+- Confidential Computing key release
+- real zkVM proof
+- learned scheduler
+- GPU-specific hard enforcement
+- attested Contribution Metering
+- external Credit / Value mapping
+- multi-party approval
+- site cache
+- arbitrary P2P
+- cloud-specific resource provisioning
+- generic external side effects
+- Saga / compensation
+- full secret manager integration
+
+これらを後から入れてもCore Contract / State Modelを変更しないことがArchitectureの検証点です。
+
+---
+
+# 5. MVP workload
+
+一つのdemoだけに最適化しないため、性質の異なる3種類をdogfoodします。
+
+## W1 — Deterministic text / manifest transform
+
+目的:
+
+- small Artifact
+- deterministic
+- validator可能
+- CPU only
+
+確認:
+
+- TaskRequest
+- Executor parameter
+- ArtifactGrant
+- Result verification
+
+## W2 — Large cached Artifact compute
+
+目的:
+
+- 数百MiB〜GiB相当のArtifact
+- locality / transfer cost
+- cache hit / miss
+
+実際の巨大dataを必須にせず、Test fixture / sparse or generated dataでNetwork pathを測定できます。
+
+確認:
+
+- cache
+- transfer budget
+- Scheduler ranking
+- retry transfer
+
+## W3 — Interruptible long-running compute
+
+目的:
+
+- user reclaim
+- Lease expiry
+- Worker loss
+- retry
+- optional checkpoint later
+
+確認:
+
+- A1 -> Worker 1
+- reclaim / loss
+- A1 close
+- bounded Recovery
+- A2 -> Worker 2
+- AcceptedResult
+
+SEI / SUI / TEI workloadを後続dogfoodに利用できますが、MVP CoreへそのDomain semanticsを埋め込みません。
+
+---
+
+# 6. End-to-End Acceptance Scenario
+
+最低Acceptance:
+
+1. Client AがArtifactをingestする。
+2. Client AがIdempotency Key付きTaskRequestをsubmitする。
+3. Task AdmissionがTaskIRとBudgetを確定する。
+4. SchedulerがWorker 1を提案する。
+5. Placement AuthorityがWorker 1を承認する。
+6. Lease / ArtifactGrant / WorkOrderを発行する。
+7. Worker 1がWorkOrder prerequisitesを再検証する。
+8. Worker 1がArtifactを取得しDigestを検証する。
+9. Executorがbounded environmentで実行開始する。
+10. User reclaimを発生させる。
+11. Local GovernorがWorker 1を停止する。
+12. Lease renewを止める。
+13. Task StateがA1をreclaimとしてcloseする。
+14. retry / transfer budgetを評価する。
+15. 新Attempt A2を作成する。
+16. Worker 2へ新WorkOrderを発行する。
+17. Worker 2がResultClaimを返す。
+18. ValidatorがVerificationResultを生成する。
+19. Result AcceptanceがAcceptedResultを生成する。
+20. Task StateがCOMPLETEDへ遷移する。
+21. ClientはWorker topologyを知らずResultを取得する。
+
+この一本を自動Integration Testとして成立させます。
+
+---
+
+# 7. Malicious Client Acceptance
+
+最低限のnegative E2E:
+
+- concrete Worker ID指定を拒否
+- arbitrary executable pathを拒否
+- arbitrary URL inputを拒否
+- Data Class downgradeを拒否
+- oversized requestをIngressで拒否
+- retry budget増幅を拒否
+- Idempotency Key + different request digestを拒否
+- output budget超過を停止
+
+---
+
+# 8. Malicious Worker Acceptance
+
+- wrong WorkOrder Worker IDを拒否
+- stale Leaseを拒否
+- expired ArtifactGrantを拒否
+- wrong Artifact bytesをDigest mismatchで拒否
+- fake ResultClaimをvalidatorでreject
+- duplicate ResultClaimをidempotent処理
+- stale Attemptからのlate ResultでLeaseを復活させない
+- fake Contribution / Resource self-reportを高保証事実にしない
+
+---
+
+# 9. Restart / Failure Acceptance
+
+- Control Plane restart後にTask / Attempt / Leaseを復元
+- outbox delivery replayで新Attemptを増やさない
+- Worker session reconnect
+- old Lease heartbeat reject
+- Artifact Store一時failureをTask semantic failureにしない
+- Worker 1 loss後にbounded retry
+
+---
+
+# 10. Initial Component Cut
+
+Logical component:
+
+```text
+cmd/
+  eki-control
+  eki-agent
+
+core/
+  contracts
+  admission
+  authority
+  taskstate
+  placement
+  recovery
+
+worker/
+  session
+  governor
+  workorder
+  runtime
+  cache
+
+spi/
+  statestore
+  delivery
+  artifact
+  identity
+  signer
+  executor
+  scheduler
+  verification
+  telemetry
+
+adapters/
+  reference implementations
+
+protocol/
+  external
+  worker
+
+conformance/
+  contract
+  malicious-client
+  malicious-worker
+  restart
+```
+
+これはMVP planning上のLogical Cutです。
+
+実Repository directoryをこのまま凍結するものではありません。
+
+Baseline review後のRepository Layout workで確定します。
+
+---
+
+# 11. Reference Adapter優先順位
+
+## M0必須
+
+- State Store: local durable relational / embedded candidate
+- Delivery: durable outbox + simple delivery
+- Artifact Store: filesystem/object abstraction
+- Identity: development / managed local reference
+- Signer: local protected dev/reference key
+- Executor: approved command executor
+- Scheduler: deterministic heuristic
+- Verification: deterministic application validator
+- Telemetry: structured log + OTLP-capable path
+
+## M1 early
+
+- OIDC Identity
+- S3-compatible Artifact Store
+- WASM Runtime
+- OS hard-limit backends
+
+## Research / later
+
+- TEE Attestation
+- zkVM
+- learned estimator
+- Cloud provider meter
+- federation adapters
+
+---
+
+# 12. State Store selection requirements
+
+製品名より先に必要Propertyを固定します。
+
+- transaction
+- unique constraints
+- compare-and-swap / revision
+- durable restart
+- indexed scan for recovery
+- outbox pattern
+- reasonable small deployment operation
+- future multi-instance path
+
+MVPではdistributed consensus databaseを必須にしません。
+
+Embedded / single-node relational implementationから始めても、SPI Contractで後からreplace可能にします。
+
+---
+
+# 13. Delivery selection requirements
+
+- at-least-once
+- duplicate delivery
+- ack / retry
+- bounded backlog
+- poison handling
+- backpressure
+- message identity
+
+Queue製品をWorker Protocolへ露出しません。
+
+MVPではState Store Outbox + Worker Gateway deliveryで開始し、NATS等は負荷要件が出た後にAdapterとして比較できます。
+
+---
+
+# 14. Protocol freeze order
+
+いきなり全schemaを固定しません。
+
+## P0
+
+- external TaskRequest
+- public TaskStatus / Error
+- Artifact ingest / descriptor
+
+## P1
+
+- Worker hello / ResourceAdvertisement
+- Lease / WorkOrder delivery envelope
+- heartbeat / renewal
+- ResultClaim
+
+## P2
+
+- internal signed Decision schema
+- Adapter protocol
+- VerificationResult
+
+内部実装structを公開schemaへ流用しません。
+
+---
+
+# 15. Security Conformance Suite
+
+実装と同時にTest contractを作ります。
+
+分類:
+
+## C1 Parser / Protocol
+
+- fuzz
+- oversized
+- duplicate field
+- malformed encoding
+- unknown critical field
+
+## C2 Authority Binding
+
+- wrong issuer
+- wrong subject
+- expired
+- stale revision
+- wrong Worker
+- wrong Task / Attempt
+
+## C3 State / Lease
+
+- duplicate delivery
+- stale writer
+- old epoch
+- restart
+- concurrent retry
+
+## C4 Artifact
+
+- digest mismatch
+- expired Grant
+- path / URL injection
+- upload limit
+
+## C5 Worker
+
+- WorkOrder mutation
+- capability widening
+- local reclaim
+
+## C6 Result
+
+- fake result
+- duplicate result
+- late result
+- conflicting result
+
+---
+
+# 16. Milestones
+
+## M0 — Executable Skeleton
+
+成果:
+
+- repository implementation layout
+- core IDs / canonical contracts
+- State Store adapter
+- Task submit/status
+- Worker registration
+- one Worker local execution
+
+Gate:
+
+- restartしてTask identityを保持
+- Client RequestとWorkOrderが別type / schema
+
+## M1 — Secure Two-Worker Fabric
+
+成果:
+
+- 2+ Worker
+- scheduler / placement separation
+- Lease / fencing
+- signed WorkOrder
+- ArtifactGrant
+- command executor
+
+Gate:
+
+- Client cannot choose Worker
+- stale Lease rejected
+- wrong Artifact rejected
+
+## M2 — Reclaim / Recovery
+
+成果:
+
+- Local Governor opt-out
+- Worker loss
+- Recovery Candidate
+- retry budget
+- transfer budget
+
+Gate:
+
+- A1 loss -> bounded A2
+- no duplicate attempt from delivery retry
+
+## M3 — Result Assurance
+
+成果:
+
+- ResultClaim
+- VerificationResult
+- AcceptedResult
+- deterministic validator
+
+Gate:
+
+- Worker success claim alone does not complete Task
+
+## M4 — Operability / Conformance
+
+成果:
+
+- structured audit
+- OTLP metrics
+- malicious Client suite
+- malicious Worker suite
+- restart / chaos suite
+
+Gate:
+
+- main E2E scenario automated
+- invariant regressions block merge
+
+## M5 — Early Adapters
+
+候補:
+
+- OIDC
+- S3-compatible store
+- WASM
+- platform hard enforcement
+
+Gate:
+
+- Adapter replacement does not change Core semantics
+
+---
+
+# 17. MVP Definition of Done
+
+MVP完成は、単にTaskが別PCで動くことではありません。
+
+次を満たすことを要求します。
+
+1. malicious ClientがWorkerを直接命令できない。
+2. 2台以上のWorkerへ安全にPlacementできる。
+3. Worker loss / opt-outでTaskを安全に再配置できる。
+4. retryが新Attemptとして監査可能である。
+5. Artifact accessがscopeされ、Digest検証される。
+6. unapproved Executorを実行しない。
+7. ResultClaimがVerification / Acceptanceを通る。
+8. Task / Attempt / LeaseがControl Plane restart後も復元できる。
+9. queue / delivery duplicateが実行Authorityを増やさない。
+10. Network / retry budgetがboundedである。
+11. Local Governorが中央より強く停止できる。
+12. ClientへWorker topologyを不要に公開しない。
+13. Auditで主要Decision chainを追える。
+14. Reference Adapterを交換してもCore semanticsが変わらない。
+
+---
+
+# 18. CIについて
+
+現状GitHub Actions残量によるCI errorはProject側既知条件として扱います。
+
+実装開始時はlocal test / reproducible commandを必ず文書化し、CI availabilityだけをEvidenceにしません。
+
+CIが利用可能になった段階でconformance suiteを段階的にworkflowへ接続します。
+
+---
+
+# 19. Branch / milestone rule
+
+これまでと同じく、milestone内でもレビュー可能なwork unitごとに:
+
+```text
+latest main
+  -> one purpose branch
+  -> test / docs
+  -> PR
+  -> squash merge
+  -> branch realign to main
+```
+
+を維持します。
+
+複数milestoneの未マージbranchを連鎖させません。
+
+---
+
+# 20. 次の作業
+
+Baseline Reviewをmergeした後、次はImplementation Entry Planningとして:
+
+1. Protocol technology comparison
+2. P0 machine-readable schema
+3. Repository implementation layout
+4. M0 executable skeleton
+
+の順に進めます。
+
+Protocol選定とRepository layoutは別work unitにし、未マージbranchから実装branchを派生させません。

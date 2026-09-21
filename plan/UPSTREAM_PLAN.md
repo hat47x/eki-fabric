@@ -312,6 +312,8 @@ Task State Modelでは、Task Lifecycle、Attempt、Lease、Result Verification�
 
 Extension SPIでは、未知のApplication / OSSは原則External Client Contract + approved Executorで参加し、Control Plane pluginを要求しない境界を固定しました。SPIはState Store、Delivery、Artifact Store、Identity、Policy、Signer、Executor Runtime、Scheduler、Verification、Attestation、External Effect、Contribution Measurement、Telemetry等のFabric基盤差し替えに限定します。各AdapterはCore State / Authority semanticsを変更できず、silent weaker fallback、Client-driven plugin install、arbitrary DB / signing key accessを禁止し、Privilege Class・version・capability・Admin activation・conformance testを明示します。
 
+Architecture Baseline横断レビューでは、Authority / Contract / Control-Data Plane / Deployment / State / Extension SPIの間に重大な矛盾がないことを確認しました。`architecture/BASELINE_REVIEW_2026-09-21.md` でArtifactGrantとData Grant、Result Verification / Acceptance / Task State、generic declassification非搭載等のcanonical解釈を整理しています。`architecture/MVP_IMPLEMENTATION_PLAN.md` では、malicious Client→Admission→Placement→signed WorkOrder→2+ Native Worker→ArtifactGrant→Result Verification / Acceptance→reclaim / bounded retryというE2E vertical sliceをMVPの中心に置き、Federation / Browser / TEE / zkVM / learned scheduler等は初回MVP必須から外しています。
+
 この段階でも未解決研究を先取りして特定実装へ固定しません。Architectureの各作業単位は最新`main`から開始し、PR / merge後に履歴を収束させます。
 
 後段で少なくとも次を比較します。
