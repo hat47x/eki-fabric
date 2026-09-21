@@ -394,7 +394,11 @@ Architecture Baseline 0.1とP0 External Protocolまで収束したため、実�
 - 初期Repositoryでは`pkg/`を作らず、Go内部型をpublic compatibility boundaryへ昇格させない。
 - 空packageを大量作成せず、M0で必要になった順にdirectoryを追加する。
 
-次のWork UnitはM0 executable skeletonです。まず`go.mod`、`eki-control` / `eki-agent`のbuildable entry point、ID / Task Stateの最小型、State Store SPIを作り、その後Task APIへ進みます。
+M0 executable skeletonの最初の作業単位として、`go.mod`、buildableな`eki-control` / `eki-agent`、typed Task / Attempt / Lease ID、SHA-256 Digest、TaskRecordの基本不変条件、State Store SPI、revision CASを持つin-memory reference adapterを追加しました。in-memory Storeはrestart耐性を持たないためM0完成条件には含めず、次のwork unitでdurable Storeを追加します。
+
+ローカルでは`go test ./...`、`go vet ./...`、両binaryの`--version`を確認しています。検証環境のGo 1.23.2でもsource compatibility smoke testが通りましたが、Repositoryの要求versionはGo 1.27.0です。
+
+次のWork Unitはdurable State Store reference adapterです。
 
 ## 作業原則
 
