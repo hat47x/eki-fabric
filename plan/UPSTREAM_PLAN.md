@@ -300,7 +300,9 @@ Gate PASSは全研究の完了を意味しません。Architectureが未解決�
 
 ## Architecture段階で比較する領域
 
-Gate Uは2026-09-21に条件付きPASSとなり、Architecture baseline作成を開始しました。最初の作業単位として `architecture/AUTHORITY_BOUNDARIES.md` にAuthority / Trust Boundary MapをBaseline 0.1として定義しています。
+Gate Uは2026-09-21に条件付きPASSとなり、Architecture baseline作成を開始しました。`architecture/AUTHORITY_BOUNDARIES.md` にAuthority / Trust Boundary Map、`architecture/CONTRACT_BOUNDARIES.md` にExternal / Internal Contract BoundaryをBaseline 0.1として定義しています。
+
+Contract Boundaryでは、TaskRequestをhostile inputとして扱い、AdmittedTask / TaskIR、Attempt、PlacementProposal / Approval、Lease、ExecutorApproval、ArtifactGrant、WorkOrder、ResultClaim、VerificationResult、AcceptedResult、ContributionRecordの生成主体・binding・freshness・Client可視性を分離しました。Client / WorkerからのClaimをAuthorityが確定したDecisionへ直接読み替えず、signed objectはin-placeで書き換えずnew Attempt / revision / revoke / supersedeとして履歴を残します。
 
 この段階でも未解決研究を先取りして特定実装へ固定しません。Architectureの各作業単位は最新`main`から開始し、PR / merge後に履歴を収束させます。
 

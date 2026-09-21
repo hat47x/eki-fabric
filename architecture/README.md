@@ -57,7 +57,12 @@ Architectureでは、使用製品やProcess数より先に次を固定します�
 5. Task / Attempt / Lease / Recovery state model
 6. Extension SPI
 
-最初の正本はAUTHORITY_BOUNDARIES.mdです。
+現在のBaseline文書は次です。
+
+1. `AUTHORITY_BOUNDARIES.md` — 誰が何を確定・許可できるか
+2. `CONTRACT_BOUNDARIES.md` — External / Internal Contractの意味変換とbinding
+
+後続でControl Plane / Data Plane、Deployment Profile、State / Lease、Extension SPIを追加します。
 
 ## Logical AuthorityとProcessを分ける
 
