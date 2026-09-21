@@ -179,7 +179,16 @@ func (v *VerifierBoundary) VerifyCryptographicSignature(req CryptographicVerific
 	); err != nil {
 		return KeyRecord{}, err
 	}
-	return record, nil
+
+	// Re-run the pre-crypto gate after signature verification so a key that is
+	// revoked or compromised while crypto work is in progress is not accepted
+	// solely because it was valid at the first lookup. This narrows the TOCTOU
+	// window; execution authorization must still validate current state again.
+	current, err := v.ResolvePreCrypto(req.PreCrypto)
+	if err != nil {
+		return KeyRecord{}, err
+	}
+	return current, nil
 }
 
 func validateCOSESigStructure(value []byte) error {
