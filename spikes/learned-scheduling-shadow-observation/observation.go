@@ -103,8 +103,14 @@ func Validate(o Observation) error {
 	if o.Baseline.TransferInputBytes != o.Baseline.TotalInputBytes-o.Baseline.LocalInputBytes {
 		return errors.New("transfer_input_bytes is inconsistent with total/local input bytes")
 	}
+	if o.Baseline.TransferInputBytes > ^uint64(0)-o.Baseline.TransferOutputBytes {
+		return errors.New("input/output transfer byte sum overflows uint64")
+	}
 	if o.Baseline.TransferBytes != o.Baseline.TransferInputBytes+o.Baseline.TransferOutputBytes {
 		return errors.New("transfer_bytes is inconsistent with input/output transfer bytes")
+	}
+	if o.Baseline.ComputeMillis > ^uint64(0)-o.Baseline.TransferMillis {
+		return errors.New("compute+transfer duration sum overflows uint64")
 	}
 	if o.Baseline.Eligible && o.Baseline.EstimatedMillis != o.Baseline.ComputeMillis+o.Baseline.TransferMillis {
 		return errors.New("estimated_millis is inconsistent with compute+transfer")
@@ -166,7 +172,7 @@ func DurationResidualMillis(o Observation) (float64, bool) {
 }
 
 func CompletionBeforeDeadline(o Observation) (bool, bool) {
-	if Validate(o) != nil || o.Outcome.DeadlineMillis == nil {
+	if Validate(o) != nil || !o.PolicyEligible || o.Outcome.DeadlineMillis == nil {
 		return false, false
 	}
 	if o.Outcome.Status == "censored" {
