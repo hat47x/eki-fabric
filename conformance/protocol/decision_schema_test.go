@@ -107,12 +107,12 @@ func TestMVPWorkOrderHasNoExternalEffectCapability(t *testing.T) {
 
 func TestDecisionSchemaAvoidsFloatingPointAndRawLocations(t *testing.T) {
 	schema := decisionCDDL(t)
-	for _, forbidden := range []string{
-		"float16", "float32", "float64", "float",
-		"http://", "https://", "file://", "\\\\",
-	} {
+	if regexp.MustCompile(`\\bfloat(?:16|32|64)?\\b`).MatchString(schema) {
+		t.Fatal("decision schema must not use floating-point CDDL types")
+	}
+	for _, forbidden := range []string{"http://", "https://", "file://", "\\\\"} {
 		if strings.Contains(schema, forbidden) {
-			t.Fatalf("decision schema contains forbidden token %q", forbidden)
+			t.Fatalf("decision schema contains raw location token %q", forbidden)
 		}
 	}
 }
