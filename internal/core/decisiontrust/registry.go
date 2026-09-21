@@ -83,7 +83,7 @@ func (r *Registry) Register(record KeyRecord, now time.Time) error {
 }
 
 func (r *Registry) Activate(id KeyID, now time.Time) error {
-	return r.transition(id, KeyStateActive, now, KeyStatePending, KeyStateVerifyOnly)
+	return r.transition(id, KeyStateActive, now, KeyStatePending)
 }
 
 func (r *Registry) SetVerifyOnly(id KeyID, now time.Time) error {
@@ -109,11 +109,11 @@ func (r *Registry) SetVerifyOnly(id KeyID, now time.Time) error {
 }
 
 func (r *Registry) Revoke(id KeyID, now time.Time) error {
-	return r.terminalTransition(id, KeyStateRevoked, now)
+	return r.transitionTerminal(id, KeyStateRevoked, now, KeyStatePending, KeyStateActive, KeyStateVerifyOnly)
 }
 
 func (r *Registry) MarkCompromised(id KeyID, now time.Time) error {
-	return r.terminalTransition(id, KeyStateCompromised, now)
+	return r.transitionTerminal(id, KeyStateCompromised, now, KeyStatePending, KeyStateActive, KeyStateVerifyOnly, KeyStateRevoked)
 }
 
 func (r *Registry) SetPrimary(id KeyID, now time.Time) error {
@@ -203,7 +203,7 @@ func (r *Registry) transition(id KeyID, target KeyState, now time.Time, allowed 
 	return nil
 }
 
-func (r *Registry) terminalTransition(id KeyID, target KeyState, now time.Time) error {
+func (r *Registry) transitionTerminal(id KeyID, target KeyState, now time.Time, allowed ...KeyState) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
@@ -211,7 +211,7 @@ func (r *Registry) terminalTransition(id KeyID, target KeyState, now time.Time) 
 	if !ok {
 		return fmt.Errorf("%w: key %q", ErrKeyNotFound, id)
 	}
-	if record.state == KeyStateRevoked || record.state == KeyStateCompromised {
+	if !containsState(allowed, record.state) {
 		return fmt.Errorf("%w: %s -> %s", ErrInvalidTransition, record.state, target)
 	}
 	record.state = target
