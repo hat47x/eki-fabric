@@ -169,6 +169,9 @@ func CompletionBeforeDeadline(o Observation) (bool, bool) {
 	if Validate(o) != nil || o.Outcome.DeadlineMillis == nil {
 		return false, false
 	}
+	if o.Outcome.Status == "censored" {
+		return false, false
+	}
 	if o.Outcome.Status != "completed" || o.Outcome.ActualMillis == nil {
 		return false, true
 	}
