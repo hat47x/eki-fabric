@@ -186,9 +186,9 @@ func (p VerificationPolicy) validateDecisionWindow(kind authority.DecisionKind, 
 }
 
 type PreCryptoVerificationRequest struct {
-	Key        VerificationRequest
-	ExpiresAt  time.Time
-	Now        time.Time
+	Key         VerificationRequest
+	ExpiresAt   time.Time
+	Now         time.Time
 	TrustBundle TrustBundleMetadata
 }
 
