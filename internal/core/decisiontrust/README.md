@@ -128,6 +128,8 @@ primaryにできるのは、現在のsigning validity window内にある`ACTIVE`
 
 後続Verifierはこのkey selectionに加えてCOSE structure、protected header、cryptographic signature、deterministic CBOR、CDDL、expiry、Task / Attempt / Worker / TaskIR binding、current policy / revocationを確認します。
 
+その前段として`VerifierBoundary.ResolvePreCrypto`は、Trust Bundle revision/freshness、Deployment algorithm allowlist、Decisionのissued/expires、種類別maximum lifetimeを検査し、Registry lookupの失敗をmachine-readableな`VerificationReason`へ正規化します。これはsignature検証の代替ではなく、COSE/CBOR decoderやcryptographic verifierへ進む前のfail-closed gateです。
+
 ## In-memory Registryの位置づけ
 
 現在の`Registry`はM0のdomain semanticsとworker-side trust snapshotを検証するためのin-memory implementationです。
@@ -164,6 +166,6 @@ Go実装側だけを更新してP2 machine-readable schemaと意味がずれる�
 
 ## 次
 
-このpackageが`main`へ入った後、次のwork unitでcanonical Decision payload decoder boundary、COSE protected-header parser、Ed25519 software Reference Signer / Verifier、trust bundle freshness / revision、verification reason codeを追加します。
+Trust Bundle freshness / revision、verification reason taxonomy、Decision time/lifetime policyのpre-crypto boundaryまで実装しました。
 
-COSE / CBOR library dependencyは、Go toolingで取得・lock・testできる環境で導入します。
+次の独立work unitでは、canonical Decision payload decoder、COSE protected-header parser、Ed25519 software Reference Signer / Verifierを接続します。COSE / CBOR library dependencyは、Go toolingで取得・lock・testできる環境でのみ導入し、未検証dependency lockはcommitしません。
