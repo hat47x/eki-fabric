@@ -9,6 +9,7 @@ product/          守る価値・Vision・原則
 requirements/     満たすべきProduct RequirementとThreat Model
 research/         外部事例・標準・比較調査。要求や設計の正本ではない
 spikes/           Architecture採用前の小さな実現可能性検証。仮説・条件・観測・限界を記録する
+architecture/     Gate通過後に採用する論理構造・責務境界・Contractの設計正本
 plan/             上流工程、Acceptance Scenario、Gate、ADR、作業計画
   adr/            長く残る設計判断（設計段階以降）
 docs/             初見の読者、利用者、実装者向けの説明と用語整理
@@ -20,7 +21,7 @@ docs/             初見の読者、利用者、実装者向けの説明と用�
 - `spikes/`の結果は、その実験条件で観測した事実と一般化可能な範囲を分けて記す。Spikeだけを根拠にProduct RequirementやArchitectureを暗黙に変更しない。
 - 同じ要求を複数文書へ複製しない。説明文書は要求IDや正本文書を参照する。
 - `docs/`は理解を助けるための説明層であり、Product RequirementやSecurity Invariantの第二正本にしない。
-- 現段階ではArchitectureを確定しない。特定製品・ライブラリ・プロトコルを要求から直接固定しない。
+- Architecture Entry Gate通過後の採用設計は`architecture/`を正本とする。ただし特定製品・ライブラリ・プロトコルをRequirementから直接固定せず、Requirement・Evidence・Quality Attributeから設計判断を導く。
 - 設計へ進む前に、Product Requirements、Threat Model、主要Acceptance Scenario、未決事項をレビュー可能な状態にする。
 - 「Client」「Worker」「Provider」「Beneficiary」等の主体名は、善意や信頼性を含意しない。
 - 認証済み主体も悪意を持ち得る。security propertyは主体の善意・未改変性・自己申告へ依存させない。
