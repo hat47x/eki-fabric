@@ -88,6 +88,7 @@ type KeyRecord struct {
 	publicKey          crypto.PublicKey
 	publicKeyDigest    contract.Digest
 	state              KeyState
+	activatedAt        time.Time
 	signingNotBefore   time.Time
 	signingNotAfter    time.Time
 	policyRevision     string
@@ -209,6 +210,7 @@ func (r KeyRecord) KeyType() KeyType                { return r.keyType }
 func (r KeyRecord) Curve() Curve                    { return r.curve }
 func (r KeyRecord) PublicKeyDigest() contract.Digest { return r.publicKeyDigest }
 func (r KeyRecord) State() KeyState                 { return r.state }
+func (r KeyRecord) ActivatedAt() time.Time           { return r.activatedAt }
 func (r KeyRecord) SigningNotBefore() time.Time     { return r.signingNotBefore }
 func (r KeyRecord) SigningNotAfter() time.Time      { return r.signingNotAfter }
 func (r KeyRecord) PolicyRevision() string          { return r.policyRevision }
