@@ -71,10 +71,31 @@ Taskごとに必要なResult Assuranceを提供し、確認できない正しさ
 - cryptographic proofの利用可能性
 - 非決定的AI Resultの保証上限
 - Verification cost
+- ProofがProgram / Input / Output / Attemptへbindingされているか
+- valid ProofがExecutor / Program Admissionを迂回しないか
+- Proof System / Verifier / Policy Revisionの違いを追跡できるか
+- Verifiable Computationとprivate-input / zero-knowledgeを混同しないか
+- prover cost / verifier cost / proof transfer cost / peak memoryをnative実行と比較できるか
+
+### 注意
+
+### 将来の測定候補
+
+- `proof_program_binding_rejection`
+- `proof_input_binding_rejection`
+- `proof_output_binding_rejection`
+- `proof_verifier_forgery_rejection`
+- `proof_policy_revision_rejection`
+- `prover_slowdown_ratio`
+- `proof_verification_ratio`
+- `proof_size_bytes`
+- `proof_peak_memory_ratio`
 
 ### 注意
 
 高いAssurance Profileを用意できることと、すべてのTaskを高保証にできることは別です。
+
+Cryptographic proofの利用可否はproof verificationの成功だけで決めません。Program Admission、Application validation、side-effect confirmation、Contribution measurement等の別保証を必要に応じて組み合わせます。また、proof生成costはTask / Proof System / Hardware / Privacy modeで変わるため、単一の公開benchmark値をEKIの実測値として扱いません。
 
 ---
 
