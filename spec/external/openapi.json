@@ -1,0 +1,1276 @@
+{
+  "openapi": "3.2.1",
+  "info": {
+    "title": "EKI Fabric External Client API",
+    "version": "0.1.0",
+    "description": "P0 machine-readable contract for the hostile-input External Client Plane. Authentication is mandatory in production but the concrete OAuth/mTLS mechanism is intentionally deferred to the deployment security profile."
+  },
+  "servers": [
+    {
+      "url": "/"
+    }
+  ],
+  "tags": [
+    {
+      "name": "Tasks",
+      "description": "Submit and observe application-agnostic compute tasks."
+    },
+    {
+      "name": "Artifacts",
+      "description": "Create bounded ingest intents and inspect client-visible artifact descriptors."
+    }
+  ],
+  "paths": {
+    "/v1/tasks": {
+      "post": {
+        "tags": [
+          "Tasks"
+        ],
+        "operationId": "submitTask",
+        "summary": "Submit a task intent",
+        "parameters": [
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": true,
+            "description": "Principal-scoped request identity. Reuse with a different normalized request fingerprint is rejected.",
+            "schema": {
+              "type": "string",
+              "minLength": 8,
+              "maxLength": 128,
+              "pattern": "^[A-Za-z0-9._:-]+$"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TaskRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "202": {
+            "description": "Task admitted or converged to the same idempotent admission result.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TaskAccepted"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Malformed or semantically invalid request.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Authenticated principal is not authorized for the requested operation.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Idempotency key conflict or another request conflict.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "Request exceeds configured ingress limits.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Request is well-formed but cannot be admitted under the effective policy.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Admission, quota or rate budget is exhausted.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        },
+        "x-eki-authentication-required": true
+      }
+    },
+    "/v1/tasks/{task_id}": {
+      "get": {
+        "tags": [
+          "Tasks"
+        ],
+        "operationId": "getTaskStatus",
+        "summary": "Get public task status",
+        "parameters": [
+          {
+            "name": "task_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Client-visible status projection.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TaskPublicStatus"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "The principal cannot observe this task.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Task not found or not disclosed.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        },
+        "x-eki-authentication-required": true
+      }
+    },
+    "/v1/tasks/{task_id}/cancel": {
+      "post": {
+        "tags": [
+          "Tasks"
+        ],
+        "operationId": "cancelTask",
+        "summary": "Request cancellation of future task execution",
+        "parameters": [
+          {
+            "name": "task_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$"
+            }
+          },
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": true,
+            "description": "Principal-scoped request identity. Reuse with a different normalized request fingerprint is rejected.",
+            "schema": {
+              "type": "string",
+              "minLength": 8,
+              "maxLength": 128,
+              "pattern": "^[A-Za-z0-9._:-]+$"
+            }
+          }
+        ],
+        "responses": {
+          "202": {
+            "description": "Cancellation intent accepted.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CancelAccepted"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "The principal cannot cancel this task.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Task not found or not disclosed.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Cancellation conflicts with a terminal or otherwise immutable state.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        },
+        "x-eki-authentication-required": true
+      }
+    },
+    "/v1/tasks/{task_id}/result": {
+      "get": {
+        "tags": [
+          "Tasks"
+        ],
+        "operationId": "getTaskResult",
+        "summary": "Get an accepted task result",
+        "parameters": [
+          {
+            "name": "task_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Accepted result projection.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TaskResult"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "The principal cannot retrieve this result.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Task/result not found or not disclosed.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "No AcceptedResult exists yet.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        },
+        "x-eki-authentication-required": true
+      }
+    },
+    "/v1/artifacts/ingest-intents": {
+      "post": {
+        "tags": [
+          "Artifacts"
+        ],
+        "operationId": "createArtifactIngestIntent",
+        "summary": "Reserve a bounded artifact ingest session",
+        "parameters": [
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": true,
+            "description": "Principal-scoped request identity. Reuse with a different normalized request fingerprint is rejected.",
+            "schema": {
+              "type": "string",
+              "minLength": 8,
+              "maxLength": 128,
+              "pattern": "^[A-Za-z0-9._:-]+$"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ArtifactIngestIntentRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Bounded upload session created.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ArtifactIngestIntentResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Malformed ingest intent.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "The principal is not authorized to ingest this artifact class.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Idempotency conflict.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "Declared artifact exceeds configured ingest limits.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Storage/network/quota budget is exhausted.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        },
+        "x-eki-authentication-required": true
+      }
+    },
+    "/v1/artifact-uploads/{upload_id}": {
+      "put": {
+        "tags": [
+          "Artifacts"
+        ],
+        "operationId": "uploadArtifact",
+        "summary": "Upload bytes for a previously authorized ingest session",
+        "parameters": [
+          {
+            "name": "upload_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/octet-stream": {
+              "schema": {
+                "type": "string",
+                "format": "binary"
+              }
+            }
+          }
+        },
+        "responses": {
+          "202": {
+            "description": "Bytes accepted into staging; content identity and safe-processing facets may still be pending.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ArtifactUploadAccepted"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Upload session is not authorized for this principal/session.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Upload session not found or not disclosed.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Upload session is finalized, expired or conflicts with prior content.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "Actual bytes exceed the reserved maximum.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Expected digest/size or ingest policy validation failed.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        },
+        "x-eki-authentication-required": true,
+        "x-eki-data-plane": true
+      }
+    },
+    "/v1/artifacts/{artifact_id}": {
+      "get": {
+        "tags": [
+          "Artifacts"
+        ],
+        "operationId": "getArtifactDescriptor",
+        "summary": "Get a client-visible artifact descriptor",
+        "parameters": [
+          {
+            "name": "artifact_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Artifact descriptor.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ArtifactDescriptor"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "The principal cannot observe this artifact.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Artifact not found or not disclosed.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        },
+        "x-eki-authentication-required": true
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "Digest": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "algorithm",
+          "value"
+        ],
+        "properties": {
+          "algorithm": {
+            "type": "string",
+            "enum": [
+              "sha256"
+            ]
+          },
+          "value": {
+            "type": "string",
+            "pattern": "^[0-9a-f]{64}$"
+          }
+        }
+      },
+      "ArtifactReference": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "name",
+          "artifact_id"
+        ],
+        "properties": {
+          "name": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128,
+            "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$"
+          },
+          "artifact_id": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128,
+            "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$"
+          }
+        }
+      },
+      "ExecutorRequirement": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "id"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128,
+            "pattern": "^[a-z0-9](?:[a-z0-9._-]{0,126}[a-z0-9])?$"
+          },
+          "version_constraint": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 64
+          }
+        }
+      },
+      "GpuRequirement": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "count"
+        ],
+        "properties": {
+          "count": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 16
+          },
+          "memory_bytes_min": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 1099511627776
+          },
+          "vendor_hint": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 64
+          }
+        }
+      },
+      "ResourceRequest": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "cpu_millis",
+          "memory_bytes",
+          "wall_time_seconds",
+          "output_bytes_max",
+          "network_bytes_max"
+        ],
+        "properties": {
+          "cpu_millis": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 256000
+          },
+          "memory_bytes": {
+            "type": "integer",
+            "minimum": 1048576,
+            "maximum": 17592186044416
+          },
+          "temporary_disk_bytes": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 17592186044416,
+            "default": 0
+          },
+          "wall_time_seconds": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 604800
+          },
+          "output_bytes_max": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 1099511627776
+          },
+          "network_bytes_max": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 17592186044416
+          },
+          "gpu": {
+            "$ref": "#/components/schemas/GpuRequirement"
+          }
+        }
+      },
+      "ReliabilityRequest": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "retryable",
+          "preemptible",
+          "max_attempts",
+          "effect_mode"
+        ],
+        "properties": {
+          "retryable": {
+            "type": "boolean"
+          },
+          "preemptible": {
+            "type": "boolean"
+          },
+          "checkpointable": {
+            "type": "boolean",
+            "default": false
+          },
+          "deterministic": {
+            "type": "boolean",
+            "default": false
+          },
+          "max_attempts": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 32
+          },
+          "effect_mode": {
+            "type": "string",
+            "enum": [
+              "none"
+            ],
+            "description": "P0/MVP accepts pure-compute tasks only. Later versions may add explicit external-effect profiles without changing v1 semantics."
+          }
+        }
+      },
+      "ExtensionEnvelope": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "id",
+          "critical",
+          "payload"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "minLength": 3,
+            "maxLength": 160,
+            "pattern": "^[a-z0-9](?:[a-z0-9._-]*/[a-z0-9._-]+|[a-z0-9._-]+)$"
+          },
+          "critical": {
+            "type": "boolean"
+          },
+          "payload": {
+            "type": "object",
+            "maxProperties": 64,
+            "additionalProperties": true
+          }
+        }
+      },
+      "TaskRequest": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "schema",
+          "executor",
+          "inputs",
+          "parameters",
+          "resources",
+          "reliability"
+        ],
+        "properties": {
+          "schema": {
+            "type": "string",
+            "const": "eki.task-request/v1"
+          },
+          "executor": {
+            "$ref": "#/components/schemas/ExecutorRequirement"
+          },
+          "inputs": {
+            "type": "array",
+            "maxItems": 64,
+            "items": {
+              "$ref": "#/components/schemas/ArtifactReference"
+            }
+          },
+          "parameters": {
+            "type": "object",
+            "maxProperties": 256,
+            "additionalProperties": true,
+            "description": "Executor-specific parameters. Admission validates them against the approved executor schema before they can reach a worker."
+          },
+          "resources": {
+            "$ref": "#/components/schemas/ResourceRequest"
+          },
+          "reliability": {
+            "$ref": "#/components/schemas/ReliabilityRequest"
+          },
+          "deadline": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "priority": {
+            "type": "string",
+            "enum": [
+              "background",
+              "normal",
+              "high"
+            ],
+            "default": "normal",
+            "description": "Requested priority only; policy determines effective priority."
+          },
+          "result_profile": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128,
+            "pattern": "^[a-z0-9](?:[a-z0-9._-]{0,126}[a-z0-9])?$"
+          },
+          "extensions": {
+            "type": "array",
+            "maxItems": 32,
+            "items": {
+              "$ref": "#/components/schemas/ExtensionEnvelope"
+            }
+          }
+        },
+        "example": {
+          "schema": "eki.task-request/v1",
+          "executor": {
+            "id": "dev.example.transform",
+            "version_constraint": "^1"
+          },
+          "inputs": [
+            {
+              "name": "source",
+              "artifact_id": "art_01"
+            }
+          ],
+          "parameters": {
+            "mode": "normalize"
+          },
+          "resources": {
+            "cpu_millis": 1000,
+            "memory_bytes": 268435456,
+            "wall_time_seconds": 300,
+            "output_bytes_max": 16777216,
+            "network_bytes_max": 134217728
+          },
+          "reliability": {
+            "retryable": true,
+            "preemptible": true,
+            "checkpointable": false,
+            "deterministic": true,
+            "max_attempts": 3,
+            "effect_mode": "none"
+          },
+          "priority": "normal"
+        }
+      },
+      "TaskAccepted": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "schema",
+          "task_id",
+          "status",
+          "submitted_at"
+        ],
+        "properties": {
+          "schema": {
+            "type": "string",
+            "const": "eki.task-accepted/v1"
+          },
+          "task_id": {
+            "type": "string",
+            "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$"
+          },
+          "status": {
+            "type": "string",
+            "const": "queued"
+          },
+          "submitted_at": {
+            "type": "string",
+            "format": "date-time"
+          }
+        }
+      },
+      "PublicAssuranceSummary": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "profile": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "pending",
+              "satisfied",
+              "not-satisfied",
+              "not-required"
+            ]
+          }
+        }
+      },
+      "TaskPublicStatus": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "schema",
+          "task_id",
+          "status",
+          "submitted_at",
+          "updated_at"
+        ],
+        "properties": {
+          "schema": {
+            "type": "string",
+            "const": "eki.task-public-status/v1"
+          },
+          "task_id": {
+            "type": "string",
+            "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "queued",
+              "running",
+              "verifying",
+              "reconciling",
+              "attention-required",
+              "completed",
+              "cancelled",
+              "failed"
+            ]
+          },
+          "submitted_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "assurance": {
+            "$ref": "#/components/schemas/PublicAssuranceSummary"
+          },
+          "terminal_code": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128,
+            "pattern": "^[A-Z][A-Z0-9_]{0,127}$"
+          },
+          "public_message": {
+            "type": "string",
+            "maxLength": 1024
+          }
+        },
+        "description": "Public projection only. It intentionally excludes worker identity, lease, attempt topology, policy revision and raw verification evidence."
+      },
+      "TaskResult": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "schema",
+          "task_id",
+          "artifacts"
+        ],
+        "properties": {
+          "schema": {
+            "type": "string",
+            "const": "eki.task-result/v1"
+          },
+          "task_id": {
+            "type": "string",
+            "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$"
+          },
+          "artifacts": {
+            "type": "array",
+            "maxItems": 64,
+            "items": {
+              "$ref": "#/components/schemas/ArtifactDescriptor"
+            }
+          },
+          "assurance": {
+            "$ref": "#/components/schemas/PublicAssuranceSummary"
+          }
+        }
+      },
+      "CancelAccepted": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "schema",
+          "task_id",
+          "status"
+        ],
+        "properties": {
+          "schema": {
+            "type": "string",
+            "const": "eki.task-cancel-accepted/v1"
+          },
+          "task_id": {
+            "type": "string",
+            "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$"
+          },
+          "status": {
+            "type": "string",
+            "const": "cancellation-requested"
+          }
+        }
+      },
+      "ArtifactFacetState": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "content_identity",
+          "safe_processing",
+          "provenance",
+          "availability"
+        ],
+        "properties": {
+          "content_identity": {
+            "type": "string",
+            "enum": [
+              "pending",
+              "verified",
+              "failed"
+            ]
+          },
+          "safe_processing": {
+            "type": "string",
+            "enum": [
+              "not-required",
+              "pending",
+              "passed",
+              "failed"
+            ]
+          },
+          "provenance": {
+            "type": "string",
+            "enum": [
+              "unassessed",
+              "recorded",
+              "rejected"
+            ]
+          },
+          "availability": {
+            "type": "string",
+            "enum": [
+              "staging",
+              "available",
+              "rejected"
+            ]
+          }
+        }
+      },
+      "ArtifactDescriptor": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "schema",
+          "artifact_id",
+          "size_bytes",
+          "media_type",
+          "data_class",
+          "facets"
+        ],
+        "properties": {
+          "schema": {
+            "type": "string",
+            "const": "eki.artifact-descriptor/v1"
+          },
+          "artifact_id": {
+            "type": "string",
+            "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$"
+          },
+          "digest": {
+            "$ref": "#/components/schemas/Digest"
+          },
+          "size_bytes": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 17592186044416
+          },
+          "media_type": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 255
+          },
+          "data_class": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128,
+            "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$"
+          },
+          "facets": {
+            "$ref": "#/components/schemas/ArtifactFacetState"
+          }
+        },
+        "description": "A digest may be absent until content identity is finalized. The facets are independent; no single trusted=true bit exists."
+      },
+      "ArtifactIngestIntentRequest": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "schema",
+          "declared_size_bytes",
+          "media_type",
+          "requested_data_class"
+        ],
+        "properties": {
+          "schema": {
+            "type": "string",
+            "const": "eki.artifact-ingest-intent-request/v1"
+          },
+          "declared_size_bytes": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 17592186044416
+          },
+          "media_type": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 255
+          },
+          "requested_data_class": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128,
+            "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$",
+            "description": "A request/floor hint. Policy may make the effective class stricter, never weaker."
+          },
+          "expected_digest": {
+            "$ref": "#/components/schemas/Digest"
+          }
+        }
+      },
+      "UploadSession": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "upload_id",
+          "method",
+          "href",
+          "expires_at",
+          "max_bytes"
+        ],
+        "properties": {
+          "upload_id": {
+            "type": "string",
+            "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$"
+          },
+          "method": {
+            "type": "string",
+            "const": "PUT"
+          },
+          "href": {
+            "type": "string",
+            "format": "uri-reference",
+            "maxLength": 2048
+          },
+          "expires_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "max_bytes": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 17592186044416
+          }
+        }
+      },
+      "ArtifactIngestIntentResponse": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "schema",
+          "ingest_id",
+          "upload"
+        ],
+        "properties": {
+          "schema": {
+            "type": "string",
+            "const": "eki.artifact-ingest-intent-response/v1"
+          },
+          "ingest_id": {
+            "type": "string",
+            "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$"
+          },
+          "upload": {
+            "$ref": "#/components/schemas/UploadSession"
+          }
+        }
+      },
+      "ArtifactUploadAccepted": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "schema",
+          "ingest_id",
+          "artifact"
+        ],
+        "properties": {
+          "schema": {
+            "type": "string",
+            "const": "eki.artifact-upload-accepted/v1"
+          },
+          "ingest_id": {
+            "type": "string",
+            "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$"
+          },
+          "artifact": {
+            "$ref": "#/components/schemas/ArtifactDescriptor"
+          }
+        }
+      },
+      "Problem": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "type",
+          "title",
+          "status",
+          "code"
+        ],
+        "properties": {
+          "type": {
+            "type": "string",
+            "format": "uri-reference"
+          },
+          "title": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 256
+          },
+          "status": {
+            "type": "integer",
+            "minimum": 400,
+            "maximum": 599
+          },
+          "detail": {
+            "type": "string",
+            "maxLength": 2048
+          },
+          "instance": {
+            "type": "string",
+            "format": "uri-reference"
+          },
+          "code": {
+            "type": "string",
+            "pattern": "^[A-Z][A-Z0-9_]{0,127}$"
+          },
+          "retryable": {
+            "type": "boolean"
+          },
+          "task_id": {
+            "type": "string",
+            "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$"
+          },
+          "policy_reason_category": {
+            "type": "string",
+            "pattern": "^[A-Z][A-Z0-9_]{0,127}$"
+          }
+        },
+        "description": "RFC 9457 Problem Details with stable EKI extensions. Clients must branch on code/status, not detail text."
+      }
+    }
+  }
+}
