@@ -68,7 +68,7 @@ func (r VerificationRequest) Validate() error {
 		return fmt.Errorf("%w: issued time is required", ErrInvalidKeyRecord)
 	}
 	switch r.ProtectedAlgorithm {
-	case AlgorithmEd25519, AlgorithmES256:
+	case AlgorithmEdDSA, AlgorithmES256:
 	default:
 		return fmt.Errorf("%w: unsupported algorithm %q", ErrInvalidKeyRecord, r.ProtectedAlgorithm)
 	}
