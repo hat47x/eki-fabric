@@ -118,4 +118,8 @@ M0 skeleton作成時には、Repositoryの要求versionより古いGo 1.23.2で�
 
 ## 次の実装
 
-M0の次の作業単位では、restart後もTask identityとrevisionを保持できるdurable State Store reference adapterを追加します。
+M0 / DP-1のReference durable State StoreにはSQLiteを採用します。選定理由と適用境界は`plan/adr/0003-m0-reference-state-store.md`を参照してください。
+
+Reference Adapterは単一Control Plane hostのlocal filesystem向けです。SQLite fileをNFS / SMB等のnetwork filesystemへ置いてmulti-host Control Planeを構成する用途には使いません。
+
+次の作業単位では`modernc.org/sqlite`をGo toolingで正しく依存解決し、restart後もTask identityとrevisionを保持できるSQLite Adapterを追加します。
