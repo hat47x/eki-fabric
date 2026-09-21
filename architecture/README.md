@@ -64,8 +64,9 @@ Architectureでは、使用製品やProcess数より先に次を固定します�
 3. `CONTROL_DATA_PLANE.md` — Control metadataとbulk Artifact transferの分離、Data access / cache / transfer境界
 4. `DEPLOYMENT_PROFILES.md` — 小規模社内、Enterprise、Browser / Ad-hoc、Federation、Public-interest Grant等の物理構成
 5. `TASK_STATE_MODEL.md` — Task / Attempt / Lease / Result / External Effect / Recoveryの状態機械
+6. `EXTENSION_SPI.md` — Queue / State / Storage / Identity / Runtime / Verification等の差し替え境界
 
-後続でExtension SPIを追加します。
+これでArchitecture Baseline 0.1の主要6領域が揃いました。次は横断レビューとMVP cutへ進みます。
 
 ## Logical AuthorityとProcessを分ける
 
