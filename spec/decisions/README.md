@@ -59,7 +59,7 @@ v1では:
 
 content/profileの具体的なmedia type / identifier表現はSecurity Profileで固定しますが、unprotected headerだけに置いて判定することはしません。
 
-具体signature algorithm / key typeは別Security Profileで固定します。
+`plan/adr/0004-signed-decision-cryptographic-profile.md` でSecurity Profileを固定しています。M0 software referenceはEd25519 / COSE EdDSAを先行実装し、Enterprise/KMS互換profileとしてES256 / P-256を第一級に扱います。algorithmはDeployment / Authority key policyのallowlistで決まり、Client / Worker inputでは拡張できません。
 
 RFC 9052はCOSE_Sign1等のstructureと署名処理を定義し、algorithm自体はRFC 9053等へ分離しています。その分離をEKIでも維持します。
 
