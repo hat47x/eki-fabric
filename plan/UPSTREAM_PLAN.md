@@ -300,13 +300,15 @@ Gate PASSは全研究の完了を意味しません。Architectureが未解決�
 
 ## Architecture段階で比較する領域
 
-Gate Uは2026-09-21に条件付きPASSとなり、Architecture baseline作成を開始しました。`architecture/AUTHORITY_BOUNDARIES.md` にAuthority / Trust Boundary Map、`architecture/CONTRACT_BOUNDARIES.md` にExternal / Internal Contract Boundary、`architecture/CONTROL_DATA_PLANE.md` にControl Plane / Data Plane、`architecture/DEPLOYMENT_PROFILES.md` にDeployment ProfileをBaseline 0.1として定義しています。
+Gate Uは2026-09-21に条件付きPASSとなり、Architecture baseline作成を開始しました。`architecture/AUTHORITY_BOUNDARIES.md` にAuthority / Trust Boundary Map、`architecture/CONTRACT_BOUNDARIES.md` にExternal / Internal Contract Boundary、`architecture/CONTROL_DATA_PLANE.md` にControl Plane / Data Plane、`architecture/DEPLOYMENT_PROFILES.md` にDeployment Profile、`architecture/TASK_STATE_MODEL.md` にTask / Attempt / Lease / Recovery State ModelをBaseline 0.1として定義しています。
 
 Contract Boundaryでは、TaskRequestをhostile inputとして扱い、AdmittedTask / TaskIR、Attempt、PlacementProposal / Approval、Lease、ExecutorApproval、ArtifactGrant、WorkOrder、ResultClaim、VerificationResult、AcceptedResult、ContributionRecordの生成主体・binding・freshness・Client可視性を分離しました。Client / WorkerからのClaimをAuthorityが確定したDecisionへ直接読み替えず、signed objectはin-placeで書き換えずnew Attempt / revision / revoke / supersedeとして履歴を残します。
 
 Control / Data Planeでは、Control Planeをmetadata / authority / stateへ限定し、bulk Artifact transferをData Plane Store / Cacheへ分離しました。Content Digest、Artifact Record、Storage Location、ArtifactGrant、transport-specific短命access、Cache localityを別概念として扱い、same digestによるcross-tenant authorization統合を禁止します。Worker read pathではGrant再検証→短命Data access→Digest検証→Executor公開の順序を標準とし、Upload / Result / Checkpointでもsize budget、safe processing、finalizationを別境界として扱います。
 
 Deployment Profileでは、Logical AuthorityとContract semanticsを全Profileで共通に保ちながら、Process / Host / Network境界だけを規模に応じて比例化しました。DP-1 Small Managedでは単一`eki-control`への物理統合を許容しつつkey / interface / state / auditを論理分離し、DP-2 EnterpriseではGateway / Authority / Data Plane分離を強化できます。DP-3 Browser / Ad-hoc、DP-4 Federation、DP-5 Public-interest Compute Grant、DP-6 Dedicated Poolを定義し、Worker outbound-first、internal queue非公開、Federation非推移、Compute GrantとData Grant分離を共通Invariantとしています。
+
+Task State Modelでは、Task Lifecycle、Attempt、Lease、Result Verification、External Effect、Cancellation Intent、Recoveryを直交する状態として分離しました。Retryは新Attemptを作り、Queue delivery retryでは新Attemptを作りません。Lease expiryやWorker disappearanceをTask failure / external effect failureへ読み替えず、non-idempotent effect dispatch後はauthoritative Receiptがない限りUNKNOWN / RECONCILINGを維持します。Mass reclaimはbackoffだけでなくrelease件数・transfer byte・compute budgetで再Admissionし、Task / Attempt / Lease revisionとfencingでstale writerやold sessionのAuthority復活を防ぎます。
 
 この段階でも未解決研究を先取りして特定実装へ固定しません。Architectureの各作業単位は最新`main`から開始し、PR / merge後に履歴を収束させます。
 

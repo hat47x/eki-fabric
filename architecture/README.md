@@ -63,8 +63,9 @@ Architectureでは、使用製品やProcess数より先に次を固定します�
 2. `CONTRACT_BOUNDARIES.md` — External / Internal Contractの意味変換とbinding
 3. `CONTROL_DATA_PLANE.md` — Control metadataとbulk Artifact transferの分離、Data access / cache / transfer境界
 4. `DEPLOYMENT_PROFILES.md` — 小規模社内、Enterprise、Browser / Ad-hoc、Federation、Public-interest Grant等の物理構成
+5. `TASK_STATE_MODEL.md` — Task / Attempt / Lease / Result / External Effect / Recoveryの状態機械
 
-後続でState / Lease、Extension SPIを追加します。
+後続でExtension SPIを追加します。
 
 ## Logical AuthorityとProcessを分ける
 
