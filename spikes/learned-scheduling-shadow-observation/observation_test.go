@@ -94,6 +94,26 @@ func TestBaselineArithmeticMustRemainSelfConsistent(t *testing.T) {
 	}
 }
 
+func TestBaselineArithmeticRejectsUint64Overflow(t *testing.T) {
+	o := fixture()
+	o.Baseline.TotalInputBytes = ^uint64(0)
+	o.Baseline.LocalInputBytes = 0
+	o.Baseline.TransferInputBytes = ^uint64(0)
+	o.Baseline.TransferOutputBytes = 1
+	o.Baseline.TransferBytes = 0
+	if err := Validate(o); err == nil {
+		t.Fatal("expected transfer byte overflow rejection")
+	}
+
+	o = fixture()
+	o.Baseline.ComputeMillis = ^uint64(0)
+	o.Baseline.TransferMillis = 1
+	o.Baseline.EstimatedMillis = 0
+	if err := Validate(o); err == nil {
+		t.Fatal("expected duration overflow rejection")
+	}
+}
+
 func TestIneligibleRowsRemainSeparatedFromOptimization(t *testing.T) {
 	o := fixture()
 	o.PolicyEligible = false
@@ -106,6 +126,9 @@ func TestIneligibleRowsRemainSeparatedFromOptimization(t *testing.T) {
 	}
 	if _, ok := DurationResidualMillis(o); ok {
 		t.Fatal("ineligible row must not yield residual target")
+	}
+	if before, known := CompletionBeforeDeadline(o); known || before {
+		t.Fatalf("ineligible row must not yield deadline target: before=%v known=%v", before, known)
 	}
 }
 
