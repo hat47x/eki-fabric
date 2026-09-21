@@ -183,6 +183,53 @@ func TestRevokedKeyCanEscalateToCompromised(t *testing.T) {
 	}
 }
 
+func TestVerificationRejectsDecisionIssuedBeforeAdministrativeActivation(t *testing.T) {
+	now := time.Date(2026, 9, 22, 0, 0, 0, 0, time.UTC)
+	activation := now.Add(time.Hour)
+	registry := NewRegistry(now)
+
+	cfg := ed25519Config("kid-activation-boundary", 1, now)
+	cfg.SigningNotBefore = now.Add(-time.Hour)
+	cfg.SigningNotAfter = now.Add(24 * time.Hour)
+	key := mustKey(t, cfg, now)
+
+	if err := registry.Register(key, now); err != nil {
+		t.Fatalf("Register() error = %v", err)
+	}
+	if err := registry.Activate(key.ID(), activation); err != nil {
+		t.Fatalf("Activate() error = %v", err)
+	}
+
+	got, err := registry.Get(key.ID())
+	if err != nil {
+		t.Fatalf("Get() error = %v", err)
+	}
+	if !got.ActivatedAt().Equal(activation) {
+		t.Fatalf("ActivatedAt() = %v, want %v", got.ActivatedAt(), activation)
+	}
+
+	before := verificationRequestFor(got, authority.DecisionWorkOrder, activation.Add(-time.Nanosecond))
+	if _, err := registry.ResolveVerificationKey(before); !errors.Is(err, ErrKeyNotVerifiable) {
+		t.Fatalf("pre-activation verification error = %v, want ErrKeyNotVerifiable", err)
+	}
+
+	atActivation := verificationRequestFor(got, authority.DecisionWorkOrder, activation)
+	if _, err := registry.ResolveVerificationKey(atActivation); err != nil {
+		t.Fatalf("verification at activation error = %v", err)
+	}
+
+	if err := registry.SetVerifyOnly(key.ID(), activation.Add(time.Hour)); err != nil {
+		t.Fatalf("SetVerifyOnly() error = %v", err)
+	}
+	retired, err := registry.Get(key.ID())
+	if err != nil {
+		t.Fatalf("Get() after VERIFY_ONLY error = %v", err)
+	}
+	if !retired.ActivatedAt().Equal(activation) {
+		t.Fatalf("ActivatedAt() changed after retirement: %v", retired.ActivatedAt())
+	}
+}
+
 func TestVerificationRequiresIssuedTimeInsideSigningWindow(t *testing.T) {
 	now := time.Date(2026, 9, 22, 0, 0, 0, 0, time.UTC)
 	registry := NewRegistry(now)
