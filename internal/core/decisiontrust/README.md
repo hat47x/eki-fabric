@@ -157,6 +157,12 @@ Control Planeの永続的なAdministrative source-of-truthをin-memory Mapへ固
 - Authority Principal mismatch拒否
 - protected algorithm mismatch拒否
 - public keyのdefensive copy
+- private keyとpublic KeyRecordの一致検証
+- Software Signer内のprivate key defensive copy
+- ES256 signatureを64-byte raw `R || S`へ固定
+- ASN.1 DER形式のES256 signature拒否
+- sign処理中revocation時にsignatureを返さない
+- crypto検証後のcurrent trust state再検査
 
 ## Protocolとの整合
 
@@ -164,8 +170,27 @@ P2 CDDLのDecision kind / Authority roleとGo constantsの一致は`conformance/
 
 Go実装側だけを更新してP2 machine-readable schemaと意味がずれることを防ぎます。
 
+## Cryptographic primitive boundary
+
+pre-crypto boundaryの次段として、Go standard libraryだけで署名・検証primitiveを接続しています。
+
+- EdDSAはEd25519でexact `Sig_structure` bytesを署名する。
+- ES256は`SHA-256(Sig_structure)`へECDSA署名し、COSEで要求するfixed-width 64-byte `R || S`形式を生成・検証する。ASN.1 DER signatureはこの境界では受理しない。
+- Software SignerはRegistryが選んだprimary keyだけを利用し、Callerが任意`kid`を指定してsigning keyを選ぶAPIにはしない。
+- private key登録時にpublic KeyRecordとの一致を検証し、Software Signer内ではdefensive copyを保持する。
+- sign前後でRegistryを再確認し、sign処理中にrevocation等でAuthorizationが変化した場合は生成済みsignatureをCallerへ返さない。
+- verifyは既存`ResolvePreCrypto`を必ず通した後にcrypto検証し、crypto成功後にもpre-crypto gateを再評価する。
+
+`ReferenceSoftwareSigner`はM0 / development / DP-1向けのreferenceです。private keyをprocess memoryへ保持するため、DP-2 Enterpriseで想定するKMS / HSMの代替ではありません。KMS / HSM Adapterも将来このtyped Authority semanticsを維持し、genericな`Sign(bytes)` capabilityをScheduler等へ公開しません。
+
+`SignCOSESigStructure`が受け取るbytesは、将来のtrusted internal COSE encoderが構築したSig_structureを想定します。Clientが供給した任意bytesをそのまま署名する入口ではありません。現在はconcrete COSE/CBOR parserをまだ接続していないため、この点は呼び出し側boundaryで維持します。
+
+ES256では同じmessage/public keyに対して複数のvalid signature表現があり得るため、signature bytesそのものをDecision identity、idempotency key、replay protection tokenとして利用しません。Decision ID、payload digest、nonce等のsigned semanticsを使います。
+
+crypto後の再検査はrevocationとのTOCTOU窓を縮めますが、Verifier returnとの完全な原子性を保証するものではありません。WorkerのExecution Authorizationは実行直前にもcurrent Lease / Policy / Decision stateを確認します。
+
 ## 次
 
-Trust Bundle freshness / revision、verification reason taxonomy、Decision time/lifetime policyのpre-crypto boundaryまで実装しました。
+Trust Bundle freshness / revision、verification reason taxonomy、Decision time/lifetime policy、およびstandard-library cryptographic primitive boundaryまで実装しました。
 
-次の独立work unitでは、canonical Decision payload decoder、COSE protected-header parser、Ed25519 software Reference Signer / Verifierを接続します。COSE / CBOR library dependencyは、Go toolingで取得・lock・testできる環境でのみ導入し、未検証dependency lockはcommitしません。
+次の独立work unitはcanonical Decision payload decoderとCOSE protected-header parserです。そこで初めてraw COSE_Sign1からprotected `alg` / `kid` / profileとpayloadを安全に抽出し、deterministic CBOR / CDDL検査を現在のVerifier boundaryへ接続します。COSE / CBOR library dependencyは、Go toolingで取得・lock・testできる環境でのみ導入し、未検証dependency lockはcommitしません。
