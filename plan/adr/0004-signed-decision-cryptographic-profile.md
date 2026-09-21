@@ -392,8 +392,12 @@ private key、raw secret、unnecessary Artifact contentをlogしません。
 - FIPS 186-5 — https://csrc.nist.gov/pubs/fips/186-5/final
 - NIST SP 800-57 Part 1 Rev.5 — https://csrc.nist.gov/pubs/sp/800/57/pt1/r5/final
 
-## 29. Follow-up
+## 29. Implementation status / Follow-up
 
-次の実装workでは、まずstandard libraryでEd25519を使うM0 Signer / Verifier domain boundaryとin-memory Trust Registry conformanceを作ります。
+M0 Signer / Verifier domain boundary、in-memory Trust Registry、pre-crypto policy gate、およびstandard-library cryptographic primitive boundaryまで実装しました。
 
-COSE / CBOR library dependencyはSQLiteと同様にGo toolingで取得・lock・testできる環境で導入し、未検証dependency lockを推測でcommitしません。
+Reference Software SignerはEdDSA/Ed25519とES256/P-256を扱い、ES256 signatureはCOSEのfixed-width 64-byte `R || S`形式を使います。これはM0 / development / DP-1向けreferenceであり、DP-2 Enterpriseではprivate keyをapplication memoryへexportしないKMS / HSM Adapterを引き続き第一候補とします。
+
+Signerはtyped Authority requestとRegistry-selected primary keyを要求し、genericな`Sign(bytes)` capabilityとしてScheduler等へ公開しません。signature verificationもpre-crypto gateを前後に再評価します。ただし最終Authorizationの原子性はcrypto layerだけでは保証せず、Execution直前のcurrent Lease / Policy / Decision validationを別途要求します。
+
+次の実装workはcanonical Decision payload decoderとCOSE protected-header parserです。COSE / CBOR library dependencyはSQLiteと同様にGo toolingで取得・lock・testできる環境で導入し、未検証dependency lockを推測でcommitしません。
