@@ -208,8 +208,8 @@ func (r KeyRecord) PublicKey() crypto.PublicKey {
 	return clonePublicKey(r.publicKey)
 }
 
-func (r KeyRecord) scope() Scope {
-	return Scope{
+func (r KeyRecord) scope() signingScope {
+	return signingScope{
 		TrustDomain:        r.trustDomain,
 		AuthorityRole:      r.authorityRole,
 		AuthorityPrincipal: r.authorityPrincipal,
