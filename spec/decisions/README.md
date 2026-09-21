@@ -49,11 +49,15 @@ v1では:
 - payloadはdetachedにせずCOSE_Sign1内へ含める
 - `alg`をprotected headerへ置く
 - `kid`をprotected headerへ置く
+- EKI signed-decision profileを識別するcontent/profile情報もprotected headerへ置く
+- protected header map自体もdeterministic CBORで符号化する
 - algorithmはTrust / Policy Administrationのallowlistから選ぶ
 - Client / Worker supplied valueでalgorithmを選ばない
 - external AADはMVPではempty bstrとする
 
 をBaselineとします。
+
+content/profileの具体的なmedia type / identifier表現はSecurity Profileで固定しますが、unprotected headerだけに置いて判定することはしません。
 
 具体signature algorithm / key typeは別Security Profileで固定します。
 
