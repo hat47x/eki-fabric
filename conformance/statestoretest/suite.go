@@ -3,6 +3,8 @@ package statestoretest
 import (
 	"context"
 	"errors"
+	"path/filepath"
+	"sync"
 	"testing"
 	"time"
 
@@ -130,6 +132,67 @@ func RunTaskStoreContract(t *testing.T, newStore Factory) {
 		}
 	})
 
+	t.Run("concurrent-cas-has-single-winner", func(t *testing.T) {
+		store := newStore(t)
+		record := newTask(t, "concurrent-cas")
+		if err := store.CreateTask(context.Background(), record); err != nil {
+			t.Fatalf("CreateTask() error = %v", err)
+		}
+
+		ready := nextRevision(record, taskstate.TaskPhaseReady)
+		active := nextRevision(record, taskstate.TaskPhaseActive)
+
+		start := make(chan struct{})
+		results := make(chan error, 2)
+		var wg sync.WaitGroup
+		for _, next := range []taskstate.TaskRecord{ready, active} {
+			next := next
+			wg.Add(1)
+			go func() {
+				defer wg.Done()
+				<-start
+				results <- store.CompareAndSwapTask(context.Background(), record.ID, record.Revision, next)
+			}()
+		}
+		close(start)
+		wg.Wait()
+		close(results)
+
+		var successes, conflicts int
+		for err := range results {
+			switch {
+			case err == nil:
+				successes++
+			case errors.Is(err, statestore.ErrConflict):
+				conflicts++
+			default:
+				t.Fatalf("unexpected CAS error = %v", err)
+			}
+		}
+		if successes != 1 || conflicts != 1 {
+			t.Fatalf("CAS results: successes=%d conflicts=%d, want 1/1", successes, conflicts)
+		}
+
+		got, err := store.LoadTask(context.Background(), record.ID)
+		if err != nil {
+			t.Fatalf("LoadTask() error = %v", err)
+		}
+		if got.Revision != record.Revision+1 {
+			t.Fatalf("stored revision = %d, want %d", got.Revision, record.Revision+1)
+		}
+	})
+
+	t.Run("invalid-record", func(t *testing.T) {
+		store := newStore(t)
+		record := newTask(t, "invalid-record")
+		record.TaskIRDigest = contract.Digest{}
+
+		err := store.CreateTask(context.Background(), record)
+		if !errors.Is(err, taskstate.ErrInvalidTaskRecord) {
+			t.Fatalf("CreateTask() error = %v, want ErrInvalidTaskRecord", err)
+		}
+	})
+
 	t.Run("cancelled-context", func(t *testing.T) {
 		store := newStore(t)
 		ctx, cancel := context.WithCancel(context.Background())
@@ -142,6 +205,10 @@ func RunTaskStoreContract(t *testing.T, newStore Factory) {
 		if _, err := store.LoadTask(ctx, record.ID); !errors.Is(err, context.Canceled) {
 			t.Fatalf("LoadTask() error = %v, want context.Canceled", err)
 		}
+		next := nextRevision(record, taskstate.TaskPhaseReady)
+		if err := store.CompareAndSwapTask(ctx, record.ID, record.Revision, next); !errors.Is(err, context.Canceled) {
+			t.Fatalf("CompareAndSwapTask() error = %v, want context.Canceled", err)
+		}
 	})
 }
 
@@ -152,7 +219,7 @@ func RunDurabilityContract(t *testing.T, factory DurableFactory) {
 	}
 
 	t.Run("survives-close-and-reopen", func(t *testing.T) {
-		location := t.TempDir() + "/state.db"
+		location := filepath.Join(t.TempDir(), "state.db")
 		record := newTask(t, "durable-reopen")
 
 		store, closeStore := factory.Open(t, location)
