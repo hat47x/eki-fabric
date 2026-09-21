@@ -174,13 +174,26 @@ func TestIndependentGroupsMayUseDifferentSplits(t *testing.T) {
 	}
 }
 
-func TestDeadlineForNonCompletionIsKnownFailureWhenDeadlinePresent(t *testing.T) {
+func TestDeadlineForTerminalNonCompletionIsKnownFailureWhenDeadlinePresent(t *testing.T) {
+	for _, status := range []string{"preempted", "failed"} {
+		o := fixture()
+		o.Outcome.Status = status
+		o.Outcome.ActualMillis = nil
+		o.Outcome.ObservedMillis = 60
+		before, known := CompletionBeforeDeadline(o)
+		if !known || before {
+			t.Fatalf("%s: before=%v known=%v", status, before, known)
+		}
+	}
+}
+
+func TestCensoredDeadlineOutcomeRemainsUnknown(t *testing.T) {
 	o := fixture()
-	o.Outcome.Status = "preempted"
+	o.Outcome.Status = "censored"
 	o.Outcome.ActualMillis = nil
 	o.Outcome.ObservedMillis = 60
 	before, known := CompletionBeforeDeadline(o)
-	if !known || before {
-		t.Fatalf("before=%v known=%v", before, known)
+	if known || before {
+		t.Fatalf("censored sample must not become a negative deadline label: before=%v known=%v", before, known)
 	}
 }
