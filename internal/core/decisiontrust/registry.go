@@ -171,6 +171,9 @@ func (r *Registry) resolveForVerification(id KeyID, issuedAt time.Time) (KeyReco
 		return KeyRecord{}, fmt.Errorf("%w: key %q is %s", ErrKeyNotVerifiable, id, record.state)
 	}
 	issuedAt = issuedAt.UTC()
+	if record.activatedAt.IsZero() || issuedAt.Before(record.activatedAt) {
+		return KeyRecord{}, fmt.Errorf("%w: issued time precedes key activation", ErrKeyNotVerifiable)
+	}
 	if issuedAt.Before(record.signingNotBefore) || !issuedAt.Before(record.signingNotAfter) {
 		return KeyRecord{}, fmt.Errorf("%w: issued time outside signing validity", ErrKeyNotVerifiable)
 	}
@@ -198,9 +201,13 @@ func (r *Registry) transition(id KeyID, target KeyState, now time.Time, allowed 
 	if !containsState(allowed, record.state) {
 		return fmt.Errorf("%w: %s -> %s", ErrInvalidTransition, record.state, target)
 	}
+	now = now.UTC()
 	record.state = target
+	if target == KeyStateActive && record.activatedAt.IsZero() {
+		record.activatedAt = now
+	}
 	record.revision++
-	record.stateChangedAt = now.UTC()
+	record.stateChangedAt = now
 	r.keys[id] = record
 	r.bump(now)
 	return nil
