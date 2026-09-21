@@ -408,6 +408,8 @@ SQLite依存導入と並行せずに進められるProtocol workとして、P1 W
 
 P2 Signed Authority Decisionsは`spec/decisions/v1/decisions.cddl`へ定義しました。Placement Approval、Lease、Executor Approval、Artifact Read/Write Grant、WorkOrderをdeterministic CBOR payloadとして閉じたschemaにし、Architecture上のAuthority role identifier（EXE-1 / PLC-1 / LSE-1 / DAT-1 / WOR-1）を署名対象へ直接bindingします。WorkOrderの前提Decision refはkind-specific型とし、Decision IDに加えてdeterministic payload digestへbindingします。P1 ProtobufはCOSE_Sign1 bytesのcarrierに限定し、Security Authorityをtransport serializationへ依存させません。
 
+Signed Decision Security Profileは`plan/adr/0004-signed-decision-cryptographic-profile.md`で定義しました。M0 software referenceはEd25519 / EdDSA、Enterprise/KMS互換profileはES256 / P-256を第一級にし、Authority roleごとに別keyを持ちます。`kid`はAdmin-managed Key Registryのopaque selectorであり、COSE messageからTrust Rootを持ち込みません。Key stateはPENDING / ACTIVE / VERIFY_ONLY / REVOKED / COMPROMISEDを区別し、rotation・revocation・trust bundle freshness・Verifier順序を明文化しています。
+
 ## 作業原則
 
 - Requirementの不確実性を減らす作業を優先する。
