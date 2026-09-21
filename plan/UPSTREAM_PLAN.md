@@ -398,7 +398,9 @@ M0 executable skeletonの最初の作業単位として、`go.mod`、buildable�
 
 ローカルでは`go test ./...`、`go vet ./...`、両binaryの`--version`を確認しています。検証環境のGo 1.23.2でもsource compatibility smoke testが通りましたが、Repositoryの要求versionはGo 1.27.0です。
 
-次のWork Unitはdurable State Store reference adapterです。
+`plan/adr/0003-m0-reference-state-store.md` で、M0 / DP-1向けReference durable State StoreとしてSQLiteを採用し、Go driverはcgo不要の`modernc.org/sqlite`を第一候補としました。適用範囲は単一Control Plane host + local filesystemに限定し、DP-2 multi-instance HAやnetwork filesystem共有をSQLiteへ背負わせません。WALは同一host制約を明示し、将来のPostgreSQL等は同じState Store SPIの別Adapterとして扱います。
+
+次のWork UnitはSQLite durable State Store reference adapterの実装です。依存はGo toolingで`go.mod` / `go.sum`を生成・検証できる環境で導入し、restart / CAS / migration testを通してからmerge対象にします。
 
 ## 作業原則
 
