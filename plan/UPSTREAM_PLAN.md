@@ -214,7 +214,7 @@ Architecture採用前に、Requirement上のリスクが高く、文書検討だ
 
 Spikeは採用Architectureを既成事実化しません。確認したいRequirement上の仮説、実験条件、観測結果、一般化してよい範囲を残します。
 
-状態: **着手済み — 高リスクSpikeを順次実証中**
+状態: **主要高リスクSpike成立 / 実測研究継続**
 
 最初のSpikeとして `spikes/local-governor/README.md` を作成しました。Windows Job Object / EcoQoS、Linux cgroup v2、ローカルopt-outの停止境界を調査し、Resourceごとに `HARD / BEST_EFFORT / OBSERVE_ONLY / UNAVAILABLE` の保証種別を区別する必要性を確認しています。
 
@@ -288,6 +288,15 @@ Verifiable computationについては、`spikes/verifiable-computation-contract/
 - Control Planeの一部侵害とroot authority侵害を分けて説明できる。
 - mass reclaimとEndpoint Safetyを通常運用の一部として扱える。
 - 初見の開発者が文書導線から主要な設計判断へ辿れる。
+
+
+状態: **条件付きPASS — 2026-09-21**
+
+判定根拠は `plan/ARCHITECTURE_ENTRY_REVIEW_2026-09-21.md` にまとめました。Phase 0〜3の主要成果物と、Phase 4の主要高リスクSpikeについて、Architecture候補を比較するための境界・失敗条件・保証上限が説明可能な状態です。
+
+Issue #19（learned scheduling / resource prediction）とIssue #23（実zkVM prover benchmark）は継続研究として残します。ただし、前者はSecurity / Authorization / Data localityのhard filter後段でshadow modeから扱い、後者はoptional Result Assurance extensionの実測です。いずれも未解決部分をBaselineへ先取りして固定しないことを条件に、Architecture baselineの作成開始を妨げないと判断しました。
+
+Gate PASSは全研究の完了を意味しません。Architectureが未解決研究を前提に特定実装・特定保証へ固定しようとした場合は、Requirement / Assurance Modelへ戻って再評価します。
 
 ## Architecture段階で比較する領域
 
