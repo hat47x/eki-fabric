@@ -300,7 +300,11 @@ Gate PASSは全研究の完了を意味しません。Architectureが未解決�
 
 ## Architecture段階で比較する領域
 
-Gate Uまでは採用を確定しませんが、後段で少なくとも次を比較します。
+Gate Uは2026-09-21に条件付きPASSとなり、Architecture baseline作成を開始しました。最初の作業単位として `architecture/AUTHORITY_BOUNDARIES.md` にAuthority / Trust Boundary MapをBaseline 0.1として定義しています。
+
+この段階でも未解決研究を先取りして特定実装へ固定しません。Architectureの各作業単位は最新`main`から開始し、PR / merge後に履歴を収束させます。
+
+後段で少なくとも次を比較します。
 
 - external API contract: HTTP / gRPC / schema format
 - Task Admission / internal WorkOrder representation

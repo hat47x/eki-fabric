@@ -18,6 +18,7 @@ EKI Fabricでは、分散システム、セキュリティ、暗号技術、ボ�
 6. [Threat Model](../requirements/THREAT_MODEL.md)
 7. [Worker Assurance Model](../requirements/ASSURANCE_MODEL.md)
 8. [Acceptance Scenarios](../requirements/ACCEPTANCE_SCENARIOS.md)
+9. [Architecture](../architecture/README.md) — 実装・設計へ参加する場合
 
 最初からすべてを読む必要はありません。全体像を知りたい場合は `for-readers.md` まで、要件レビューへ参加する場合は Product Requirements と Threat Model まで、悪意あるWorkerやアドホック参加者の保証を検討する場合は Assurance Model まで進む、という読み方で構いません。
 
@@ -37,6 +38,9 @@ EKI Fabricでは、分散システム、セキュリティ、暗号技術、ボ�
     ↓
 工程・判断
   plan/
+    ↓ Gate通過後
+採用設計
+  architecture/
 ```
 
 説明を分かりやすくするために言い換えることはありますが、Requirementの意味を独自に強めたり弱めたりしません。説明と正本が食い違った場合は、正本側を基準とし、説明文書を修正します。
