@@ -40,6 +40,8 @@ Client credentialがWorker Planeを呼べたり、Worker credentialがTask submi
 
 `OpenSession`でControl Planeが`session_id`を発行します。
 
+`PostEventsRequest`は一つの`session_id`へEvent batch全体をbindingします。同一batch内で複数sessionのEventを混在させる形にはしません。
+
 Worker restart / Browser reload等では新sessionを作ります。古いsessionのmessageからLeaseやWorkOrder Authorityを復活させません。
 
 `WorkerEvent.sequence`はsession内のObservation順序を補助する値で、Security Authorityではありません。
