@@ -230,6 +230,42 @@ func TestVerificationRejectsDecisionIssuedBeforeAdministrativeActivation(t *test
 	}
 }
 
+func TestVerifyOnlyAcceptsOnlyDecisionsIssuedBeforeRetirement(t *testing.T) {
+	now := time.Date(2026, 9, 22, 0, 0, 0, 0, time.UTC)
+	retirement := now.Add(2 * time.Hour)
+	registry := NewRegistry(now)
+
+	key := mustKey(t, ed25519Config("kid-retirement-boundary", 1, now), now)
+	registerActivate(t, registry, key, now)
+
+	if err := registry.SetVerifyOnly(key.ID(), retirement); err != nil {
+		t.Fatalf("SetVerifyOnly() error = %v", err)
+	}
+
+	retired, err := registry.Get(key.ID())
+	if err != nil {
+		t.Fatalf("Get() error = %v", err)
+	}
+	if !retired.VerifyOnlyAt().Equal(retirement) {
+		t.Fatalf("VerifyOnlyAt() = %v, want %v", retired.VerifyOnlyAt(), retirement)
+	}
+
+	before := verificationRequestFor(retired, authority.DecisionWorkOrder, retirement.Add(-time.Nanosecond))
+	if _, err := registry.ResolveVerificationKey(before); err != nil {
+		t.Fatalf("pre-retirement verification error = %v", err)
+	}
+
+	atRetirement := verificationRequestFor(retired, authority.DecisionWorkOrder, retirement)
+	if _, err := registry.ResolveVerificationKey(atRetirement); !errors.Is(err, ErrKeyNotVerifiable) {
+		t.Fatalf("verification at retirement error = %v, want ErrKeyNotVerifiable", err)
+	}
+
+	after := verificationRequestFor(retired, authority.DecisionWorkOrder, retirement.Add(time.Nanosecond))
+	if _, err := registry.ResolveVerificationKey(after); !errors.Is(err, ErrKeyNotVerifiable) {
+		t.Fatalf("post-retirement verification error = %v, want ErrKeyNotVerifiable", err)
+	}
+}
+
 func TestVerificationRequiresIssuedTimeInsideSigningWindow(t *testing.T) {
 	now := time.Date(2026, 9, 22, 0, 0, 0, 0, time.UTC)
 	registry := NewRegistry(now)
