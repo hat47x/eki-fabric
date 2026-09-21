@@ -1,0 +1,318 @@
+; EKI Fabric P2 signed Authority Decision payloads.
+; Status: Baseline 0.1 — 2026-09-21
+;
+; These definitions describe the CBOR payload carried inside COSE_Sign1.
+; Encoders MUST use RFC 8949 Core Deterministic Encoding Requirements.
+; Maps are closed by these CDDL rules. Unknown security-critical fields require
+; a new schema version; they are not silently ignored.
+
+eki-signed-decision-v1 =
+    placement-approval-v1
+  / lease-v1
+  / executor-approval-v1
+  / artifact-read-grant-v1
+  / artifact-write-grant-v1
+  / work-order-v1
+
+; ---------------------------------------------------------------------------
+; Common scalar and reference types
+; ---------------------------------------------------------------------------
+
+schema-version-v1 = 1
+
+decision-id = tstr .size (1..128)
+principal-id = tstr .size (1..256)
+task-id = tstr .size (1..128)
+attempt-id = tstr .size (1..128)
+worker-id = tstr .size (1..256)
+lease-id = tstr .size (1..128)
+work-order-id = tstr .size (1..128)
+artifact-id = tstr .size (1..128)
+logical-executor-id = tstr .size (1..128)
+profile-id = tstr .size (1..128)
+policy-revision = tstr .size (1..128)
+media-type = tstr .size (1..255)
+runtime-class = tstr .size (1..128)
+data-class = tstr .size (1..128)
+
+; Unix epoch milliseconds. No floating-point timestamps are used.
+unix-time-ms = uint
+
+; v1 uses SHA-256 only.
+digest = {
+  1: 1,                 ; algorithm = sha256
+  2: bstr .size 32      ; raw digest bytes
+}
+
+; Digest of the deterministic CBOR payload of another signed decision.
+; Specific reference types are used where the relying decision expects a
+; particular prerequisite kind.
+decision-ref = placement-approval-ref
+  / lease-ref
+  / executor-approval-ref
+  / artifact-read-grant-ref
+  / artifact-write-grant-ref
+  / work-order-ref
+
+placement-approval-ref = {
+  1: "eki.placement-approval/v1",
+  2: decision-id,
+  3: digest
+}
+
+lease-ref = {
+  1: "eki.lease/v1",
+  2: decision-id,
+  3: digest
+}
+
+executor-approval-ref = {
+  1: "eki.executor-approval/v1",
+  2: decision-id,
+  3: digest
+}
+
+artifact-read-grant-ref = {
+  1: "eki.artifact-read-grant/v1",
+  2: decision-id,
+  3: digest
+}
+
+artifact-write-grant-ref = {
+  1: "eki.artifact-write-grant/v1",
+  2: decision-id,
+  3: digest
+}
+
+work-order-ref = {
+  1: "eki.work-order/v1",
+  2: decision-id,
+  3: digest
+}
+
+decision-kind =
+    "eki.placement-approval/v1"
+  / "eki.lease/v1"
+  / "eki.executor-approval/v1"
+  / "eki.artifact-read-grant/v1"
+  / "eki.artifact-write-grant/v1"
+  / "eki.work-order/v1"
+
+; Authority role is the Architecture role identifier itself, not a local
+; numeric alias and not a transport credential scope.
+executor-authority = {
+  1: "EXE-1",
+  2: principal-id
+}
+
+placement-authority = {
+  1: "PLC-1",
+  2: principal-id
+}
+
+lease-authority = {
+  1: "LSE-1",
+  2: principal-id
+}
+
+data-authority = {
+  1: "DAT-1",
+  2: principal-id
+}
+
+work-order-authority = {
+  1: "WOR-1",
+  2: principal-id
+}
+
+; ---------------------------------------------------------------------------
+; Placement Approval
+; ---------------------------------------------------------------------------
+
+placement-approval-v1 = {
+  1: schema-version-v1,
+  2: "eki.placement-approval/v1",
+  3: decision-id,
+  4: placement-authority,
+  5: unix-time-ms,       ; issued_at
+  6: unix-time-ms,       ; expires_at
+  7: policy-revision,
+  8: placement-approval-body-v1
+}
+
+placement-approval-body-v1 = {
+  1: task-id,
+  2: digest,             ; TaskIR digest
+  3: attempt-id,
+  4: worker-id,
+  ? 5: [*16 evidence-ref]
+}
+
+evidence-ref = {
+  1: tstr .size (1..128), ; evidence kind / profile
+  2: tstr .size (1..256), ; evidence identity
+  3: digest
+}
+
+; ---------------------------------------------------------------------------
+; Lease
+; ---------------------------------------------------------------------------
+
+lease-v1 = {
+  1: schema-version-v1,
+  2: "eki.lease/v1",
+  3: decision-id,
+  4: lease-authority,
+  5: unix-time-ms,       ; issued_at
+  6: unix-time-ms,       ; expires_at
+  7: policy-revision,
+  8: lease-body-v1
+}
+
+lease-body-v1 = {
+  1: task-id,
+  2: digest,             ; TaskIR digest
+  3: attempt-id,
+  4: worker-id,
+  5: lease-id,
+  6: uint,               ; lease revision / fencing epoch
+  7: uint                ; renewal sequence
+}
+
+; ---------------------------------------------------------------------------
+; Executor Approval
+; ---------------------------------------------------------------------------
+
+executor-approval-v1 = {
+  1: schema-version-v1,
+  2: "eki.executor-approval/v1",
+  3: decision-id,
+  4: executor-authority,
+  5: unix-time-ms,       ; issued_at
+  6: unix-time-ms,       ; expires_at
+  7: policy-revision,
+  8: executor-approval-body-v1
+}
+
+executor-approval-body-v1 = {
+  1: logical-executor-id,
+  2: digest,             ; exact executable / package artifact digest
+  3: media-type,
+  4: uint,               ; artifact size bytes
+  5: runtime-class,
+  6: profile-ref,        ; approved capability profile
+  ? 7: [*16 evidence-ref] ; publisher/build/SBOM/provenance evidence
+}
+
+profile-ref = {
+  1: profile-id,
+  2: digest
+}
+
+; ---------------------------------------------------------------------------
+; Artifact / Data Grants
+; ---------------------------------------------------------------------------
+
+artifact-read-grant-v1 = {
+  1: schema-version-v1,
+  2: "eki.artifact-read-grant/v1",
+  3: decision-id,        ; grant decision id
+  4: data-authority,
+  5: unix-time-ms,       ; issued_at
+  6: unix-time-ms,       ; expires_at
+  7: policy-revision,
+  8: artifact-read-grant-body-v1
+}
+
+artifact-read-grant-body-v1 = {
+  1: artifact-id,
+  2: digest,             ; verified content digest
+  3: task-id,
+  4: digest,             ; TaskIR digest
+  5: attempt-id,
+  6: worker-id,
+  7: 1,                  ; operation = read
+  8: data-class,
+  ? 9: byte-range
+}
+
+artifact-write-grant-v1 = {
+  1: schema-version-v1,
+  2: "eki.artifact-write-grant/v1",
+  3: decision-id,        ; grant decision id
+  4: data-authority,
+  5: unix-time-ms,       ; issued_at
+  6: unix-time-ms,       ; expires_at
+  7: policy-revision,
+  8: artifact-write-grant-body-v1
+}
+
+artifact-write-grant-body-v1 = {
+  1: artifact-id,        ; pre-authorized output artifact identity / slot
+  2: task-id,
+  3: digest,             ; TaskIR digest
+  4: attempt-id,
+  5: worker-id,
+  6: 2,                  ; operation = write
+  7: data-class,
+  8: uint,               ; maximum bytes
+  ? 9: media-type
+}
+
+byte-range = {
+  1: uint,               ; offset
+  2: uint                ; length
+}
+
+; ---------------------------------------------------------------------------
+; WorkOrder
+; ---------------------------------------------------------------------------
+
+work-order-v1 = {
+  1: schema-version-v1,
+  2: "eki.work-order/v1",
+  3: decision-id,
+  4: work-order-authority,
+  5: unix-time-ms,       ; issued_at
+  6: unix-time-ms,       ; expires_at
+  7: policy-revision,
+  8: work-order-body-v1
+}
+
+work-order-body-v1 = {
+  1: work-order-id,
+  2: task-id,
+  3: digest,             ; TaskIR digest
+  4: attempt-id,
+  5: worker-id,
+  6: placement-approval-ref,
+  7: lease-ref,
+  8: executor-approval-ref,
+  9: digest,                    ; exact Executor artifact digest
+  10: [*64 artifact-read-grant-ref],
+  11: [*16 artifact-write-grant-ref]
+  12: resource-limits-v1,
+  13: sandbox-policy-v1,
+  14: 0,                 ; external effect mode = none in MVP v1
+  15: bstr .size (16..32) ; nonce
+}
+
+resource-limits-v1 = {
+  1: uint,               ; CPU millis
+  2: uint,               ; memory bytes
+  3: uint,               ; temporary disk bytes
+  4: uint,               ; wall time milliseconds
+  5: uint,               ; output bytes maximum
+  6: uint                ; network bytes maximum
+}
+
+sandbox-policy-v1 = {
+  1: profile-ref,        ; immutable sandbox capability profile
+  ? 2: profile-ref,      ; optional registered network profile
+  ? 3: gpu-limit-v1
+}
+
+gpu-limit-v1 = {
+  1: uint,               ; device count
+  2: uint                ; minimum / reserved VRAM bytes
+}

@@ -406,6 +406,8 @@ SQLite Adapter実装に先立ち、`conformance/statestoretest`へBackend共通�
 
 SQLite依存導入と並行せずに進められるProtocol workとして、P1 Worker Planeを`spec/worker/v1/worker.proto`へ定義しました。Worker Identityは認証contextに置き、messageに`worker_id`を持たせません。Worker→Controlはidempotentな`PostEvents`、Control→Workerは`WatchCommands` server-streamingまたは`PollCommands` fallbackとし、HeartbeatとLease Renewalを分離しています。WorkOrder / Lease等のSecurity-sensitive payloadはProtobufへ署名せず、P2 COSE payloadを`SignedDecisionCarrier`で運ぶ構造です。
 
+P2 Signed Authority Decisionsは`spec/decisions/v1/decisions.cddl`へ定義しました。Placement Approval、Lease、Executor Approval、Artifact Read/Write Grant、WorkOrderをdeterministic CBOR payloadとして閉じたschemaにし、Architecture上のAuthority role identifier（EXE-1 / PLC-1 / LSE-1 / DAT-1 / WOR-1）を署名対象へ直接bindingします。WorkOrderの前提Decision refはkind-specific型とし、Decision IDに加えてdeterministic payload digestへbindingします。P1 ProtobufはCOSE_Sign1 bytesのcarrierに限定し、Security Authorityをtransport serializationへ依存させません。
+
 ## 作業原則
 
 - Requirementの不確実性を減らす作業を優先する。
