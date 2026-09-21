@@ -45,8 +45,47 @@ digest = {
 }
 
 ; Digest of the deterministic CBOR payload of another signed decision.
-decision-ref = {
-  1: decision-kind,
+; Specific reference types are used where the relying decision expects a
+; particular prerequisite kind.
+decision-ref = placement-approval-ref
+  / lease-ref
+  / executor-approval-ref
+  / artifact-read-grant-ref
+  / artifact-write-grant-ref
+  / work-order-ref
+
+placement-approval-ref = {
+  1: "eki.placement-approval/v1",
+  2: decision-id,
+  3: digest
+}
+
+lease-ref = {
+  1: "eki.lease/v1",
+  2: decision-id,
+  3: digest
+}
+
+executor-approval-ref = {
+  1: "eki.executor-approval/v1",
+  2: decision-id,
+  3: digest
+}
+
+artifact-read-grant-ref = {
+  1: "eki.artifact-read-grant/v1",
+  2: decision-id,
+  3: digest
+}
+
+artifact-write-grant-ref = {
+  1: "eki.artifact-write-grant/v1",
+  2: decision-id,
+  3: digest
+}
+
+work-order-ref = {
+  1: "eki.work-order/v1",
   2: decision-id,
   3: digest
 }
@@ -59,34 +98,30 @@ decision-kind =
   / "eki.artifact-write-grant/v1"
   / "eki.work-order/v1"
 
-; Authority role codes are Architecture roles, not credential scopes.
-; 1 = EXE-1 Executor Admission Authority
-; 4 = PLC-1 Placement Authorization Authority
-; 5 = LSE-1 Lease Authority
-; 6 = DAT-1 Artifact / Data Capability Authority
-; 7 = WOR-1 WorkOrder Authority
+; Authority role is the Architecture role identifier itself, not a local
+; numeric alias and not a transport credential scope.
 executor-authority = {
-  1: 1,
+  1: "EXE-1",
   2: principal-id
 }
 
 placement-authority = {
-  1: 4,
+  1: "PLC-1",
   2: principal-id
 }
 
 lease-authority = {
-  1: 5,
+  1: "LSE-1",
   2: principal-id
 }
 
 data-authority = {
-  1: 6,
+  1: "DAT-1",
   2: principal-id
 }
 
 work-order-authority = {
-  1: 7,
+  1: "WOR-1",
   2: principal-id
 }
 
@@ -250,12 +285,12 @@ work-order-body-v1 = {
   3: digest,             ; TaskIR digest
   4: attempt-id,
   5: worker-id,
-  6: decision-ref,       ; Placement Approval
-  7: decision-ref,       ; Lease
-  8: decision-ref,       ; Executor Approval
-  9: digest,             ; exact Executor artifact digest
-  10: [*64 decision-ref], ; input Artifact Read Grants
-  11: [*16 decision-ref], ; output Artifact Write Grants
+  6: placement-approval-ref,
+  7: lease-ref,
+  8: executor-approval-ref,
+  9: digest,                    ; exact Executor artifact digest
+  10: [*64 artifact-read-grant-ref],
+  11: [*16 artifact-write-grant-ref]
   12: resource-limits-v1,
   13: sandbox-policy-v1,
   14: 0,                 ; external effect mode = none in MVP v1
