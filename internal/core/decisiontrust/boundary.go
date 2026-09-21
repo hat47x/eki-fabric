@@ -27,16 +27,16 @@ func (r SigningRequest) Validate() error {
 	if err := authority.ValidateRoleForDecision(r.AuthorityRole, r.DecisionKind); err != nil {
 		return fmt.Errorf("%w: %v", ErrDecisionRoleMismatch, err)
 	}
-	return Scope{
+	return signingScope{
 		TrustDomain:        r.TrustDomain,
 		AuthorityRole:      r.AuthorityRole,
 		AuthorityPrincipal: r.AuthorityPrincipal,
 		Algorithm:          r.Algorithm,
-	}.Validate()
+	}.validate()
 }
 
-func (r SigningRequest) scope() Scope {
-	return Scope{
+func (r SigningRequest) scope() signingScope {
+	return signingScope{
 		TrustDomain:        r.TrustDomain,
 		AuthorityRole:      r.AuthorityRole,
 		AuthorityPrincipal: r.AuthorityPrincipal,
@@ -82,14 +82,14 @@ func (r *Registry) ResolveSigningKey(req SigningRequest, now time.Time) (KeyReco
 	if err := req.Validate(); err != nil {
 		return KeyRecord{}, err
 	}
-	return r.ResolveForSigning(req.scope(), now)
+	return r.resolveForSigning(req.scope(), now)
 }
 
 func (r *Registry) ResolveVerificationKey(req VerificationRequest) (KeyRecord, error) {
 	if err := req.Validate(); err != nil {
 		return KeyRecord{}, err
 	}
-	record, err := r.ResolveForVerification(req.KeyID, req.IssuedAt)
+	record, err := r.resolveForVerification(req.KeyID, req.IssuedAt)
 	if err != nil {
 		return KeyRecord{}, err
 	}
