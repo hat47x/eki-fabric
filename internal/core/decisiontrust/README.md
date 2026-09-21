@@ -102,6 +102,10 @@ PENDING / ACTIVE / VERIFY_ONLY / REVOKED
   -> COMPROMISED
 ~~~
 
+初回`ACTIVE`化の時刻を`activatedAt`として保持します。Decisionの`issuedAt`がそれ以前であれば、設定上の`SigningNotBefore`内であってもverifyしません。Administrative activation前に作られた署名を後から正当化しないためです。
+
+`VERIFY_ONLY`へ移す時刻は`verifyOnlyAt`として保持します。この状態では`issuedAt < verifyOnlyAt`のDecisionだけを検証対象にできます。退役後に旧private keyで新しく作られた署名を、historical verificationの名目で受理しません。
+
 `VERIFY_ONLY -> ACTIVE`の再昇格は許可しません。signingへ戻す必要がある場合は新しい`kid`を発行します。
 
 `REVOKED -> COMPROMISED`だけは、後からprivate key compromiseが判明した場合の意味強化として許可します。
@@ -139,7 +143,9 @@ Control Planeの永続的なAdministrative source-of-truthをin-memory Mapへ固
 - validity / policy変更を同一registrationとみなさない
 - primary signing keyの明示選択
 - validity外keyをprimaryにしない
+- activation前に発行されたDecisionのverification禁止
 - VERIFY_ONLYのsigning再利用禁止
+- VERIFY_ONLY移行後に発行されたDecisionのverification禁止
 - REVOKED / COMPROMISED keyのlive verification禁止
 - cross-Authority Decision拒否
 - Trust Domain mismatch拒否
