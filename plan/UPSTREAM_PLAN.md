@@ -385,6 +385,17 @@ SUI SensemakingのReference Adoptionで得られるPlugin / Target / Projection�
 
 この方針はGate U以前にTEIをArchitectureへ採用する決定ではない。EKI Core Architectureは引き続きRequirement / Scenario / Assurance / SpikeのEvidenceから比較し、TEI利用は主にApplication / Control surfaceの実装候補として扱う。
 
+## Implementation Entry
+
+Architecture Baseline 0.1とP0 External Protocolまで収束したため、実装入口へ進んでいます。
+
+- `plan/adr/0002-reference-implementation-language.md` — Reference ImplementationにGoを採用。External Contractは引き続きlanguage-neutralな`spec/`を正本とする。
+- `plan/IMPLEMENTATION_REPOSITORY_LAYOUT.md` — `cmd/`、`internal/core`、`internal/control`、`internal/agent`、`internal/spi`、`internal/adapters`、`spec/`、`conformance/`の責務と依存方向を定義。
+- 初期Repositoryでは`pkg/`を作らず、Go内部型をpublic compatibility boundaryへ昇格させない。
+- 空packageを大量作成せず、M0で必要になった順にdirectoryを追加する。
+
+次のWork UnitはM0 executable skeletonです。まず`go.mod`、`eki-control` / `eki-agent`のbuildable entry point、ID / Task Stateの最小型、State Store SPIを作り、その後Task APIへ進みます。
+
 ## 作業原則
 
 - Requirementの不確実性を減らす作業を優先する。

@@ -80,7 +80,7 @@ EKI Fabricは、まず企業内の遊休計算資源を安全に利用できる�
 ## 現在の主要な前提
 
 - 特定の利用OSSやプログラミング言語へ依存しない。
-- Goは有力な基準実装候補だが、外部契約をGo専用にはしない。
+- Reference ImplementationはGoを採用するが、外部契約をGo専用にはしない。
 - 業務端末、専用ノード、Browser Worker、外部組織資源、クラウドなどを同じ性質のWorkerとはみなさない。
 - 業務端末では利用者の本来作業とローカルな安全判断を中央Schedulerより優先する。
 - ClientもWorkerも悪意を持ち得るものとして設計する。
@@ -103,8 +103,12 @@ EKI Fabricは、まず企業内の遊休計算資源を安全に利用できる�
 
 ## 現在地
 
-現在は要件具体化の段階です。実装Architecture、通信Protocol、Queue、Sandbox、Identity基盤などは採用済みではありません。
+Architecture Entry Gateを通過し、Authority / Contract / Control-Data Plane / Deployment Profile / Task State Model / Extension SPIから成る **Architecture Baseline 0.1** を定義済みです。
 
-要件、Threat Model、Assurance Model、Acceptance Scenarioを十分に圧力試験し、Architecture Entry Gateを満たしてから設計へ移ります。
+External Client Planeについては、HTTPS + JSON + OpenAPIを採用し、P0 machine-readable contractを [`spec/external/openapi.json`](spec/external/openapi.json) に置いています。Worker / Adapter PlaneはProtobuf IDL + Connect、署名付きAuthority Decisionはdeterministic CBOR + CDDL + COSE_Sign1をBaselineとしています。
 
-文書の正本関係と記述ルールは [AGENTS.md](AGENTS.md) を参照してください。
+Reference ImplementationはGoを採用し、External ContractとGo内部型を分離したうえで、M0 executable skeletonへ進む段階です。初回MVPでは、悪意あるClientからTaskを受理し、2台以上のNative Workerへ安全に配置し、reclaim / retry / Result Verificationまでを一続きで確認するvertical sliceを中心にします。
+
+高度なFederation、Browser Worker、TEE、zkVM、learned scheduler等はExtension Pointを確保しつつ、初回MVPの成立条件にはしていません。
+
+文書の正本関係と記述ルールは [AGENTS.md](AGENTS.md)、Architectureの現在地は [architecture/README.md](architecture/README.md)、実装計画は [MVP Implementation Plan](architecture/MVP_IMPLEMENTATION_PLAN.md) を参照してください。
