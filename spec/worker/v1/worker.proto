@@ -1,0 +1,353 @@
+syntax = "proto3";
+
+package eki.worker.v1;
+
+import "google/protobuf/timestamp.proto";
+
+option go_package = "github.com/hat47x/eki-fabric/internal/gen/worker/v1;workerv1";
+
+// WorkerPlaneService is the stable Worker-facing protocol boundary.
+// Authentication is transport/session context. Worker identity is not granted
+// by a worker-supplied message field.
+service WorkerPlaneService {
+  rpc OpenSession(OpenSessionRequest) returns (OpenSessionResponse);
+  rpc PostEvents(PostEventsRequest) returns (PostEventsResponse);
+  rpc PollCommands(PollCommandsRequest) returns (PollCommandsResponse);
+  rpc WatchCommands(WatchCommandsRequest) returns (stream ControlCommand);
+}
+
+enum CommandDeliveryMode {
+  COMMAND_DELIVERY_MODE_UNSPECIFIED = 0;
+  COMMAND_DELIVERY_MODE_POLL = 1;
+  COMMAND_DELIVERY_MODE_SERVER_STREAM = 2;
+}
+
+message OpenSessionRequest {
+  uint32 minimum_protocol_revision = 1;
+  uint32 maximum_protocol_revision = 2;
+  string agent_version = 3;
+  string agent_instance_id = 4;
+  repeated CommandDeliveryMode supported_delivery_modes = 5;
+}
+
+message OpenSessionResponse {
+  string session_id = 1;
+  uint32 selected_protocol_revision = 2;
+  CommandDeliveryMode selected_delivery_mode = 3;
+  google.protobuf.Timestamp server_time = 4;
+  google.protobuf.Timestamp expires_at = 5;
+  uint32 heartbeat_interval_milliseconds = 6;
+  uint32 maximum_event_batch = 7;
+  uint64 maximum_message_bytes = 8;
+}
+
+message PostEventsRequest {
+  string session_id = 1;
+  repeated WorkerEvent events = 2;
+}
+
+message PostEventsResponse {
+  repeated EventReceipt receipts = 1;
+}
+
+enum EventReceiptStatus {
+  EVENT_RECEIPT_STATUS_UNSPECIFIED = 0;
+  EVENT_RECEIPT_STATUS_ACCEPTED = 1;
+  EVENT_RECEIPT_STATUS_DUPLICATE = 2;
+  EVENT_RECEIPT_STATUS_REJECTED = 3;
+}
+
+message EventReceipt {
+  string event_id = 1;
+  EventReceiptStatus status = 2;
+  // Stable machine-readable category. Human text is not a protocol branch key.
+  string error_code = 3;
+}
+
+message PollCommandsRequest {
+  string session_id = 1;
+  uint32 maximum_commands = 2;
+}
+
+message PollCommandsResponse {
+  repeated ControlCommand commands = 1;
+  uint32 recommended_poll_after_milliseconds = 2;
+}
+
+message WatchCommandsRequest {
+  string session_id = 1;
+}
+
+message WorkerEvent {
+  string event_id = 1;
+  // Monotonic within the PostEventsRequest session for diagnostics and
+  // stale/replay detection. It does not create execution authority.
+  uint64 sequence = 2;
+
+  oneof event {
+    ResourceAdvertisement resource_advertisement = 10;
+    Heartbeat heartbeat = 11;
+    WorkOrderAck work_order_ack = 12;
+    LeaseRenewalRequest lease_renewal_request = 13;
+    ResultClaim result_claim = 14;
+    ReclaimNotice reclaim_notice = 15;
+  }
+}
+
+message ControlCommand {
+  string session_id = 1;
+  string command_id = 2;
+
+  oneof command {
+    WorkOrderDelivery work_order_delivery = 10;
+    LeaseRenewalDecision lease_renewal_decision = 11;
+    StopWorkOrder stop_work_order = 12;
+  }
+}
+
+enum WorkerClassClaim {
+  WORKER_CLASS_CLAIM_UNSPECIFIED = 0;
+  WORKER_CLASS_CLAIM_ENDPOINT = 1;
+  WORKER_CLASS_CLAIM_WORKSTATION = 2;
+  WORKER_CLASS_CLAIM_DEDICATED = 3;
+  WORKER_CLASS_CLAIM_SERVER = 4;
+  WORKER_CLASS_CLAIM_BROWSER = 5;
+  WORKER_CLASS_CLAIM_FEDERATED = 6;
+  WORKER_CLASS_CLAIM_CLOUD = 7;
+}
+
+message CPUResources {
+  string architecture = 1;
+  uint32 logical_processors = 2;
+  // 1000 means one full logical CPU worth of schedulable capacity.
+  uint64 available_cpu_millis = 3;
+}
+
+message MemoryResources {
+  uint64 total_bytes = 1;
+  uint64 available_bytes = 2;
+}
+
+message GPUResources {
+  string device_id = 1;
+  string vendor = 2;
+  string model = 3;
+  uint64 total_memory_bytes = 4;
+  uint64 available_memory_bytes = 5;
+  repeated string runtime_apis = 6;
+}
+
+message RuntimeCapability {
+  string runtime_id = 1;
+  string version = 2;
+}
+
+enum LocalAvailabilityState {
+  LOCAL_AVAILABILITY_STATE_UNSPECIFIED = 0;
+  LOCAL_AVAILABILITY_STATE_AVAILABLE = 1;
+  LOCAL_AVAILABILITY_STATE_DRAINING = 2;
+  LOCAL_AVAILABILITY_STATE_PAUSED = 3;
+}
+
+message LocalAvailability {
+  LocalAvailabilityState state = 1;
+  uint64 maximum_cpu_millis = 2;
+  uint64 maximum_memory_bytes = 3;
+  uint64 maximum_temporary_disk_bytes = 4;
+  uint64 maximum_network_bytes_per_task = 5;
+  string reason_code = 6;
+}
+
+enum DigestAlgorithm {
+  DIGEST_ALGORITHM_UNSPECIFIED = 0;
+  DIGEST_ALGORITHM_SHA256 = 1;
+}
+
+message Digest {
+  DigestAlgorithm algorithm = 1;
+  bytes value = 2;
+}
+
+message CachedArtifactHint {
+  Digest content_digest = 1;
+  uint64 size_bytes = 2;
+  google.protobuf.Timestamp verified_at = 3;
+}
+
+message ResourceAdvertisement {
+  google.protobuf.Timestamp observed_at = 1;
+  WorkerClassClaim claimed_worker_class = 2;
+  CPUResources cpu = 3;
+  MemoryResources memory = 4;
+  repeated GPUResources gpus = 5;
+  repeated RuntimeCapability runtimes = 6;
+  LocalAvailability local_availability = 7;
+  repeated CachedArtifactHint cached_artifacts = 8;
+}
+
+enum LeaseExecutionObservationState {
+  LEASE_EXECUTION_OBSERVATION_STATE_UNSPECIFIED = 0;
+  LEASE_EXECUTION_OBSERVATION_STATE_RECEIVED = 1;
+  LEASE_EXECUTION_OBSERVATION_STATE_EXECUTING = 2;
+  LEASE_EXECUTION_OBSERVATION_STATE_STOPPING = 3;
+  LEASE_EXECUTION_OBSERVATION_STATE_CLAIMED = 4;
+}
+
+message ActiveLeaseObservation {
+  string lease_id = 1;
+  uint64 lease_revision = 2;
+  string attempt_id = 3;
+  string work_order_id = 4;
+  LeaseExecutionObservationState state = 5;
+}
+
+message Heartbeat {
+  google.protobuf.Timestamp observed_at = 1;
+  repeated ActiveLeaseObservation active_leases = 2;
+  LocalAvailability local_availability = 3;
+}
+
+message SignedDecisionCarrier {
+  // Routing hint only. The signed payload is authoritative and must match.
+  string kind = 1;
+  // COSE_Sign1 bytes. P2 CDDL defines the signed payload itself.
+  bytes cose_sign1 = 2;
+}
+
+message WorkOrderDelivery {
+  string delivery_id = 1;
+  SignedDecisionCarrier signed_work_order = 2;
+  repeated SignedDecisionCarrier prerequisite_decisions = 3;
+}
+
+enum WorkOrderAckStatus {
+  WORK_ORDER_ACK_STATUS_UNSPECIFIED = 0;
+  WORK_ORDER_ACK_STATUS_ACCEPTED = 1;
+  WORK_ORDER_ACK_STATUS_REJECTED = 2;
+}
+
+enum WorkOrderRejectionReason {
+  WORK_ORDER_REJECTION_REASON_UNSPECIFIED = 0;
+  WORK_ORDER_REJECTION_REASON_INVALID_SIGNATURE = 1;
+  WORK_ORDER_REJECTION_REASON_WRONG_WORKER = 2;
+  WORK_ORDER_REJECTION_REASON_EXPIRED = 3;
+  WORK_ORDER_REJECTION_REASON_STALE_LEASE = 4;
+  WORK_ORDER_REJECTION_REASON_UNSUPPORTED_SCHEMA = 5;
+  WORK_ORDER_REJECTION_REASON_UNSUPPORTED_CAPABILITY = 6;
+  WORK_ORDER_REJECTION_REASON_LOCAL_GOVERNOR_DENIED = 7;
+  WORK_ORDER_REJECTION_REASON_PREREQUISITE_INVALID = 8;
+}
+
+message WorkOrderAck {
+  string delivery_id = 1;
+  WorkOrderAckStatus status = 2;
+  // Populated only after the signed WorkOrder has been parsed and verified.
+  string work_order_id = 3;
+  WorkOrderRejectionReason rejection_reason = 4;
+}
+
+message LeaseRenewalRequest {
+  string task_id = 1;
+  string attempt_id = 2;
+  string lease_id = 3;
+  uint64 lease_revision = 4;
+  google.protobuf.Timestamp observed_at = 5;
+}
+
+enum LeaseRenewalStatus {
+  LEASE_RENEWAL_STATUS_UNSPECIFIED = 0;
+  LEASE_RENEWAL_STATUS_RENEWED = 1;
+  LEASE_RENEWAL_STATUS_REJECTED_STALE = 2;
+  LEASE_RENEWAL_STATUS_REJECTED_REVOKED = 3;
+  LEASE_RENEWAL_STATUS_REJECTED_POLICY = 4;
+  LEASE_RENEWAL_STATUS_REJECTED_TASK_TERMINAL = 5;
+  LEASE_RENEWAL_STATUS_REJECTED_SESSION = 6;
+}
+
+message LeaseRenewalDecision {
+  string request_event_id = 1;
+  LeaseRenewalStatus status = 2;
+  // Present only when status == RENEWED. The signed Lease is authoritative.
+  SignedDecisionCarrier signed_lease = 3;
+}
+
+enum StopReason {
+  STOP_REASON_UNSPECIFIED = 0;
+  STOP_REASON_TASK_CANCELLED = 1;
+  STOP_REASON_SUPERSEDED = 2;
+  STOP_REASON_LEASE_REVOKED = 3;
+  STOP_REASON_POLICY_REVOKED = 4;
+  STOP_REASON_DEADLINE = 5;
+  STOP_REASON_ADMINISTRATIVE = 6;
+}
+
+message StopWorkOrder {
+  string work_order_id = 1;
+  StopReason reason = 2;
+  // Optional signed revocation/decision when the profile requires one.
+  SignedDecisionCarrier signed_decision = 3;
+}
+
+enum ReclaimReason {
+  RECLAIM_REASON_UNSPECIFIED = 0;
+  RECLAIM_REASON_USER_RETURN = 1;
+  RECLAIM_REASON_USER_OPT_OUT = 2;
+  RECLAIM_REASON_THERMAL = 3;
+  RECLAIM_REASON_BATTERY = 4;
+  RECLAIM_REASON_NETWORK = 5;
+  RECLAIM_REASON_PROVIDER_RECLAIM = 6;
+  RECLAIM_REASON_SHUTDOWN = 7;
+  RECLAIM_REASON_LOCAL_POLICY = 8;
+  RECLAIM_REASON_UNKNOWN = 9;
+}
+
+message LeaseReference {
+  string lease_id = 1;
+  uint64 lease_revision = 2;
+  string attempt_id = 3;
+  string work_order_id = 4;
+}
+
+message ReclaimNotice {
+  string notice_id = 1;
+  ReclaimReason reason = 2;
+  google.protobuf.Timestamp observed_at = 3;
+  // Empty means the Worker is reclaiming all currently active leases.
+  repeated LeaseReference leases = 4;
+}
+
+message ArtifactOutputClaim {
+  string artifact_id = 1;
+  Digest content_digest = 2;
+  uint64 size_bytes = 3;
+  string media_type = 4;
+}
+
+enum ExecutionClaimOutcome {
+  EXECUTION_CLAIM_OUTCOME_UNSPECIFIED = 0;
+  EXECUTION_CLAIM_OUTCOME_COMPLETED = 1;
+  EXECUTION_CLAIM_OUTCOME_EXECUTOR_FAILED = 2;
+  EXECUTION_CLAIM_OUTCOME_SANDBOX_LIMIT = 3;
+  EXECUTION_CLAIM_OUTCOME_CANCELLED = 4;
+  EXECUTION_CLAIM_OUTCOME_RECLAIMED = 5;
+}
+
+message ExecutionClaim {
+  ExecutionClaimOutcome outcome = 1;
+  optional int32 exit_code = 2;
+  google.protobuf.Timestamp started_at = 3;
+  google.protobuf.Timestamp finished_at = 4;
+  string failure_code = 5;
+}
+
+message ResultClaim {
+  string claim_id = 1;
+  string task_id = 2;
+  string attempt_id = 3;
+  string work_order_id = 4;
+  string lease_id = 5;
+  uint64 observed_lease_revision = 6;
+  repeated ArtifactOutputClaim outputs = 7;
+  ExecutionClaim execution = 8;
+  google.protobuf.Timestamp claimed_at = 9;
+}
