@@ -412,7 +412,9 @@ Signed Decision Security Profileは`plan/adr/0004-signed-decision-cryptographic-
 
 Go Coreでは`internal/core/authority`と`internal/core/decisiontrust`へ最小domain boundaryを追加しました。P2 Decision kindとAuthority roleの対応をGo constantsでも固定し、Signer/Verifierのkey selectionはDecision kindを含むtyped requestだけを公開しています。Key RegistryはEdDSA/Ed25519とES256/P-256のalgorithm/curve整合、`kid`再利用禁止、primary signing key、PENDING→ACTIVE→VERIFY_ONLY等のlifecycleを扱います。初回activation以前のDecision、およびVERIFY_ONLY移行後に新規発行されたDecisionはverification対象にしません。現在のRegistryはM0 in-memory semantics / worker trust snapshotであり、Administrative durable source-of-truthではありません。
 
-次の独立Work Unitはsigned Decision verifier boundaryです。Trust Bundle revision/freshness、verification reason taxonomy、time/lifetime policyをstandard libraryだけで先に固定し、COSE/CBOR concrete dependencyはGo toolingでlock/testできる環境で導入します。
+Signed Decision verifier boundaryのpre-crypto層を追加しました。Trust Bundle revision/freshness、Deployment algorithm allowlist、Decision issued/expires、種類別maximum lifetimeをstandard libraryだけで検証し、Registry lookupをmachine-readableなverification reasonへ正規化します。signature validityをAuthorizationへ読み替えず、COSE/CBOR/cryptographic verificationより前にfail-closedで停止できる境界です。
+
+次の独立Work Unitはcanonical Decision payload decoder / COSE protected-header parser / Ed25519 software Reference Signer・Verifierの接続です。COSE/CBOR concrete dependencyはGo toolingでlock/testできる環境でのみ導入します。
 
 ## 作業原則
 
