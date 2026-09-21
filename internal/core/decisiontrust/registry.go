@@ -97,6 +97,9 @@ func (r *Registry) SetVerifyOnly(id KeyID, now time.Time) error {
 		return fmt.Errorf("%w: %s -> %s", ErrInvalidTransition, record.state, KeyStateVerifyOnly)
 	}
 	now = now.UTC()
+	if now.Before(record.stateChangedAt) {
+		return fmt.Errorf("%w: transition time precedes current state", ErrInvalidTransition)
+	}
 	record.state = KeyStateVerifyOnly
 	record.verifyOnlyAt = now
 	record.revision++
@@ -211,6 +214,9 @@ func (r *Registry) transition(id KeyID, target KeyState, now time.Time, allowed 
 		return fmt.Errorf("%w: %s -> %s", ErrInvalidTransition, record.state, target)
 	}
 	now = now.UTC()
+	if now.Before(record.stateChangedAt) {
+		return fmt.Errorf("%w: transition time precedes current state", ErrInvalidTransition)
+	}
 	record.state = target
 	if target == KeyStateActive && record.activatedAt.IsZero() {
 		record.activatedAt = now
@@ -233,9 +239,13 @@ func (r *Registry) transitionTerminal(id KeyID, target KeyState, now time.Time, 
 	if !containsState(allowed, record.state) {
 		return fmt.Errorf("%w: %s -> %s", ErrInvalidTransition, record.state, target)
 	}
+	now = now.UTC()
+	if now.Before(record.stateChangedAt) {
+		return fmt.Errorf("%w: transition time precedes current state", ErrInvalidTransition)
+	}
 	record.state = target
 	record.revision++
-	record.stateChangedAt = now.UTC()
+	record.stateChangedAt = now
 	r.keys[id] = record
 	if r.primary[record.scope()] == id {
 		delete(r.primary, record.scope())
