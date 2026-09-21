@@ -24,7 +24,7 @@ type KeyID string
 type Algorithm string
 
 const (
-	AlgorithmEd25519 Algorithm = "Ed25519"
+	AlgorithmEdDSA Algorithm = "EdDSA"
 	AlgorithmES256   Algorithm = "ES256"
 )
 
@@ -130,7 +130,7 @@ func NewKeyRecord(cfg KeyConfig, now time.Time) (KeyRecord, error) {
 
 func validateAndCanonicalizePublicKey(cfg KeyConfig) ([]byte, crypto.PublicKey, error) {
 	switch cfg.Algorithm {
-	case AlgorithmEd25519:
+	case AlgorithmEdDSA:
 		if cfg.KeyType != KeyTypeOKP || cfg.Curve != CurveEd25519 {
 			return nil, nil, fmt.Errorf("%w: Ed25519 requires OKP / Ed25519", ErrInvalidKeyRecord)
 		}
