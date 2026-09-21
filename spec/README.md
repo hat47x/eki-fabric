@@ -8,7 +8,9 @@ Protocolの固定順序は次です。
    - `external/openapi.json`
    - HTTPS + JSON + OpenAPI
 2. **P1 Worker Plane**
+   - `worker/v1/worker.proto`
    - Protobuf IDL + Connect reference transport
+   - Worker→Controlは`PostEvents`、Control→Workerはserver-streamingまたはpolling fallback
 3. **P2 Signed Authority Decisions**
    - deterministic CBOR + CDDL + COSE_Sign1
 4. **Adapter Plane**
