@@ -276,6 +276,12 @@ AttestationはExecution Environment Assuranceを強めますが、「そのAppli
 
 Worker Identityへの依存を大きく減らせる可能性がありますが、すべてのTask、特に大規模GPU / AI workloadで実用的とは仮定しません。
 
+Cryptographic proofを利用する場合は、少なくともProgram Digest、Input Digest、Output Digest、Task / Attemptとのbindingを追跡できることを要求します。Proofがvalidであっても、未承認Programの正しい実行を証明しているだけかもしれないため、Executor / Program Admissionを置き換えません。また、外部副作用、Resource Measurement、Application上の意味的な正しさも別の保証です。
+
+Proof System固有の検証結果は、必要に応じてVerification Authorityがnormalized Verification Resultへ変換し、Relying PartyがTask固有Policyを再評価できる構造を優先します。VerifierがProofを受理したことを、そのままResult Acceptanceへ読み替えません。
+
+Verifiable ComputationとZero Knowledgeも同一視しません。Private Inputやwitness secrecyを要求する場合、そのPrivacy propertyをProof System / Profileの検証済み属性として扱い、Clientの自己申告だけでは強化しません。
+
 ---
 
 # Confidentiality Profiles
