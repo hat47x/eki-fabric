@@ -7,6 +7,8 @@ import (
 	"sort"
 	"strings"
 	"testing"
+
+	"github.com/hat47x/eki-fabric/internal/core/authority"
 )
 
 func decisionCDDL(t *testing.T) string {
@@ -22,12 +24,12 @@ func decisionCDDL(t *testing.T) string {
 func TestDecisionKindsAreExplicitAndComplete(t *testing.T) {
 	schema := decisionCDDL(t)
 	want := []string{
-		"eki.artifact-read-grant/v1",
-		"eki.artifact-write-grant/v1",
-		"eki.executor-approval/v1",
-		"eki.lease/v1",
-		"eki.placement-approval/v1",
-		"eki.work-order/v1",
+		string(authority.DecisionArtifactReadGrant),
+		string(authority.DecisionArtifactWriteGrant),
+		string(authority.DecisionExecutorApproval),
+		string(authority.DecisionLease),
+		string(authority.DecisionPlacementApproval),
+		string(authority.DecisionWorkOrder),
 	}
 	re := regexp.MustCompile(`"eki\.[a-z0-9.-]+/v1"`)
 	foundMap := map[string]bool{}
@@ -46,7 +48,13 @@ func TestDecisionKindsAreExplicitAndComplete(t *testing.T) {
 
 func TestAuthorityRolesUseArchitectureIdentifiers(t *testing.T) {
 	schema := decisionCDDL(t)
-	for _, role := range []string{"EXE-1", "PLC-1", "LSE-1", "DAT-1", "WOR-1"} {
+	for _, role := range []string{
+		string(authority.RoleExecutorAdmission),
+		string(authority.RolePlacementAuthorization),
+		string(authority.RoleLease),
+		string(authority.RoleDataCapability),
+		string(authority.RoleWorkOrder),
+	} {
 		if !strings.Contains(schema, `1: "`+role+`"`) {
 			t.Fatalf("missing authority role %s", role)
 		}

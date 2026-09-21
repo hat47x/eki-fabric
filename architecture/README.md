@@ -74,6 +74,8 @@ P1 Worker Planeは`spec/worker/v1/worker.proto`、P2 signed Authority Decision p
 
 `plan/adr/0004-signed-decision-cryptographic-profile.md` では、Authority roleごとのkey separation、Ed25519 software reference、ES256 enterprise interoperability、Key Registry / rotation / revocation、COSE protected-header validationを定義しています。valid signatureだけでAuthorizationを成立させず、Authority role / Decision kind / subject / current policyまで再検証します。
 
+Reference Go Coreでは`internal/core/authority` / `internal/core/decisiontrust`へこの境界の最小実装を開始しています。Decision kindを含まないraw key-resolution APIは外へ公開せず、activation/retirement時刻を含むkey lifecycleをverification条件にしています。
+
 `spec/external/openapi.json` にP0 External Client Planeのmachine-readable schemaを追加しました。Task submit/status/cancel/resultとArtifact ingest/upload/descriptorだけを固定し、Worker / Lease / WorkOrder / ArtifactGrant token等のInternal概念は露出していません。`spec/external/README.md` とnegative fixtureでhostile-input boundaryも明文化しています。
 
 `plan/adr/0002-reference-implementation-language.md` でGoをReference Implementation Languageとして採用し、`plan/IMPLEMENTATION_REPOSITORY_LAYOUT.md` で `cmd/` / `internal/core` / `internal/control` / `internal/agent` / `internal/spi` / `internal/adapters` / `spec` / `conformance` の責務を定義しました。Go packageは外部Contractの正本にせず、初期Core実装は原則`internal/`へ閉じます。
