@@ -157,8 +157,8 @@ func TestRevokedAndCompromisedKeysDoNotVerify(t *testing.T) {
 		if err := registry.MarkCompromised(key.ID(), now.Add(time.Minute)); err != nil {
 			t.Fatalf("MarkCompromised() error = %v", err)
 		}
-		if _, err := registry.ResolveForVerification(key.ID(), now); !errors.Is(err, ErrKeyNotVerifiable) {
-			t.Fatalf("ResolveForVerification() error = %v, want ErrKeyNotVerifiable", err)
+		if _, err := registry.ResolveVerificationKey(verificationRequestFor(key, authority.DecisionWorkOrder, now)); !errors.Is(err, ErrKeyNotVerifiable) {
+			t.Fatalf("ResolveVerificationKey() error = %v, want ErrKeyNotVerifiable", err)
 		}
 	})
 }
