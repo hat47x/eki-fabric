@@ -14,7 +14,7 @@ func TestSigningRequestRejectsDecisionAuthorityMismatch(t *testing.T) {
 		AuthorityRole:      authority.RoleWorkOrder,
 		AuthorityPrincipal: "authority:workorder:local",
 		DecisionKind:       authority.DecisionLease,
-		Algorithm:          AlgorithmEd25519,
+		Algorithm:          AlgorithmEdDSA,
 	}
 	if err := req.Validate(); !errors.Is(err, ErrDecisionRoleMismatch) {
 		t.Fatalf("Validate() error = %v, want ErrDecisionRoleMismatch", err)
@@ -83,7 +83,7 @@ func TestVerificationRequestRequiresIssuedTime(t *testing.T) {
 		AuthorityRole:      authority.RoleWorkOrder,
 		AuthorityPrincipal: "authority:workorder:local",
 		DecisionKind:       authority.DecisionWorkOrder,
-		ProtectedAlgorithm: AlgorithmEd25519,
+		ProtectedAlgorithm: AlgorithmEdDSA,
 	}
 	if err := req.Validate(); !errors.Is(err, ErrInvalidKeyRecord) {
 		t.Fatalf("Validate() error = %v, want ErrInvalidKeyRecord", err)
