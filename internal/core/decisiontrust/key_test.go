@@ -78,6 +78,16 @@ func TestKeyRecordReturnsDefensivePublicKeyCopy(t *testing.T) {
 	}
 }
 
+func TestNewES256KeyRecordRejectsWrongCurveMetadata(t *testing.T) {
+	now := time.Date(2026, 9, 22, 0, 0, 0, 0, time.UTC)
+	cfg := es256Config("kid-wrong-curve", now)
+	cfg.PublicKey.(*ecdsa.PublicKey).Curve = elliptic.P384()
+
+	if _, err := NewKeyRecord(cfg, now); !errors.Is(err, ErrInvalidKeyRecord) {
+		t.Fatalf("wrong curve metadata error = %v, want ErrInvalidKeyRecord", err)
+	}
+}
+
 func TestNewKeyRecordRejectsInvalidWindowAndRole(t *testing.T) {
 	now := time.Date(2026, 9, 22, 0, 0, 0, 0, time.UTC)
 
