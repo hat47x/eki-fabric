@@ -18,14 +18,14 @@ var (
 	ErrKeyNotVerifiable  = errors.New("signed-decision key is not valid for verification")
 )
 
-type Scope struct {
+type signingScope struct {
 	TrustDomain        string
 	AuthorityRole      authority.Role
 	AuthorityPrincipal string
 	Algorithm          Algorithm
 }
 
-func (s Scope) Validate() error {
+func (s signingScope) validate() error {
 	if !s.AuthorityRole.Valid() {
 		return fmt.Errorf("%w: invalid authority role %q", ErrInvalidKeyRecord, s.AuthorityRole)
 	}
@@ -46,7 +46,7 @@ func (s Scope) Validate() error {
 type Registry struct {
 	mu        sync.RWMutex
 	keys      map[KeyID]KeyRecord
-	primary   map[Scope]KeyID
+	primary   map[signingScope]KeyID
 	revision  uint64
 	updatedAt time.Time
 }
@@ -54,7 +54,7 @@ type Registry struct {
 func NewRegistry(now time.Time) *Registry {
 	return &Registry{
 		keys:      make(map[KeyID]KeyRecord),
-		primary:   make(map[Scope]KeyID),
+		primary:   make(map[signingScope]KeyID),
 		revision:  1,
 		updatedAt: now.UTC(),
 	}
@@ -135,8 +135,8 @@ func (r *Registry) SetPrimary(id KeyID, now time.Time) error {
 	return nil
 }
 
-func (r *Registry) ResolveForSigning(scope Scope, now time.Time) (KeyRecord, error) {
-	if err := scope.Validate(); err != nil {
+func (r *Registry) resolveForSigning(scope signingScope, now time.Time) (KeyRecord, error) {
+	if err := scope.validate(); err != nil {
 		return KeyRecord{}, err
 	}
 	r.mu.RLock()
@@ -157,7 +157,7 @@ func (r *Registry) ResolveForSigning(scope Scope, now time.Time) (KeyRecord, err
 	return cloneRecord(record), nil
 }
 
-func (r *Registry) ResolveForVerification(id KeyID, issuedAt time.Time) (KeyRecord, error) {
+func (r *Registry) resolveForVerification(id KeyID, issuedAt time.Time) (KeyRecord, error) {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
 
