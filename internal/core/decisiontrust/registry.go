@@ -36,7 +36,7 @@ func (s signingScope) validate() error {
 		return err
 	}
 	switch s.Algorithm {
-	case AlgorithmEd25519, AlgorithmES256:
+	case AlgorithmEdDSA, AlgorithmES256:
 		return nil
 	default:
 		return fmt.Errorf("%w: unsupported algorithm %q", ErrInvalidKeyRecord, s.Algorithm)
