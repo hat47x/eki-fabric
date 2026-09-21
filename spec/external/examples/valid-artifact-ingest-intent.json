@@ -1,0 +1,10 @@
+{
+  "schema": "eki.artifact-ingest-intent-request/v1",
+  "declared_size_bytes": 1048576,
+  "media_type": "application/octet-stream",
+  "requested_data_class": "internal",
+  "expected_digest": {
+    "algorithm": "sha256",
+    "value": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
+  }
+}
