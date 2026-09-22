@@ -1,7 +1,6 @@
 package decisiontrust
 
 import (
-	"bytes"
 	"errors"
 	"fmt"
 )
@@ -59,9 +58,6 @@ func (h ProtectedHeaderProfile) Validate() (Algorithm, KeyID, error) {
 			ErrInvalidCOSEProfile,
 			MaxKeyIDBytes,
 		)
-	}
-	if bytes.IndexByte(h.KeyID, 0) >= 0 {
-		return "", "", fmt.Errorf("%w: kid contains NUL", ErrInvalidCOSEProfile)
 	}
 	if err := validateText("key ID", string(h.KeyID), MaxKeyIDBytes); err != nil {
 		return "", "", fmt.Errorf("%w: %v", ErrInvalidCOSEProfile, err)
