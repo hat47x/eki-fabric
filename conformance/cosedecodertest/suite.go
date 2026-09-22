@@ -8,11 +8,9 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"os"
-	"path/filepath"
-	"runtime"
 	"testing"
 
+	"github.com/hat47x/eki-fabric/conformance/vectors"
 	"github.com/hat47x/eki-fabric/internal/core/decisiontrust"
 	"github.com/hat47x/eki-fabric/internal/spi/cosedecoder"
 )
@@ -169,22 +167,7 @@ func validateManifestIdentity(m manifest) (ed25519.PublicKey, error) {
 }
 
 func loadManifest() (manifest, error) {
-	_, sourceFile, _, ok := runtime.Caller(0)
-	if !ok {
-		return manifest{}, errors.New("cannot locate conformance suite source")
-	}
-	path := filepath.Join(filepath.Dir(sourceFile), "..", "vectors", "signed-decision-cose-v1.json")
-
-	file, err := os.Open(path)
-	if err != nil {
-		return manifest{}, err
-	}
-	defer file.Close()
-
-	raw, err := io.ReadAll(io.LimitReader(file, manifestMaxBytes+1))
-	if err != nil {
-		return manifest{}, err
-	}
+	raw := vectors.SignedDecisionCOSEV1()
 	if len(raw) == 0 || len(raw) > manifestMaxBytes {
 		return manifest{}, fmt.Errorf("manifest size = %d, want 1..%d", len(raw), manifestMaxBytes)
 	}
