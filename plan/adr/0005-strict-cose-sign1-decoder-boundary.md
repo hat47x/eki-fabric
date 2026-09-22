@@ -186,7 +186,8 @@ Concrete parserはlibrary errorを外部へそのまま公開せず、既存`Ver
 - malformed CBOR / wrong tag / wrong shape -> `MALFORMED_COSE`
 - invalid/missing/duplicate protected header -> `PROTECTED_HEADER_INVALID`
 - wrong EKI profile -> `UNSUPPORTED_PROFILE`
-- non-deterministic protected/payload -> `PAYLOAD_NOT_DETERMINISTIC`（protected用reasonを将来分離するかは実装時に判断）
+- non-deterministic protected header -> `PROTECTED_HEADER_INVALID`
+- non-deterministic signed Decision payload -> `PAYLOAD_NOT_DETERMINISTIC`
 - unknown/disabled algorithm -> `ALGORITHM_NOT_ALLOWED`
 
 ## 16. Non-goals
