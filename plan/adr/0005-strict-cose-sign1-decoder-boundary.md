@@ -212,8 +212,14 @@ Concrete parserはlibrary errorを外部へそのまま公開せず、既存`Ver
 - fxamacker/cbor — https://github.com/fxamacker/cbor
 - veraison/go-cose — https://github.com/veraison/go-cose
 
-## 18. Follow-up
+## 18. Implementation status / Follow-up
 
-次のConcrete workでは、module dependencyを取得・lock・testできる環境で`fxamacker/cbor/v2`を固定し、strict COSE_Sign1 decoderとSig_structure encoderをこのcontractへ実装します。
+dependency取得不能時の先行作業として、strict conformance vectors、`internal/spi/cosedecoder`、`conformance/cosedecodertest`まで実装しました。
 
-dependency取得が引き続き不可能な環境では、parserを独自実装して回避せず、contract/conformance vectorsの整備を先行します。
+SPIはConcrete codecからCoreへCBOR library依存を漏らさず、exact protected-header bytes、attached payload、signature、algorithm、`kid`だけを返します。error時のpartial Envelopeを禁止し、byte sliceはdefensive copyします。Goのnil sliceとempty sliceが混同されないよう、detached nil payloadは拒否し、attached empty bstrは保持します。
+
+共通harnessはrepository fixtureを`go:embed`で利用し、envelope / protected / payload phaseのstable reason、正常系Sig_structure、crypto phaseまで進むtampered signatureをConcrete Adapterへ要求します。
+
+次のConcrete workでは、module dependencyを取得・lock・testできる環境で`fxamacker/cbor/v2`を固定し、strict COSE_Sign1 decoderとSig_structure encoderをこのSPIへ実装します。
+
+dependency取得が引き続き不可能な環境では、parserを独自実装して回避しません。
