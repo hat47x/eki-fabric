@@ -39,6 +39,17 @@ func (a Algorithm) COSEIdentifier() (int64, bool) {
 	}
 }
 
+func AlgorithmFromCOSEIdentifier(identifier int64) (Algorithm, bool) {
+	switch identifier {
+	case -8:
+		return AlgorithmEdDSA, true
+	case -7:
+		return AlgorithmES256, true
+	default:
+		return "", false
+	}
+}
+
 type KeyType string
 
 const (

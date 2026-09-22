@@ -42,24 +42,27 @@ Task Admission / Result Acceptance / Contribution等は、Worker実行経路で�
 
 ## COSE Profile
 
-EnvelopeはCOSE_Sign1を使用します。
+EnvelopeはCOSE_Sign1を使用します。outer envelopeのmachine-readable正本は`spec/decisions/v1/cose-profile.cddl`です。
 
-v1では:
+v1 Baselineは次へ固定します。
 
-- payloadはdetachedにせずCOSE_Sign1内へ含める
-- `alg`をprotected headerへ置く
-- `kid`をprotected headerへ置く
-- EKI signed-decision profileを識別するcontent/profile情報もprotected headerへ置く
-- protected header map自体もdeterministic CBORで符号化する
-- algorithmはTrust / Policy Administrationのallowlistから選ぶ
-- Client / Worker supplied valueでalgorithmを選ばない
+- CBOR tag 18付きCOSE_Sign1だけを受理する
+- protected headerは`alg`、`crit`、`kid`、EKI profileの4項目だけ
+- EKI profile header labelはPrivate Use integer `-70000`
+- `crit`は`[-70000]`へ固定する
+- profile valueは`eki.signed-decision/v1`
+- `alg`は`-8` (EdDSA) または`-7` (ES256)
+- `kid`は1..128 byteのbstrで、EKI Key RegistryのKeyIDへ対応する
+- unprotected headerはempty map
+- payloadはdetachedにせずCOSE_Sign1内のbstrへ含める
+- signatureはBaseline algorithmsの64-byte bstr
+- protected header mapとP2 payloadはRFC 8949 Core Deterministic Encodingを要求する
+- algorithmはTrust / Policy Administrationのallowlistから選び、Client / Worker supplied valueでallowlistを拡張しない
 - external AADはMVPではempty bstrとする
 
-をBaselineとします。
+RFC 9052自体はtagged/untagged COSE_Sign1の両方を許容しますが、P1 `SignedDecisionCarrier`は別media-type識別を持たないため、EKIではtag 18を必須にします。unprotected extensionもMVPでは必要がないため空mapへ閉じます。
 
-content/profileの具体的なmedia type / identifier表現はSecurity Profileで固定しますが、unprotected headerだけに置いて判定することはしません。
-
-`plan/adr/0004-signed-decision-cryptographic-profile.md` でSecurity Profileを固定しています。M0 software referenceはEd25519 / COSE EdDSAを先行実装し、Enterprise/KMS互換profileとしてES256 / P-256を第一級に扱います。algorithmはDeployment / Authority key policyのallowlistで決まり、Client / Worker inputでは拡張できません。
+`plan/adr/0004-signed-decision-cryptographic-profile.md`がalgorithm/key lifecycleを、`plan/adr/0005-strict-cose-sign1-decoder-boundary.md`がwire envelopeとdecoder境界を定義します。
 
 RFC 9052はCOSE_Sign1等のstructureと署名処理を定義し、algorithm自体はRFC 9053等へ分離しています。その分離をEKIでも維持します。
 

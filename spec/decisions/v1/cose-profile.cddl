@@ -1,0 +1,32 @@
+; EKI Fabric COSE_Sign1 envelope profile for P2 signed Authority Decisions.
+; Status: Baseline 0.1 — 2026-09-22
+;
+; This schema fixes the outer COSE framing and protected-header semantics.
+; The payload itself is defined by decisions.cddl.
+;
+; Deterministic-encoding requirements cannot be expressed completely by CDDL:
+; implementations MUST additionally require RFC 8949 Core Deterministic Encoding
+; for the protected header bytes and the embedded signed-decision payload.
+
+eki-signed-decision-cose-v1 = #6.18([
+  protected: bstr .cbor eki-protected-header-v1,
+  unprotected: {},
+  payload: bstr,
+  signature: bstr .size 64
+])
+
+; EKI uses only integer labels in the protected header.
+;
+; 1       = alg (standard COSE header parameter)
+; 2       = crit (standard COSE header parameter)
+; 4       = kid (standard COSE header parameter)
+; -70000  = EKI signed-decision profile (COSE private-use range)
+;
+; Both EdDSA/Ed25519 and ES256/P-256 signatures are exactly 64 bytes in
+; the EKI baseline profile. ES256 uses fixed-width R || S, never ASN.1 DER.
+eki-protected-header-v1 = {
+  1: -8 / -7,
+  2: [-70000],
+  4: bstr .size (1..128),
+  -70000: "eki.signed-decision/v1"
+}
