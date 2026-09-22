@@ -134,7 +134,9 @@ Go Reference Implementation内部のAdapter interfaceです。public Go plugin A
 
 out-of-process / polyglot Adapter contractは後続machine-readable protocolを正本にします。
 
-巨大な `Backend` interface一つへまとめず、State Store、Artifact Store、Signer等を分けます。CredentialとAuthorityを暗黙共有させないためです。
+巨大な `Backend` interface一つへまとめず、State Store、Artifact Store、Signer、COSE Decoder等を分けます。CredentialとAuthorityを暗黙共有させないためです。
+
+`cosedecoder/`はhostile raw COSE_Sign1 bytesとConcrete CBOR libraryの境界です。Coreへlibrary依存を持ち込まず、strict decode結果と`Signature1` Sig_structure encoderだけを小さなinterfaceとして公開します。Decoder rejectは既存`decisiontrust.VerificationFailure`へ正規化し、library固有errorをArchitecture contractへしません。
 
 ## 8. `internal/adapters/reference/`
 
@@ -151,6 +153,8 @@ MVPのReference Adapterを置きます。
 ## 10. `conformance/`
 
 複数package・複数processを跨ぐArchitecture InvariantのTest assetを置きます。
+
+`cosedecodertest/`はstrict signed-decision COSE fixtureをConcrete codecへ適用する共通harnessです。fixture本体は`conformance/vectors/`を言語中立assetとして保持し、Go harnessは同じJSONを`go:embed`で読み出します。
 
 候補:
 

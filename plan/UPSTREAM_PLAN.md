@@ -420,7 +420,11 @@ COSE decoder実装に先立ち、`plan/adr/0005-strict-cose-sign1-decoder-bounda
 
 Concrete CBOR codecの第一候補はMIT Licenseの`github.com/fxamacker/cbor/v2`です。Core Deterministic Encoding、duplicate map key rejection、indefinite-length rejection、parser resource limitsをEKI strict profileへ利用します。`github.com/veraison/go-cose`はCOSE_Sign1 / Sig_structureの参照実装として照合しますが、EKI固有のAuthority / key lifecycle / algorithm policy / cryptographic primitiveと責務が重なるためBaselineの直接dependencyにはしません。
 
-現在の実行環境では`proxy.golang.org`へのegressが拒否され、dependencyを取得・lock・testできないことを再確認しました。そのため未検証の`go.mod` / `go.sum`は追加していません。次のConcrete Work Unitは、dependency取得可能環境でfxamacker/cborをversion固定し、strict COSE_Sign1 decoder / deterministic re-encode check / Sig_structure encoderを現在のVerifier boundaryへ接続することです。
+現在の実行環境では`proxy.golang.org`へのegressが拒否され、dependencyを取得・lock・testできないことを再確認しました。そのため未検証の`go.mod` / `go.sum`は追加していません。
+
+dependency取得不能時の先行作業として、strict COSE conformance vectorsを`conformance/vectors`へ追加し、envelope / protected / payload / cryptoのfirst-failure semanticsをstable `VerificationReason`とともに固定しました。続いて`internal/spi/cosedecoder`へConcrete codecの最小interfaceを追加し、decoded Envelopeのdefensive copy、attached empty bstrとdetached nilの区別、64-byte signature、algorithm / key ID invariantを型境界で保持します。`conformance/cosedecodertest`は同一fixtureを`go:embed`経由でConcrete Adapterへ適用し、正常系Sig_structureとtampered signatureの層分離まで検査します。
+
+次のConcrete Work Unitは、dependency取得可能環境でfxamacker/cborをversion固定し、`internal/adapters/reference/cosedecoder/fxamacker`（仮）としてstrict COSE_Sign1 decoder / deterministic re-encode check / Sig_structure encoderを実装し、このSPIと共通conformance harnessへ接続することです。
 
 ## 作業原則
 
