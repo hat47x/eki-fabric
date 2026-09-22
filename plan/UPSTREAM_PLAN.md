@@ -416,7 +416,11 @@ Signed Decision verifier boundaryのpre-crypto層を追加しました。Trust B
 
 その後段としてstandard-library cryptographic primitive boundaryを追加しました。M0 Reference Software SignerはRegistry-selected primary keyだけを使い、EdDSA/Ed25519とES256/P-256を実装します。ES256はCOSEの64-byte raw `R || S`形式へ固定し、private/public key binding、policy revision、sign前後のRegistry再検査を行います。Verifierはpre-crypto gate→signature verification→pre-crypto再検査の順とし、途中revocationを可能な範囲でfail-closedにします。Software Signerはprocess memoryへprivate keyを保持するM0/DP-1 referenceに限定し、DP-2はKMS/HSM Adapterを前提とします。
 
-次の独立Work Unitはcanonical Decision payload decoder / COSE protected-header parserです。raw COSE_Sign1をClient入力から安全にparseし、protected `alg` / `kid` / profile、deterministic payload、CDDL validationを現在のVerifier boundaryへ接続します。COSE/CBOR concrete dependencyはGo toolingでlock/testできる環境でのみ導入します。
+COSE decoder実装に先立ち、`plan/adr/0005-strict-cose-sign1-decoder-boundary.md`と`spec/decisions/v1/cose-profile.cddl`でwire contractを固定しました。EKI Baselineはtag 18付きCOSE_Sign1、empty unprotected map、attached payload、protected `alg` / `crit` / `kid` / private-use profile label `-70000`、exact profile `eki.signed-decision/v1`へ閉じます。Go constantsとCDDLのdriftはconformance testで検出します。
+
+Concrete CBOR codecの第一候補はMIT Licenseの`github.com/fxamacker/cbor/v2`です。Core Deterministic Encoding、duplicate map key rejection、indefinite-length rejection、parser resource limitsをEKI strict profileへ利用します。`github.com/veraison/go-cose`はCOSE_Sign1 / Sig_structureの参照実装として照合しますが、EKI固有のAuthority / key lifecycle / algorithm policy / cryptographic primitiveと責務が重なるためBaselineの直接dependencyにはしません。
+
+現在の実行環境では`proxy.golang.org`へのegressが拒否され、dependencyを取得・lock・testできないことを再確認しました。そのため未検証の`go.mod` / `go.sum`は追加していません。次のConcrete Work Unitは、dependency取得可能環境でfxamacker/cborをversion固定し、strict COSE_Sign1 decoder / deterministic re-encode check / Sig_structure encoderを現在のVerifier boundaryへ接続することです。
 
 ## 作業原則
 
