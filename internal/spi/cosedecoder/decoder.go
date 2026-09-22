@@ -40,6 +40,12 @@ func NewEnvelope(cfg EnvelopeConfig) (Envelope, error) {
 			decisiontrust.MaxProtectedHeaderBytes,
 		)
 	}
+	if cfg.Payload == nil {
+		return Envelope{}, fmt.Errorf(
+			"%w: detached payload is prohibited",
+			ErrInvalidDecodedEnvelope,
+		)
+	}
 	if len(cfg.Payload) > decisiontrust.MaxCOSESign1Bytes {
 		return Envelope{}, fmt.Errorf(
 			"%w: payload exceeds defensive %d-byte bound",
@@ -71,7 +77,7 @@ func NewEnvelope(cfg EnvelopeConfig) (Envelope, error) {
 
 	return Envelope{
 		protectedHeader: append([]byte(nil), cfg.ProtectedHeader...),
-		payload:         append([]byte(nil), cfg.Payload...),
+		payload:         append([]byte{}, cfg.Payload...),
 		signature:       append([]byte(nil), cfg.Signature...),
 		algorithm:       cfg.Algorithm,
 		keyID:           cfg.KeyID,
@@ -83,7 +89,7 @@ func (e Envelope) ProtectedHeader() []byte {
 }
 
 func (e Envelope) Payload() []byte {
-	return append([]byte(nil), e.payload...)
+	return append([]byte{}, e.payload...)
 }
 
 func (e Envelope) Signature() []byte {
