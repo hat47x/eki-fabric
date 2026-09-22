@@ -55,6 +55,51 @@ func TestDifferentSeedChangesOnlyDeterministicNoiseIdentity(t *testing.T) {
 	}
 }
 
+func TestScenarioSetCoversPreregisteredAxes(t *testing.T) {
+	d, err := GenerateDataset(42)
+	if err != nil {
+		t.Fatal(err)
+	}
+	required := []string{
+		"s1-compute-accurate", "s1-compute-mild-slow", "s1-compute-fast",
+		"s1-compute-very-slow", "s1-worker-class-bias",
+		"s2-bandwidth-nominal", "s2-bandwidth-mild", "s2-bandwidth-burst", "s2-bandwidth-asymmetric",
+		"s3-cache-full", "s3-cache-partial", "s3-cache-cold", "s3-cache-stale",
+		"s4-churn-preempt", "s4-churn-censored",
+		"s5-deadline-loose", "s5-deadline-near", "s5-deadline-impossible", "s5-deadline-censored",
+		"s6-compound",
+	}
+	seen := map[string]bool{}
+	for _, o := range d.Observations {
+		for _, name := range required {
+			if len(o.ScenarioFamily) >= len(o.Split.Name)+1+len(name) &&
+				o.ScenarioFamily[len(o.Split.Name)+1:] == name {
+				seen[name] = true
+			}
+		}
+	}
+	for _, name := range required {
+		if !seen[name] {
+			t.Fatalf("missing preregistered scenario family %s", name)
+		}
+	}
+
+	var partial *shadowsched.Observation
+	for i := range d.Observations {
+		o := &d.Observations[i]
+		if o.ScenarioFamily == "train-s3-cache-partial" {
+			partial = o
+			break
+		}
+	}
+	if partial == nil {
+		t.Fatal("missing partial-cache fixture")
+	}
+	if partial.Baseline.LocalInputBytes == 0 || partial.Baseline.LocalInputBytes >= partial.Baseline.TotalInputBytes {
+		t.Fatalf("partial cache must retain some but not all input bytes: %+v", partial.Baseline)
+	}
+}
+
 func TestResidualRederivesExactlyFromObservation(t *testing.T) {
 	d, err := GenerateDataset(7)
 	if err != nil {
