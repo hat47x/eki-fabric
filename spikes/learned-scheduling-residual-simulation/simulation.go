@@ -36,11 +36,13 @@ type ScenarioSpec struct {
 	TaskClass                string
 	WorkerClass              string
 	InputBytes               uint64
+	SecondInputBytes         uint64
 	ExpectedOutputBytes      uint64
 	BaselineComputeMillis    uint64
 	DownloadBytesPerSec      uint64
 	UploadBytesPerSec        uint64
 	CacheHit                 bool
+	SecondCacheHit           bool
 	ActualComputePermille    uint64
 	ActualDownloadPermille   uint64
 	ActualUploadPermille     uint64
@@ -205,8 +207,13 @@ func defaultScenarioSpecs(seed uint64) []ScenarioSpec {
 	add("train", "s1-compute-accurate", 0, func(*ScenarioSpec) {})
 	add("train", "s1-compute-mild-slow", 1, func(s *ScenarioSpec) { s.ActualComputePermille = 1100 })
 	add("train", "s1-compute-mild-slow", 2, func(s *ScenarioSpec) { s.ActualComputePermille = 1300 })
+	add("train", "s1-worker-class-bias", 18, func(s *ScenarioSpec) { s.ActualComputePermille = 1150 })
+	add("train", "s2-bandwidth-nominal", 19, func(*ScenarioSpec) {})
 	add("train", "s2-bandwidth-mild", 3, func(s *ScenarioSpec) { s.ActualDownloadPermille = 850 })
-	add("train", "s3-cache-stale", 4, func(s *ScenarioSpec) { s.ExtraTransferBytes = 16 << 20 })
+	add("train", "s3-cache-full", 4, configureTwoInputCache(true, true, 0))
+	add("train", "s3-cache-partial", 8, configureTwoInputCache(true, false, 0))
+	add("train", "s3-cache-cold", 9, configureTwoInputCache(false, false, 0))
+	add("train", "s3-cache-stale", 14, configureTwoInputCache(true, true, 16<<20))
 	add("train", "s4-churn-preempt", 5, func(s *ScenarioSpec) {
 		s.OutcomeStatus = "preempted"
 		s.ObservedFractionPermille = 550
@@ -215,14 +222,18 @@ func defaultScenarioSpecs(seed uint64) []ScenarioSpec {
 		s.OutcomeStatus = "censored"
 		s.ObservedFractionPermille = 450
 	})
+	add("train", "s5-deadline-loose", 15, func(s *ScenarioSpec) { s.DeadlineMillis = 10000 })
 	add("train", "s5-deadline-near", 7, func(s *ScenarioSpec) { s.DeadlineMillis = 3200 })
 
 	add("valid", "s1-compute-fast", 10, func(s *ScenarioSpec) { s.ActualComputePermille = 900 })
+	add("valid", "s1-compute-very-slow", 17, func(s *ScenarioSpec) { s.ActualComputePermille = 2000 })
+	add("valid", "s2-bandwidth-burst", 16, func(s *ScenarioSpec) { s.ActualDownloadPermille = 400 })
 	add("valid", "s2-bandwidth-asymmetric", 11, func(s *ScenarioSpec) {
 		s.ActualDownloadPermille = 700
 		s.ActualUploadPermille = 900
 	})
-	add("valid", "s3-cache-stale", 12, func(s *ScenarioSpec) { s.ExtraTransferBytes = 24 << 20 })
+	add("valid", "s3-cache-stale", 12, configureTwoInputCache(true, true, 24<<20))
+	add("valid", "s5-deadline-impossible", 20, func(s *ScenarioSpec) { s.DeadlineMillis = 1000 })
 	add("valid", "s5-deadline-censored", 13, func(s *ScenarioSpec) {
 		s.DeadlineMillis = 3000
 		s.OutcomeStatus = "censored"
@@ -256,11 +267,25 @@ func defaultScenarioSpecs(seed uint64) []ScenarioSpec {
 	return specs
 }
 
+func configureTwoInputCache(firstCached, secondCached bool, extraActualTransfer uint64) func(*ScenarioSpec) {
+	return func(s *ScenarioSpec) {
+		s.InputBytes = 32 << 20
+		s.SecondInputBytes = 32 << 20
+		s.CacheHit = firstCached
+		s.SecondCacheHit = secondCached
+		s.ExtraTransferBytes = extraActualTransfer
+	}
+}
+
 func generateObservation(seed uint64, spec ScenarioSpec) (shadowsched.Observation, error) {
+	inputs := []locality.Artifact{{Digest: "sha256:input-a", SizeBytes: spec.InputBytes}}
+	if spec.SecondInputBytes > 0 {
+		inputs = append(inputs, locality.Artifact{Digest: "sha256:input-b", SizeBytes: spec.SecondInputBytes})
+	}
 	task := locality.Task{
-		Inputs:              []locality.Artifact{{Digest: "sha256:input", SizeBytes: spec.InputBytes}},
+		Inputs:              inputs,
 		ExpectedOutputBytes: spec.ExpectedOutputBytes,
-		MaxTransferBytes:    spec.InputBytes + spec.ExpectedOutputBytes + (1 << 20),
+		MaxTransferBytes:    spec.InputBytes + spec.SecondInputBytes + spec.ExpectedOutputBytes + (1 << 20),
 	}
 	worker := locality.Worker{
 		ID:                     spec.ID,
@@ -269,7 +294,10 @@ func generateObservation(seed uint64, spec ScenarioSpec) (shadowsched.Observatio
 		ComputeMillis:          spec.BaselineComputeMillis,
 		DownloadBytesPerSecond: spec.DownloadBytesPerSec,
 		UploadBytesPerSecond:   spec.UploadBytesPerSec,
-		CachedDigests:          map[string]bool{"sha256:input": spec.CacheHit},
+		CachedDigests: map[string]bool{
+			"sha256:input-a": spec.CacheHit,
+			"sha256:input-b": spec.SecondCacheHit,
+		},
 	}
 	estimate := locality.EstimateTask(task, worker)
 	baseline := shadowsched.BaselineEstimate{
