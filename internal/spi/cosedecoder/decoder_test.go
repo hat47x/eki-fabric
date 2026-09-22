@@ -99,6 +99,12 @@ func TestNewEnvelopeRejectsBrokenInternalInvariants(t *testing.T) {
 			},
 		},
 		{
+			name: "detached nil payload",
+			mutate: func(cfg *EnvelopeConfig) {
+				cfg.Payload = nil
+			},
+		},
+		{
 			name: "oversized payload",
 			mutate: func(cfg *EnvelopeConfig) {
 				cfg.Payload = make([]byte, decisiontrust.MaxCOSESign1Bytes+1)
