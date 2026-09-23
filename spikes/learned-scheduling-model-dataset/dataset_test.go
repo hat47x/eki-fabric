@@ -226,6 +226,61 @@ func TestCurrentScenarioSetFailsClosedOnMissingIsolatedABViews(t *testing.T) {
 	}
 }
 
+func TestValidationOnlyShiftDoesNotSatisfyFinalTestReadiness(t *testing.T) {
+	rows := []ComparisonRow{
+		{
+			ObservationID: "train",
+			Split:         "train",
+			Grouping: Grouping{
+				ScenarioFamily:   "train-family",
+				WorkerPopulation: "worker-known",
+				TimeRegime:       "time-known",
+			},
+		},
+		{
+			ObservationID: "valid-time-only",
+			Split:         "valid",
+			Grouping: Grouping{
+				ScenarioFamily:   "valid-time-shift",
+				WorkerPopulation: "worker-known",
+				TimeRegime:       "time-unseen",
+			},
+		},
+		{
+			ObservationID: "valid-worker-only",
+			Split:         "valid",
+			Grouping: Grouping{
+				ScenarioFamily:   "valid-worker-shift",
+				WorkerPopulation: "worker-unseen",
+				TimeRegime:       "time-known",
+			},
+		},
+		{
+			ObservationID: "test-compound",
+			Split:         "test",
+			Grouping: Grouping{
+				ScenarioFamily:   "s6-compound-test",
+				WorkerPopulation: "worker-unseen",
+				TimeRegime:       "time-unseen",
+			},
+		},
+	}
+
+	readiness := AssessModelFitReadiness(rows)
+	if readiness.Slices.TestAUnseenTimeOnly != 0 {
+		t.Fatalf("validation-only time shift counted as Test-A: %+v", readiness.Slices)
+	}
+	if readiness.Slices.TestBUnseenWorkerOnly != 0 {
+		t.Fatalf("validation-only worker shift counted as Test-B: %+v", readiness.Slices)
+	}
+	if readiness.Slices.TestCCompound != 1 {
+		t.Fatalf("Test-C count=%d want=1", readiness.Slices.TestCCompound)
+	}
+	if readiness.ModelFitReady {
+		t.Fatal("validation-only shift coverage must not unlock model fitting")
+	}
+}
+
 func TestProjectionRetainsTargetAndGroupingOutsideFeatureVector(t *testing.T) {
 	bundle, err := Freeze(42)
 	if err != nil {
