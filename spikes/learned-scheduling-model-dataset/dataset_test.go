@@ -140,8 +140,8 @@ func TestCensoredAndIneligibleRowsDoNotAcquireInventedTargets(t *testing.T) {
 			}
 		case strings.Contains(row.Grouping.ScenarioFamily, "policy-reject"):
 			sawIneligible = true
-			if row.OptimizationEligible {
-				t.Fatal("policy-rejected row marked optimization eligible")
+			if row.PolicyEligible {
+				t.Fatal("policy-rejected row marked policy eligible")
 			}
 			if row.Targets.DurationResidualMillis != nil ||
 				row.Targets.CompletionBeforeDeadline != nil {
@@ -352,6 +352,30 @@ func TestHeldOutSliceWithoutKnownTargetsDoesNotUnlockReadiness(t *testing.T) {
 	}
 	if len(readiness.BlockingReasons) != 4 {
 		t.Fatalf("target-coverage blockers=%v", readiness.BlockingReasons)
+	}
+}
+
+func TestPolicyEligibilityDoesNotImplyTargetAvailability(t *testing.T) {
+	bundle, err := Freeze(42)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var sawCensored bool
+	for _, row := range bundle.Dataset.Rows {
+		if !strings.Contains(row.Grouping.ScenarioFamily, "s4-churn-censored") {
+			continue
+		}
+		sawCensored = true
+		if !row.PolicyEligible {
+			t.Fatal("censored fixture should remain policy eligible")
+		}
+		if row.Targets.DurationResidualMillis != nil ||
+			row.Targets.CompletionBeforeDeadline != nil {
+			t.Fatal("policy eligibility must not imply optimization-target availability")
+		}
+	}
+	if !sawCensored {
+		t.Fatal("missing censored fixture")
 	}
 }
 
