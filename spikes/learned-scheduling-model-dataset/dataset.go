@@ -293,7 +293,10 @@ func AssessModelFitReadiness(rows []ComparisonRow) ModelFitReadiness {
 
 	slices := SliceReadiness{}
 	for _, row := range rows {
-		if row.Split != "valid" && row.Split != "test" {
+		// Issue #50 preregisters Test-A/B/C as read-only final test
+		// views. Validation-only regime coverage must never unlock model
+		// fitting by masquerading as one of those held-out slices.
+		if row.Split != "test" {
 			continue
 		}
 		unseenWorker := !trainWorkers[row.Grouping.WorkerPopulation]
@@ -304,7 +307,7 @@ func AssessModelFitReadiness(rows []ComparisonRow) ModelFitReadiness {
 		if unseenWorker && !unseenTime {
 			slices.TestBUnseenWorkerOnly++
 		}
-		if row.Split == "test" && strings.Contains(row.Grouping.ScenarioFamily, "s6-compound") {
+		if strings.Contains(row.Grouping.ScenarioFamily, "s6-compound") {
 			slices.TestCCompound++
 		}
 	}
