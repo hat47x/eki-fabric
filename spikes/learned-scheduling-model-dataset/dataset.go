@@ -54,7 +54,7 @@ type ComparisonRow struct {
 	Grouping            Grouping      `json:"grouping"`
 	Features            ModelFeatures `json:"features"`
 	Targets             TargetView    `json:"targets"`
-	OptimizationEligible bool         `json:"optimization_eligible"`
+	PolicyEligible       bool         `json:"policy_eligible"`
 }
 
 type FrozenDataset struct {
@@ -282,7 +282,7 @@ func projectObservation(observation shadowsched.Observation) (ComparisonRow, err
 			DeadlineSlackMillis: deadlineSlack,
 		},
 		Targets:              targets,
-		OptimizationEligible: observation.PolicyEligible,
+		PolicyEligible: observation.PolicyEligible,
 	}, nil
 }
 
