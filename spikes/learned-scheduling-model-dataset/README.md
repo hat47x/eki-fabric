@@ -70,6 +70,8 @@ Censored and policy-ineligible rows therefore do not acquire fabricated targets.
 
 The projected row uses `policy_eligible`, not a generic `optimization_eligible` flag. A policy-eligible censored observation may legitimately have no optimization target, so downstream fitting must use target presence/knownness rather than treating policy eligibility as target eligibility.
 
+The readiness gate requires **both** policy eligibility and a known target. Even if a malformed/directly-constructed comparison row carries a non-null target pointer, `policy_eligible=false` cannot contribute to Test-A/B/C target coverage or unlock model fitting.
+
 ## Important readiness finding
 
 Issue #50 preregisters three distinct held-out views:
