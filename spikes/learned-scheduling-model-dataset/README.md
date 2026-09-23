@@ -84,9 +84,13 @@ Expected readiness on the current scenario set:
 ```text
 test_a_unseen_time_only = 0
 test_b_unseen_worker_only = 0
-test_c_compound > 0
+test_c_compound = 6
+test_c_duration_targets = 4
+test_c_completion_targets = 5
 model_fit_ready = false
 ```
+
+Readiness also requires each final Test-A/B/C slice to contain at least one known duration target and at least one known completion target. A slice made only of censored or policy-ineligible observations cannot unlock model fitting. Validation-only shift coverage also cannot substitute for a final test slice.
 
 Therefore this work unit may freeze/validate data and baselines, but **0C-2 model fitting remains blocked** until a later single work unit extends the preregistered scenario set with isolated held-out A/B regimes or Issue #50 is explicitly revised.
 
