@@ -214,6 +214,12 @@ func TestCurrentScenarioSetFailsClosedOnMissingIsolatedABViews(t *testing.T) {
 	if readiness.Slices.TestCCompound != 6 {
 		t.Fatalf("compound Test-C rows=%d want=6", readiness.Slices.TestCCompound)
 	}
+	if readiness.Slices.TestCDurationTargets != 4 {
+		t.Fatalf("Test-C duration targets=%d want=4", readiness.Slices.TestCDurationTargets)
+	}
+	if readiness.Slices.TestCCompletionTargets != 5 {
+		t.Fatalf("Test-C completion targets=%d want=5", readiness.Slices.TestCCompletionTargets)
+	}
 	if readiness.ModelFitReady {
 		t.Fatal("model fitting must remain blocked until isolated Test-A/B exist")
 	}
@@ -278,6 +284,74 @@ func TestValidationOnlyShiftDoesNotSatisfyFinalTestReadiness(t *testing.T) {
 	}
 	if readiness.ModelFitReady {
 		t.Fatal("validation-only shift coverage must not unlock model fitting")
+	}
+}
+
+func TestHeldOutSliceWithoutKnownTargetsDoesNotUnlockReadiness(t *testing.T) {
+	duration := 10.0
+	completion := true
+	rows := []ComparisonRow{
+		{
+			ObservationID: "train",
+			Split:         "train",
+			Grouping: Grouping{
+				ScenarioFamily:   "train-family",
+				WorkerPopulation: "worker-known",
+				TimeRegime:       "time-known",
+			},
+			Targets: TargetView{
+				DurationResidualMillis:   &duration,
+				CompletionBeforeDeadline: &completion,
+			},
+		},
+		{
+			ObservationID: "test-a-censored",
+			Split:         "test",
+			Grouping: Grouping{
+				ScenarioFamily:   "test-a",
+				WorkerPopulation: "worker-known",
+				TimeRegime:       "time-unseen",
+			},
+		},
+		{
+			ObservationID: "test-b-ineligible",
+			Split:         "test",
+			Grouping: Grouping{
+				ScenarioFamily:   "test-b",
+				WorkerPopulation: "worker-unseen",
+				TimeRegime:       "time-known",
+			},
+		},
+		{
+			ObservationID: "test-c-known",
+			Split:         "test",
+			Grouping: Grouping{
+				ScenarioFamily:   "s6-compound-test",
+				WorkerPopulation: "worker-unseen",
+				TimeRegime:       "time-unseen",
+			},
+			Targets: TargetView{
+				DurationResidualMillis:   &duration,
+				CompletionBeforeDeadline: &completion,
+			},
+		},
+	}
+
+	readiness := AssessModelFitReadiness(rows)
+	if readiness.Slices.TestAUnseenTimeOnly != 1 || readiness.Slices.TestBUnseenWorkerOnly != 1 {
+		t.Fatalf("missing structural held-out slices: %+v", readiness.Slices)
+	}
+	if readiness.Slices.TestADurationTargets != 0 || readiness.Slices.TestACompletionTargets != 0 {
+		t.Fatalf("Test-A unexpectedly acquired targets: %+v", readiness.Slices)
+	}
+	if readiness.Slices.TestBDurationTargets != 0 || readiness.Slices.TestBCompletionTargets != 0 {
+		t.Fatalf("Test-B unexpectedly acquired targets: %+v", readiness.Slices)
+	}
+	if readiness.ModelFitReady {
+		t.Fatal("targetless held-out slices must not unlock model fitting")
+	}
+	if len(readiness.BlockingReasons) != 4 {
+		t.Fatalf("target-coverage blockers=%v", readiness.BlockingReasons)
 	}
 }
 
