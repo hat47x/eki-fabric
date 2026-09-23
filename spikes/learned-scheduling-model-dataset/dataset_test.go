@@ -334,6 +334,7 @@ func TestHeldOutSliceWithoutKnownTargetsDoesNotUnlockReadiness(t *testing.T) {
 				DurationResidualMillis:   &duration,
 				CompletionBeforeDeadline: &completion,
 			},
+			PolicyEligible: true,
 		},
 	}
 
