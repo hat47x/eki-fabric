@@ -76,9 +76,15 @@ type BaselineBundle struct {
 }
 
 type SliceReadiness struct {
-	TestAUnseenTimeOnly   int `json:"test_a_unseen_time_only"`
-	TestBUnseenWorkerOnly int `json:"test_b_unseen_worker_only"`
-	TestCCompound         int `json:"test_c_compound"`
+	TestAUnseenTimeOnly          int `json:"test_a_unseen_time_only"`
+	TestADurationTargets         int `json:"test_a_duration_targets"`
+	TestACompletionTargets       int `json:"test_a_completion_targets"`
+	TestBUnseenWorkerOnly        int `json:"test_b_unseen_worker_only"`
+	TestBDurationTargets         int `json:"test_b_duration_targets"`
+	TestBCompletionTargets       int `json:"test_b_completion_targets"`
+	TestCCompound                int `json:"test_c_compound"`
+	TestCDurationTargets         int `json:"test_c_duration_targets"`
+	TestCCompletionTargets       int `json:"test_c_completion_targets"`
 }
 
 type ModelFitReadiness struct {
@@ -303,24 +309,63 @@ func AssessModelFitReadiness(rows []ComparisonRow) ModelFitReadiness {
 		unseenTime := !trainTimes[row.Grouping.TimeRegime]
 		if unseenTime && !unseenWorker {
 			slices.TestAUnseenTimeOnly++
+			if row.Targets.DurationResidualMillis != nil {
+				slices.TestADurationTargets++
+			}
+			if row.Targets.CompletionBeforeDeadline != nil {
+				slices.TestACompletionTargets++
+			}
 		}
 		if unseenWorker && !unseenTime {
 			slices.TestBUnseenWorkerOnly++
+			if row.Targets.DurationResidualMillis != nil {
+				slices.TestBDurationTargets++
+			}
+			if row.Targets.CompletionBeforeDeadline != nil {
+				slices.TestBCompletionTargets++
+			}
 		}
 		if strings.Contains(row.Grouping.ScenarioFamily, "s6-compound") {
 			slices.TestCCompound++
+			if row.Targets.DurationResidualMillis != nil {
+				slices.TestCDurationTargets++
+			}
+			if row.Targets.CompletionBeforeDeadline != nil {
+				slices.TestCCompletionTargets++
+			}
 		}
 	}
 
 	blockers := []string{}
 	if slices.TestAUnseenTimeOnly == 0 {
 		blockers = append(blockers, "missing isolated Test-A unseen-time-only rows")
+	} else {
+		if slices.TestADurationTargets == 0 {
+			blockers = append(blockers, "Test-A has no known duration target")
+		}
+		if slices.TestACompletionTargets == 0 {
+			blockers = append(blockers, "Test-A has no known completion target")
+		}
 	}
 	if slices.TestBUnseenWorkerOnly == 0 {
 		blockers = append(blockers, "missing isolated Test-B unseen-worker-only rows")
+	} else {
+		if slices.TestBDurationTargets == 0 {
+			blockers = append(blockers, "Test-B has no known duration target")
+		}
+		if slices.TestBCompletionTargets == 0 {
+			blockers = append(blockers, "Test-B has no known completion target")
+		}
 	}
 	if slices.TestCCompound == 0 {
 		blockers = append(blockers, "missing Test-C compound-shift rows")
+	} else {
+		if slices.TestCDurationTargets == 0 {
+			blockers = append(blockers, "Test-C has no known duration target")
+		}
+		if slices.TestCCompletionTargets == 0 {
+			blockers = append(blockers, "Test-C has no known completion target")
+		}
 	}
 	return ModelFitReadiness{
 		Schema:          ReadinessSchema,
