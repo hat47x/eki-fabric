@@ -355,6 +355,83 @@ func TestHeldOutSliceWithoutKnownTargetsDoesNotUnlockReadiness(t *testing.T) {
 	}
 }
 
+func TestReadinessIgnoresTargetsOnPolicyIneligibleRows(t *testing.T) {
+	duration := 10.0
+	completion := true
+	rows := []ComparisonRow{
+		{
+			ObservationID: "train",
+			Split:         "train",
+			Grouping: Grouping{
+				ScenarioFamily:   "train-family",
+				WorkerPopulation: "worker-known",
+				TimeRegime:       "time-known",
+			},
+			PolicyEligible: true,
+		},
+		{
+			ObservationID: "test-a-ineligible",
+			Split:         "test",
+			Grouping: Grouping{
+				ScenarioFamily:   "test-a",
+				WorkerPopulation: "worker-known",
+				TimeRegime:       "time-unseen",
+			},
+			Targets: TargetView{
+				DurationResidualMillis:   &duration,
+				CompletionBeforeDeadline: &completion,
+			},
+			PolicyEligible: false,
+		},
+		{
+			ObservationID: "test-b-ineligible",
+			Split:         "test",
+			Grouping: Grouping{
+				ScenarioFamily:   "test-b",
+				WorkerPopulation: "worker-unseen",
+				TimeRegime:       "time-known",
+			},
+			Targets: TargetView{
+				DurationResidualMillis:   &duration,
+				CompletionBeforeDeadline: &completion,
+			},
+			PolicyEligible: false,
+		},
+		{
+			ObservationID: "test-c-ineligible",
+			Split:         "test",
+			Grouping: Grouping{
+				ScenarioFamily:   "s6-compound-test",
+				WorkerPopulation: "worker-unseen",
+				TimeRegime:       "time-unseen",
+			},
+			Targets: TargetView{
+				DurationResidualMillis:   &duration,
+				CompletionBeforeDeadline: &completion,
+			},
+			PolicyEligible: false,
+		},
+	}
+
+	readiness := AssessModelFitReadiness(rows)
+	if readiness.Slices.TestAUnseenTimeOnly != 1 ||
+		readiness.Slices.TestBUnseenWorkerOnly != 1 ||
+		readiness.Slices.TestCCompound != 1 {
+		t.Fatalf("missing structural held-out coverage: %+v", readiness.Slices)
+	}
+	if readiness.Slices.TestADurationTargets != 0 ||
+		readiness.Slices.TestACompletionTargets != 0 ||
+		readiness.Slices.TestBDurationTargets != 0 ||
+		readiness.Slices.TestBCompletionTargets != 0 ||
+		readiness.Slices.TestCDurationTargets != 0 ||
+		readiness.Slices.TestCCompletionTargets != 0 {
+		t.Fatalf("policy-ineligible rows counted as optimization targets: %+v", readiness.Slices)
+	}
+	if readiness.ModelFitReady {
+		t.Fatal("policy-ineligible target pointers must not unlock model fitting")
+	}
+}
+
 func TestPolicyEligibilityDoesNotImplyTargetAvailability(t *testing.T) {
 	bundle, err := Freeze(42)
 	if err != nil {
