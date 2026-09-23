@@ -21,6 +21,7 @@ The freeze bundle contains:
 - exact source dataset identity/digest;
 - a model-facing feature projection;
 - targets stored separately from features;
+- policy eligibility stored separately from target availability;
 - grouping/split provenance stored separately from features;
 - valid/test M0 baseline results;
 - content digests for the projected dataset and baseline bundle;
@@ -66,6 +67,8 @@ Duration residual is emitted only when the existing shadow-observation helper sa
 Completion-before-deadline is emitted only when the existing helper says it is known.
 
 Censored and policy-ineligible rows therefore do not acquire fabricated targets.
+
+The projected row uses `policy_eligible`, not a generic `optimization_eligible` flag. A policy-eligible censored observation may legitimately have no optimization target, so downstream fitting must use target presence/knownness rather than treating policy eligibility as target eligibility.
 
 ## Important readiness finding
 
