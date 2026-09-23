@@ -307,30 +307,31 @@ func AssessModelFitReadiness(rows []ComparisonRow) ModelFitReadiness {
 		}
 		unseenWorker := !trainWorkers[row.Grouping.WorkerPopulation]
 		unseenTime := !trainTimes[row.Grouping.TimeRegime]
+		targetEligible := row.PolicyEligible
 		if unseenTime && !unseenWorker {
 			slices.TestAUnseenTimeOnly++
-			if row.Targets.DurationResidualMillis != nil {
+			if targetEligible && row.Targets.DurationResidualMillis != nil {
 				slices.TestADurationTargets++
 			}
-			if row.Targets.CompletionBeforeDeadline != nil {
+			if targetEligible && row.Targets.CompletionBeforeDeadline != nil {
 				slices.TestACompletionTargets++
 			}
 		}
 		if unseenWorker && !unseenTime {
 			slices.TestBUnseenWorkerOnly++
-			if row.Targets.DurationResidualMillis != nil {
+			if targetEligible && row.Targets.DurationResidualMillis != nil {
 				slices.TestBDurationTargets++
 			}
-			if row.Targets.CompletionBeforeDeadline != nil {
+			if targetEligible && row.Targets.CompletionBeforeDeadline != nil {
 				slices.TestBCompletionTargets++
 			}
 		}
 		if strings.Contains(row.Grouping.ScenarioFamily, "s6-compound") {
 			slices.TestCCompound++
-			if row.Targets.DurationResidualMillis != nil {
+			if targetEligible && row.Targets.DurationResidualMillis != nil {
 				slices.TestCDurationTargets++
 			}
-			if row.Targets.CompletionBeforeDeadline != nil {
+			if targetEligible && row.Targets.CompletionBeforeDeadline != nil {
 				slices.TestCCompletionTargets++
 			}
 		}
