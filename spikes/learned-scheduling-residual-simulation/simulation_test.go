@@ -150,6 +150,31 @@ func TestGeneralizationAxesSeparateConcreteLeakageGroupsFromFamilies(t *testing.
 	}
 }
 
+func TestEvaluationAxesRejectConcreteGroupFamilyDrift(t *testing.T) {
+	d, err := GenerateDataset(42)
+	if err != nil {
+		t.Fatal(err)
+	}
+	firstByWorker := map[string]string{}
+	mutated := false
+	for _, o := range d.Observations {
+		if firstID, ok := firstByWorker[o.WorkerPopulation]; ok {
+			axes := d.EvaluationAxes[o.ObservationID]
+			axes.WorkerPopulationFamily = d.EvaluationAxes[firstID].WorkerPopulationFamily + "-conflict"
+			d.EvaluationAxes[o.ObservationID] = axes
+			mutated = true
+			break
+		}
+		firstByWorker[o.WorkerPopulation] = o.ObservationID
+	}
+	if !mutated {
+		t.Fatal("fixture must contain a repeated concrete worker population")
+	}
+	if err := ValidateEvaluationAxes(d); err == nil {
+		t.Fatal("one concrete worker population must not map to multiple abstract families")
+	}
+}
+
 func TestResidualRederivesExactlyFromObservation(t *testing.T) {
 	d, err := GenerateDataset(7)
 	if err != nil {
