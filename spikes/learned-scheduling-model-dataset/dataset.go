@@ -14,12 +14,12 @@ import (
 )
 
 const (
-	FrozenDatasetSchema = "eki.learned-scheduling-model-comparison-dataset/v0"
-	FreezeBundleSchema   = "eki.learned-scheduling-model-comparison-freeze/v0"
-	BaselineBundleSchema = "eki.learned-scheduling-model-comparison-baselines/v0"
-	ReadinessSchema      = "eki.learned-scheduling-model-fit-readiness/v0"
-	ProjectionVersion    = "eki-ml-0c-feature-projection-v0"
-	FreezeVersion        = "eki-ml-0c-dataset-freeze-v0"
+	FrozenDatasetSchema = "eki.learned-scheduling-model-comparison-dataset/v1"
+	FreezeBundleSchema   = "eki.learned-scheduling-model-comparison-freeze/v1"
+	BaselineBundleSchema = "eki.learned-scheduling-model-comparison-baselines/v1"
+	ReadinessSchema      = "eki.learned-scheduling-model-fit-readiness/v1"
+	ProjectionVersion    = "eki-ml-0c-feature-projection-v1"
+	FreezeVersion        = "eki-ml-0c-dataset-freeze-v1"
 )
 
 type ModelFeatures struct {
@@ -49,10 +49,11 @@ type Grouping struct {
 }
 
 type ComparisonRow struct {
-	ObservationID       string        `json:"observation_id"`
-	Split               string        `json:"split"`
-	Grouping            Grouping      `json:"grouping"`
-	Features            ModelFeatures `json:"features"`
+	ObservationID       string                         `json:"observation_id"`
+	Split               string                         `json:"split"`
+	Grouping            Grouping                       `json:"grouping"`
+	EvaluationAxes      residualsim.GeneralizationAxes `json:"evaluation_axes"`
+	Features            ModelFeatures                  `json:"features"`
 	Targets             TargetView    `json:"targets"`
 	PolicyEligible       bool         `json:"policy_eligible"`
 }
@@ -182,6 +183,9 @@ func ProjectDataset(source residualsim.Dataset) (FrozenDataset, ModelFitReadines
 	if err := shadowsched.ValidateNoSplitLeakage(source.Observations); err != nil {
 		return FrozenDataset{}, ModelFitReadiness{}, fmt.Errorf("source split contract: %w", err)
 	}
+	if err := residualsim.ValidateEvaluationAxes(source); err != nil {
+		return FrozenDataset{}, ModelFitReadiness{}, fmt.Errorf("source evaluation axes: %w", err)
+	}
 
 	seen := map[string]bool{}
 	rows := make([]ComparisonRow, 0, len(source.Observations))
@@ -190,7 +194,8 @@ func ProjectDataset(source residualsim.Dataset) (FrozenDataset, ModelFitReadines
 			return FrozenDataset{}, ModelFitReadiness{}, fmt.Errorf("duplicate observation_id %q", observation.ObservationID)
 		}
 		seen[observation.ObservationID] = true
-		row, err := projectObservation(observation)
+		axes := source.EvaluationAxes[observation.ObservationID]
+		row, err := projectObservation(observation, axes)
 		if err != nil {
 			return FrozenDataset{}, ModelFitReadiness{}, fmt.Errorf("project %s: %w", observation.ObservationID, err)
 		}
@@ -214,7 +219,10 @@ func ProjectDataset(source residualsim.Dataset) (FrozenDataset, ModelFitReadines
 	return projected, AssessModelFitReadiness(rows), nil
 }
 
-func projectObservation(observation shadowsched.Observation) (ComparisonRow, error) {
+func projectObservation(
+	observation shadowsched.Observation,
+	axes residualsim.GeneralizationAxes,
+) (ComparisonRow, error) {
 	if err := shadowsched.Validate(observation); err != nil {
 		return ComparisonRow{}, err
 	}
@@ -267,6 +275,7 @@ func projectObservation(observation shadowsched.Observation) (ComparisonRow, err
 			WorkerPopulation: observation.WorkerPopulation,
 			TimeRegime:       observation.TimeRegime,
 		},
+		EvaluationAxes: axes,
 		Features: ModelFeatures{
 			TaskClass:           observation.TaskClass,
 			WorkerClass:         observation.WorkerClass,
@@ -287,14 +296,14 @@ func projectObservation(observation shadowsched.Observation) (ComparisonRow, err
 }
 
 func AssessModelFitReadiness(rows []ComparisonRow) ModelFitReadiness {
-	trainWorkers := map[string]bool{}
-	trainTimes := map[string]bool{}
+	trainWorkerFamilies := map[string]bool{}
+	trainTimeFamilies := map[string]bool{}
 	for _, row := range rows {
 		if row.Split != "train" {
 			continue
 		}
-		trainWorkers[row.Grouping.WorkerPopulation] = true
-		trainTimes[row.Grouping.TimeRegime] = true
+		trainWorkerFamilies[row.EvaluationAxes.WorkerPopulationFamily] = true
+		trainTimeFamilies[row.EvaluationAxes.TimeRegimeFamily] = true
 	}
 
 	slices := SliceReadiness{}
@@ -305,8 +314,8 @@ func AssessModelFitReadiness(rows []ComparisonRow) ModelFitReadiness {
 		if row.Split != "test" {
 			continue
 		}
-		unseenWorker := !trainWorkers[row.Grouping.WorkerPopulation]
-		unseenTime := !trainTimes[row.Grouping.TimeRegime]
+		unseenWorker := !trainWorkerFamilies[row.EvaluationAxes.WorkerPopulationFamily]
+		unseenTime := !trainTimeFamilies[row.EvaluationAxes.TimeRegimeFamily]
 		targetEligible := row.PolicyEligible
 		if unseenTime && !unseenWorker {
 			slices.TestAUnseenTimeOnly++
