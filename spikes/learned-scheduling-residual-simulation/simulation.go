@@ -270,11 +270,15 @@ func defaultScenarioSpecs(seed uint64) []ScenarioSpec {
 	})
 
 	add("test", "s1-isolated-time-shift", 70, func(s *ScenarioSpec) {
+		s.WorkerPopulation = "test-a-worker-pop-0"
+		s.TimeRegime = "test-a-time-regime-0"
 		s.TimeRegimeFamily = "time-family-unseen"
 		s.ShiftAxes = []string{"time_regime"}
 		s.ActualComputePermille = 1250
 	})
 	add("test", "s1-isolated-worker-shift", 71, func(s *ScenarioSpec) {
+		s.WorkerPopulation = "test-b-worker-pop-0"
+		s.TimeRegime = "test-b-time-regime-0"
 		s.WorkerPopulationFamily = "worker-family-unseen"
 		s.ShiftAxes = []string{"worker_population"}
 		s.ActualComputePermille = 1350
@@ -282,6 +286,8 @@ func defaultScenarioSpecs(seed uint64) []ScenarioSpec {
 
 	for i := 0; i < 6; i++ {
 		add("test", "s6-compound", 20+i, func(s *ScenarioSpec) {
+			s.WorkerPopulation = fmt.Sprintf("test-c-worker-pop-%d", i%2)
+			s.TimeRegime = fmt.Sprintf("test-c-time-regime-%d", i%2)
 			s.WorkerPopulationFamily = "worker-family-compound"
 			s.TimeRegimeFamily = "time-family-compound"
 			s.ShiftAxes = []string{"worker_population", "time_regime", "compound"}
@@ -315,6 +321,8 @@ func ValidateEvaluationAxes(dataset Dataset) error {
 		return fmt.Errorf("evaluation_axes count=%d must match observations=%d", len(dataset.EvaluationAxes), len(dataset.Observations))
 	}
 	seen := map[string]bool{}
+	workerFamilies := map[string]string{}
+	timeFamilies := map[string]string{}
 	for _, observation := range dataset.Observations {
 		if seen[observation.ObservationID] {
 			return fmt.Errorf("duplicate observation_id %q", observation.ObservationID)
@@ -330,6 +338,24 @@ func ValidateEvaluationAxes(dataset Dataset) error {
 		if axes.WorkerPopulationFamily == "" || axes.TimeRegimeFamily == "" {
 			return fmt.Errorf("evaluation_axes %q requires worker/time families", observation.ObservationID)
 		}
+		if previous, ok := workerFamilies[observation.WorkerPopulation]; ok && previous != axes.WorkerPopulationFamily {
+			return fmt.Errorf(
+				"worker_population %q maps to multiple families %q and %q",
+				observation.WorkerPopulation,
+				previous,
+				axes.WorkerPopulationFamily,
+			)
+		}
+		workerFamilies[observation.WorkerPopulation] = axes.WorkerPopulationFamily
+		if previous, ok := timeFamilies[observation.TimeRegime]; ok && previous != axes.TimeRegimeFamily {
+			return fmt.Errorf(
+				"time_regime %q maps to multiple families %q and %q",
+				observation.TimeRegime,
+				previous,
+				axes.TimeRegimeFamily,
+			)
+		}
+		timeFamilies[observation.TimeRegime] = axes.TimeRegimeFamily
 		shiftSeen := map[string]bool{}
 		for _, axis := range axes.ShiftAxes {
 			switch axis {
