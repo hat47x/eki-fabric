@@ -36,6 +36,9 @@ func TestGenerateDatasetDeterministicAndValidatorClean(t *testing.T) {
 	if err := shadowsched.ValidateNoSplitLeakage(first.Observations); err != nil {
 		t.Fatal(err)
 	}
+	if err := ValidateEvaluationAxes(first); err != nil {
+		t.Fatal(err)
+	}
 }
 
 func TestDifferentSeedChangesOnlyDeterministicNoiseIdentity(t *testing.T) {
@@ -97,6 +100,53 @@ func TestScenarioSetCoversPreregisteredAxes(t *testing.T) {
 	}
 	if partial.Baseline.LocalInputBytes == 0 || partial.Baseline.LocalInputBytes >= partial.Baseline.TotalInputBytes {
 		t.Fatalf("partial cache must retain some but not all input bytes: %+v", partial.Baseline)
+	}
+}
+
+func TestGeneralizationAxesSeparateConcreteLeakageGroupsFromFamilies(t *testing.T) {
+	d, err := GenerateDataset(42)
+	if err != nil {
+		t.Fatal(err)
+	}
+	trainWorkers := map[string]bool{}
+	trainTimes := map[string]bool{}
+	for _, o := range d.Observations {
+		if o.Split.Name != "train" {
+			continue
+		}
+		axes := d.EvaluationAxes[o.ObservationID]
+		trainWorkers[axes.WorkerPopulationFamily] = true
+		trainTimes[axes.TimeRegimeFamily] = true
+	}
+	var sawA, sawB, sawC bool
+	for _, o := range d.Observations {
+		if o.Split.Name != "test" {
+			continue
+		}
+		axes := d.EvaluationAxes[o.ObservationID]
+		unseenWorker := !trainWorkers[axes.WorkerPopulationFamily]
+		unseenTime := !trainTimes[axes.TimeRegimeFamily]
+		if unseenTime && !unseenWorker {
+			sawA = true
+		}
+		if unseenWorker && !unseenTime {
+			sawB = true
+		}
+		if unseenWorker && unseenTime && o.ScenarioFamily == "test-s6-compound" {
+			sawC = true
+		}
+	}
+	if !sawA || !sawB || !sawC {
+		t.Fatalf("held-out axes A=%v B=%v C=%v", sawA, sawB, sawC)
+	}
+	if err := shadowsched.ValidateNoSplitLeakage(d.Observations); err != nil {
+		t.Fatalf("abstract family reuse must not weaken concrete split identity: %v", err)
+	}
+
+	bad := d
+	delete(bad.EvaluationAxes, bad.Observations[0].ObservationID)
+	if err := ValidateEvaluationAxes(bad); err == nil {
+		t.Fatal("missing evaluation-axis metadata must fail closed")
 	}
 }
 
