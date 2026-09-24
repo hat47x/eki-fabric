@@ -108,6 +108,10 @@ func TestFeatureProjectionExcludesProvenanceTargetsAndAuthority(t *testing.T) {
 		"completion_before_deadline",
 		"policy_eligible",
 		"authorization",
+		"worker_population_family",
+		"time_regime_family",
+		"shift_axes",
+		"evaluation_axes",
 	} {
 		if strings.Contains(string(raw), forbidden) {
 			t.Fatalf("model features leaked %q: %s", forbidden, raw)
@@ -196,7 +200,7 @@ func TestProjectDatasetRejectsSourceIdentityAndSplitLeakage(t *testing.T) {
 	}
 }
 
-func TestCurrentScenarioSetFailsClosedOnMissingIsolatedABViews(t *testing.T) {
+func TestCurrentScenarioSetProvidesLeakageCleanIsolatedABViews(t *testing.T) {
 	bundle, err := Freeze(42)
 	if err != nil {
 		t.Fatal(err)
@@ -205,11 +209,17 @@ func TestCurrentScenarioSetFailsClosedOnMissingIsolatedABViews(t *testing.T) {
 	if readiness.Schema != ReadinessSchema {
 		t.Fatalf("readiness schema=%q", readiness.Schema)
 	}
-	if readiness.Slices.TestAUnseenTimeOnly != 0 {
-		t.Fatalf("unexpected isolated Test-A rows: %d", readiness.Slices.TestAUnseenTimeOnly)
+	if readiness.Slices.TestAUnseenTimeOnly != 1 {
+		t.Fatalf("isolated Test-A rows=%d want=1", readiness.Slices.TestAUnseenTimeOnly)
 	}
-	if readiness.Slices.TestBUnseenWorkerOnly != 0 {
-		t.Fatalf("unexpected isolated Test-B rows: %d", readiness.Slices.TestBUnseenWorkerOnly)
+	if readiness.Slices.TestADurationTargets != 1 || readiness.Slices.TestACompletionTargets != 1 {
+		t.Fatalf("Test-A targets=%+v", readiness.Slices)
+	}
+	if readiness.Slices.TestBUnseenWorkerOnly != 1 {
+		t.Fatalf("isolated Test-B rows=%d want=1", readiness.Slices.TestBUnseenWorkerOnly)
+	}
+	if readiness.Slices.TestBDurationTargets != 1 || readiness.Slices.TestBCompletionTargets != 1 {
+		t.Fatalf("Test-B targets=%+v", readiness.Slices)
 	}
 	if readiness.Slices.TestCCompound != 6 {
 		t.Fatalf("compound Test-C rows=%d want=6", readiness.Slices.TestCCompound)
@@ -220,14 +230,10 @@ func TestCurrentScenarioSetFailsClosedOnMissingIsolatedABViews(t *testing.T) {
 	if readiness.Slices.TestCCompletionTargets != 5 {
 		t.Fatalf("Test-C completion targets=%d want=5", readiness.Slices.TestCCompletionTargets)
 	}
-	if readiness.ModelFitReady {
-		t.Fatal("model fitting must remain blocked until isolated Test-A/B exist")
+	if !readiness.ModelFitReady {
+		t.Fatalf("isolated Test-A/B/C coverage should make the next model-fit work unit mechanically ready: %v", readiness.BlockingReasons)
 	}
-	if len(readiness.BlockingReasons) != 2 {
-		t.Fatalf("blocking reasons=%v", readiness.BlockingReasons)
-	}
-	if !strings.Contains(readiness.BlockingReasons[0], "Test-A") ||
-		!strings.Contains(readiness.BlockingReasons[1], "Test-B") {
+	if len(readiness.BlockingReasons) != 0 {
 		t.Fatalf("unexpected blockers=%v", readiness.BlockingReasons)
 	}
 }
@@ -239,8 +245,13 @@ func TestValidationOnlyShiftDoesNotSatisfyFinalTestReadiness(t *testing.T) {
 			Split:         "train",
 			Grouping: Grouping{
 				ScenarioFamily:   "train-family",
-				WorkerPopulation: "worker-known",
-				TimeRegime:       "time-known",
+				WorkerPopulation: "worker-train-concrete",
+				TimeRegime:       "time-train-concrete",
+			},
+			EvaluationAxes: residualsim.GeneralizationAxes{
+				Schema: residualsim.EvaluationAxesSchema,
+				WorkerPopulationFamily: "worker-known",
+				TimeRegimeFamily: "time-known",
 			},
 		},
 		{
@@ -248,8 +259,14 @@ func TestValidationOnlyShiftDoesNotSatisfyFinalTestReadiness(t *testing.T) {
 			Split:         "valid",
 			Grouping: Grouping{
 				ScenarioFamily:   "valid-time-shift",
-				WorkerPopulation: "worker-known",
-				TimeRegime:       "time-unseen",
+				WorkerPopulation: "worker-valid-a",
+				TimeRegime:       "time-valid-a",
+			},
+			EvaluationAxes: residualsim.GeneralizationAxes{
+				Schema: residualsim.EvaluationAxesSchema,
+				WorkerPopulationFamily: "worker-known",
+				TimeRegimeFamily: "time-unseen",
+				ShiftAxes: []string{"time_regime"},
 			},
 		},
 		{
@@ -257,8 +274,14 @@ func TestValidationOnlyShiftDoesNotSatisfyFinalTestReadiness(t *testing.T) {
 			Split:         "valid",
 			Grouping: Grouping{
 				ScenarioFamily:   "valid-worker-shift",
-				WorkerPopulation: "worker-unseen",
-				TimeRegime:       "time-known",
+				WorkerPopulation: "worker-valid-b",
+				TimeRegime:       "time-valid-b",
+			},
+			EvaluationAxes: residualsim.GeneralizationAxes{
+				Schema: residualsim.EvaluationAxesSchema,
+				WorkerPopulationFamily: "worker-unseen",
+				TimeRegimeFamily: "time-known",
+				ShiftAxes: []string{"worker_population"},
 			},
 		},
 		{
@@ -266,8 +289,14 @@ func TestValidationOnlyShiftDoesNotSatisfyFinalTestReadiness(t *testing.T) {
 			Split:         "test",
 			Grouping: Grouping{
 				ScenarioFamily:   "s6-compound-test",
-				WorkerPopulation: "worker-unseen",
-				TimeRegime:       "time-unseen",
+				WorkerPopulation: "worker-test-c",
+				TimeRegime:       "time-test-c",
+			},
+			EvaluationAxes: residualsim.GeneralizationAxes{
+				Schema: residualsim.EvaluationAxesSchema,
+				WorkerPopulationFamily: "worker-unseen",
+				TimeRegimeFamily: "time-unseen",
+				ShiftAxes: []string{"worker_population", "time_regime", "compound"},
 			},
 		},
 	}
@@ -296,8 +325,13 @@ func TestHeldOutSliceWithoutKnownTargetsDoesNotUnlockReadiness(t *testing.T) {
 			Split:         "train",
 			Grouping: Grouping{
 				ScenarioFamily:   "train-family",
-				WorkerPopulation: "worker-known",
-				TimeRegime:       "time-known",
+				WorkerPopulation: "worker-train-concrete",
+				TimeRegime:       "time-train-concrete",
+			},
+			EvaluationAxes: residualsim.GeneralizationAxes{
+				Schema: residualsim.EvaluationAxesSchema,
+				WorkerPopulationFamily: "worker-known",
+				TimeRegimeFamily: "time-known",
 			},
 			Targets: TargetView{
 				DurationResidualMillis:   &duration,
@@ -309,8 +343,14 @@ func TestHeldOutSliceWithoutKnownTargetsDoesNotUnlockReadiness(t *testing.T) {
 			Split:         "test",
 			Grouping: Grouping{
 				ScenarioFamily:   "test-a",
-				WorkerPopulation: "worker-known",
-				TimeRegime:       "time-unseen",
+				WorkerPopulation: "worker-test-a",
+				TimeRegime:       "time-test-a",
+			},
+			EvaluationAxes: residualsim.GeneralizationAxes{
+				Schema: residualsim.EvaluationAxesSchema,
+				WorkerPopulationFamily: "worker-known",
+				TimeRegimeFamily: "time-unseen",
+				ShiftAxes: []string{"time_regime"},
 			},
 		},
 		{
@@ -318,8 +358,14 @@ func TestHeldOutSliceWithoutKnownTargetsDoesNotUnlockReadiness(t *testing.T) {
 			Split:         "test",
 			Grouping: Grouping{
 				ScenarioFamily:   "test-b",
-				WorkerPopulation: "worker-unseen",
-				TimeRegime:       "time-known",
+				WorkerPopulation: "worker-test-b",
+				TimeRegime:       "time-test-b",
+			},
+			EvaluationAxes: residualsim.GeneralizationAxes{
+				Schema: residualsim.EvaluationAxesSchema,
+				WorkerPopulationFamily: "worker-unseen",
+				TimeRegimeFamily: "time-known",
+				ShiftAxes: []string{"worker_population"},
 			},
 		},
 		{
@@ -327,8 +373,14 @@ func TestHeldOutSliceWithoutKnownTargetsDoesNotUnlockReadiness(t *testing.T) {
 			Split:         "test",
 			Grouping: Grouping{
 				ScenarioFamily:   "s6-compound-test",
-				WorkerPopulation: "worker-unseen",
-				TimeRegime:       "time-unseen",
+				WorkerPopulation: "worker-test-c",
+				TimeRegime:       "time-test-c",
+			},
+			EvaluationAxes: residualsim.GeneralizationAxes{
+				Schema: residualsim.EvaluationAxesSchema,
+				WorkerPopulationFamily: "worker-unseen",
+				TimeRegimeFamily: "time-unseen",
+				ShiftAxes: []string{"worker_population", "time_regime", "compound"},
 			},
 			Targets: TargetView{
 				DurationResidualMillis:   &duration,
@@ -365,8 +417,13 @@ func TestReadinessIgnoresTargetsOnPolicyIneligibleRows(t *testing.T) {
 			Split:         "train",
 			Grouping: Grouping{
 				ScenarioFamily:   "train-family",
-				WorkerPopulation: "worker-known",
-				TimeRegime:       "time-known",
+				WorkerPopulation: "worker-train-concrete",
+				TimeRegime:       "time-train-concrete",
+			},
+			EvaluationAxes: residualsim.GeneralizationAxes{
+				Schema: residualsim.EvaluationAxesSchema,
+				WorkerPopulationFamily: "worker-known",
+				TimeRegimeFamily: "time-known",
 			},
 			PolicyEligible: true,
 		},
@@ -375,8 +432,14 @@ func TestReadinessIgnoresTargetsOnPolicyIneligibleRows(t *testing.T) {
 			Split:         "test",
 			Grouping: Grouping{
 				ScenarioFamily:   "test-a",
-				WorkerPopulation: "worker-known",
-				TimeRegime:       "time-unseen",
+				WorkerPopulation: "worker-test-a",
+				TimeRegime:       "time-test-a",
+			},
+			EvaluationAxes: residualsim.GeneralizationAxes{
+				Schema: residualsim.EvaluationAxesSchema,
+				WorkerPopulationFamily: "worker-known",
+				TimeRegimeFamily: "time-unseen",
+				ShiftAxes: []string{"time_regime"},
 			},
 			Targets: TargetView{
 				DurationResidualMillis:   &duration,
@@ -389,8 +452,14 @@ func TestReadinessIgnoresTargetsOnPolicyIneligibleRows(t *testing.T) {
 			Split:         "test",
 			Grouping: Grouping{
 				ScenarioFamily:   "test-b",
-				WorkerPopulation: "worker-unseen",
-				TimeRegime:       "time-known",
+				WorkerPopulation: "worker-test-b",
+				TimeRegime:       "time-test-b",
+			},
+			EvaluationAxes: residualsim.GeneralizationAxes{
+				Schema: residualsim.EvaluationAxesSchema,
+				WorkerPopulationFamily: "worker-unseen",
+				TimeRegimeFamily: "time-known",
+				ShiftAxes: []string{"worker_population"},
 			},
 			Targets: TargetView{
 				DurationResidualMillis:   &duration,
@@ -403,8 +472,14 @@ func TestReadinessIgnoresTargetsOnPolicyIneligibleRows(t *testing.T) {
 			Split:         "test",
 			Grouping: Grouping{
 				ScenarioFamily:   "s6-compound-test",
-				WorkerPopulation: "worker-unseen",
-				TimeRegime:       "time-unseen",
+				WorkerPopulation: "worker-test-c",
+				TimeRegime:       "time-test-c",
+			},
+			EvaluationAxes: residualsim.GeneralizationAxes{
+				Schema: residualsim.EvaluationAxesSchema,
+				WorkerPopulationFamily: "worker-unseen",
+				TimeRegimeFamily: "time-unseen",
+				ShiftAxes: []string{"worker_population", "time_regime", "compound"},
 			},
 			Targets: TargetView{
 				DurationResidualMillis:   &duration,
@@ -488,6 +563,36 @@ func TestProjectionRetainsTargetAndGroupingOutsideFeatureVector(t *testing.T) {
 		*completed.Features.LocalInputFraction > 1 ||
 		math.IsNaN(*completed.Features.LocalInputFraction) {
 		t.Fatal("invalid local-input fraction")
+	}
+}
+
+func TestEvaluationAxesRemainOutsideModelFeatures(t *testing.T) {
+	bundle, err := Freeze(42)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var sawA, sawB bool
+	for _, row := range bundle.Dataset.Rows {
+		raw, err := json.Marshal(row.Features)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if strings.Contains(string(raw), "family") || strings.Contains(string(raw), "shift_axes") {
+			t.Fatalf("evaluation axes leaked into model features: %s", raw)
+		}
+		if row.Split == "test" {
+			if row.EvaluationAxes.TimeRegimeFamily == "time-family-unseen" &&
+				row.EvaluationAxes.WorkerPopulationFamily == "worker-family-known" {
+				sawA = true
+			}
+			if row.EvaluationAxes.WorkerPopulationFamily == "worker-family-unseen" &&
+				row.EvaluationAxes.TimeRegimeFamily == "time-family-known" {
+				sawB = true
+			}
+		}
+	}
+	if !sawA || !sawB {
+		t.Fatalf("projected isolated axes A=%v B=%v", sawA, sawB)
 	}
 }
 
