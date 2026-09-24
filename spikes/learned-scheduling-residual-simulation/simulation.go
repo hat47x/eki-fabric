@@ -126,7 +126,7 @@ func GenerateDataset(seed uint64) (Dataset, error) {
 	if err := shadowsched.ValidateNoSplitLeakage(observations); err != nil {
 		return Dataset{}, fmt.Errorf("generated dataset violates split contract: %w", err)
 	}
-	return Dataset{
+	dataset := Dataset{
 		Schema:             DatasetSchema,
 		ScenarioSetVersion: ScenarioSetVersion,
 		GeneratorVersion:   GeneratorVersion,
