@@ -11,20 +11,29 @@ import (
 )
 
 const (
-	DatasetSchema       = "eki.learned-scheduling-residual-dataset/v0"
-	ScenarioSetVersion  = "eki-ml-0b-scenarios-v0"
-	GeneratorVersion    = "eki-ml-0b-generator-v0"
+	DatasetSchema       = "eki.learned-scheduling-residual-dataset/v1"
+	ScenarioSetVersion  = "eki-ml-0b-scenarios-v1"
+	GeneratorVersion    = "eki-ml-0b-generator-v1"
+	EvaluationAxesSchema = "eki.learned-scheduling-evaluation-axes/v0"
 	EvaluatorVersion    = "eki-ml-0b-baseline-evaluator-v0"
 	FeatureSchema       = "eki.learned-scheduling-features/v0"
 	ResultSchema        = "eki.learned-scheduling-baseline-evaluation/v0"
 )
 
+type GeneralizationAxes struct {
+	Schema                 string   `json:"schema"`
+	WorkerPopulationFamily string   `json:"worker_population_family"`
+	TimeRegimeFamily       string   `json:"time_regime_family"`
+	ShiftAxes              []string `json:"shift_axes"`
+}
+
 type Dataset struct {
-	Schema             string                    `json:"schema"`
-	ScenarioSetVersion string                    `json:"scenario_set_version"`
-	GeneratorVersion   string                    `json:"generator_version"`
-	Seed               uint64                    `json:"seed"`
-	Observations       []shadowsched.Observation `json:"observations"`
+	Schema             string                         `json:"schema"`
+	ScenarioSetVersion string                         `json:"scenario_set_version"`
+	GeneratorVersion   string                         `json:"generator_version"`
+	Seed               uint64                         `json:"seed"`
+	Observations       []shadowsched.Observation      `json:"observations"`
+	EvaluationAxes     map[string]GeneralizationAxes  `json:"evaluation_axes"`
 }
 
 type ScenarioSpec struct {
@@ -33,6 +42,9 @@ type ScenarioSpec struct {
 	ScenarioFamily           string
 	WorkerPopulation         string
 	TimeRegime               string
+	WorkerPopulationFamily   string
+	TimeRegimeFamily         string
+	ShiftAxes                []string
 	TaskClass                string
 	WorkerClass              string
 	InputBytes               uint64
@@ -97,12 +109,19 @@ type EvaluationResult struct {
 func GenerateDataset(seed uint64) (Dataset, error) {
 	specs := defaultScenarioSpecs(seed)
 	observations := make([]shadowsched.Observation, 0, len(specs))
+	evaluationAxes := make(map[string]GeneralizationAxes, len(specs))
 	for _, spec := range specs {
 		o, err := generateObservation(seed, spec)
 		if err != nil {
 			return Dataset{}, fmt.Errorf("generate %s: %w", spec.ID, err)
 		}
 		observations = append(observations, o)
+		evaluationAxes[o.ObservationID] = GeneralizationAxes{
+			Schema:                 EvaluationAxesSchema,
+			WorkerPopulationFamily: spec.WorkerPopulationFamily,
+			TimeRegimeFamily:       spec.TimeRegimeFamily,
+			ShiftAxes:              append([]string(nil), spec.ShiftAxes...),
+		}
 	}
 	if err := shadowsched.ValidateNoSplitLeakage(observations); err != nil {
 		return Dataset{}, fmt.Errorf("generated dataset violates split contract: %w", err)
@@ -113,7 +132,12 @@ func GenerateDataset(seed uint64) (Dataset, error) {
 		GeneratorVersion:   GeneratorVersion,
 		Seed:               seed,
 		Observations:       observations,
-	}, nil
+		EvaluationAxes:     evaluationAxes,
+	}
+	if err := ValidateEvaluationAxes(dataset); err != nil {
+		return Dataset{}, err
+	}
+	return dataset, nil
 }
 
 func EvaluateBaselines(dataset Dataset, evalSplits ...string) (EvaluationResult, error) {
@@ -121,6 +145,9 @@ func EvaluateBaselines(dataset Dataset, evalSplits ...string) (EvaluationResult,
 		return EvaluationResult{}, errors.New("unsupported dataset identity")
 	}
 	if err := shadowsched.ValidateNoSplitLeakage(dataset.Observations); err != nil {
+		return EvaluationResult{}, err
+	}
+	if err := ValidateEvaluationAxes(dataset); err != nil {
 		return EvaluationResult{}, err
 	}
 	selected := map[string]bool{}
@@ -184,6 +211,8 @@ func defaultScenarioSpecs(seed uint64) []ScenarioSpec {
 			ScenarioFamily:           fmt.Sprintf("%s-%s", split, kind),
 			WorkerPopulation:         fmt.Sprintf("%s-worker-pop-%d", split, idx%2),
 			TimeRegime:               fmt.Sprintf("%s-time-regime-%d", split, idx%2),
+			WorkerPopulationFamily:   "worker-family-known",
+			TimeRegimeFamily:         "time-family-known",
 			TaskClass:                []string{"map", "reduce"}[idx%2],
 			WorkerClass:              []string{"cpu-small", "cpu-large"}[idx%2],
 			InputBytes:               64 << 20,
@@ -240,8 +269,22 @@ func defaultScenarioSpecs(seed uint64) []ScenarioSpec {
 		s.ObservedFractionPermille = 500
 	})
 
+	add("test", "s1-isolated-time-shift", 70, func(s *ScenarioSpec) {
+		s.TimeRegimeFamily = "time-family-unseen"
+		s.ShiftAxes = []string{"time_regime"}
+		s.ActualComputePermille = 1250
+	})
+	add("test", "s1-isolated-worker-shift", 71, func(s *ScenarioSpec) {
+		s.WorkerPopulationFamily = "worker-family-unseen"
+		s.ShiftAxes = []string{"worker_population"}
+		s.ActualComputePermille = 1350
+	})
+
 	for i := 0; i < 6; i++ {
 		add("test", "s6-compound", 20+i, func(s *ScenarioSpec) {
+			s.WorkerPopulationFamily = "worker-family-compound"
+			s.TimeRegimeFamily = "time-family-compound"
+			s.ShiftAxes = []string{"worker_population", "time_regime", "compound"}
 			s.ActualComputePermille = []uint64{1400, 2000, 800, 1600, 1200, 1800}[i]
 			s.ActualDownloadPermille = []uint64{700, 500, 1000, 750, 600, 450}[i]
 			s.ActualUploadPermille = []uint64{1000, 800, 1000, 650, 900, 500}[i]
@@ -265,6 +308,47 @@ func defaultScenarioSpecs(seed uint64) []ScenarioSpec {
 		s.ObservedFractionPermille = 0
 	})
 	return specs
+}
+
+func ValidateEvaluationAxes(dataset Dataset) error {
+	if len(dataset.EvaluationAxes) != len(dataset.Observations) {
+		return fmt.Errorf("evaluation_axes count=%d must match observations=%d", len(dataset.EvaluationAxes), len(dataset.Observations))
+	}
+	seen := map[string]bool{}
+	for _, observation := range dataset.Observations {
+		if seen[observation.ObservationID] {
+			return fmt.Errorf("duplicate observation_id %q", observation.ObservationID)
+		}
+		seen[observation.ObservationID] = true
+		axes, ok := dataset.EvaluationAxes[observation.ObservationID]
+		if !ok {
+			return fmt.Errorf("missing evaluation_axes for %q", observation.ObservationID)
+		}
+		if axes.Schema != EvaluationAxesSchema {
+			return fmt.Errorf("evaluation_axes %q schema=%q", observation.ObservationID, axes.Schema)
+		}
+		if axes.WorkerPopulationFamily == "" || axes.TimeRegimeFamily == "" {
+			return fmt.Errorf("evaluation_axes %q requires worker/time families", observation.ObservationID)
+		}
+		shiftSeen := map[string]bool{}
+		for _, axis := range axes.ShiftAxes {
+			switch axis {
+			case "worker_population", "time_regime", "compound":
+			default:
+				return fmt.Errorf("evaluation_axes %q has invalid shift axis %q", observation.ObservationID, axis)
+			}
+			if shiftSeen[axis] {
+				return fmt.Errorf("evaluation_axes %q repeats shift axis %q", observation.ObservationID, axis)
+			}
+			shiftSeen[axis] = true
+		}
+	}
+	for observationID := range dataset.EvaluationAxes {
+		if !seen[observationID] {
+			return fmt.Errorf("evaluation_axes contains unknown observation_id %q", observationID)
+		}
+	}
+	return nil
 }
 
 func configureTwoInputCache(firstCached, secondCached bool, extraActualTransfer uint64) func(*ScenarioSpec) {
