@@ -128,3 +128,18 @@ It does not establish:
 - scheduler deployment permission;
 - Worker Assurance;
 - authorization authority.
+
+## Generalization-axis readiness
+
+Issue #53 updates the comparison projection so held-out readiness is based on the v1 simulation dataset's `evaluation_axes`, while the concrete observation split groups remain governed by the original no-leakage validator.
+
+The projected row stores evaluation axes outside `features`. They are evaluator metadata only and must not be passed to M1/M2/M3 unless a later preregistration explicitly promotes a derived field into the model feature contract.
+
+The current deterministic scenario set is intended to make Test-A/B/C mechanically representable without reusing a concrete worker cohort or time window across splits. A successful readiness result means only that the next model-fitting work unit has the preregistered held-out slices and known targets.
+
+It does **not** mean:
+
+- a learned model has been trained;
+- prediction quality is established;
+- a learned rank may influence placement;
+- authorization/assurance semantics changed.
