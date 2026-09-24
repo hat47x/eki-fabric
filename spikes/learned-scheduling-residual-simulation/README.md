@@ -63,3 +63,29 @@ go test ./...
 ```
 
 A passing test proves only generator/evaluator mechanics for synthetic scenarios. It does not establish production prediction quality or permission to activate learned scheduling.
+
+## EKI-ML-0C generalization-axis extension
+
+Issue #53 separates **concrete split-group identity** from **abstract evaluation families**.
+
+The v1 residual dataset keeps the existing observation/split fields authoritative for leakage checks:
+
+- scenario_family
+- worker_population
+- time_regime
+
+and adds research-only, observation-id keyed `evaluation_axes`:
+
+- worker_population_family
+- time_regime_family
+- shift_axes
+
+The concrete identities still must not cross train/valid/test. Abstract families may recur across splits because they describe the class of regime being tested, not the same worker cohort or acquisition window.
+
+The generated scenario set now includes:
+
+- isolated Test-A: new concrete worker/time groups, known worker family, unseen time family;
+- isolated Test-B: new concrete worker/time groups, unseen worker family, known time family;
+- Test-C: compound worker/time-family shift.
+
+This extension remains simulation/shadow-only. Evaluation-axis metadata is not a scheduler input and does not alter policy eligibility, placement, authorization, or Worker Assurance.
