@@ -72,36 +72,17 @@ The projected row uses `policy_eligible`, not a generic `optimization_eligible` 
 
 The readiness gate requires **both** policy eligibility and a known target. Even if a malformed/directly-constructed comparison row carries a non-null target pointer, `policy_eligible=false` cannot contribute to Test-A/B/C target coverage or unlock model fitting.
 
-## Important readiness finding
+## Current readiness and resolved blocker
 
-Issue #50 preregisters three distinct held-out views:
+Issue #50 preregisters three held-out views:
 
-- Test-A: unseen time regime while worker population is otherwise known;
-- Test-B: unseen worker population while time regime is otherwise known;
-- Test-C: compound shift.
+- Test-A: worker-population family is represented in train, while the time-regime family is unseen;
+- Test-B: time-regime family is represented in train, while the worker-population family is unseen;
+- Test-C: both abstract families are unseen as a compound shift.
 
-The current 0B generator changes worker-population and time-regime identities together outside train. It does contain S6 compound rows, but it does **not** contain isolated Test-A or Test-B rows.
+The first 0C-1 freeze correctly found that the original 0B dataset could not express isolated Test-A / Test-B without violating the concrete split-leakage contract. That was a real blocker, not a labeling problem.
 
-0C-1 preserves this fact instead of silently relabeling the current `valid` split.
-
-Expected readiness on the current scenario set:
-
-```text
-test_a_unseen_time_only = 0
-test_b_unseen_worker_only = 0
-test_c_compound = 6
-test_c_duration_targets = 4
-test_c_completion_targets = 5
-model_fit_ready = false
-```
-
-Readiness also requires each final Test-A/B/C slice to contain at least one known duration target and at least one known completion target. A slice made only of censored or policy-ineligible observations cannot unlock model fitting. Validation-only shift coverage also cannot substitute for a final test slice.
-
-Therefore this work unit may freeze/validate data and baselines, but **0C-2 model fitting remains blocked**.
-
-A further contract issue was identified during review: the current 0A split-leakage validator treats `worker_population` and `time_regime` as concrete split-group identities and correctly forbids those identities from crossing train/valid/test. Exact-identity reuse therefore cannot be used to construct isolated Test-A/B without violating the leakage contract.
-
-Issue #53 tracks the required separation:
+Issue #53 resolved this by separating two concepts:
 
 ```text
 concrete split-group identity
@@ -109,7 +90,20 @@ concrete split-group identity
 generalization/evaluation family
 ```
 
-The follow-up must add versioned simulation/evaluation-only generalization axes while keeping concrete source/cohort identities leakage-clean. Do not weaken `ValidateNoSplitLeakage` and do not copy train group IDs into test rows merely to make readiness true.
+PR #54 added versioned evaluation-only generalization axes while keeping concrete source/cohort identities leakage-clean. PR #55 then tightened the contract so one concrete worker/time group cannot map to conflicting abstract families.
+
+The current v1 projection therefore evaluates held-out novelty from `evaluation_axes` and keeps `worker_population` / `time_regime` as leakage identities. Evaluation-axis metadata remains outside `features`.
+
+The deterministic scenario set is now mechanically capable of representing target-bearing Test-A / Test-B / Test-C slices, and the readiness calculation may report `model_fit_ready=true`. This only means the preregistered dataset shape no longer blocks the next research work unit.
+
+It does **not** mean:
+
+- a learned model has been fitted;
+- predictive value has been established;
+- a learned rank may influence placement;
+- authorization or Worker Assurance semantics changed.
+
+PR #54 and #55 were merged without an exact-head Go PASS being recorded in their PR bodies. Before 0C-2 fitting begins, run the current-main tests for both the residual-simulation and model-dataset modules and retain the exact main SHA, Go version, test result, and exit status as the execution evidence for this transition.
 
 ## Verification
 

@@ -296,6 +296,10 @@ Verifiable computationについては、`spikes/verifiable-computation-contract/
 
 Issue #19（learned scheduling / resource prediction）とIssue #23（実zkVM prover benchmark）は継続研究として残します。ただし、前者はSecurity / Authorization / Data localityのhard filter後段でshadow modeから扱い、後者はoptional Result Assurance extensionの実測です。いずれも未解決部分をBaselineへ先取りして固定しないことを条件に、Architecture baselineの作成開始を妨げないと判断しました。
 
+Issue #19はその後、deterministic locality baselineを正本とした0A shadow observation、0B residual simulation、0C-1 comparison dataset freezeまで進みました。0C-1で見つかった「concrete split-group identityとgeneralization familyを同一視するとTest-A / Test-Bを作れない」という阻害要因は、Issue #53 / PR #54 / #55で分離・整合性検査までmainへ統合済みです。
+
+次の研究work unitはIssue #50の0C-2（M1 linear residual / M2 completion probability）ですが、production Schedulerの優先順位を上げる作業ではありません。着手条件は、現在のmainに対してresidual-simulation / model-datasetのexact-head test Evidenceを残し、`model_fit_ready`が示すものを「preregistered dataset shapeの成立」に限定して確認することです。M0 durable State Storeを中心とするMVP主線の優先順位は変更しません。
+
 Gate PASSは全研究の完了を意味しません。Architectureが未解決研究を前提に特定実装・特定保証へ固定しようとした場合は、Requirement / Assurance Modelへ戻って再評価します。
 
 ## Architecture段階で比較する領域
