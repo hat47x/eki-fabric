@@ -819,3 +819,28 @@ Baseline Reviewをmergeした後、次はImplementation Entry Planningとして:
 の順に進めます。
 
 Protocol選定とRepository layoutは別work unitにし、未マージbranchから実装branchを派生させません。
+## 20.1 2026-09-27 current mainline checkpoint
+
+Section 20の初期列挙はすでに一部完了しているため、現在の実装入口をここで更新する。
+
+完了済み:
+
+- Protocol technology comparison
+- P0 machine-readable external schema
+- Repository implementation layout
+- M0 executable skeletonの基礎（Go module / binaries / typed IDs / TaskRecord / State Store SPI / in-memory adapter）
+- P1 Worker Plane schema
+- P2 Signed Decision schema / cryptographic profile
+- strict COSE_Sign1 wire profile
+- COSE decoder SPI / shared conformance harness / negative vectors
+
+未達かつ優先:
+
+1. **M0 durable State Store** — SQLite reference adapter。restart後のTask identity / revision保持がM0 gateの未達点。
+2. **P2 concrete COSE decoder** — dependency取得可能環境でstrict decoderを既存SPIへ接続。
+3. durable stateを前提にM0 E2EをTask submit/status → Worker registration → one Worker local executionまで接続。
+
+`learned scheduler`はSection 4 / 11で定義したとおりMVP必須ではない。Research実装がmainに存在しても、上記M0/M1 gateの優先順位を変更しない。
+
+外部Go moduleを取得・version lock・testできない環境では、依存追加だけを先にcommitしない。検証可能な環境が得られるまで、既存contract / conformanceを正本として保持する。
+
