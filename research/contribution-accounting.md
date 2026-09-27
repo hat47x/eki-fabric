@@ -151,6 +151,23 @@ EKIが担うのは、内部で観測・検証した事実について、改変�
 
 外部制度が二重利用防止や交換価値を必要とする場合は、その制度側のSettlement / Registryが責任を持つ構成が自然です。
 
+## SEIのCapability Observationとの対応
+
+同じ作者の関連製品であるSEI Cognitionには、Capabilityやその実現候補について観測された情報を、DecisionやMatchingから切り離して交換するためのCapability Observationという意味契約があります（`hat47x/sei-cognition:contracts/capability/SEI_CAPABILITY_OBSERVATION_v1alpha1.md`）。
+
+SEIがEKIのContribution Recordを受け取るとすれば、「どの資源が、いつ、どの条件で、どれだけ提供されたと観測されたか」を表すCapability Observationとして読むのが自然です。価値の判断ではなく観測の記録として扱う点で、この文書の結論とも一致します。
+
+対応づけるときも、次の点は変わりません。
+
+- **価値の写像はEKIの外に残る。** SEIがContribution Recordを観測として記録しても、SEIが価値を決める主体になるわけではなく、EKIが価値を決めるようになるわけでもありません（RQ-037、RQ-038）。SEIのCapability Observationも、観測から採用やAuthorityを自動では導かないことを原則にしています。
+- **測定の保証水準を落とさない。** Workerの自己申告にとどまる量を、検証済みの量として渡しません。SEIの契約も、変換や解釈を経た観測を生の事実として扱わず、その変換の来歴（mapping provenance）を残すことを求めています。
+- **「観測されていない」を「提供がない」にしない。** 測定できなかった量を0として記録すると、Providerに不利な誤った記録になります。SEIの契約にある`not observed != unavailable`と同じ考え方です。
+- **Eventの種類を一つの得点にまとめない。** 「待機能力を評価する制度もあり得る」で挙げたCapacity offered、Work executed、Result accepted、Availability providedなどは観測の対象が異なるため、別々の観測として渡します。
+
+もう一つ注意が必要なのは、業務端末のContributionを時刻付きで細かく渡すと、端末利用者がいつ席を外していたかを読み取れてしまうことです。外部へ渡す粒度は、RQ-040（不要な開示をしない監査）とRQ-018の範囲で決める必要があります。
+
+この対応はSEIへの依存を作るものではありません。EKIは、Contribution RecordをSEIへ送らなくても成り立ちます。SEIとの対応の全体像は [SEI Cognitionとの対応ノート](sei-cognition-mapping.md) にまとめています。
+
 ## Requirementへの反映
 
 この検討は、現在の次のRequirementを支持します。
@@ -171,3 +188,4 @@ EKIが担うのは、内部で観測・検証した事実について、改変�
 - Availability contributionをCore語彙へ含めるか
 - 複数Fabric間でContribution Recordを持ち運ぶ場合の重複利用検知
 - Privacyを保ちながらProvider / Beneficiary関係を外部Policyへ証明する方法
+- Contribution RecordをSEI Cognitionなど外部の記録へ渡すとき、端末利用者の在席の傾向を読み取れない粒度をどう決めるか

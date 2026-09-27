@@ -66,6 +66,21 @@ EKI
 
 この分離により、認知系OSSが進化してworkloadの種類が変わっても、EKIは汎用distributed compute fabricとして独立して利用できます。
 
+### 端末の局所判断は隣接Productを待たない
+
+業務端末では、利用者の本来作業と端末の安全を守る判断を、中央Schedulerより先に端末側のLocal Governorが下します（Principles §4）。この判断は、中央との通信が途切れていても成り立たなければなりません。
+
+同じ作者の関連製品群（以下、製品ファミリー）では、各製品が他製品の稼働や承認を待たずに自分の範囲で完結させる局所のループを「反射弓」と呼び、設計の原則として検討しています。EKIのLocal Governorは、この原則をもっともはっきり示す例です。
+
+SEI Cognition側では、製品をまたいだ認知を記録し、時間を通して再構成する「統合の頂点」としてSEIを位置づける提案があります。この提案でも、SEIは他製品へ命令する頂点にも、止まると他製品まで止まる頂点にもなりません。EKIとの関係は次のとおりです。
+
+- SEIはEKIの反射弓に入りません。Local Governorの判断は、SEIの稼働、承認、助言のいずれも必要としません。
+- SEIからEKIへ渡るのは、計算を実行してほしいという依頼だけです。EKIはそれをworkload contractへ投影された条件として受け取り、配置と実行を自らのAuthorityで決めます。
+- EKI Coreは、SEIのObservation、Decision、Unknownなどの意味を学習も保持もしません。
+- EKIは、SEIへ何も送らなくても単独で成り立ちます。
+
+「反射弓」や「統合の頂点」は設計を説明するための比喩であり、ここからRequirementやfieldを導きません。SEI側の提案と、EKIとの概念の対応は [SEI Cognitionとの対応ノート](../research/sei-cognition-mapping.md) にまとめています。
+
 ## EKIが価値としないもの
 
 - 全計算を分散化すること
