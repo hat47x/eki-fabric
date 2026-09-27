@@ -426,6 +426,25 @@ dependency取得不能時の先行作業として、strict COSE conformance vect
 
 次のConcrete Work Unitは、dependency取得可能環境でfxamacker/cborをversion固定し、`internal/adapters/reference/cosedecoder/fxamacker`（仮）としてstrict COSE_Sign1 decoder / deterministic re-encode check / Sig_structure encoderを実装し、このSPIと共通conformance harnessへ接続することです。
 
+### 2026-09-27 mainline priority guard
+
+current main `9e990e7c89924fb4005264e7556b41e0e3fb62b1` を計画と再照合した。
+
+現状:
+
+- `go.mod`はGo 1.27.0だけを宣言し、外部module requirementはまだ固定していない。
+- SQLite durable State Store adapterは未実装で、M0のrestart耐性は未達。
+- strict COSE decoderはSPI / conformance harness / vectorsまで存在するが、fxamacker/cborを使うConcrete Adapterは未実装。
+- learned scheduling関連のresearch codeはmainへ入っているが、MVPではResearch / laterの位置づけを維持し、M0 blockerより先に昇格させない。
+
+依存取得可能な検証環境が戻った場合の優先順位を次で固定する。
+
+1. **SQLite durable State Store** — `modernc.org/sqlite`をversion固定し、共通State Store conformance、migration、WAL、close/reopen restart testを通す。これはM0 gateの直接blocker。
+2. **strict COSE_Sign1 Concrete Adapter** — `fxamacker/cbor/v2`をversion固定し、deterministic re-encode / Sig_structure / negative vectorを既存conformanceへ接続する。
+3. その後にM0 vertical sliceのTask submit/status、Worker registration、one Worker executionをdurable state上で接続する。
+
+依存取得不能の間は、未検証の`go.mod` / `go.sum`、placeholder adapter、実行していないverification結果をcommitしない。Research laneを進める場合も、M0 blockerの代替進捗として扱わない。
+
 ## 作業原則
 
 - Requirementの不確実性を減らす作業を優先する。
