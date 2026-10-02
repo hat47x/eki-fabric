@@ -18,7 +18,7 @@ EKI Fabricでは、Taskの受付、Policy判断、Placement、Lease、WorkOrder�
 
 をArchitecture Baselineとして定義します。
 
-関連:
+関連は次のとおりです。
 
 - AUTHORITY_BOUNDARIES.md
 - CONTRACT_BOUNDARIES.md
@@ -66,7 +66,7 @@ Cacheに同じDigestがあることも、Security requirementを満たす根拠�
 
 Control Planeは小さなmetadata、Decision、Stateを扱います。
 
-主な対象:
+主な対象は次のとおりです。
 
 - TaskRequest / AdmittedTask / TaskIR
 - Attempt
@@ -89,7 +89,7 @@ Control Planeの標準経路へ、ModelやDataset本体のGB単位byte列を流�
 
 Data Planeは大きなbyte列の保存・転送・検証・cacheを扱います。
 
-主な対象:
+主な対象は次のとおりです。
 
 - Client upload
 - Executor Artifact bytes
@@ -157,7 +157,7 @@ Worker ─────────────── Data Plane Store / Cache
 
 Content Digestはbyte列のIdentityです。
 
-例:
+例は次のとおりです。
 
 ~~~text
 sha256:<digest>
@@ -238,7 +238,7 @@ Storage backendが内部的にdedupする場合も、logical Record / Grant / au
 
 Artifact RecordはStorage Locationを参照できます。
 
-例:
+例は次のとおりです。
 
 ~~~text
 location-A
@@ -284,7 +284,7 @@ Storage Adapterは概念的に次を提供します。
 - optional server-side encryption
 - optional multipart / resumable transfer
 
-候補実装:
+候補実装は次のとおりです。
 
 - local filesystem
 - HTTP object store
@@ -454,7 +454,7 @@ Upload完了直後のbyte列を、すぐapproved Task Inputとして公開しま
 
 少なくともContent Identity確定前、Safe Processing前、malware / parser policy前などの状態を区別できる必要があります。
 
-一つの単純な trusted=true fieldへ集約しません。
+一つの単純なtrusted=true fieldへ集約しません。
 
 ## 10.3 Declared digestを信用しない
 
@@ -516,7 +516,7 @@ BaselineではSafe ProcessingをData Plane内の明示的なbounded workloadと�
 
 ## 12.1 Budget
 
-少なくとも必要に応じて:
+少なくとも必要に応じては次のとおりです。
 
 - input bytes
 - expanded bytes
@@ -534,7 +534,7 @@ BaselineではSafe ProcessingをData Plane内の明示的なbounded workloadと�
 
 正式実装ではParser / ConverterをControl Plane main processへ無制限に組み込みません。
 
-候補:
+候補は次のとおりです。
 
 - child sandbox
 - container
@@ -622,7 +622,7 @@ Checkpoint Artifactを再利用する前に、
 
 を確認します。
 
-Workerが checkpoint=true と自己申告するだけで再実行Inputへ昇格しません。
+Workerがcheckpoint=trueと自己申告するだけで再実行Inputへ昇格しません。
 
 Checkpoint再利用はoptional optimizationです。
 
@@ -720,7 +720,7 @@ Cache hit / miss latencyを通じたcross-tenant existence leakもQuality / Secu
 
 Schedulerへ渡すLocality情報はAuthorityではなくObservationです。
 
-概念例:
+概念例は次のとおりです。
 
 ~~~text
 Artifact Digest
@@ -1069,7 +1069,7 @@ Cloud Providerが公益団体へComputeを提供していても、そのWorker�
 
 Browser WorkerはData Plane上もlower-assurance profileとして扱います。
 
-標準では:
+標準ではは次のとおりです。
 
 - public / low-sensitivity Artifact
 - short-lived Grant
@@ -1092,7 +1092,7 @@ Executor ArtifactもData Planeを通します。
 
 Workerはlogical Executor nameから外部registryを自由に解決しません。
 
-標準流れ:
+標準流れは次のとおりです。
 
 ~~~text
 ExecutorApproval
@@ -1291,7 +1291,7 @@ External Adapterは、
 
 Workerのnetwork capabilityはdefault denyを基本とします。
 
-許可類型:
+許可類型は次のとおりです。
 
 1. Control Plane endpoint
 2. Data Plane endpoint
@@ -1324,7 +1324,7 @@ Schedulerのlocality scoreより前にhard constraintとして適用します。
 
 Control / Data PlaneからSchedulerへ提供するcost inputは、Authorityを持たないObservationです。
 
-例:
+例は次のとおりです。
 
 ~~~text
 missing input bytes
@@ -1461,7 +1461,7 @@ Control / Data Planeで維持する不変条件をまとめます。
 
 次はDeployment ProfilesをArchitecture正本として具体化します。
 
-この文書から引き継ぐもの:
+この文書から引き継ぐもの。
 
 - logical AuthorityはDeployment規模によらず維持
 - Control / Data Planeはlogical separationを維持

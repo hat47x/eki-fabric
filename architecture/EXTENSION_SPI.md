@@ -34,7 +34,7 @@ EKI Fabricは、現在存在するSEI / SUI / TEIだけでなく、将来の未�
 
 この文書では、何を差し替えてよく、何をCoreの不変条件として固定するかを定義します。
 
-関連:
+関連は次のとおりです。
 
 - AUTHORITY_BOUNDARIES.md
 - CONTRACT_BOUNDARIES.md
@@ -71,7 +71,7 @@ Extension SPIは、
 
 場合に使います。
 
-例:
+例は次のとおりです。
 
 - S3-compatible Artifact Store
 - enterprise OIDC
@@ -149,7 +149,7 @@ Extensionを一つのplugin categoryとして扱いません。
 
 ## EP-0 — Observation / Optimization
 
-例:
+例は次のとおりです。
 
 - Telemetry Exporter
 - learned scheduling estimator
@@ -159,7 +159,7 @@ Extensionを一つのplugin categoryとして扱いません。
 
 ## EP-1 — Evidence Processing
 
-例:
+例は次のとおりです。
 
 - Result Validator
 - Attestation Verifier Adapter
@@ -171,7 +171,7 @@ Evidenceをnormalized Resultへ変換しますが、最終Authorizationを単独
 
 ## EP-2 — Resource Access / Enforcement
 
-例:
+例は次のとおりです。
 
 - Artifact Store Adapter
 - Executor Runtime
@@ -185,7 +185,7 @@ scopeされたCredentialとCapabilityを要求します。
 
 ## EP-3 — Authority Support
 
-例:
+例は次のとおりです。
 
 - KMS / Signer Adapter
 - Policy Evaluator
@@ -262,7 +262,7 @@ Policy Revision
 
 CoreとAdapter間のContract versionです。
 
-例:
+例は次のとおりです。
 
 ~~~text
 eki.spi.artifact-store/v1
@@ -272,7 +272,7 @@ eki.spi.artifact-store/v1
 
 Adapter製品のversionです。
 
-例:
+例は次のとおりです。
 
 ~~~text
 example-s3-adapter 2.4.1
@@ -288,7 +288,7 @@ SPI API breaking changeは明示的version migrationを必要とします。
 
 Extensionはsupportするoptional capabilityを宣言できます。
 
-例:
+例は次のとおりです。
 
 Artifact Store:
 
@@ -322,7 +322,7 @@ Security-sensitive capabilityを利用する場合、実測 / managed policy / E
 
 CoreがTaskのSecurity Requirementを満たすため必要なCapabilityがExtensionにない場合、fallbackでRequirementを弱めません。
 
-例:
+例は次のとおりです。
 
 ~~~text
 Task requires hard memory isolation
@@ -340,13 +340,13 @@ Extensionは複数の実行形態を許容します。
 
 ## In-process
 
-利点:
+利点は次のとおりです。
 
 - low latency
 - small deploymentで簡単
 - type-safe reference implementationを作りやすい
 
-欠点:
+欠点は次のとおりです。
 
 - crash / memory corruption blast radius
 - language制約
@@ -354,13 +354,13 @@ Extensionは複数の実行形態を許容します。
 
 ## Local out-of-process
 
-例:
+例は次のとおりです。
 
 - sidecar
 - child process
 - local IPC
 
-利点:
+利点は次のとおりです。
 
 - process isolation
 - polyglot
@@ -370,7 +370,7 @@ Extensionは複数の実行形態を許容します。
 
 ## Remote service
 
-例:
+例は次のとおりです。
 
 - enterprise IdP
 - cloud object store
@@ -404,7 +404,7 @@ In-process Adapterへ、
 
 AdapterがCore内部へ自由にaccessするのではなく、scopeされたHost Serviceを通します。
 
-例:
+例は次のとおりです。
 
 - structured logger
 - telemetry emitter
@@ -467,7 +467,7 @@ ActivationはAdmin operationです。
 
 Extension upgradeで、進行中Taskのsemanticsを突然変えません。
 
-方法例:
+方法例は次のとおりです。
 
 ~~~text
 v1 active
@@ -496,7 +496,7 @@ Versionが古いことと安全であることは別です。
 
 Extension failure時に、より弱い実装へ暗黙fallbackしません。
 
-例:
+例は次のとおりです。
 
 ~~~text
 TEE verifier unavailable
@@ -534,7 +534,7 @@ hostile Artifact / Evidence parserがControl Plane threadを無期限占有し�
 
 Adapter errorはtyped categoryへnormalizationします。
 
-概念例:
+概念例は次のとおりです。
 
 - INVALID_INPUT
 - UNSUPPORTED
@@ -586,7 +586,7 @@ Circuit breaker openを、
 
 durable stateで確定したdelivery intentをWorker Gateway等へ配送します。
 
-候補:
+候補は次のとおりです。
 
 - embedded queue
 - database-backed queue
@@ -629,7 +629,7 @@ Task / Attempt / Lease / Budget / Decisionのdurable stateを保存します。
 
 ## Required properties
 
-少なくとも:
+少なくともは次のとおりです。
 
 - durable write
 - unique identity constraint
@@ -721,7 +721,7 @@ Storage admin credentialをWorkerへ返しません。
 
 Credentialを検証し、normalized Principal Contextを作ります。
 
-候補:
+候補は次のとおりです。
 
 - OIDC
 - X.509 / enterprise PKI
@@ -811,7 +811,7 @@ Client supplied policyをそのまま評価してAuthorityにしません。
 
 Authority keyを安全に使ってDecisionへcryptographic authenticityを付与します。
 
-候補:
+候補は次のとおりです。
 
 - OS keystore
 - local protected key
@@ -848,7 +848,7 @@ SchedulerがWorkOrder keyを使って任意bytesへ署名できる構造を避�
 
 approved Executor ArtifactをSandbox / Runtime上で実行します。
 
-候補:
+候補は次のとおりです。
 
 - approved native
 - WASM
@@ -900,7 +900,7 @@ Task requirementと合わないRuntimeへPlacementしません。
 
 Executor RuntimeとOS-specific enforcementを分離する場合に利用します。
 
-候補:
+候補は次のとおりです。
 
 - Linux cgroup / namespace
 - Windows Job Object
@@ -919,7 +919,7 @@ Sandbox Adapter failureでunbounded native executionへfallbackしません。
 
 already eligible candidate間でPlacement Proposalを生成します。
 
-入力例:
+入力例は次のとおりです。
 
 - Task resource need
 - candidate resource summary
@@ -976,7 +976,7 @@ Issue #19の研究はこの境界へ接続できます。
 
 ResultClaimについて特定methodでEvidenceを評価し、normalized VerificationResultを返します。
 
-候補:
+候補は次のとおりです。
 
 - deterministic equality
 - application validator
@@ -996,7 +996,7 @@ Result Acceptance AuthorityがTask requirementへ照合します。
 
 Application-specific semantic validationを提供できます。
 
-例:
+例は次のとおりです。
 
 - image output schema validation
 - scientific result tolerance
@@ -1024,7 +1024,7 @@ Issue #23のbenchmark結果で利用範囲を後から評価します。
 
 Vendor固有Evidenceを評価し、normalized AttestationResultへ変換します。
 
-Adapterが扱うもの:
+Adapterが扱うもの。
 
 - Evidence parse
 - signature / endorsement
@@ -1067,13 +1067,13 @@ Task State AuthorityがUNKNOWN / retry semanticsを評価します。
 
 Workerへarbitrary network accessを与えず、registered external effectを実行するAdapterを利用できます。
 
-例:
+例は次のとおりです。
 
 - message send
 - issue creation
 - managed API call
 
-必要:
+必要は次のとおりです。
 
 - destination fixed by admin config
 - request schema
@@ -1091,7 +1091,7 @@ Task ClientがAdapter endpointを自由に差し替えません。
 
 Resource Measurement Evidenceを作ります。
 
-候補:
+候補は次のとおりです。
 
 - worker self-report
 - Control Plane lease observation
@@ -1120,7 +1120,7 @@ Contribution AuthorityがPolicyを適用します。
 
 Task / Attempt / ExecutorへscopeされたSecretをmaterializeします。
 
-候補:
+候補は次のとおりです。
 
 - cloud secret manager
 - enterprise vault
@@ -1143,7 +1143,7 @@ SecretはArtifact locality optimization対象にしません。
 
 Core semantic event / metricを外部観測基盤へ送ります。
 
-候補:
+候補は次のとおりです。
 
 - OTLP
 - local log
@@ -1221,7 +1221,7 @@ Adapter AがAdapter Bのadmin credentialを直接持つ構造を避けます。
 
 ExtensionのNetwork accessもleast privilegeにします。
 
-例:
+例は次のとおりです。
 
 - OIDC Adapter -> configured IdP
 - Artifact Store Adapter -> configured store
@@ -1272,7 +1272,7 @@ Adapter cacheでもTenant / Data Class boundaryを維持します。
 
 同じKindのAdapterを複数登録できます。
 
-例:
+例は次のとおりです。
 
 ~~~text
 artifact-store:
@@ -1295,7 +1295,7 @@ Clientがarbitrary instance nameでPolicyを迂回しません。
 
 Artifact / Identity等にscheme-like logical selectorを使う場合も、registered mappingへ限定します。
 
-例:
+例は次のとおりです。
 
 ~~~text
 artifact://...
@@ -1331,7 +1331,7 @@ Extension自身が、
 
 Multiple Adapterがある場合のfallbackはexplicitです。
 
-例:
+例は次のとおりです。
 
 ~~~text
 primary object store unavailable
@@ -1362,7 +1362,7 @@ Adapter timeoutだけでnon-idempotent operationを再送しません。
 
 Adapter operationにもstable identityを渡せる余地を持ちます。
 
-例:
+例は次のとおりです。
 
 - upload session
 - state write
@@ -1624,7 +1624,7 @@ Queue failureでAttemptが勝手に増えないことを確認します。
 
 個別Adapterが正しくても組み合わせで破綻する可能性があります。
 
-例:
+例は次のとおりです。
 
 - Identity namespace + Artifact tenant scope
 - Placement + Data Grant
@@ -1642,7 +1642,7 @@ Queue failureでAttemptが勝手に増えないことを確認します。
 
 Adapterを単純なpass/failだけでなく、support capabilityを明示できます。
 
-例:
+例は次のとおりです。
 
 ~~~text
 artifact store
@@ -1720,7 +1720,7 @@ Cloud ProviderのIAM modelをCore Contractそのものにしません。
 
 OCI、WASM Component Model等は有力Adapter / packaging candidateです。
 
-しかし:
+しかしは次のとおりです。
 
 ~~~text
 EKI Artifact != OCI Artifact
@@ -1754,7 +1754,7 @@ Small DeploymentではGo Adapterを使いやすくし、Vendor / polyglot integr
 
 # 83. Out-of-process Adapter Protocol
 
-最低限:
+最低限は次のとおりです。
 
 - adapter identity
 - SPI API version
@@ -1803,7 +1803,7 @@ Client APIへfull Registryを公開しません。
 
 # 86. Revocation
 
-Extension vulnerabilityが見つかった場合:
+Extension vulnerabilityが見つかった場合。
 
 - new use停止
 - active Task impact評価
@@ -1822,7 +1822,7 @@ Security-critical Adapterではimmediate stopを選べます。
 
 Adapter固有StateとCore authoritative stateを分けます。
 
-例:
+例は次のとおりです。
 
 - upload multipart session
 - model cache index
@@ -1944,7 +1944,7 @@ Scheduler estimator failureでAdmission threadを永久blockしません。
 
 Extension自身が大量CPU / Memory / Networkを使う場合もOperational Budget対象です。
 
-特に:
+特には次のとおりです。
 
 - Proof verification
 - Artifact parsing
@@ -2136,7 +2136,7 @@ Directory名自体はまだ固定しません。
 
 Authority、Contract、Control/Data Plane、Deployment Profile、State Model、Extension SPIが揃ったため、次はArchitecture Baseline全体を横断レビューできます。
 
-次段階では少なくとも:
+次段階では少なくともは次のとおりです。
 
 1. 文書間の矛盾確認
 2. MVP component cut

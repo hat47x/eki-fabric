@@ -28,7 +28,7 @@ EKIでは、少なくとも次の軸を独立して扱えることを要求し�
 
 Workerが「どのIdentityとして参加しているか」「どの管理主体に属するか」を、どの程度確認できるかを表します。
 
-候補状態の例:
+候補状態の例は次のとおりです。
 
 - `anonymous` — persistent Identityを要求しない
 - `self-asserted` — cryptographic keyはあるが、外部主体とのbindingがない
@@ -45,7 +45,7 @@ Identity Assuranceが高くても、Result correctnessを意味しません。
 
 Workerが主張する実行環境について、どの程度独立したEvidenceが得られるかを表します。
 
-候補状態の例:
+候補状態の例は次のとおりです。
 
 - `none`
 - `self-reported`
@@ -62,7 +62,7 @@ Workerが主張する実行環境について、どの程度独立したEvidence
 
 Task input、Model、Intermediate Dataなどを、Worker host ownerや他Processからどの程度守れるかを表します。
 
-候補状態の例:
+候補状態の例は次のとおりです。
 
 - `public-only` — Worker ownerから見えても問題ないDataだけを扱う
 - `managed-boundary` — 組織管理、契約、運用などの明示的な管理境界へ限定する
@@ -131,7 +131,7 @@ Workerを無条件に信用せず、ResultがTaskの要求を満たしたこと�
 
 CPU / GPU time、Memory、Network、Energyなど、Contribution算定やResource accountingに使う測定値を、どの程度信頼できるかを表します。
 
-候補状態の例:
+候補状態の例は次のとおりです。
 
 - `self-reported`
 - `control-observed`

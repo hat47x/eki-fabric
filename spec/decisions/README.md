@@ -2,7 +2,7 @@
 
 Status: **Baseline 0.1 — 2026-09-21**
 
-正本:
+正本は次のとおりです。
 
 - `v1/decisions.cddl` — signed payload CDDL
 - P1 carrier: `../worker/v1/worker.proto`
@@ -70,7 +70,7 @@ RFC 9052はCOSE_Sign1等のstructureと署名処理を定義し、algorithm自�
 
 署名payloadはRFC 8949 Core Deterministic Encoding Requirementsへ従います。
 
-特に:
+特には次のとおりです。
 
 - preferred serialization
 - definite-length item
@@ -178,7 +178,7 @@ Heartbeatはこのpayloadを生成できません。RenewalはLSE-1が新しいL
 
 Executor Approvalはmutable tagではなくexact Artifact Digestを承認します。
 
-さらに:
+さらには次のとおりです。
 
 - logical Executor ID
 - media type / size
@@ -198,7 +198,7 @@ Read Grantはverified Content Digestを必須とし、optional rangeを持てま
 
 Write Grantは事前に確保したoutput Artifact identity / slotとmaximum bytesをbindingします。出力前にはContent Digestが存在しないため、Client申告digestを無理に入れません。
 
-どちらも:
+どちらもは次のとおりです。
 
 - Task / TaskIR
 - Attempt

@@ -27,7 +27,7 @@ MDNのPage Visibility APIおよび`setTimeout()`の説明では、多くのブ�
 
 Chromeではタブの状態に応じた段階的なtimer throttlingがあり、条件によってはtimer確認が大きく間引かれます。Firefoxでも非アクティブなタブに最低待ち時間があり、Androidではタブを完全にアンロードする可能性も説明されています。
 
-参考:
+参考は次のとおりです。
 
 - MDN, Page Visibility API  
   https://developer.mozilla.org/en-US/docs/Web/API/Page_Visibility_API
@@ -46,7 +46,7 @@ Background Tasks APIの説明では、idle callbackは短い空き時間を利�
 
 Browserが「今はidleである」と通知したからといって、数分後までCPU時間が保証されたわけではありません。EKIのTask Leaseやcheckpoint設計をBrowserのidle callbackへ直接対応付けるべきではありません。
 
-参考:
+参考は次のとおりです。
 
 - MDN, Background Tasks API  
   https://developer.mozilla.org/en-US/docs/Web/API/Background_Tasks_API

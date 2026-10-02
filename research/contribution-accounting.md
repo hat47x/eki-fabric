@@ -56,7 +56,7 @@ BOINCはVolunteer Computingで長年Creditを扱っており、Result Validation
 
 ことは、必ずしも同じではありません。
 
-参考:
+参考は次のとおりです。
 
 - BOINC: A Platform for Volunteer Computing  
   https://boinc.berkeley.edu/boinc_a_platform_for_volunteer_computing.pdf

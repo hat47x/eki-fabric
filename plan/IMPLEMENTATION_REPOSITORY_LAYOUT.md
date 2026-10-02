@@ -8,7 +8,7 @@ Architecture BaselineをGo Reference Implementationへ写像する物理Reposito
 
 目的は、External ContractとGo内部型を分け、Core State semanticsをQueueやStorage Adapterへ逃がさず、Control PlaneとAgentの責務を分け、Reference Adapterを交換してもCoreの意味を変えないことです。
 
-関連:
+関連は次のとおりです。
 
 - `../architecture/MVP_IMPLEMENTATION_PLAN.md`
 - `../architecture/EXTENSION_SPI.md`
@@ -156,7 +156,7 @@ MVPのReference Adapterを置きます。
 
 `cosedecodertest/`はstrict signed-decision COSE fixtureをConcrete codecへ適用する共通harnessです。fixture本体は`conformance/vectors/`を言語中立assetとして保持し、Go harnessは同じJSONを`go:embed`で読み出します。
 
-候補:
+候補は次のとおりです。
 
 - protocol malformed input
 - wrong Authority signer
@@ -185,7 +185,7 @@ adapters
 
 重要なのはCoreがconcrete Adapterをimportしないことです。
 
-禁止する方向:
+禁止する方向は次のとおりです。
 
 ~~~text
 core -> adapters/reference/*
@@ -214,7 +214,7 @@ P1 Protobuf等を導入した場合は `internal/gen/worker/v1/`、`internal/gen
 
 M0が単一binary構成でも、Config namespaceをLogical component別にします。
 
-例:
+例は次のとおりです。
 
 ~~~text
 control.client_api
@@ -293,7 +293,7 @@ Directory追加だけで新しいAuthorityを作ったことにはしません�
 
 Repository Layout merge後、最新 `main` からM0 executable skeleton branchを切ります。
 
-最初の実装内容:
+最初の実装内容は次のとおりです。
 
 1. `go.mod`
 2. `cmd/eki-control`

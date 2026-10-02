@@ -92,7 +92,7 @@ AcceptedResult
 
 ## 3.1 External Client API
 
-最低限:
+最低限は次のとおりです。
 
 - Task submit
 - Task get/status
@@ -106,7 +106,7 @@ Task APIはlanguage-neutral contractとします。
 
 ## 3.2 Task Admission
 
-実装するもの:
+実装するもの。
 
 - strict schema validation
 - Principal binding
@@ -116,7 +116,7 @@ Task APIはlanguage-neutral contractとします。
 - resource budget
 - retry budget
 - Data Class
-- side-effect mode = none を初期標準
+- side-effect mode = noneを初期標準
 
 初回MVPではexternal side-effect executionは必須にしません。
 
@@ -162,7 +162,7 @@ ML / learned estimatorはMVP必須にしません。
 
 Scheduler Proposalを別境界で再評価します。
 
-少なくとも:
+少なくともは次のとおりです。
 
 - Task / Attempt binding
 - Worker Identity
@@ -213,7 +213,7 @@ Worker Agent責務:
 
 ## 3.8 Local Governor
 
-初期対象:
+初期対象は次のとおりです。
 
 - manual opt-out
 - worker enabled / disabled
@@ -230,7 +230,7 @@ Platform-specific hard enforcementはReference Runtime capabilityとして段階
 
 最初は**approved command executor**をReference Runtimeとします。
 
-安全条件:
+安全条件は次のとおりです。
 
 - Admin登録済みcommand / binaryだけ
 - Client supplied command line executable pathは禁止
@@ -259,7 +259,7 @@ Filesystem-backed reference implementationを候補とし、S3-compatible Adapte
 
 ## 3.11 ArtifactGrant / Data Access Resolver
 
-最低限:
+最低限は次のとおりです。
 
 - Task / Attempt / Worker binding
 - Artifact Digest
@@ -284,7 +284,7 @@ Worker success exit codeだけをAcceptance根拠にしません。
 
 ## 3.13 Telemetry / Audit
 
-初回から最低限:
+初回から最低限は次のとおりです。
 
 - Task ID
 - Attempt ID
@@ -336,14 +336,14 @@ Architecture上のExtension Pointは保持しますが、初回MVP完成条件�
 
 ## W1 — Deterministic text / manifest transform
 
-目的:
+目的は次のとおりです。
 
 - small Artifact
 - deterministic
 - validator可能
 - CPU only
 
-確認:
+確認は次のとおりです。
 
 - TaskRequest
 - Executor parameter
@@ -352,7 +352,7 @@ Architecture上のExtension Pointは保持しますが、初回MVP完成条件�
 
 ## W2 — Large cached Artifact compute
 
-目的:
+目的は次のとおりです。
 
 - 数百MiB〜GiB相当のArtifact
 - locality / transfer cost
@@ -360,7 +360,7 @@ Architecture上のExtension Pointは保持しますが、初回MVP完成条件�
 
 実際の巨大dataを必須にせず、Test fixture / sparse or generated dataでNetwork pathを測定できます。
 
-確認:
+確認は次のとおりです。
 
 - cache
 - transfer budget
@@ -369,7 +369,7 @@ Architecture上のExtension Pointは保持しますが、初回MVP完成条件�
 
 ## W3 — Interruptible long-running compute
 
-目的:
+目的は次のとおりです。
 
 - user reclaim
 - Lease expiry
@@ -377,7 +377,7 @@ Architecture上のExtension Pointは保持しますが、初回MVP完成条件�
 - retry
 - optional checkpoint later
 
-確認:
+確認は次のとおりです。
 
 - A1 -> Worker 1
 - reclaim / loss
@@ -613,7 +613,7 @@ MVPではState Store Outbox + Worker Gateway deliveryで開始し、NATS等は�
 
 実装と同時にTest contractを作ります。
 
-分類:
+分類は次のとおりです。
 
 ## C1 Parser / Protocol
 
@@ -666,7 +666,7 @@ MVPではState Store Outbox + Worker Gateway deliveryで開始し、NATS等は�
 
 ## M0 — Executable Skeleton
 
-成果:
+成果は次のとおりです。
 
 - repository implementation layout
 - core IDs / canonical contracts
@@ -682,7 +682,7 @@ Gate:
 
 ## M1 — Secure Two-Worker Fabric
 
-成果:
+成果は次のとおりです。
 
 - 2+ Worker
 - scheduler / placement separation
@@ -699,7 +699,7 @@ Gate:
 
 ## M2 — Reclaim / Recovery
 
-成果:
+成果は次のとおりです。
 
 - Local Governor opt-out
 - Worker loss
@@ -714,7 +714,7 @@ Gate:
 
 ## M3 — Result Assurance
 
-成果:
+成果は次のとおりです。
 
 - ResultClaim
 - VerificationResult
@@ -727,7 +727,7 @@ Gate:
 
 ## M4 — Operability / Conformance
 
-成果:
+成果は次のとおりです。
 
 - structured audit
 - OTLP metrics
@@ -742,7 +742,7 @@ Gate:
 
 ## M5 — Early Adapters
 
-候補:
+候補は次のとおりです。
 
 - OIDC
 - S3-compatible store
@@ -823,7 +823,7 @@ Protocol選定とRepository layoutは別work unitにし、未マージbranchか�
 
 Section 20の初期列挙はすでに一部完了しているため、現在の実装入口をここで更新する。
 
-完了済み:
+完了済みは次のとおりです。
 
 - Protocol technology comparison
 - P0 machine-readable external schema
@@ -834,7 +834,7 @@ Section 20の初期列挙はすでに一部完了しているため、現在の�
 - strict COSE_Sign1 wire profile
 - COSE decoder SPI / shared conformance harness / negative vectors
 
-未達かつ優先:
+未達かつ優先は次のとおりです。
 
 1. **M0 durable State Store** — SQLite reference adapter。restart後のTask identity / revision保持がM0 gateの未達点。
 2. **P2 concrete COSE decoder** — dependency取得可能環境でstrict decoderを既存SPIへ接続。

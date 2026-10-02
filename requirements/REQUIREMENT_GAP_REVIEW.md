@@ -26,7 +26,7 @@ SPIFFE Federationでも、Trust Domain名とBundleのbindingを保つこと、Fe
 
 **新しいProduct RequirementとSecurity Invariantを追加する。**
 
-要求する方向:
+要求する方向は次のとおりです。
 
 - FederationされたIdentityは発行Trust Domain / Authorityとのbindingを保持する
 - 異なるIdentity namespaceを暗黙に併合しない
@@ -52,7 +52,7 @@ RQ-017はClientによるResource Exhaustion、RQ-027はArtifactのContent Integr
 
 **新しいProduct RequirementとSecurity Invariantを追加する。**
 
-要求する方向:
+要求する方向は次のとおりです。
 
 - Artifactの受理・検査・展開・変換もresource budgetの対象にする
 - compressed sizeだけでなくexpanded size、file count、nesting、処理時間等を制限できる
@@ -80,7 +80,7 @@ Threat ModelではControl Planeのroot signing authority等まで侵害された
 
 **新しいProduct RequirementとThreat Actor / Security Invariantを追加する。**
 
-要求する方向:
+要求する方向は次のとおりです。
 
 - Control Planeの一部componentも、その役割に不要なauthorityを持たない構成を選べる
 - Task admission、placement、data authority、executor admission、federation administration、verification authority等を分離可能にする
@@ -107,7 +107,7 @@ RQ-006、RQ-035ではUser / Providerが資源提供を停止できることを�
 
 **新しいProduct Requirementを追加する。**
 
-要求する方向:
+要求する方向は次のとおりです。
 
 - Provider / Userのreclaim権を維持したまま、reclaim後のretry / migrationがresource amplificationを起こさない
 - 大量離脱を異常な単一障害ではなく、起こり得るFabric eventとして扱う
@@ -136,7 +136,7 @@ Compute GrantやContributionが普及した場合、Credit獲得などの外部�
 
 **RQ-007を補強し、新しいResource Policy Requirementを追加する。**
 
-要求する方向:
+要求する方向は次のとおりです。
 
 - Energy budget、power source、thermal state、device safetyをResource availabilityへ反映できる
 - local Safety Governorは中央Schedulerより厳しい上限を適用できる

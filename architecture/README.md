@@ -35,7 +35,7 @@ Requirementの意図が変わったのであれば先にrequirements/を更新�
 
 2026-09-21のGate Uレビューで、Architecture baseline作成を開始できる状態と判定しました。
 
-詳細:
+詳細は次のとおりです。
 
 - ../plan/ARCHITECTURE_ENTRY_REVIEW_2026-09-21.md
 - ../plan/UPSTREAM_PLAN.md

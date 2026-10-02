@@ -129,7 +129,7 @@ Local opt-out優先、Worker disappearanceを通常事象として扱う、retry
 
 **PASS**
 
-README → docs/for-readers → docs/glossary → product → requirements → research → spikes → plan/UPSTREAM_PLAN の導線があります。Architecture文書追加後もこの導線を維持します。
+README → docs/for-readers → docs/glossary → product → requirements → research → spikes → plan/UPSTREAM_PLANの導線があります。Architecture文書追加後もこの導線を維持します。
 
 ---
 

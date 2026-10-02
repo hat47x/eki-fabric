@@ -22,7 +22,7 @@ EKI Fabricでは、Workerがsleep、shutdown、network loss、Browser discard、
 
 この文書では、Task、Attempt、Lease、Result、External Effect、Recoveryを分離し、at-least-once deliveryやWorker churnの中でもSecurity / Safety / Audit上の意味を失わない状態モデルを定義します。
 
-関連:
+関連は次のとおりです。
 
 - AUTHORITY_BOUNDARIES.md
 - CONTRACT_BOUNDARIES.md
@@ -225,7 +225,7 @@ T-ACTIVEと内部的に重なり得るため、実装ではsubstate / derived st
 
 自動Progressを停止し、operator / application decisionを必要とする状態。
 
-例:
+例は次のとおりです。
 
 - retry budget exhausted
 - reconciliation budget exhausted
@@ -405,7 +405,7 @@ Control Planeが知れるのは主に、
 
 A-CLOSEDではreasonを区別します。
 
-例:
+例は次のとおりです。
 
 - RESULT_ACCEPTED
 - RESULT_REJECTED
@@ -587,7 +587,7 @@ heartbeatだけで、
 
 Lease RenewalはLease AuthorityのDecisionです。
 
-入力:
+入力は次のとおりです。
 
 - current Lease identity
 - current revision
@@ -598,7 +598,7 @@ Lease RenewalはLease AuthorityのDecisionです。
 - policy / deadline
 - optional progress
 
-出力:
+出力は次のとおりです。
 
 - renewed expiry / revision
 - or reject
@@ -630,7 +630,7 @@ Workerは自分の時計を理由に、signed expiryより長くAuthorityを延�
 
 Control Planeがheartbeatを受け取れなくなっても、即Attempt failureへしません。
 
-標準流れ:
+標準流れは次のとおりです。
 
 ~~~text
 heartbeat missing
@@ -730,7 +730,7 @@ Worker ClaimだけでAttemptを成功確定しません。
 
 VerificationResultが得られても、Task Policyが満たされるまではTask completeではありません。
 
-複数Attempt / Validatorを使う場合:
+複数Attempt / Validatorを使う場合。
 
 ~~~text
 A1 claim ─┐
@@ -796,7 +796,7 @@ Cancellationは過去事実のrollbackではありません。
 
 # 28. Cancel + UNKNOWN
 
-non-idempotent external effectをdispatch済みでoutcome不明のときCancelされた場合:
+non-idempotent external effectをdispatch済みでoutcome不明のときCancelされた場合。
 
 ~~~text
 Cancellation Intent = true
@@ -822,7 +822,7 @@ Reconciliation後、
 
 Side-effect semanticsをTask Stateから分離します。
 
-例:
+例は次のとおりです。
 
 - E-NONE
 - E-NOT-DISPATCHED
@@ -846,7 +846,7 @@ Original Effect historyを保持します。
 
 effect mode = noneのTaskは、Worker disappearance後に比較的安全にretryできます。
 
-ただし:
+ただしは次のとおりです。
 
 - retryable flag
 - max attempts
@@ -936,7 +936,7 @@ Reconciliation自体もResource Budgetを持ちます。
 
 Attemptが閉じた後、Task State Authorityは次を評価します。
 
-概念順序:
+概念順序は次のとおりです。
 
 ~~~text
 AcceptedResult exists?
@@ -1049,7 +1049,7 @@ Provider reclaim権を待たせるための仕組みではありません。
 
 # 40. Reclaim Notice
 
-Provider / Workerが事前Noticeを送れる場合:
+Provider / Workerが事前Noticeを送れる場合。
 
 - new Lease停止
 - existing Lease non-renew
@@ -1144,7 +1144,7 @@ Result exportができない場合、Provider側でdurableに保持し、再接�
 
 # 46. Provider Grant Reclaim
 
-DP-5 Compute Grantが縮小された場合:
+DP-5 Compute Grantが縮小された場合。
 
 1. future Placement停止
 2. Lease renew停止
@@ -1193,7 +1193,7 @@ Clientがretry requestを繰り返すことでBudgetをresetできません。
 
 Taskが子Taskを生成できる拡張を導入する場合、子Taskは親Budgetを消費します。
 
-必要な制約:
+必要な制約は次のとおりです。
 
 - max depth
 - max children
@@ -1369,7 +1369,7 @@ Retention / privacy policyに従います。
 
 Operational explainabilityのため、retry / new Attempt理由を分類します。
 
-例:
+例は次のとおりです。
 
 - WORKER_LOST
 - USER_RECLAIM
@@ -1431,7 +1431,7 @@ Worker self-reported failureだけでTask terminalへしません。
 
 # 64. Retry safety matrix
 
-概略:
+概略は次のとおりです。
 
 | Task / Effect | Worker loss後 |
 | --- | --- |
@@ -1522,7 +1522,7 @@ accepted result成立後、不要replicaはstopできます。
 
 # 70. Speculative execution
 
-Deadline対策でslow Attemptと並行してspeculative Attemptを作る場合:
+Deadline対策でslow Attemptと並行してspeculative Attemptを作る場合。
 
 - additional compute budget
 - network budget
@@ -1564,7 +1564,7 @@ Worker Identity long-livednessとsession authorityを分離します。
 
 # 73. Worker deregistration
 
-WorkerをAdministrativeにdisable / revokeした場合:
+WorkerをAdministrativeにdisable / revokeした場合。
 
 - new Placement禁止
 - Lease renew停止
@@ -1592,7 +1592,7 @@ Executor Approvalがrevokedされた場合、Task Stateは影響Attemptを評価
 
 # 75. Policy revision
 
-Policy更新によって現在Attemptが新Policyを満たさなくなった場合:
+Policy更新によって現在Attemptが新Policyを満たさなくなった場合。
 
 - grandfather
 - stop / migrate

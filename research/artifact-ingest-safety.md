@@ -50,7 +50,7 @@ OWASP Web Security Testing Guideでは、ZIP bomb / decompression bombを、展�
 
 そのため、受信byte数だけをResource Budgetに使うと不十分です。
 
-制約対象の例:
+制約対象の例は次のとおりです。
 
 - 展開後の総byte数
 - 展開されるfile数

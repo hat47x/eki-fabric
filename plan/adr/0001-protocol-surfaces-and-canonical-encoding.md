@@ -124,13 +124,13 @@ CBORは64-bit integerやbyte stringを自然に扱えるため、JCSのI-JSON nu
 
 ### A. Everything REST / JSON
 
-利点:
+利点は次のとおりです。
 
 - 最も分かりやすい
 - curl / Browser / proxy friendly
 - OpenAPI一つで統一可能
 
-不採用理由:
+不採用理由は次のとおりです。
 
 - Worker long-lived streaming / typed generated protocolで追加設計が必要
 - signed Decisionのcanonicalizationを別途解決する必要がある
@@ -140,14 +140,14 @@ External Planeには採用しますが、全Planeへは広げません。
 
 ### B. Everything gRPC / Protobuf
 
-利点:
+利点は次のとおりです。
 
 - mature RPC
 - bidirectional streaming
 - polyglot code generation
 - efficient binary encoding
 
-不採用理由:
+不採用理由は次のとおりです。
 
 - public unknown ClientにgRPC toolchainを要求したくない
 - Browser / proxy環境では追加のgRPC-Web / gateway考慮が必要
@@ -157,14 +157,14 @@ Worker / Adapter Planeの候補として利用します。
 
 ### C. Connect / Protobuf for everything
 
-利点:
+利点は次のとおりです。
 
 - HTTP friendly
 - browser friendly
 - gRPC compatibility
 - generated clients
 
-不採用理由:
+不採用理由は次のとおりです。
 
 - public resource APIを特定RPC ecosystemへ寄せすぎる
 - OpenAPI / plain HTTP integrationを第一級に保ちたい
@@ -174,7 +174,7 @@ Worker / Adapter Planeの候補として利用します。
 
 JCS (RFC 8785)はJSONのcanonical representationを定義しており、有力候補です。
 
-不採用理由:
+不採用理由は次のとおりです。
 
 - I-JSON / IEEE 754 double precision制約をSecurity-critical numeric fieldへ持ち込む
 - byte stringや大きなintegerをstring encodingへ寄せる必要がある
@@ -253,7 +253,7 @@ EKI固有extensionとして:
 
 ProtobufはWorker PlaneのIDL / transport message formatとして使用します。
 
-用途:
+用途は次のとおりです。
 
 - WorkerHello
 - ResourceAdvertisement
@@ -270,7 +270,7 @@ Security-sensitive Authority Decisionの署名対象そのものには使いま�
 
 Reference transportはConnectです。
 
-理由:
+理由は次のとおりです。
 
 - standard HTTP infrastructureへ載せやすい
 - HTTP/1.1 / HTTP/2を扱える
@@ -285,7 +285,7 @@ MVPでは二つを許容します。
 1. streaming session
 2. polling / unary fallback
 
-両方で:
+両方では次のとおりです。
 
 - WorkOrder ID
 - Attempt ID
@@ -343,7 +343,7 @@ Authority ID、Decision Kind、schema versionはsignature-covered semanticsか�
 
 このADRでは固定しません。
 
-理由:
+理由は次のとおりです。
 
 - enterprise PKI / KMS適合性
 - platform crypto support
@@ -360,7 +360,7 @@ WorkerがalgorithmをClient inputから選ばせる構造にはしません。
 
 Idempotencyやbinding digestは用途別Projectionを定義します。
 
-例:
+例は次のとおりです。
 
 ```text
 TaskRequestFingerprintV1
@@ -388,7 +388,7 @@ External JSONの:
 
 External JSON parser、Protobuf decoder、CBOR decoderはいずれもattack surfaceです。
 
-共通制約:
+共通制約は次のとおりです。
 
 - maximum message bytes
 - maximum nesting
@@ -543,7 +543,7 @@ Bulk Artifact compressionはArtifact profile / Safe Processing Budgetで別に�
 
 次はこのADRに基づきP0 machine-readable schemaを作成します。
 
-対象:
+対象は次のとおりです。
 
 - TaskRequest
 - Task public status

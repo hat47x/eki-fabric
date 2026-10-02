@@ -90,7 +90,7 @@ M0のsoftware signerや将来のKMS / HSM Adapterは`KeyID`を使ってprivate s
 
 ## Lifecycle
 
-基本遷移:
+基本遷移は次のとおりです。
 
 ~~~text
 PENDING

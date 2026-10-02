@@ -2,7 +2,7 @@
 
 Status: **Baseline 0.1 — 2026-09-21**
 
-正本:
+正本は次のとおりです。
 
 - `v1/worker.proto` — Worker Plane Protobuf IDL
 - Protocol technology: `../../plan/adr/0001-protocol-surfaces-and-canonical-encoding.md`

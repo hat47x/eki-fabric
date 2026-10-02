@@ -19,7 +19,7 @@ Status: **Baseline 0.1 — 2026-09-21**
 
 Wire formatを決める前に、論理Contractを確定します。
 
-関連:
+関連は次のとおりです。
 
 - AUTHORITY_BOUNDARIES.md
 - ../requirements/PRODUCT_REQUIREMENTS.md
@@ -251,7 +251,7 @@ Auditやrevoke / supersedeの参照に使います。
 
 Immutable contentやnormalized Contractを識別する場合はDigestを利用します。
 
-例:
+例は次のとおりです。
 
 - Executor Artifact
 - Artifact input
@@ -270,7 +270,7 @@ Immutable contentやnormalized Contractを識別する場合はDigestを利用�
 
 各Contractにはschema / kindのversion identityを持たせます。
 
-概念例:
+概念例は次のとおりです。
 
 ~~~text
 eki.task-request/v1
@@ -315,7 +315,7 @@ Internalだから安全という理由でschema versionを省略しません。
 
 Extensionはnamespace付き識別子を持ちます。
 
-例:
+例は次のとおりです。
 
 ~~~text
 org.example.video-transcode/v1
@@ -402,7 +402,7 @@ TaskRequestに次を直接持たせない、または持っていてもhintと�
 
 Clientはlogical Executor ID / version range等を要求できます。
 
-例:
+例は次のとおりです。
 
 ~~~text
 dev.example.transform@1
@@ -433,7 +433,7 @@ TaskRequestからWorkerへ任意URLを直接渡しません。
 
 Clientは必要Resourceを宣言できます。
 
-例:
+例は次のとおりです。
 
 - CPU cores
 - memory
@@ -509,7 +509,7 @@ TaskIRには、
 
 を必要に応じて区別して残します。
 
-例:
+例は次のとおりです。
 
 ~~~text
 requested priority = high
@@ -608,7 +608,7 @@ Workerから来るResourceAdvertisementはauthenticated self-reportです。
 
 ## 10.2 内容
 
-概念例:
+概念例は次のとおりです。
 
 ~~~text
 Worker ID
@@ -862,7 +862,7 @@ WorkOrder Authority identity
 
 WorkOrderのResource Limitは、複数の上限の最小値です。
 
-概念上:
+概念上は次のとおりです。
 
 ~~~text
 effective execution limit
@@ -898,7 +898,7 @@ WorkOrderにないCapabilityは使えないことを標準にします。
 
 WorkOrderの有効期限は、依存する前提Decisionより長くできない方向を基本とします。
 
-概念上:
+概念上は次のとおりです。
 
 ~~~text
 workorder expiry
@@ -918,7 +918,7 @@ workorder expiry
 
 WorkerはWorkOrderを受信したら、すぐ実行開始するのではなくlocal verificationを行います。
 
-少なくとも:
+少なくともは次のとおりです。
 
 1. WorkOrder Authority
 2. WorkOrder schema version
@@ -1012,7 +1012,7 @@ Worker署名はResult provenanceであり、Result Assuranceそのものでは�
 
 AttestationResultはRaw EvidenceをVerifierが評価したnormalized Contractです。
 
-主な内容:
+主な内容は次のとおりです。
 
 ~~~text
 Worker / Attester ID
@@ -1262,7 +1262,7 @@ JSON、CBOR、Protobuf等の採否は後続比較です。
 
 External boundaryではparser自体をattack surfaceとして扱います。
 
-少なくとも:
+少なくともは次のとおりです。
 
 - body size
 - nesting depth
@@ -1287,7 +1287,7 @@ Artifact uploadはstreaming / declared size / digest検証を利用できるよ�
 
 ## 29.1 Client Plane
 
-Clientへ原則返さないもの:
+Clientへ原則返さないもの。
 
 - Worker hostname
 - Worker IP
@@ -1304,7 +1304,7 @@ Task statusは必要な範囲へ縮約します。
 
 ## 29.2 Worker Plane
 
-Workerへ原則渡さないもの:
+Workerへ原則渡さないもの。
 
 - Client credential
 - other Task metadata
@@ -1367,7 +1367,7 @@ optional policy reason category
 
 Security理由で詳細をClientへ返せない場合でも、Audit側では原因を追跡できるようにします。
 
-例:
+例は次のとおりです。
 
 ~~~text
 PLACEMENT_ASSURANCE_UNSATISFIED
@@ -1505,7 +1505,7 @@ Internal contractをexternal compatibility burdenにしないことを重視し�
 
 External ContractはGo固有型へ依存しません。
 
-避けるもの:
+避けるもの。
 
 - Go package pathをtype identityにする
 - time.Durationの内部表現をwire契約にする

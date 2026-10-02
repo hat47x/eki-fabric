@@ -4,18 +4,18 @@
 
 Protocolの固定順序は次です。
 
-1. **P0 External Client Plane**
+1. P0 External Client Plane
    - `external/openapi.json`
    - HTTPS + JSON + OpenAPI
-2. **P1 Worker Plane**
+2. P1 Worker Plane
    - `worker/v1/worker.proto`
    - Protobuf IDL + Connect reference transport
    - Worker→Controlは`PostEvents`、Control→Workerはserver-streamingまたはpolling fallback
-3. **P2 Signed Authority Decisions**
+3. P2 Signed Authority Decisions
    - `decisions/v1/decisions.cddl`
    - deterministic CBOR + CDDL + COSE_Sign1
    - Placement / Lease / Executor Approval / Artifact Grants / WorkOrderのcanonical signed payload
-4. **Adapter Plane**
+4. Adapter Plane
    - P1と同じProtobuf系Logical SPIを基礎に、必要Kindから順次追加
 
 ## 原則

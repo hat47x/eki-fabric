@@ -434,7 +434,7 @@ dependency取得不能時の先行作業として、strict COSE conformance vect
 
 current main `9e990e7c89924fb4005264e7556b41e0e3fb62b1` を計画と再照合した。
 
-現状:
+現状は次のとおりです。
 
 - `go.mod`はGo 1.27.0だけを宣言し、外部module requirementはまだ固定していない。
 - SQLite durable State Store adapterは未実装で、M0のrestart耐性は未達。

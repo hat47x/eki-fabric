@@ -8,7 +8,7 @@ Architectureの正本は`architecture/TASK_STATE_MODEL.md`、SPIの正本は`arc
 
 in-memory / SQLite / 将来のPostgreSQL等、すべてのTask Store Adapterが通す基本契約です。
 
-現在確認するもの:
+現在確認するもの。
 
 - Create → LoadでTaskRecordが保持される
 - missing Taskは`ErrNotFound`
@@ -27,7 +27,7 @@ Store implementationは、これらのError分類をBackend固有errorへ置き�
 
 Process / connectionを閉じても状態を保持すべきdurable Adapter向け契約です。
 
-現在確認するもの:
+現在確認するもの。
 
 - Create後にStoreをcloseし、同じlocationでreopenしてもTaskをLoadできる
 - revision更新後にreopenしても最新revisionが残る

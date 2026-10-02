@@ -17,7 +17,7 @@ EKI Fabricは、10〜30台程度の社内Endpointから、Browserを含むアド
 
 という方針でDeployment Profileを定義します。
 
-関連:
+関連は次のとおりです。
 
 - AUTHORITY_BOUNDARIES.md
 - CONTRACT_BOUNDARIES.md
@@ -560,7 +560,7 @@ Gatewayが相手Organizationの全権限を獲得するわけではありませ�
 
 Beneficiary AのTaskをProvider BのWorkerで動かす場合、BはAのTaskRequestをB内部WorkOrderとして直接信用しません。
 
-概念上:
+概念上は次のとおりです。
 
 ~~~text
 A admitted intent
@@ -705,7 +705,7 @@ Dedicated Poolは、
 
 へ利用できます。
 
-ただし dedicated=true を自動的に trusted=true へ変換しません。
+ただしdedicated=trueを自動的にtrusted=trueへ変換しません。
 
 ---
 
@@ -713,7 +713,7 @@ Dedicated Poolは、
 
 実際のOrganizationは複数Profileを組み合わせられます。
 
-例:
+例は次のとおりです。
 
 ~~~text
 Company
@@ -756,7 +756,7 @@ DP-2 Enterprise内にendpoint / workstation / serverが共存できます。
 
 Profileごとに標準的な上限を持てます。
 
-例:
+例は次のとおりです。
 
 | Profile | 標準的なData Class方向 |
 | --- | --- |
@@ -910,7 +910,7 @@ Learned estimatorを導入する場合もScheduler instanceの一部としてsha
 
 WorkerはControl Planeへoutbound sessionを作ります。
 
-候補:
+候補は次のとおりです。
 
 - long polling
 - streaming RPC
@@ -966,7 +966,7 @@ Low-latency P2Pを必須にしない理由の一つです。
 
 # 25. Firewall
 
-標準的に必要な通信方向:
+標準的に必要な通信方向は次のとおりです。
 
 ~~~text
 Client
@@ -1018,7 +1018,7 @@ Unknown security-critical semanticsを古いWorkerがsilent ignoreして実行�
 
 Small ProfileからEnterprise Profileへ移行するとき、Application Contractを変えないことを目指します。
 
-例:
+例は次のとおりです。
 
 ~~~text
 DP-1
@@ -1252,7 +1252,7 @@ cross-organization mutual accounting。
 
 # 39. Profile selection guide
 
-概略:
+概略は次のとおりです。
 
 ~~~text
 単一組織・数十台
@@ -1282,7 +1282,7 @@ Providerが公益Resourceを提供
 
 Profile追加によって、すべてのDeploymentに不要Componentを強制しません。
 
-例:
+例は次のとおりです。
 
 - Federationを使わないDP-1にFederation Gatewayを必須にしない。
 - Browserを使わないEnterpriseにPublic Worker Gatewayを必須にしない。
@@ -1395,7 +1395,7 @@ Responsibility境界をFederationで曖昧にしません。
 
 Worker ProfileはPlacementへ使うEvidenceの種類を変えられます。
 
-例:
+例は次のとおりです。
 
 - managed enrollment
 - device management status
@@ -1412,7 +1412,7 @@ Worker ProfileはPlacementへ使うEvidenceの種類を変えられます。
 
 Architecture Component分離を進める際は、Profileを一度に全面移行する必要はありません。
 
-例:
+例は次のとおりです。
 
 ~~~text
 single eki-control

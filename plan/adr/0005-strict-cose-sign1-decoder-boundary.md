@@ -82,7 +82,7 @@ outer COSE objectについても、transport-level malleabilityを抑えるた�
 
 Concrete codecの第一候補を`github.com/fxamacker/cbor/v2`とします。
 
-採用理由:
+採用理由は次のとおりです。
 
 - RFC 8949対応
 - Core Deterministic Encoding preset

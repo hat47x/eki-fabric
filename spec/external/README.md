@@ -4,7 +4,7 @@ Status: **Baseline 0.1 — 2026-09-21**
 
 このディレクトリは、EKI Fabric External Client Planeの最初のmachine-readable contractを置きます。
 
-正本:
+正本は次のとおりです。
 
 - `openapi.json` — OpenAPI 3.2.1
 - Architecture decision: `../../plan/adr/0001-protocol-surfaces-and-canonical-encoding.md`

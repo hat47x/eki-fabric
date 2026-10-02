@@ -6,7 +6,7 @@ Status: **Reviewed / Implementation Planning Ready**
 
 本書は、EKI FabricのArchitecture Baseline 0.1を構成する6文書を横断し、実装計画へ進む前に責務・用語・状態・Authorityの矛盾がないかを確認したレビュー記録です。
 
-対象:
+対象は次のとおりです。
 
 - `AUTHORITY_BOUNDARIES.md`
 - `CONTRACT_BOUNDARIES.md`
@@ -185,7 +185,7 @@ Small ManagedではControl PlaneとData Access Resolverを同一Binaryへ同居�
 
 EnterpriseではWorker Gateway、Data Authority、Store、Site Cache等を物理分離できます。
 
-どちらでも:
+どちらでもは次のとおりです。
 
 - ArtifactGrant scope
 - Content Digest verification
@@ -321,7 +321,7 @@ Contribution、Federation、Attestation、Proof等はCore extension pointを保�
 
 MVPは「全Architecture機能の縮小版」ではなく、重要Invariantを実際に通す最小vertical sliceとします。
 
-必須:
+必須は次のとおりです。
 
 - malicious ClientからWorkerまでのauthority-separated path
 - durable Task / Attempt / Lease

@@ -95,7 +95,7 @@ SQLiteはtransactional databaseとして、program crash、OS crash、power fail
 
 ### `modernc.org/sqlite` — 採用
 
-利点:
+利点は次のとおりです。
 
 - cgo不要
 - `database/sql`対応
@@ -103,7 +103,7 @@ SQLiteはtransactional databaseとして、program crash、OS crash、power fail
 - Cross-platform Go Reference binaryと相性がよい
 - 利用実績が比較的大きい
 
-注意:
+注意は次のとおりです。
 
 - SQLite C sourceをGoへ変換した実装であり、dependency treeは小さくない
 - driver / transitive dependencyはGo toolingで整合するversionをlockする必要がある
@@ -144,7 +144,7 @@ WALにはreaderとwriterを並行しやすい利点があります。
 
 ただしSQLite公式仕様上、WALを利用する全processは同一host上に存在する必要があり、network filesystemでは利用できません。
 
-そのため:
+そのためは次のとおりです。
 
 - database fileはlocal filesystemへ置く
 - NFS / SMB等のshared network filesystemをM0 Reference configurationにしない

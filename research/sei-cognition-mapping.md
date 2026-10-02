@@ -85,7 +85,7 @@ Client側のAdapterは、これを次のようなTaskRequestへ投影します�
 
 - 入力：対象となる記録の書き出しをArtifactとしてingestし、`requested_data_class`に、社内限定に相当する組織のData Classを指定する
 - `deadline`：翌朝の始業前
-- `priority`：`background`
+- `priority`：`background`は次のとおりです。
 - `reliability`：`retryable = true`、`preemptible = true`、`effect_mode = none`
 - `resources`：CPU、メモリ、wall timeの上限
 - `result_profile`：出力が所定の形式に従うかを確かめるValidator
@@ -178,8 +178,8 @@ EKI Fabric:
 
 SEI Cognition（`hat47x/sei-cognition`。特記がなければ`main`に存在します）:
 
-- `evaluation/sei-cognition-orchestration/EMERGENT_COGNITIVE_ARCHITECTURE.md` — §4 Cognitive Envelope、§10 Background Cognition、§11 認知の多様性、§12 Locality-first、§13 Distributed Execution Fabricとの分離
-- `evaluation/distributed-execution-fabric/README.md` — §3 共通Job Envelope候補、§4 Fabricが知らないもの
+- `evaluation/sei-cognition-orchestration/EMERGENT_COGNITIVE_ARCHITECTURE.md` — §4 Cognitive Envelope、§10 Background Cognition、§11認知の多様性、§12 Locality-first、§13 Distributed Execution Fabricとの分離
+- `evaluation/distributed-execution-fabric/README.md` — §3共通Job Envelope候補、§4 Fabricが知らないもの
 - `contracts/decision-memory/SEI_DECISION_MEMORY_v1alpha1.md` — §8 Responsibility / Authority、§10 Progressive Explicitness
 - `contracts/capability/SEI_CAPABILITY_OBSERVATION_v1alpha1.md`
 - `plan/adr/ADR-0032-family-integration-apex-and-control-meaning-boundary.md` — 統合の頂点の提案（未マージbranch `docs/family-apex-backflow-20260927`にだけ存在）

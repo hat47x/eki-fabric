@@ -21,7 +21,7 @@ EKI Fabricでは、分散システム、セキュリティ、暗号技術、ボ�
 9. [Architecture](../architecture/README.md) — 実装・設計へ参加する場合
 10. [開発を始める方へ](development.md) — M0 Reference Implementationをローカルで確認する場合
 
-最初からすべてを読む必要はありません。全体像を知りたい場合は `for-readers.md` まで、要件レビューへ参加する場合は Product Requirements と Threat Model まで、悪意あるWorkerやアドホック参加者の保証を検討する場合は Assurance Model まで進む、という読み方で構いません。
+最初からすべてを読む必要はありません。全体像を知りたい場合は `for-readers.md` まで、要件レビューへ参加する場合はProduct RequirementsとThreat Modelまで、悪意あるWorkerやアドホック参加者の保証を検討する場合はAssurance Modelまで進む、という読み方で構いません。
 
 ## 正本と説明文書の関係
 

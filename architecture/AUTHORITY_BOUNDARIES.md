@@ -20,7 +20,7 @@ EKI Fabricでは、Client、Worker、Control Planeのいずれも「同じSystem
 
 この文書は、その論理的なAuthorityとTrust BoundaryのBaselineです。
 
-関連する正本:
+関連する正本は次のとおりです。
 
 - ../requirements/PRODUCT_REQUIREMENTS.md
 - ../requirements/THREAT_MODEL.md
@@ -216,7 +216,7 @@ Scheduler、Learned Estimator、Telemetry Collector、Cache locality estimator�
 
 EKI内部Authorityが信頼するissuer、key、policy revision等の管理Rootです。
 
-例:
+例は次のとおりです。
 
 - Task Admission Authorityのtrust root
 - WorkOrder Authorityのtrust root
@@ -366,7 +366,7 @@ Client Identity、Worker Identity、Control Plane Workload Identityは別namespa
 
 Clientが指定したData Classは下限ではなく、他の根拠と合わせて安全側へ計算します。
 
-例:
+例は次のとおりです。
 
 ~~~text
 effective data class
@@ -743,7 +743,7 @@ Task result accepted
 
 これはEKI内部Componentとは限りません。
 
-例:
+例は次のとおりです。
 
 - 外部APIのoperation status / receipt
 - managed effect adapter
@@ -1098,7 +1098,7 @@ Authority Mapは全Deploymentで同じ論理構造を保ちますが、物理構
 
 ## 13.1 Small Managed Organization
 
-例:
+例は次のとおりです。
 
 ~~~text
 1 Control Plane binary
@@ -1164,7 +1164,7 @@ Contribution Recordは必要に応じて外部制度へ渡せますが、EKI Cor
 
 Security-sensitiveなAuthority transitionは、少なくとも後から関連付けられる必要があります。
 
-例:
+例は次のとおりです。
 
 - Task Admission
 - quota / budget reservation
