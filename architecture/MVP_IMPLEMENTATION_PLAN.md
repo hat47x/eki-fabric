@@ -138,6 +138,59 @@ State Model上のUNKNOWNは保持しますが、実side-effect Adapterは後続m
 
 Queueだけを正本にしません。
 
+### RQ-014 Workload Suitability Gate
+
+TaskがSecurity / Data / Resource feasibilityを満たしても、それだけでFabricへ送る根拠にはしません。RQ-014をMVPの実行経路へ反映するため、Baseline Schedulerの前にdeterministicなWorkload Suitability Gateを置きます。
+
+```text
+Task Admission
+  ↓
+Security / Data / Resource feasibility
+  ↓
+Workload Suitability
+  ├─ FABRIC_NOT_JUSTIFIED
+  ├─ NEEDS_MEASUREMENT
+  └─ FABRIC_JUSTIFIED
+           ↓
+       Scheduler
+```
+
+このGateは次のAuthorityを持ちません。
+
+- concrete Workerを選ばない。
+- Security / Data / Resource feasibilityを緩和しない。
+- Client申告だけを高保証のbaseline事実へ昇格しない。
+- `FABRIC_NOT_JUSTIFIED`を理由にEKI Coreがlocal executionを勝手に開始しない。
+- Placement、Lease、WorkOrderを発行しない。
+
+Reference Implementationの最初のpure boundaryは`internal/core/suitability`とします。Fabric pathの費用要素は、値が無いものを0とみなさず、**estimate済み / 明示的に対象外 / unresolved**を区別します。baselineまたはFabric path componentが不足する場合は`NEEDS_MEASUREMENT`へ止めます。
+
+最初の比較要素は次です。
+
+- suitability decision
+- admission / placement decision
+- dispatch
+- queue
+- input transfer
+- compute
+- retry penalty
+- output transfer
+- verification
+
+全部を常に測定することを要求するものではありません。ただし、測っていないものを暗黙の0へ畳みません。fixtureや特定workloadで対象外とする場合は、その理由を明示します。
+
+Decision receiptは少なくとも、workload digest、policy revision、evaluator version、decision、reason codes、Evidence refs、unresolved inputs、比較した時間、decision basis digestを保持できることをReference方向とします。同じworkload名でもEvidence basisが変われば、過去の判断をcurrent decisionとして再利用しません。
+
+最初のAcceptanceは`spikes/artifact-locality-cost`で既に確認した数値例を再利用します。
+
+- 8 GiB input / 100 MiB/s / remote compute 20s / baseline 60sでは、input transfer約81.92sを含み`FABRIC_NOT_JUSTIFIED`。
+- 10 MiB input / 100 MiB/s / remote compute 20s / baseline 60sでは、単純fixture上は約20.1sとなり`FABRIC_JUSTIFIED`。
+- baselineが無い場合は`NEEDS_MEASUREMENT`。
+- hard feasibility違反はSuitability decisionへ変換せず、既存のAdmission / Policy境界で止める。
+- output transferとSuitability/Scheduler自身のdecision overheadも、測定された場合はFabric path costへ含める。
+
+このpure boundaryをM0/M1実行経路へ接続するのは、durable Task/Attempt/Leaseとsigned WorkOrderの既存優先作業を崩さず、remote placementを通常経路へする前に行います。
+
 ## 3.4 Baseline Scheduler
 
 初回はdeterministic heuristicとします。
