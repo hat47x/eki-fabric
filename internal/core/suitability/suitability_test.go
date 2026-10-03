@@ -195,6 +195,70 @@ func TestBenefitInsideConfiguredMarginNeedsMeasurement(t *testing.T) {
 	}
 }
 
+func TestComputeCannotBeExcludedFromComparison(t *testing.T) {
+	in := fixtureInput(
+		60_000,
+		[]ComponentEstimate{component(ComponentInputTransfer, 100, "fixture:input")},
+		excludeExcept(ComponentInputTransfer),
+	)
+
+	_, err := Evaluate(in)
+	if !errors.Is(err, ErrInvalidInput) {
+		t.Fatalf("Evaluate() error = %v", err)
+	}
+}
+
+func TestMinimumBenefitMarginMustBeExplicit(t *testing.T) {
+	in := fixtureInput(
+		60_000,
+		[]ComponentEstimate{
+			component(ComponentInputTransfer, 100, "fixture:input"),
+			component(ComponentCompute, 20_000, "fixture:compute"),
+		},
+		excludeExcept(ComponentInputTransfer, ComponentCompute),
+	)
+	in.MinimumBenefitMillis = 0
+
+	_, err := Evaluate(in)
+	if !errors.Is(err, ErrInvalidInput) {
+		t.Fatalf("Evaluate() error = %v", err)
+	}
+}
+
+func TestReceiptCarriesNormalizedDecisionBasis(t *testing.T) {
+	in := fixtureInput(
+		60_000,
+		[]ComponentEstimate{
+			component(ComponentCompute, 20_000, "fixture:compute"),
+			component(ComponentInputTransfer, 100, "fixture:input"),
+		},
+		excludeExcept(ComponentInputTransfer, ComponentCompute),
+	)
+	slices.Reverse(in.Excluded)
+
+	got, err := Evaluate(in)
+	if err != nil {
+		t.Fatalf("Evaluate() error = %v", err)
+	}
+	if got.WorkloadDigest.String() != in.WorkloadDigest.String() {
+		t.Fatalf("WorkloadDigest = %s, want %s", got.WorkloadDigest, in.WorkloadDigest)
+	}
+	if got.PolicyRevision != in.PolicyRevision || got.EvaluatorVersion != in.EvaluatorVersion {
+		t.Fatalf("receipt lost policy/evaluator identity: %+v", got)
+	}
+	if got.MinimumBenefitMillis != in.MinimumBenefitMillis {
+		t.Fatalf("MinimumBenefitMillis = %d", got.MinimumBenefitMillis)
+	}
+	if len(got.Components) != 2 || got.Components[0].Kind != ComponentInputTransfer || got.Components[1].Kind != ComponentCompute {
+		t.Fatalf("Components are not normalized: %+v", got.Components)
+	}
+	for i := 1; i < len(got.Excluded); i++ {
+		if componentRank(got.Excluded[i-1].Kind) > componentRank(got.Excluded[i].Kind) {
+			t.Fatalf("Excluded components are not normalized: %+v", got.Excluded)
+		}
+	}
+}
+
 func TestDecisionBasisIsDeterministicAndChangesWithEvidence(t *testing.T) {
 	in := fixtureInput(
 		60_000,
@@ -251,8 +315,9 @@ func fixtureInput(
 			Millis:      baselineMillis,
 			EvidenceRef: "fixture:local-baseline",
 		},
-		Components: components,
-		Excluded:   excluded,
+		Components:           components,
+		Excluded:             excluded,
+		MinimumBenefitMillis: 1_000,
 	}
 }
 
