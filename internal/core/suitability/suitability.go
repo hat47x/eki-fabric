@@ -32,7 +32,7 @@ const (
 	ReasonTransferCostDominates     ReasonCode = "transfer_cost_dominates"
 	ReasonDecisionOverheadDominates ReasonCode = "decision_overhead_dominates"
 	ReasonDispatchOverheadDominates ReasonCode = "dispatch_overhead_dominates"
-	ReasonFabricPathSlower           ReasonCode = "fabric_path_slower"
+	ReasonFabricPathSlower          ReasonCode = "fabric_path_slower"
 	ReasonEstimatedFabricAdvantage  ReasonCode = "estimated_fabric_advantage"
 )
 
