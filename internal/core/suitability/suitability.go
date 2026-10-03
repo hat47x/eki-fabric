@@ -96,13 +96,19 @@ type Input struct {
 }
 
 type DecisionReceipt struct {
-	Decision       Decision
-	Reasons        []ReasonCode
-	Unresolved     []string
-	FabricMillis   *uint64
-	BaselineMillis *uint64
-	EvidenceRefs   []string
-	BasisDigest    contract.Digest
+	WorkloadDigest       contract.Digest
+	PolicyRevision       uint64
+	EvaluatorVersion     string
+	Decision             Decision
+	Reasons              []ReasonCode
+	Unresolved           []string
+	Components           []ComponentEstimate
+	Excluded             []ComponentExclusion
+	MinimumBenefitMillis uint64
+	FabricMillis         *uint64
+	BaselineMillis       *uint64
+	EvidenceRefs         []string
+	BasisDigest          contract.Digest
 }
 
 // Evaluate compares a fully described Fabric path with an existing execution
@@ -120,8 +126,14 @@ func Evaluate(in Input) (DecisionReceipt, error) {
 	}
 
 	receipt := DecisionReceipt{
-		BasisDigest:  basisDigest,
-		EvidenceRefs: collectEvidenceRefs(in.Baseline, components),
+		WorkloadDigest:       in.WorkloadDigest,
+		PolicyRevision:       in.PolicyRevision,
+		EvaluatorVersion:     in.EvaluatorVersion,
+		Components:           append([]ComponentEstimate(nil), components...),
+		Excluded:             append([]ComponentExclusion(nil), exclusions...),
+		MinimumBenefitMillis: in.MinimumBenefitMillis,
+		BasisDigest:          basisDigest,
+		EvidenceRefs:         collectEvidenceRefs(in.Baseline, components),
 	}
 
 	missing := missingComponents(components, exclusions)
@@ -185,6 +197,9 @@ func validateAndNormalize(in Input) ([]ComponentEstimate, []ComponentExclusion, 
 	if !in.FeasibilityConfirmed {
 		return nil, nil, ErrFeasibilityNotConfirmed
 	}
+	if in.MinimumBenefitMillis == 0 {
+		return nil, nil, fmt.Errorf("%w: minimum benefit margin must be positive", ErrInvalidInput)
+	}
 	if in.Baseline != nil {
 		if in.Baseline.Millis == 0 {
 			return nil, nil, fmt.Errorf("%w: baseline duration must be positive", ErrInvalidInput)
@@ -225,6 +240,9 @@ func validateAndNormalize(in Input) ([]ComponentEstimate, []ComponentExclusion, 
 		}
 		if seenComponents[exclusion.Kind] {
 			return nil, nil, fmt.Errorf("%w: component %q cannot be both estimated and excluded", ErrInvalidInput, exclusion.Kind)
+		}
+		if exclusion.Kind == ComponentCompute {
+			return nil, nil, fmt.Errorf("%w: compute duration cannot be excluded from a Fabric comparison", ErrInvalidInput)
 		}
 		if exclusion.Reason == "" {
 			return nil, nil, fmt.Errorf("%w: excluded component %q requires a reason", ErrInvalidInput, exclusion.Kind)
