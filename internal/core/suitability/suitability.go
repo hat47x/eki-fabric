@@ -11,11 +11,8 @@ import (
 )
 
 var (
-	ErrInvalidInput              = errors.New("invalid suitability input")
-	ErrFeasibilityNotConfirmed   = errors.New("security/data/resource feasibility is not confirmed")
-	ErrUnevaluatedReceipt        = errors.New("suitability receipt was not produced by Evaluate")
-	ErrFabricEntryNotJustified   = errors.New("Fabric entry is not justified")
-	ErrReceiptIntegrityMismatch  = errors.New("suitability receipt integrity mismatch")
+	ErrInvalidInput            = errors.New("invalid suitability input")
+	ErrFeasibilityNotConfirmed = errors.New("security/data/resource feasibility is not confirmed")
 )
 
 type Decision string
@@ -112,9 +109,6 @@ type DecisionReceipt struct {
 	BaselineMillis       *uint64
 	EvidenceRefs         []string
 	BasisDigest          contract.Digest
-
-	evaluated bool
-	seal      contract.Digest
 }
 
 type FabricEntry struct {
@@ -126,8 +120,15 @@ type FabricEntry struct {
 
 func (e FabricEntry) WorkloadDigest() contract.Digest { return e.workloadDigest }
 func (e FabricEntry) BasisDigest() contract.Digest    { return e.basisDigest }
-func (e FabricEntry) PolicyRevision() uint64           { return e.policyRevision }
-func (e FabricEntry) EvaluatorVersion() string         { return e.evaluatorVersion }
+func (e FabricEntry) PolicyRevision() uint64          { return e.policyRevision }
+func (e FabricEntry) EvaluatorVersion() string        { return e.evaluatorVersion }
+
+func (e FabricEntry) Valid() bool {
+	return !e.workloadDigest.IsZero() &&
+		!e.basisDigest.IsZero() &&
+		e.policyRevision != 0 &&
+		e.evaluatorVersion != ""
+}
 
 // Evaluate compares a fully described Fabric path with an existing execution
 // baseline. It does not start local execution, select a Worker, or create any
@@ -145,7 +146,6 @@ func Evaluate(in Input) (DecisionReceipt, error) {
 
 	receipt := DecisionReceipt{
 		WorkloadDigest:       in.WorkloadDigest,
-		evaluated:            true,
 		PolicyRevision:       in.PolicyRevision,
 		EvaluatorVersion:     in.EvaluatorVersion,
 		Components:           append([]ComponentEstimate(nil), components...),
@@ -173,7 +173,7 @@ func Evaluate(in Input) (DecisionReceipt, error) {
 
 	if in.Baseline == nil || len(missing) > 0 {
 		receipt.Decision = DecisionNeedsMeasurement
-		return finalizeReceipt(receipt)
+		return receipt, nil
 	}
 
 	fabricMillis, err := sumComponents(components)
@@ -187,7 +187,7 @@ func Evaluate(in Input) (DecisionReceipt, error) {
 		receipt.Decision = DecisionFabricNotJustified
 		receipt.Reasons = dominanceReasons(components, baselineMillis)
 		receipt.Reasons = append(receipt.Reasons, ReasonFabricPathSlower)
-		return finalizeReceipt(receipt)
+		return receipt, nil
 	}
 
 	benefitMillis := baselineMillis - fabricMillis
@@ -195,59 +195,36 @@ func Evaluate(in Input) (DecisionReceipt, error) {
 		receipt.Decision = DecisionNeedsMeasurement
 		receipt.Reasons = []ReasonCode{ReasonBenefitMarginInsufficient}
 		receipt.Unresolved = []string{"benefit_margin"}
-		return finalizeReceipt(receipt)
+		return receipt, nil
 	}
 
 	receipt.Decision = DecisionFabricJustified
 	receipt.Reasons = []ReasonCode{ReasonEstimatedFabricAdvantage}
-	return finalizeReceipt(receipt)
+	return receipt, nil
 }
 
-func RequireFabricEntry(receipt DecisionReceipt) (FabricEntry, error) {
-	if !receipt.evaluated {
-		return FabricEntry{}, ErrUnevaluatedReceipt
-	}
-	if err := verifyReceiptSeal(receipt); err != nil {
-		return FabricEntry{}, err
+// EvaluateForFabricEntry is the only constructor path for a non-zero
+// FabricEntry. A DecisionReceipt is audit evidence, not routing authority;
+// callers cannot turn a persisted or client-supplied decision enum into entry
+// eligibility without re-evaluating the current Input.
+func EvaluateForFabricEntry(in Input) (DecisionReceipt, *FabricEntry, error) {
+	receipt, err := Evaluate(in)
+	if err != nil {
+		return DecisionReceipt{}, nil, err
 	}
 	if receipt.Decision != DecisionFabricJustified {
-		return FabricEntry{}, ErrFabricEntryNotJustified
+		return receipt, nil, nil
 	}
-	if len(receipt.Unresolved) != 0 || receipt.FabricMillis == nil || receipt.BaselineMillis == nil {
-		return FabricEntry{}, fmt.Errorf("%w: justified receipt is incomplete", ErrInvalidInput)
-	}
-	if receipt.WorkloadDigest.IsZero() || receipt.BasisDigest.IsZero() || receipt.PolicyRevision == 0 || receipt.EvaluatorVersion == "" {
-		return FabricEntry{}, fmt.Errorf("%w: justified receipt lacks routing basis", ErrInvalidInput)
-	}
-	return FabricEntry{
+	entry := &FabricEntry{
 		workloadDigest:   receipt.WorkloadDigest,
 		basisDigest:      receipt.BasisDigest,
 		policyRevision:   receipt.PolicyRevision,
 		evaluatorVersion: receipt.EvaluatorVersion,
-	}, nil
-}
-
-func finalizeReceipt(receipt DecisionReceipt) (DecisionReceipt, error) {
-	seal, err := receiptSeal(receipt)
-	if err != nil {
-		return DecisionReceipt{}, err
 	}
-	receipt.seal = seal
-	return receipt, nil
-}
-
-func verifyReceiptSeal(receipt DecisionReceipt) error {
-	if receipt.seal.IsZero() {
-		return ErrUnevaluatedReceipt
+	if !entry.Valid() {
+		return DecisionReceipt{}, nil, fmt.Errorf("%w: justified receipt lacks routing basis", ErrInvalidInput)
 	}
-	expected, err := receiptSeal(receipt)
-	if err != nil {
-		return err
-	}
-	if expected.String() != receipt.seal.String() {
-		return ErrReceiptIntegrityMismatch
-	}
-	return nil
+	return receipt, entry, nil
 }
 
 func validateAndNormalize(in Input) ([]ComponentEstimate, []ComponentExclusion, error) {
@@ -400,45 +377,6 @@ func componentRank(kind ComponentKind) int {
 		}
 	}
 	return len(componentOrder)
-}
-
-type receiptSealDocument struct {
-	WorkloadDigest       string
-	PolicyRevision       uint64
-	EvaluatorVersion     string
-	Decision             Decision
-	Reasons              []ReasonCode
-	Unresolved           []string
-	Components           []ComponentEstimate
-	Excluded             []ComponentExclusion
-	MinimumBenefitMillis uint64
-	FabricMillis         *uint64
-	BaselineMillis       *uint64
-	EvidenceRefs         []string
-	BasisDigest          string
-}
-
-func receiptSeal(receipt DecisionReceipt) (contract.Digest, error) {
-	doc := receiptSealDocument{
-		WorkloadDigest:       receipt.WorkloadDigest.String(),
-		PolicyRevision:       receipt.PolicyRevision,
-		EvaluatorVersion:     receipt.EvaluatorVersion,
-		Decision:             receipt.Decision,
-		Reasons:              receipt.Reasons,
-		Unresolved:           receipt.Unresolved,
-		Components:           receipt.Components,
-		Excluded:             receipt.Excluded,
-		MinimumBenefitMillis: receipt.MinimumBenefitMillis,
-		FabricMillis:         receipt.FabricMillis,
-		BaselineMillis:       receipt.BaselineMillis,
-		EvidenceRefs:         receipt.EvidenceRefs,
-		BasisDigest:          receipt.BasisDigest.String(),
-	}
-	raw, err := json.Marshal(doc)
-	if err != nil {
-		return contract.Digest{}, fmt.Errorf("%w: encode decision receipt: %v", ErrInvalidInput, err)
-	}
-	return contract.SHA256(raw), nil
 }
 
 type basisDocument struct {
