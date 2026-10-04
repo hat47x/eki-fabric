@@ -56,14 +56,14 @@ type Proposal struct {
 	rankBasis                 RankBasis
 }
 
-func (p Proposal) TaskID() ids.TaskID                           { return p.taskID }
-func (p Proposal) TaskIRDigest() contract.Digest                { return p.taskIRDigest }
-func (p Proposal) AttemptID() ids.AttemptID                     { return p.attemptID }
-func (p Proposal) WorkerIdentity() string                       { return p.workerIdentity }
-func (p Proposal) SuitabilityWorkloadDigest() contract.Digest   { return p.suitabilityWorkloadDigest }
-func (p Proposal) SuitabilityBasisDigest() contract.Digest      { return p.suitabilityBasisDigest }
-func (p Proposal) SuitabilityPolicyRevision() uint64            { return p.suitabilityPolicyRevision }
-func (p Proposal) RankBasis() RankBasis                         { return p.rankBasis }
+func (p Proposal) TaskID() ids.TaskID                         { return p.taskID }
+func (p Proposal) TaskIRDigest() contract.Digest              { return p.taskIRDigest }
+func (p Proposal) AttemptID() ids.AttemptID                   { return p.attemptID }
+func (p Proposal) WorkerIdentity() string                     { return p.workerIdentity }
+func (p Proposal) SuitabilityWorkloadDigest() contract.Digest { return p.suitabilityWorkloadDigest }
+func (p Proposal) SuitabilityBasisDigest() contract.Digest    { return p.suitabilityBasisDigest }
+func (p Proposal) SuitabilityPolicyRevision() uint64          { return p.suitabilityPolicyRevision }
+func (p Proposal) RankBasis() RankBasis                       { return p.rankBasis }
 
 type Request struct {
 	TaskID       ids.TaskID
