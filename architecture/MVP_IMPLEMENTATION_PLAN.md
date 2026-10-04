@@ -217,6 +217,34 @@ Baseline Schedulerのproduction entry pointは、raw TaskRecordだけではな�
 
 初回はdeterministic heuristicとします。
 
+最初のReference実装は`internal/core/scheduler`で、**non-authoritative Placement Proposal**だけを作ります。
+
+入力にはraw Taskだけでなく、同じTask ID / TaskIR digestへbindingされた有効な`FabricEntry`を必須とします。`FABRIC_NOT_JUSTIFIED`または`NEEDS_MEASUREMENT`では`FabricEntry`が生成されないため、Scheduler Proposalも生成できません。
+
+最初のrankingは万能scoreへまとめず、次のlexicographicな順序に限定します。
+
+1. planning上eligibleな候補だけを残す
+2. verified/normalized planning view上のcache hitを優先する
+3. estimated transfer bytesが少ない候補を優先する
+4. available CPU millisが大きい候補を優先する
+5. 同値時はWorker identityのlexicographic順で決定論的にtie-breakする
+
+`PlanningEligible`やcache / capacityはSchedulerが使うplanning inputであり、Security Authorityではありません。Client request fieldをそのまま候補へ流しません。候補のData Class、Assurance、Provider state、Executor support等はPLC-1が独立に再確認します。
+
+Proposalは少なくとも次へbindingします。
+
+- Task ID
+- TaskIR digest
+- Attempt ID
+- proposed Worker identity
+- Suitability workload digest
+- Suitability decision basis digest
+- Suitability policy revision
+- 選択に使ったrank basis
+
+ProposalにはAuthority role、署名、Lease、ArtifactGrant、WorkOrder authorityを持たせません。
+
+
 Hard filter:
 
 - Worker online / eligible
