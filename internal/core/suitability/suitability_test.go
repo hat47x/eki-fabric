@@ -301,6 +301,135 @@ func TestDecisionBasisIsDeterministicAndChangesWithEvidence(t *testing.T) {
 	}
 }
 
+func TestRequireFabricEntryAcceptsOnlyEvaluatedJustifiedReceipt(t *testing.T) {
+	in := fixtureInput(
+		60_000,
+		[]ComponentEstimate{
+			component(ComponentInputTransfer, 100, "fixture:input"),
+			component(ComponentCompute, 20_000, "fixture:compute"),
+		},
+		excludeExcept(ComponentInputTransfer, ComponentCompute),
+	)
+
+	receipt, err := Evaluate(in)
+	if err != nil {
+		t.Fatalf("Evaluate() error = %v", err)
+	}
+	entry, err := RequireFabricEntry(receipt)
+	if err != nil {
+		t.Fatalf("RequireFabricEntry() error = %v", err)
+	}
+	if entry.WorkloadDigest().String() != receipt.WorkloadDigest.String() {
+		t.Fatalf("WorkloadDigest = %s, want %s", entry.WorkloadDigest(), receipt.WorkloadDigest)
+	}
+	if entry.BasisDigest().String() != receipt.BasisDigest.String() {
+		t.Fatalf("BasisDigest = %s, want %s", entry.BasisDigest(), receipt.BasisDigest)
+	}
+	if entry.PolicyRevision() != receipt.PolicyRevision {
+		t.Fatalf("PolicyRevision = %d, want %d", entry.PolicyRevision(), receipt.PolicyRevision)
+	}
+	if entry.EvaluatorVersion() != receipt.EvaluatorVersion {
+		t.Fatalf("EvaluatorVersion = %q, want %q", entry.EvaluatorVersion(), receipt.EvaluatorVersion)
+	}
+}
+
+func TestRequireFabricEntryRejectsNotJustifiedAndNeedsMeasurement(t *testing.T) {
+	notJustified := fixtureInput(
+		60_000,
+		[]ComponentEstimate{
+			component(ComponentInputTransfer, 81_920, "fixture:input"),
+			component(ComponentCompute, 20_000, "fixture:compute"),
+		},
+		excludeExcept(ComponentInputTransfer, ComponentCompute),
+	)
+	receipt, err := Evaluate(notJustified)
+	if err != nil {
+		t.Fatalf("Evaluate(not justified) error = %v", err)
+	}
+	if _, err := RequireFabricEntry(receipt); !errors.Is(err, ErrFabricEntryNotJustified) {
+		t.Fatalf("RequireFabricEntry(not justified) error = %v", err)
+	}
+
+	needsMeasurement := fixtureInput(
+		60_000,
+		[]ComponentEstimate{
+			component(ComponentInputTransfer, 100, "fixture:input"),
+			component(ComponentCompute, 20_000, "fixture:compute"),
+		},
+		excludeExcept(ComponentInputTransfer, ComponentCompute),
+	)
+	needsMeasurement.Baseline = nil
+	receipt, err = Evaluate(needsMeasurement)
+	if err != nil {
+		t.Fatalf("Evaluate(needs measurement) error = %v", err)
+	}
+	if _, err := RequireFabricEntry(receipt); !errors.Is(err, ErrFabricEntryNotJustified) {
+		t.Fatalf("RequireFabricEntry(needs measurement) error = %v", err)
+	}
+}
+
+func TestRequireFabricEntryRejectsFabricatedJustifiedReceipt(t *testing.T) {
+	fabricated := DecisionReceipt{
+		WorkloadDigest:   contract.SHA256([]byte("fabricated-workload")),
+		PolicyRevision:   1,
+		EvaluatorVersion: "fabricated",
+		Decision:         DecisionFabricJustified,
+		BasisDigest:      contract.SHA256([]byte("fabricated-basis")),
+	}
+	if _, err := RequireFabricEntry(fabricated); !errors.Is(err, ErrUnevaluatedReceipt) {
+		t.Fatalf("RequireFabricEntry(fabricated) error = %v", err)
+	}
+}
+
+func TestRequireFabricEntryRejectsTamperedEvaluatedReceipt(t *testing.T) {
+	in := fixtureInput(
+		60_000,
+		[]ComponentEstimate{
+			component(ComponentInputTransfer, 81_920, "fixture:input"),
+			component(ComponentCompute, 20_000, "fixture:compute"),
+		},
+		excludeExcept(ComponentInputTransfer, ComponentCompute),
+	)
+	receipt, err := Evaluate(in)
+	if err != nil {
+		t.Fatalf("Evaluate() error = %v", err)
+	}
+	if receipt.Decision != DecisionFabricNotJustified {
+		t.Fatalf("Decision = %q", receipt.Decision)
+	}
+
+	receipt.Decision = DecisionFabricJustified
+	receipt.Reasons = []ReasonCode{ReasonEstimatedFabricAdvantage}
+	if _, err := RequireFabricEntry(receipt); !errors.Is(err, ErrReceiptIntegrityMismatch) {
+		t.Fatalf("RequireFabricEntry(tampered) error = %v", err)
+	}
+}
+
+func TestFabricEntryDoesNotCarryPlacementAuthority(t *testing.T) {
+	in := fixtureInput(
+		60_000,
+		[]ComponentEstimate{
+			component(ComponentInputTransfer, 100, "fixture:input"),
+			component(ComponentCompute, 20_000, "fixture:compute"),
+		},
+		excludeExcept(ComponentInputTransfer, ComponentCompute),
+	)
+	receipt, err := Evaluate(in)
+	if err != nil {
+		t.Fatalf("Evaluate() error = %v", err)
+	}
+	entry, err := RequireFabricEntry(receipt)
+	if err != nil {
+		t.Fatalf("RequireFabricEntry() error = %v", err)
+	}
+
+	if entry.WorkloadDigest().IsZero() || entry.BasisDigest().IsZero() {
+		t.Fatal("FabricEntry lost its suitability evidence binding")
+	}
+	// FabricEntry intentionally exposes no Worker, Attempt, Lease, ArtifactGrant,
+	// WorkOrder, or execution fields. Those authorities remain downstream.
+}
+
 func fixtureInput(
 	baselineMillis uint64,
 	components []ComponentEstimate,
