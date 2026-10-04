@@ -125,10 +125,10 @@ type FabricEntry struct {
 	evaluatorVersion string
 }
 
-func (e FabricEntry) TaskID() ids.TaskID               { return e.taskID }
-func (e FabricEntry) TaskIRDigest() contract.Digest     { return e.taskIRDigest }
-func (e FabricEntry) WorkloadDigest() contract.Digest   { return e.workloadDigest }
-func (e FabricEntry) BasisDigest() contract.Digest      { return e.basisDigest }
+func (e FabricEntry) TaskID() ids.TaskID             { return e.taskID }
+func (e FabricEntry) TaskIRDigest() contract.Digest   { return e.taskIRDigest }
+func (e FabricEntry) WorkloadDigest() contract.Digest { return e.workloadDigest }
+func (e FabricEntry) BasisDigest() contract.Digest    { return e.basisDigest }
 func (e FabricEntry) PolicyRevision() uint64          { return e.policyRevision }
 func (e FabricEntry) EvaluatorVersion() string        { return e.evaluatorVersion }
 
