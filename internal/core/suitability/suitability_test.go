@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	"github.com/hat47x/eki-fabric/internal/core/contract"
+	"github.com/hat47x/eki-fabric/internal/core/ids"
 )
 
 func TestEvaluateFixedSuitabilityFixtures(t *testing.T) {
@@ -301,6 +302,68 @@ func TestDecisionBasisIsDeterministicAndChangesWithEvidence(t *testing.T) {
 	}
 }
 
+func TestFabricEntryIsBoundToExactTaskAndTaskIR(t *testing.T) {
+	in := fixtureInput(
+		60_000,
+		[]ComponentEstimate{
+			component(ComponentInputTransfer, 100, "fixture:input"),
+			component(ComponentCompute, 20_000, "fixture:compute"),
+		},
+		excludeExcept(ComponentInputTransfer, ComponentCompute),
+	)
+	receipt, entry, err := EvaluateForFabricEntry(in)
+	if err != nil {
+		t.Fatalf("EvaluateForFabricEntry() error = %v", err)
+	}
+	if entry == nil {
+		t.Fatal("entry is nil")
+	}
+	if receipt.TaskID != in.TaskID || receipt.TaskIRDigest.String() != in.TaskIRDigest.String() {
+		t.Fatalf("receipt lost Task binding: %+v", receipt)
+	}
+	if !entry.MatchesTask(in.TaskID, in.TaskIRDigest) {
+		t.Fatal("entry does not match the Task it was evaluated for")
+	}
+
+	otherTaskID, err := ids.ParseTaskID("tsk_00000000000000000000000000000002")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if entry.MatchesTask(otherTaskID, in.TaskIRDigest) {
+		t.Fatal("FabricEntry from one Task was reusable for another Task")
+	}
+	if entry.MatchesTask(in.TaskID, contract.SHA256([]byte("different-task-ir"))) {
+		t.Fatal("FabricEntry survived a TaskIR change")
+	}
+}
+
+func TestSuitabilityRequiresCanonicalTaskAndTaskIRBinding(t *testing.T) {
+	in := fixtureInput(
+		60_000,
+		[]ComponentEstimate{
+			component(ComponentCompute, 20_000, "fixture:compute"),
+		},
+		excludeExcept(ComponentCompute),
+	)
+
+	in.TaskID = ids.TaskID("not-a-task-id")
+	if _, err := Evaluate(in); !errors.Is(err, ErrInvalidInput) {
+		t.Fatalf("Evaluate(invalid task ID) error = %v", err)
+	}
+
+	in = fixtureInput(
+		60_000,
+		[]ComponentEstimate{
+			component(ComponentCompute, 20_000, "fixture:compute"),
+		},
+		excludeExcept(ComponentCompute),
+	)
+	in.TaskIRDigest = contract.Digest{}
+	if _, err := Evaluate(in); !errors.Is(err, ErrInvalidInput) {
+		t.Fatalf("Evaluate(missing TaskIR digest) error = %v", err)
+	}
+}
+
 func TestEvaluateForFabricEntryReturnsEntryOnlyWhenJustified(t *testing.T) {
 	justified := fixtureInput(
 		60_000,
@@ -319,6 +382,12 @@ func TestEvaluateForFabricEntryReturnsEntryOnlyWhenJustified(t *testing.T) {
 	}
 	if entry == nil || !entry.Valid() {
 		t.Fatalf("justified evaluation did not produce a valid FabricEntry: %+v", entry)
+	}
+	if entry.TaskID() != receipt.TaskID {
+		t.Fatalf("TaskID = %s, want %s", entry.TaskID(), receipt.TaskID)
+	}
+	if entry.TaskIRDigest().String() != receipt.TaskIRDigest.String() {
+		t.Fatalf("TaskIRDigest = %s, want %s", entry.TaskIRDigest(), receipt.TaskIRDigest)
 	}
 	if entry.WorkloadDigest().String() != receipt.WorkloadDigest.String() {
 		t.Fatalf("WorkloadDigest = %s, want %s", entry.WorkloadDigest(), receipt.WorkloadDigest)
@@ -418,7 +487,13 @@ func fixtureInput(
 	components []ComponentEstimate,
 	excluded []ComponentExclusion,
 ) Input {
+	taskID, err := ids.ParseTaskID("tsk_00000000000000000000000000000001")
+	if err != nil {
+		panic(err)
+	}
 	return Input{
+		TaskID:               taskID,
+		TaskIRDigest:         contract.SHA256([]byte("fixture-task-ir")),
 		WorkloadDigest:       contract.SHA256([]byte("fixture-workload")),
 		PolicyRevision:       1,
 		EvaluatorVersion:     "suitability-v0",

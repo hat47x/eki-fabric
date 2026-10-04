@@ -209,7 +209,7 @@ DecisionReceipt ── audit / explanation
 
 `DecisionReceipt`は監査・説明用Evidenceであり、routing authorityではありません。保存済みreceiptやClient supplied `FABRIC_JUSTIFIED` enumから`FabricEntry`へ変換するAPIを持たせません。Control Plane restart後などで再度routingする場合は、current EvidenceからSuitabilityを再評価します。
 
-`FabricEntry`が保持するのは、workload digest、Suitability decision basis digest、policy revision、evaluator versionだけです。Worker、Attempt、Lease、ArtifactGrant、WorkOrder、Executor authorityは含めません。したがって`FabricEntry`の存在はPlacement Approvalではなく、「このworkloadをFabric placement候補へ進める根拠が現在の比較で成立した」という前提Evidenceに限ります。
+`FabricEntry`は、Admitted TaskのTask ID / TaskIR digest、Suitabilityで比較したworkload digest、Suitability decision basis digest、policy revision、evaluator versionへbindingします。別Task向けのEntryや、同じTask IDでもTaskIRが変わったEntryを再利用しません。Worker、Attempt、Lease、ArtifactGrant、WorkOrder、Executor authorityは含めません。したがって`FabricEntry`の存在はPlacement Approvalではなく、「このexact Task / TaskIRをFabric placement候補へ進める根拠が現在の比較で成立した」という前提Evidenceに限ります。
 
 Baseline Schedulerのproduction entry pointは、raw TaskRecordだけではなく、有効な`FabricEntry`または同等の型付き前提を要求する方向とします。これにより、`FABRIC_NOT_JUSTIFIED`と`NEEDS_MEASUREMENT`の経路ではScheduler Proposal自体を作らず、後段のPlacement / Lease / ArtifactGrant / WorkOrder authorityが発行されない構造へ接続します。
 

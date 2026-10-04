@@ -8,6 +8,7 @@ import (
 	"sort"
 
 	"github.com/hat47x/eki-fabric/internal/core/contract"
+	"github.com/hat47x/eki-fabric/internal/core/ids"
 )
 
 var (
@@ -85,6 +86,8 @@ type ComponentExclusion struct {
 // Every Fabric path component must be either estimated or explicitly excluded.
 // Absence is unresolved and must not be interpreted as zero cost.
 type Input struct {
+	TaskID                ids.TaskID
+	TaskIRDigest          contract.Digest
 	WorkloadDigest        contract.Digest
 	PolicyRevision        uint64
 	EvaluatorVersion      string
@@ -96,6 +99,8 @@ type Input struct {
 }
 
 type DecisionReceipt struct {
+	TaskID               ids.TaskID
+	TaskIRDigest         contract.Digest
 	WorkloadDigest       contract.Digest
 	PolicyRevision       uint64
 	EvaluatorVersion     string
@@ -112,19 +117,31 @@ type DecisionReceipt struct {
 }
 
 type FabricEntry struct {
+	taskID           ids.TaskID
+	taskIRDigest     contract.Digest
 	workloadDigest   contract.Digest
 	basisDigest      contract.Digest
 	policyRevision   uint64
 	evaluatorVersion string
 }
 
+func (e FabricEntry) TaskID() ids.TaskID             { return e.taskID }
+func (e FabricEntry) TaskIRDigest() contract.Digest   { return e.taskIRDigest }
 func (e FabricEntry) WorkloadDigest() contract.Digest { return e.workloadDigest }
 func (e FabricEntry) BasisDigest() contract.Digest    { return e.basisDigest }
 func (e FabricEntry) PolicyRevision() uint64          { return e.policyRevision }
 func (e FabricEntry) EvaluatorVersion() string        { return e.evaluatorVersion }
 
+func (e FabricEntry) MatchesTask(taskID ids.TaskID, taskIRDigest contract.Digest) bool {
+	return e.Valid() &&
+		e.taskID == taskID &&
+		e.taskIRDigest.String() == taskIRDigest.String()
+}
+
 func (e FabricEntry) Valid() bool {
-	return !e.workloadDigest.IsZero() &&
+	return e.taskID != "" &&
+		!e.taskIRDigest.IsZero() &&
+		!e.workloadDigest.IsZero() &&
 		!e.basisDigest.IsZero() &&
 		e.policyRevision != 0 &&
 		e.evaluatorVersion != ""
@@ -145,6 +162,8 @@ func Evaluate(in Input) (DecisionReceipt, error) {
 	}
 
 	receipt := DecisionReceipt{
+		TaskID:               in.TaskID,
+		TaskIRDigest:         in.TaskIRDigest,
 		WorkloadDigest:       in.WorkloadDigest,
 		PolicyRevision:       in.PolicyRevision,
 		EvaluatorVersion:     in.EvaluatorVersion,
@@ -216,6 +235,8 @@ func EvaluateForFabricEntry(in Input) (DecisionReceipt, *FabricEntry, error) {
 		return receipt, nil, nil
 	}
 	entry := &FabricEntry{
+		taskID:           receipt.TaskID,
+		taskIRDigest:     receipt.TaskIRDigest,
 		workloadDigest:   receipt.WorkloadDigest,
 		basisDigest:      receipt.BasisDigest,
 		policyRevision:   receipt.PolicyRevision,
@@ -228,6 +249,12 @@ func EvaluateForFabricEntry(in Input) (DecisionReceipt, *FabricEntry, error) {
 }
 
 func validateAndNormalize(in Input) ([]ComponentEstimate, []ComponentExclusion, error) {
+	if _, err := ids.ParseTaskID(in.TaskID.String()); err != nil {
+		return nil, nil, fmt.Errorf("%w: task ID: %v", ErrInvalidInput, err)
+	}
+	if in.TaskIRDigest.IsZero() {
+		return nil, nil, fmt.Errorf("%w: TaskIR digest is required", ErrInvalidInput)
+	}
 	if in.WorkloadDigest.IsZero() {
 		return nil, nil, fmt.Errorf("%w: workload digest is required", ErrInvalidInput)
 	}
@@ -380,6 +407,8 @@ func componentRank(kind ComponentKind) int {
 }
 
 type basisDocument struct {
+	TaskID               string
+	TaskIRDigest         string
 	WorkloadDigest       string
 	PolicyRevision       uint64
 	EvaluatorVersion     string
@@ -392,6 +421,8 @@ type basisDocument struct {
 
 func digestBasis(in Input, components []ComponentEstimate, exclusions []ComponentExclusion) (contract.Digest, error) {
 	doc := basisDocument{
+		TaskID:               in.TaskID.String(),
+		TaskIRDigest:         in.TaskIRDigest.String(),
 		WorkloadDigest:       in.WorkloadDigest.String(),
 		PolicyRevision:       in.PolicyRevision,
 		EvaluatorVersion:     in.EvaluatorVersion,
