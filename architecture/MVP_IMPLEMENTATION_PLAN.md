@@ -191,6 +191,28 @@ Decision receiptは少なくとも、workload digest、policy revision、evaluat
 
 このpure boundaryをM0/M1実行経路へ接続するのは、durable Task/Attempt/Leaseとsigned WorkOrderの既存優先作業を崩さず、remote placementを通常経路へする前に行います。
 
+### SuitabilityからSchedulerへの型付きhandoff
+
+Suitability decisionを単なるenumとしてSchedulerへ渡しません。Reference Implementationでは、現在のEvidenceを用いてSuitabilityを評価した同じ呼び出しだけが、後段へ渡せる`FabricEntry`を生成します。
+
+```text
+Suitability Input
+      ↓ EvaluateForFabricEntry
+DecisionReceipt ── audit / explanation
+      │
+      └─ FABRIC_JUSTIFIED only
+             ↓
+         FabricEntry
+             ↓
+          Scheduler
+```
+
+`DecisionReceipt`は監査・説明用Evidenceであり、routing authorityではありません。保存済みreceiptやClient supplied `FABRIC_JUSTIFIED` enumから`FabricEntry`へ変換するAPIを持たせません。Control Plane restart後などで再度routingする場合は、current EvidenceからSuitabilityを再評価します。
+
+`FabricEntry`が保持するのは、workload digest、Suitability decision basis digest、policy revision、evaluator versionだけです。Worker、Attempt、Lease、ArtifactGrant、WorkOrder、Executor authorityは含めません。したがって`FabricEntry`の存在はPlacement Approvalではなく、「このworkloadをFabric placement候補へ進める根拠が現在の比較で成立した」という前提Evidenceに限ります。
+
+Baseline Schedulerのproduction entry pointは、raw TaskRecordだけではなく、有効な`FabricEntry`または同等の型付き前提を要求する方向とします。これにより、`FABRIC_NOT_JUSTIFIED`と`NEEDS_MEASUREMENT`の経路ではScheduler Proposal自体を作らず、後段のPlacement / Lease / ArtifactGrant / WorkOrder authorityが発行されない構造へ接続します。
+
 ## 3.4 Baseline Scheduler
 
 初回はdeterministic heuristicとします。

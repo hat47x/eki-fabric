@@ -11,8 +11,8 @@ import (
 )
 
 var (
-	ErrInvalidInput              = errors.New("invalid suitability input")
-	ErrFeasibilityNotConfirmed   = errors.New("security/data/resource feasibility is not confirmed")
+	ErrInvalidInput            = errors.New("invalid suitability input")
+	ErrFeasibilityNotConfirmed = errors.New("security/data/resource feasibility is not confirmed")
 )
 
 type Decision string
@@ -111,6 +111,25 @@ type DecisionReceipt struct {
 	BasisDigest          contract.Digest
 }
 
+type FabricEntry struct {
+	workloadDigest   contract.Digest
+	basisDigest      contract.Digest
+	policyRevision   uint64
+	evaluatorVersion string
+}
+
+func (e FabricEntry) WorkloadDigest() contract.Digest { return e.workloadDigest }
+func (e FabricEntry) BasisDigest() contract.Digest    { return e.basisDigest }
+func (e FabricEntry) PolicyRevision() uint64          { return e.policyRevision }
+func (e FabricEntry) EvaluatorVersion() string        { return e.evaluatorVersion }
+
+func (e FabricEntry) Valid() bool {
+	return !e.workloadDigest.IsZero() &&
+		!e.basisDigest.IsZero() &&
+		e.policyRevision != 0 &&
+		e.evaluatorVersion != ""
+}
+
 // Evaluate compares a fully described Fabric path with an existing execution
 // baseline. It does not start local execution, select a Worker, or create any
 // placement/lease/work-order authority.
@@ -182,6 +201,30 @@ func Evaluate(in Input) (DecisionReceipt, error) {
 	receipt.Decision = DecisionFabricJustified
 	receipt.Reasons = []ReasonCode{ReasonEstimatedFabricAdvantage}
 	return receipt, nil
+}
+
+// EvaluateForFabricEntry is the only constructor path for a non-zero
+// FabricEntry. A DecisionReceipt is audit evidence, not routing authority;
+// callers cannot turn a persisted or client-supplied decision enum into entry
+// eligibility without re-evaluating the current Input.
+func EvaluateForFabricEntry(in Input) (DecisionReceipt, *FabricEntry, error) {
+	receipt, err := Evaluate(in)
+	if err != nil {
+		return DecisionReceipt{}, nil, err
+	}
+	if receipt.Decision != DecisionFabricJustified {
+		return receipt, nil, nil
+	}
+	entry := &FabricEntry{
+		workloadDigest:   receipt.WorkloadDigest,
+		basisDigest:      receipt.BasisDigest,
+		policyRevision:   receipt.PolicyRevision,
+		evaluatorVersion: receipt.EvaluatorVersion,
+	}
+	if !entry.Valid() {
+		return DecisionReceipt{}, nil, fmt.Errorf("%w: justified receipt lacks routing basis", ErrInvalidInput)
+	}
+	return receipt, entry, nil
 }
 
 func validateAndNormalize(in Input) ([]ComponentEstimate, []ComponentExclusion, error) {
