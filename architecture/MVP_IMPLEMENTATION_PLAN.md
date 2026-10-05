@@ -276,6 +276,24 @@ Scheduler Proposalを別境界で再評価します。
 
 を確認します。
 
+Reference coreでは`internal/core/placementauth`がcurrent Evidenceを再確認し、全hard conditionを満たした場合だけ**unsigned PLC-1 ApprovalDraft**を生成します。Schedulerのrankや`PlanningEligible`だけではApprovalDraftを作れません。Policy revision drift、Task / Attempt / Worker binding mismatch、Data Class / Assurance / Provider state / resource / transfer budget failureはいずれもfail closedとします。
+
+この境界の最初のcross-component conformanceを`conformance/coreflow`に置き、次を固定します。
+
+```text
+FABRIC_NOT_JUSTIFIED / NEEDS_MEASUREMENT
+  -> no FabricEntry
+  -> no Scheduler Proposal
+  -> no PLC-1 ApprovalDraft
+
+FABRIC_JUSTIFIED
+  -> Scheduler Proposal
+  -> any hard Placement failure
+  -> no PLC-1 ApprovalDraft
+```
+
+全条件を満たした場合も、現段階で生成するのはPLC-1署名前のDraftまでです。Suitability / Scheduler / Placement AuthorizationがLease、ArtifactGrant、WorkOrderを自己生成しないことを境界とします。
+
 ## 3.6 WorkOrder
 
 初回WorkOrderは少なくとも:
