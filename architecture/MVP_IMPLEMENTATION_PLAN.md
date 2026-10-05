@@ -294,6 +294,48 @@ FABRIC_JUSTIFIED
 
 全条件を満たした場合も、現段階で生成するのはPLC-1署名前のDraftまでです。Suitability / Scheduler / Placement AuthorizationがLease、ArtifactGrant、WorkOrderを自己生成しないことを境界とします。
 
+### P2 Placement Approval payload境界
+
+PLC-1の`ApprovalDraft`を、そのままLease Authorityへ渡しません。P2の`eki.placement-approval/v1`をdeterministic CBORとして読み、Decision固有の意味へ変換する境界を独立させます。
+
+Reference実装候補として次を追加します。
+
+- `internal/core/decisionpayload` — P2の意味を表す型付き`PlacementApproval`
+- `internal/spi/decisiondecoder` — raw payload bytesを型付きDecisionへ変換するSPI
+- `internal/adapters/reference/decisiondecoder/cbor` — RFC 8949 Core Deterministic Encodingを要求するstrict CBOR adapter
+
+Decoderは少なくとも次をfail closedにします。
+
+- duplicate map key
+- indefinite-length item
+- unknown field
+- unexpected CBOR tag
+- 非deterministic encoding
+- P2 v1以外のschema version
+- Decision kind / Authority role mismatch
+- invalid Task / Attempt / Worker binding
+- SHA-256以外、または32 byteでないDigest
+- invalid issued / expiry window
+- Evidence件数上限超過
+
+ただし、Decoder成功はAuthorizationではありません。
+
+```text
+PLC-1 ApprovalDraft
+  -> canonical Placement Approval payload
+  -> PLC-1 signing
+  -> strict COSE envelope decode
+  -> strict P2 payload decode
+  -> key / role / principal / signature verification
+  -> current Task / Attempt / policy revalidation
+  -> LSE-1 prerequisite
+  -> Lease Decision
+```
+
+`decisionpayload.PlacementApproval.Valid()`は「閉じたP2 payloadとして意味が成立している」ことだけを表します。署名検証済み、current policyで有効、Lease発行可能という意味にはしません。`verified=true`のようなcaller supplied flagをこの間の境界へ追加しません。
+
+このReference adapterは外部CBOR libraryへ依存するため、依存moduleを実取得してfocused testを実行できるまで採用済みとは扱いません。依存取得不能な環境でGo API shapeだけを確認した結果を、Security Evidenceへ読み替えません。
+
 ## 3.6 WorkOrder
 
 初回WorkOrderは少なくとも:
@@ -959,6 +1001,10 @@ Section 20の初期列挙はすでに一部完了しているため、現在の�
 
 1. **M0 durable State Store** — SQLite reference adapter。restart後のTask identity / revision保持がM0 gateの未達点。
 2. **P2 concrete COSE decoder** — dependency取得可能環境でstrict decoderを既存SPIへ接続。
+   - Placement Approval payloadについては、型付きCore contract / decoder SPI / strict CBOR Reference adapterを`feature/placement-approval-payload-decoder`で実装中。
+   - RFC 8949 deterministic re-encode比較、closed schema、duplicate key / indefinite length / unknown field / P2 bindingの負例を含む。
+   - ただし外部moduleを実取得したfocused testが未実施のため、mainline採用・P2完了とは数えない。
+   - COSE envelope decode → payload decode → cryptographic verification → current-state revalidationのcompositionは後続。
 3. durable stateを前提にM0 E2EをTask submit/status → Worker registration → one Worker local executionまで接続。
 
 `learned scheduler`はSection 4 / 11で定義したとおりMVP必須ではない。Research実装がmainに存在しても、上記M0/M1 gateの優先順位を変更しない。
