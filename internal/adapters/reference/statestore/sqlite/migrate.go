@@ -24,6 +24,16 @@ var migrations = []string{
 	updated_at_ns          INTEGER NOT NULL CHECK (updated_at_ns >= created_at_ns),
 	CHECK ((phase = 'terminal') = (terminal_outcome <> ''))
 ) STRICT`,
+	// 2: admissions
+	`CREATE TABLE admissions (
+	task_id             TEXT    NOT NULL PRIMARY KEY REFERENCES tasks (task_id),
+	principal           TEXT    NOT NULL CHECK (length(principal) BETWEEN 1 AND 256),
+	idempotency_key     TEXT    NOT NULL CHECK (length(idempotency_key) BETWEEN 8 AND 128),
+	request_fingerprint TEXT    NOT NULL CHECK (length(request_fingerprint) = 64),
+	max_attempts        INTEGER NOT NULL CHECK (max_attempts BETWEEN 1 AND 32),
+	UNIQUE (principal, idempotency_key)
+) STRICT;
+CREATE INDEX admissions_by_principal ON admissions (principal)`,
 }
 
 // migrate brings the database to the latest version. It is idempotent, rejects

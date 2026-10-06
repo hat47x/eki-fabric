@@ -39,6 +39,12 @@ type Store struct {
 // Open opens or creates the database at path and brings its schema up to
 // date. The path must be on a local filesystem (ADR-0003 §6).
 func Open(ctx context.Context, path string) (*Store, error) {
+	return openWithMigrations(ctx, path, migrations)
+}
+
+// openWithMigrations is Open with an explicit migration list, so tests can
+// create a database at an older schema version.
+func openWithMigrations(ctx context.Context, path string, steps []string) (*Store, error) {
 	if path == "" {
 		return nil, errors.New("sqlite state store: path is required")
 	}
@@ -55,7 +61,7 @@ func Open(ctx context.Context, path string) (*Store, error) {
 	// our own goroutines (ADR-0003 §9).
 	db.SetMaxOpenConns(1)
 
-	if err := migrate(ctx, db, migrations); err != nil {
+	if err := migrate(ctx, db, steps); err != nil {
 		_ = db.Close()
 		return nil, err
 	}
@@ -184,35 +190,43 @@ type rowScanner interface {
 }
 
 func scanTask(row rowScanner) (taskstate.TaskRecord, error) {
-	var (
-		id, digestHex, phase, outcome string
-		cancel                        int64
-		revision, createdNS, updated  int64
-	)
-	if err := row.Scan(&id, &digestHex, &phase, &outcome, &cancel, &revision, &createdNS, &updated); err != nil {
+	var cols taskColumns
+	if err := row.Scan(&cols.id, &cols.digestHex, &cols.phase, &cols.outcome, &cols.cancel, &cols.revision, &cols.createdNS, &cols.updatedNS); err != nil {
 		return taskstate.TaskRecord{}, err
 	}
+	return cols.record()
+}
 
-	digest, err := contract.ParseSHA256(digestHex)
+// taskColumns holds the raw columns of one tasks row.
+type taskColumns struct {
+	id, digestHex, phase, outcome  string
+	cancel                         int64
+	revision, createdNS, updatedNS int64
+}
+
+// record converts the row into a validated TaskRecord. A row that cannot be
+// converted is corrupt, not a Client error.
+func (c taskColumns) record() (taskstate.TaskRecord, error) {
+	digest, err := contract.ParseSHA256(c.digestHex)
 	if err != nil {
-		return taskstate.TaskRecord{}, fmt.Errorf("%w: task %s: %v", ErrCorruptRecord, id, err)
+		return taskstate.TaskRecord{}, fmt.Errorf("%w: task %s: %v", ErrCorruptRecord, c.id, err)
 	}
-	if revision < 1 {
-		return taskstate.TaskRecord{}, fmt.Errorf("%w: task %s: revision %d", ErrCorruptRecord, id, revision)
+	if c.revision < 1 {
+		return taskstate.TaskRecord{}, fmt.Errorf("%w: task %s: revision %d", ErrCorruptRecord, c.id, c.revision)
 	}
 
 	record := taskstate.TaskRecord{
-		ID:                    ids.TaskID(id),
+		ID:                    ids.TaskID(c.id),
 		TaskIRDigest:          digest,
-		Phase:                 taskstate.TaskPhase(phase),
-		TerminalOutcome:       taskstate.TerminalOutcome(outcome),
-		CancellationRequested: cancel != 0,
-		Revision:              uint64(revision),
-		CreatedAt:             time.Unix(0, createdNS).UTC(),
-		UpdatedAt:             time.Unix(0, updated).UTC(),
+		Phase:                 taskstate.TaskPhase(c.phase),
+		TerminalOutcome:       taskstate.TerminalOutcome(c.outcome),
+		CancellationRequested: c.cancel != 0,
+		Revision:              uint64(c.revision),
+		CreatedAt:             time.Unix(0, c.createdNS).UTC(),
+		UpdatedAt:             time.Unix(0, c.updatedNS).UTC(),
 	}
 	if err := record.Validate(); err != nil {
-		return taskstate.TaskRecord{}, fmt.Errorf("%w: task %s: %v", ErrCorruptRecord, id, err)
+		return taskstate.TaskRecord{}, fmt.Errorf("%w: task %s: %v", ErrCorruptRecord, c.id, err)
 	}
 	return record, nil
 }
@@ -244,6 +258,10 @@ func dsn(path string) string {
 	q.Add("_pragma", "journal_mode(WAL)")
 	q.Add("_pragma", "synchronous(FULL)")
 	q.Add("_pragma", "foreign_keys(1)")
+	// Every transaction takes the write lock up front, so a read-then-write
+	// sequence (idempotency lookup, quota count, insert) cannot interleave with
+	// another writer.
+	q.Add("_txlock", "immediate")
 	return (&url.URL{Scheme: "file", Opaque: filepathToURI(path), RawQuery: q.Encode()}).String()
 }
 

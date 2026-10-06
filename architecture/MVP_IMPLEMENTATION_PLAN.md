@@ -1006,6 +1006,8 @@ Section 20の初期列挙はすでに一部完了しているため、現在の�
    - 外部moduleを取得したfocused testは2026-10-06に実施済み（Go 1.27.0、WSL2）。
    - COSE envelope decode → payload decode → cryptographic verification → current-state revalidationのcompositionは`internal/core/placementverify`に実装済み（2026-10-06）。LSE-1自体は未実装。
 3. durable stateを前提にM0 E2EをTask submit/status → Worker registration → one Worker local executionまで接続。
+   - Task submit / status / cancelは実装済み（2026-10-06、ADR-0006）。再起動後もTask、冪等性、未完了Task数の上限が保たれる。
+   - 残りはAttempt / Leaseの永続化とLSE-1、Worker registration、one Worker local execution。
 
 `learned scheduler`はSection 4 / 11で定義したとおりMVP必須ではない。Research実装がmainに存在しても、上記M0/M1 gateの優先順位を変更しない。
 

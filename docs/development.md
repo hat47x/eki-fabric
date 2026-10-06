@@ -21,6 +21,9 @@
 - `internal/adapters/reference/statestore/memory` — CAS semanticsを確認するin-memory reference adapter
 - `internal/adapters/reference/statestore/sqlite` — durable reference adapter（SQLite、WAL、migration）
 - `internal/core/placementverify` — Placement Approvalの検証をCOSE decodeから現在状態の再検証までつなぐ
+- `internal/core/admission` — Task Admission（strict JSON、P0 schema検証、policy、冪等性、公開status、Cancel）
+- `internal/control/clientapi` — P0 External Client PlaneのHTTP実装（認証、size制限、Problem Details）
+- `internal/control/service` — Control Planeの設定、起動、停止
 
 in-memory adapterは開発用です。Process restartで状態を失うため、M0のrestart gateを満たしません。restart gateはSQLite adapterが満たします。
 
@@ -128,4 +131,63 @@ SQLite Reference Adapterは`internal/adapters/reference/statestore/sqlite`にあ
 
 strict COSE_Sign1 decoderとSignature1 encoderは`internal/adapters/reference/cosedecoder/cbor`にあり、`fxamacker/cbor/v2`を使います。共通のconformance vectorを通ります。
 
-次の作業単位は、M0 vertical sliceの最初の部分（Task submit / status）を、durable state上で接続することです。
+Task submit / status / cancelは、`eki-control --config`で起動するClient APIとして実装済みです（[ADR-0006](../plan/adr/0006-m0-client-api-authentication-and-admission.md)）。起動方法は次節を参照してください。
+
+次の作業単位は、Attempt / Leaseの永続化とLSE-1（Lease Authority）です。
+
+## Control Planeを起動する
+
+設定ファイルを指定すると、Client APIを起動します。指定しなければ、何も起動せずに終了します。
+
+~~~bash
+# 1. クライアント用のtokenを作る。tokenは一度しか表示されません。
+go run ./cmd/eki-control gen-token
+
+# 2. 設定ファイルを書く（下の例）。tokenそのものではなく、sha256の値だけを書きます。
+
+# 3. 起動する。
+go run ./cmd/eki-control --config control.json
+~~~
+
+設定ファイルの例です。
+
+~~~json
+{
+  "listen": "127.0.0.1:8443",
+  "database": "state.db",
+  "tokens": [
+    { "principal": "alice", "role": "client", "token_sha256": "<gen-tokenが表示したsha256>" }
+  ],
+  "policy": {
+    "approved_executors": ["dev.example.transform"],
+    "per_task": {
+      "cpu_millis": 4000,
+      "memory_bytes": 1073741824,
+      "wall_time_seconds": 3600,
+      "output_bytes_max": 1073741824,
+      "network_bytes_max": 1073741824,
+      "temporary_disk_bytes": 1073741824
+    },
+    "max_attempts": 5,
+    "max_outstanding_tasks": 10
+  }
+}
+~~~
+
+- 設定ファイルに未知のfieldがあると起動しません。設定名の綴り間違いが、既定値に黙って置き換わることを防ぐためです。
+- TLSなしの平文HTTPは、loopbackアドレスでだけ起動します。それ以外では、`tls`を設定するか、手前で信頼できるproxyがTLSを終端する場合に限って`allow_insecure_listen`を明示してください。
+- `max_outstanding_tasks`は必須です。上限のないTask受付は作れません。
+- `database`はlocal filesystemに置いてください。fileは所有者だけが読める権限で作られます。
+- M0の認証は固定のBearer tokenです。失効や期限はありません。詳細と制限は[ADR-0006](../plan/adr/0006-m0-client-api-authentication-and-admission.md)を参照してください。
+
+提出の例です。
+
+~~~bash
+curl -s -X POST http://127.0.0.1:8443/v1/tasks \
+  -H "Authorization: Bearer $EKI_TOKEN" \
+  -H "Content-Type: application/json" \
+  -H "Idempotency-Key: my-first-task-0001" \
+  --data @spec/external/examples/valid-task-request.json
+~~~
+
+このexampleは入力Artifactを含むため、Artifact Storeのない現在の構成では`422`になります。`inputs`を空にしたrequestで確認してください。

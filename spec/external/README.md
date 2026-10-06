@@ -215,3 +215,15 @@ P0 merge後は、別branchでP1 Worker Planeを定義します。
 - Reclaim / Stop signal
 
 P1でもAuthority Decisionのcanonical signed payload自体はP2 CDDL / COSEへ残します。
+
+## M0 Reference Implementationでの扱い
+
+Reference Implementation（`internal/control/clientapi`）は、P0 OpenAPIの`submitTask`、`getTaskStatus`、`cancelTask`を実装しています。応答のschemaが`openapi.json`と一致することは、テストが同じ文書を読んで確認します。
+
+認証には、M0に限り固定のBearer tokenを使います（[ADR-0006](../../plan/adr/0006-m0-client-api-authentication-and-admission.md)）。P0が宣言していない次の応答を返します。契約へ反映する場合は、別の変更として`openapi.json`を更新してください。
+
+- `401` — 認証がない、または認証に失敗した
+- `405` — 対象pathに対して許可されないmethod
+- `501` — `getTaskResult`と、Artifact関連のoperation。Result取得とArtifact Storeは未実装
+
+Artifactを入力にするTaskは、入力を認可できないため`422`（`ARTIFACT_NOT_AVAILABLE`）で拒否します。

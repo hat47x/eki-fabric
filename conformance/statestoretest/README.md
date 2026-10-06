@@ -56,6 +56,17 @@ func TestDurabilityContract(t *testing.T) {
 
 SQLite Reference Adapterは両方を通す必要があります。
 
+## `RunAdmissionContract` / `RunAdmissionDurabilityContract`
+
+Task Admissionを保存するStoreが通す契約です。冪等性とquotaの確認を、Taskの作成と同じ原子性で行うことを要求します。
+
+- 同じ(principal, key, fingerprint)は同じTaskへ収束し、別のTask IDで作り直さない
+- 同じkeyで別のfingerprintは`ErrIdempotencyConflict`で、Taskを作らない
+- keyはprincipalごと
+- principalごとの未完了Task数の上限を、同時の提出でも超えない
+- 再提出は上限に達していても拒否しない。terminalになったTaskは上限を解放する
+- 再起動後も、admission、冪等性、上限の使用量が残る
+
 ## このHarnessが決めないもの
 
 - SQLite / PostgreSQL等の製品選定

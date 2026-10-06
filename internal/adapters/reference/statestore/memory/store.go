@@ -10,13 +10,24 @@ import (
 	"github.com/hat47x/eki-fabric/internal/spi/statestore"
 )
 
+type idempotencyScope struct {
+	principal string
+	key       string
+}
+
 type Store struct {
-	mu    sync.RWMutex
-	tasks map[ids.TaskID]taskstate.TaskRecord
+	mu         sync.RWMutex
+	admissions map[ids.TaskID]statestore.Admission
+	idempotent map[idempotencyScope]ids.TaskID
+	tasks      map[ids.TaskID]taskstate.TaskRecord
 }
 
 func New() *Store {
-	return &Store{tasks: make(map[ids.TaskID]taskstate.TaskRecord)}
+	return &Store{
+		tasks:      make(map[ids.TaskID]taskstate.TaskRecord),
+		admissions: make(map[ids.TaskID]statestore.Admission),
+		idempotent: make(map[idempotencyScope]ids.TaskID),
+	}
 }
 
 func (s *Store) CreateTask(ctx context.Context, record taskstate.TaskRecord) error {
@@ -81,4 +92,3 @@ func (s *Store) CompareAndSwapTask(ctx context.Context, id ids.TaskID, expectedR
 	return nil
 }
 
-var _ statestore.TaskStore = (*Store)(nil)
