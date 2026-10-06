@@ -88,6 +88,20 @@ func RunLeaseStoreContract(t *testing.T, newStore LeaseFactory) {
 		}
 	})
 
+	t.Run("future-issued-lease-still-reserves-the-fence", func(t *testing.T) {
+		store := newStore(t)
+		task := readyTask(t, store, "future-fence")
+		future := leaseReservation(t, task, "placement-future", leaseNow.Add(30*time.Second), leaseNow.Add(90*time.Second))
+		if _, err := store.ReserveLease(context.Background(), future); err != nil {
+			t.Fatal(err)
+		}
+
+		second := leaseReservation(t, task, "placement-now", leaseNow, leaseNow.Add(time.Minute))
+		if _, err := store.ReserveLease(context.Background(), second); !errors.Is(err, statestore.ErrLeaseActive) {
+			t.Fatalf("ReserveLease() error = %v, want ErrLeaseActive", err)
+		}
+	})
+
 	t.Run("expired-lease-allows-next-monotonic-fence", func(t *testing.T) {
 		store := newStore(t)
 		task := readyTask(t, store, "fence")
