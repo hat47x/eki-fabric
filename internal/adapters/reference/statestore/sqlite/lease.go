@@ -128,7 +128,7 @@ SELECT last_fence_epoch FROM lease_fences WHERE task_id = ?`,
 		return statestore.LeaseReservationResult{}, err
 	}
 
-	_, err = tx.ExecContext(ctx, `
+	fenceResult, err := tx.ExecContext(ctx, `
 INSERT INTO lease_fences (task_id, last_fence_epoch)
 VALUES (?, ?)
 ON CONFLICT (task_id) DO UPDATE SET last_fence_epoch = excluded.last_fence_epoch
@@ -139,6 +139,17 @@ WHERE lease_fences.last_fence_epoch = ?`,
 	)
 	if err != nil {
 		return statestore.LeaseReservationResult{}, fmt.Errorf("advance fence epoch for task %s: %w", lease.TaskID, err)
+	}
+	advanced, err := fenceResult.RowsAffected()
+	if err != nil {
+		return statestore.LeaseReservationResult{}, fmt.Errorf("read fence update result for task %s: %w", lease.TaskID, err)
+	}
+	if advanced != 1 {
+		return statestore.LeaseReservationResult{}, fmt.Errorf(
+			"%w: task %s fence changed concurrently",
+			statestore.ErrConflict,
+			lease.TaskID,
+		)
 	}
 
 	_, err = tx.ExecContext(ctx, `
