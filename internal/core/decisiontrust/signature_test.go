@@ -249,8 +249,8 @@ func TestReferenceSoftwareSignerDoesNotReturnSignatureAfterConcurrentRevocation(
 		t.Fatalf("SetPrimary() error = %v", err)
 	}
 
-	blocker := newBlockingRandomReader()
-	signer, err := newReferenceSoftwareSigner(registry, blocker)
+	blocker := newSigningBlocker()
+	signer, err := newReferenceSoftwareSigner(registry, blocker.block)
 	if err != nil {
 		t.Fatalf("newReferenceSoftwareSigner() error = %v", err)
 	}
@@ -384,23 +384,25 @@ func testES256PrivateKey() *ecdsa.PrivateKey {
 	}
 }
 
-type blockingRandomReader struct {
+// signingBlocker pauses a signing call before the signature is generated so a
+// test can change the registry mid-flight. It replaces an injected random
+// reader, which crypto/ecdsa has ignored since Go 1.26.
+type signingBlocker struct {
 	once    sync.Once
 	entered chan struct{}
 	release chan struct{}
 }
 
-func newBlockingRandomReader() *blockingRandomReader {
-	return &blockingRandomReader{
+func newSigningBlocker() *signingBlocker {
+	return &signingBlocker{
 		entered: make(chan struct{}),
 		release: make(chan struct{}),
 	}
 }
 
-func (r *blockingRandomReader) Read(p []byte) (int, error) {
+func (r *signingBlocker) block() {
 	r.once.Do(func() { close(r.entered) })
 	<-r.release
-	return rand.Reader.Read(p)
 }
 
 func assertVerificationReason(t testing.TB, err error, want VerificationReason) {

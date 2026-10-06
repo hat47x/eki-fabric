@@ -10,7 +10,6 @@ import (
 	"crypto/sha256"
 	"errors"
 	"fmt"
-	"io"
 	"math/big"
 	"sync"
 	"time"
@@ -58,26 +57,27 @@ type SignatureResult struct {
 
 type ReferenceSoftwareSigner struct {
 	registry *Registry
-	random   io.Reader
+	// beforeSign is a test seam called after the key is resolved and before the
+	// signature is generated. It is nil outside tests. An injected random
+	// source cannot serve this purpose: since Go 1.26 crypto/ecdsa always uses
+	// the system CSPRNG and ignores the reader it is given.
+	beforeSign func()
 
 	mu          sync.RWMutex
 	privateKeys map[KeyID]crypto.PrivateKey
 }
 
 func NewReferenceSoftwareSigner(registry *Registry) (*ReferenceSoftwareSigner, error) {
-	return newReferenceSoftwareSigner(registry, rand.Reader)
+	return newReferenceSoftwareSigner(registry, nil)
 }
 
-func newReferenceSoftwareSigner(registry *Registry, random io.Reader) (*ReferenceSoftwareSigner, error) {
+func newReferenceSoftwareSigner(registry *Registry, beforeSign func()) (*ReferenceSoftwareSigner, error) {
 	if registry == nil {
 		return nil, ErrNilSigningRegistry
 	}
-	if random == nil {
-		return nil, fmt.Errorf("%w: random source is required", ErrInvalidSigningRequest)
-	}
 	return &ReferenceSoftwareSigner{
 		registry:    registry,
-		random:      random,
+		beforeSign:  beforeSign,
 		privateKeys: make(map[KeyID]crypto.PrivateKey),
 	}, nil
 }
@@ -127,7 +127,10 @@ func (s *ReferenceSoftwareSigner) SignCOSESigStructure(req COSESigningRequest, n
 		return SignatureResult{}, err
 	}
 
-	signature, err := signCOSESigStructure(record, privateKey, req.SigStructure, s.random)
+	if s.beforeSign != nil {
+		s.beforeSign()
+	}
+	signature, err := signCOSESigStructure(record, privateKey, req.SigStructure)
 	if err != nil {
 		return SignatureResult{}, err
 	}
@@ -261,7 +264,7 @@ func cloneAndValidatePrivateKey(record KeyRecord, privateKey crypto.PrivateKey) 
 	}
 }
 
-func signCOSESigStructure(record KeyRecord, privateKey crypto.PrivateKey, sigStructure []byte, random io.Reader) ([]byte, error) {
+func signCOSESigStructure(record KeyRecord, privateKey crypto.PrivateKey, sigStructure []byte) ([]byte, error) {
 	switch record.Algorithm() {
 	case AlgorithmEdDSA:
 		key, ok := privateKey.(ed25519.PrivateKey)
@@ -276,7 +279,7 @@ func signCOSESigStructure(record KeyRecord, privateKey crypto.PrivateKey, sigStr
 			return nil, fmt.Errorf("%w: invalid P-256 private key", ErrSignatureGeneration)
 		}
 		digest := sha256.Sum256(sigStructure)
-		r, s, err := ecdsa.Sign(random, key, digest[:])
+		r, s, err := ecdsa.Sign(rand.Reader, key, digest[:])
 		if err != nil {
 			return nil, fmt.Errorf("%w: %v", ErrSignatureGeneration, err)
 		}
