@@ -1,6 +1,6 @@
 # ADR-0005 — Strict COSE_Sign1 envelope and CBOR codec boundary
 
-- Status: **Accepted for protocol contract / dependency adoption pending executable lock test**
+- Status: **Accepted; Concrete Adapter implemented and dependency locked (2026-10-06)**
 - Date: 2026-09-22
 - Scope: P2 signed Authority Decision envelope decoding
 
@@ -94,7 +94,7 @@ Concrete codecの第一候補を`github.com/fxamacker/cbor/v2`とします。
 - MIT License
 - 2026-09時点でもreleaseが継続している
 
-ただし、現在の実行環境では`proxy.golang.org`へのegressが許可されず、`go get`によるmodule lockと実testを実行できません。
+ADR作成時点では、実行環境で`proxy.golang.org`へのegressが許可されず、`go get`によるmodule lockと実testを実行できませんでした（実装は§18の実装記録を参照）。
 
 したがってこのADRではdependencyを`go.mod`へまだ追加しません。取得・lock・testできる環境でversionを固定した時点でConcrete Adapterをmerge対象にします。
 
@@ -221,5 +221,13 @@ SPIはConcrete codecからCoreへCBOR library依存を漏らさず、exact prote
 共通harnessはrepository fixtureを`go:embed`で利用し、envelope / protected / payload phaseのstable reason、正常系Sig_structure、crypto phaseまで進むtampered signatureをConcrete Adapterへ要求します。
 
 次のConcrete workでは、module dependencyを取得・lock・testできる環境で`fxamacker/cbor/v2`を固定し、strict COSE_Sign1 decoderとSig_structure encoderをこのSPIへ実装します。
+
+### 実装記録（2026-10-06）
+
+`internal/adapters/reference/cosedecoder/cbor`にstrict COSE_Sign1 decoderとSignature1 encoderを実装しました。`fxamacker/cbor/v2` v2.9.2は`go.mod` / `go.sum`で固定済みで、Go 1.27.0（WSL2、Linux）で全conformance vectorを通ります。このほかに、truncation、1 byte変異、payloadの形と上限、protected header、unprotected header、outer arrayのarity、nilのcodec、署名の往復を確認し、40秒のfuzz（約120万実行）でpanicや未正規化のerrorがないことを確認しました。
+
+共通fixtureの`kid_too_long`は、実装に当てて初めて不正なbytesだと分かりました。kidの長さ接頭辞は129 bytesなのに本体は133 bytesあり、protected headerの長さと合わず、outer arrayの段階でMALFORMED_COSEとして拒否されていました。意図した「kidが128 bytesを超える」入力にならないため、期待reasonは変えずに、同じ構造で本体を129 bytesに作り直しました。他の20 vectorは変更していません。
+
+vectorを実装へ当てずに作った結果なので、今後vectorを追加するときは、対象の段階より浅い段階で拒否されないことを実装で確認してください。
 
 dependency取得が引き続き不可能な環境では、parserを独自実装して回避しません。

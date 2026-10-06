@@ -125,4 +125,6 @@ Reference Adapterは単一Control Plane hostのlocal filesystem向けです。SQ
 
 SQLite Reference Adapterは`internal/adapters/reference/statestore/sqlite`にあり、`modernc.org/sqlite` v1.60.1を使います。共通のState Store契約とDurability契約を通り、migration、WAL、restart後のTask identityとrevisionの保持を確認済みです（2026-10-06、Go 1.27.0 / Linux）。
 
-次の作業単位は、strict COSE_Sign1 Concrete Adapterです。
+strict COSE_Sign1 decoderとSignature1 encoderは`internal/adapters/reference/cosedecoder/cbor`にあり、`fxamacker/cbor/v2`を使います。共通のconformance vectorを通ります。
+
+次の作業単位は、M0 vertical sliceの最初の部分（Task submit / status）を、durable state上で接続することです。

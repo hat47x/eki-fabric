@@ -1000,10 +1000,10 @@ Section 20の初期列挙はすでに一部完了しているため、現在の�
 未達かつ優先は次のとおりです。
 
 1. ~~**M0 durable State Store**~~ — SQLite reference adapterを実装済み（2026-10-06、ADR-0003 §14）。restart後のTask identity / revision保持を確認した。Task以外のtable（Attempt / Lease、outbox）は未実装。
-2. **P2 concrete COSE decoder** — dependency取得可能環境でstrict decoderを既存SPIへ接続。
+2. ~~**P2 concrete COSE decoder**~~ — strict COSE_Sign1 decoderとSignature1 encoderを実装済み（2026-10-06、ADR-0005 §18）。
    - Placement Approval payloadについては、型付きCore contract / decoder SPI / strict CBOR Reference adapterを`feature/placement-approval-payload-decoder`で実装中。
    - RFC 8949 deterministic re-encode比較、closed schema、duplicate key / indefinite length / unknown field / P2 bindingの負例を含む。
-   - ただし外部moduleを実取得したfocused testが未実施のため、mainline採用・P2完了とは数えない。
+   - 外部moduleを取得したfocused testは2026-10-06に実施済み（Go 1.27.0、WSL2）。
    - COSE envelope decode → payload decode → cryptographic verification → current-state revalidationのcompositionは後続。
 3. durable stateを前提にM0 E2EをTask submit/status → Worker registration → one Worker local executionまで接続。
 

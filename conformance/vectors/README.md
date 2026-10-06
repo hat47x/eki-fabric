@@ -92,3 +92,11 @@ vectorの追加は可能です。
 既存vectorの意味、期待reason、またはfirst-failure phaseを変更する場合は、同時にwire/profile contract側の変更理由を示します。
 
 Concrete libraryの都合だけを理由に既存vectorを緩めません。
+
+## 実装に当てて見つかった修正（2026-10-06）
+
+`kid_too_long`は、Concrete decoder（`internal/adapters/reference/cosedecoder/cbor`）に初めて当てた時点で、意図した段階まで届かないbytesだと分かりました。kidの長さ接頭辞は129 bytesなのに本体が133 bytesあり、protected headerの長さとも合わず、outer arrayの時点で`MALFORMED_COSE`になっていました。
+
+期待reason（`PROTECTED_HEADER_INVALID`）とphase（`protected`）は変えず、同じ構造のまま本体を129 bytesにして作り直しました。vectorの意味を緩めたのではなく、説明どおりの入力になるようにbytesを直したものです。
+
+negative vectorは、対象の段階より浅い段階で拒否されないことが重要です。vectorを追加するときは、手でhexを組み立てずにencoderで生成し、Concrete decoderで意図した段階に届くことを確認してください。
