@@ -23,8 +23,9 @@ type Config struct {
 	TaskIRDigest           contract.Digest
 	AttemptID              ids.AttemptID
 	WorkerIdentity         string
-	PlacementDecisionID    string
-	PlacementPayloadDigest contract.Digest
+	PlacementAuthorityPrincipal string
+	PlacementDecisionID           string
+	PlacementPayloadDigest        contract.Digest
 	PolicyRevision         string
 	FenceEpoch             uint64
 	RenewalSequence        uint64
@@ -63,6 +64,9 @@ func New(cfg Config) (LeaseRecord, error) {
 	if err := validateText("worker identity", cfg.WorkerIdentity, 256); err != nil {
 		return LeaseRecord{}, err
 	}
+	if err := validateText("placement authority principal", cfg.PlacementAuthorityPrincipal, 256); err != nil {
+		return LeaseRecord{}, err
+	}
 	if err := validateText("placement decision ID", cfg.PlacementDecisionID, 128); err != nil {
 		return LeaseRecord{}, err
 	}
@@ -84,8 +88,9 @@ func New(cfg Config) (LeaseRecord, error) {
 		TaskIRDigest:           cfg.TaskIRDigest,
 		AttemptID:              cfg.AttemptID,
 		WorkerIdentity:         cfg.WorkerIdentity,
-		PlacementDecisionID:    cfg.PlacementDecisionID,
-		PlacementPayloadDigest: cfg.PlacementPayloadDigest,
+		PlacementAuthorityPrincipal: cfg.PlacementAuthorityPrincipal,
+		PlacementDecisionID:           cfg.PlacementDecisionID,
+		PlacementPayloadDigest:        cfg.PlacementPayloadDigest,
 		PolicyRevision:         cfg.PolicyRevision,
 		FenceEpoch:             cfg.FenceEpoch,
 		RenewalSequence:        cfg.RenewalSequence,
@@ -101,8 +106,9 @@ func (r LeaseRecord) Validate() error {
 		TaskIRDigest:           r.TaskIRDigest,
 		AttemptID:              r.AttemptID,
 		WorkerIdentity:         r.WorkerIdentity,
-		PlacementDecisionID:    r.PlacementDecisionID,
-		PlacementPayloadDigest: r.PlacementPayloadDigest,
+		PlacementAuthorityPrincipal: r.PlacementAuthorityPrincipal,
+		PlacementDecisionID:           r.PlacementDecisionID,
+		PlacementPayloadDigest:        r.PlacementPayloadDigest,
 		PolicyRevision:         r.PolicyRevision,
 		FenceEpoch:             r.FenceEpoch,
 		RenewalSequence:        r.RenewalSequence,
