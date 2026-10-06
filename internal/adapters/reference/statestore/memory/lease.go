@@ -32,7 +32,8 @@ func (s *Store) ReserveLease(ctx context.Context, reservation statestore.LeaseRe
 		return statestore.LeaseReservationResult{}, fmt.Errorf("%w: task %s changed before lease reservation", statestore.ErrConflict, reservation.TaskID)
 	}
 
-	if existingID, ok := s.placementLeases[reservation.PlacementDecisionID]; ok {
+	scope := placementScope{principal: reservation.PlacementAuthorityPrincipal, decisionID: reservation.PlacementDecisionID}
+	if existingID, ok := s.placementLeases[scope]; ok {
 		existing := s.leases[existingID]
 		if existing.PlacementPayloadDigest != reservation.PlacementPayloadDigest {
 			return statestore.LeaseReservationResult{}, fmt.Errorf(
@@ -68,8 +69,9 @@ func (s *Store) ReserveLease(ctx context.Context, reservation statestore.LeaseRe
 		TaskIRDigest:           reservation.TaskIRDigest,
 		AttemptID:              reservation.AttemptID,
 		WorkerIdentity:         reservation.WorkerIdentity,
-		PlacementDecisionID:    reservation.PlacementDecisionID,
-		PlacementPayloadDigest: reservation.PlacementPayloadDigest,
+		PlacementAuthorityPrincipal: reservation.PlacementAuthorityPrincipal,
+		PlacementDecisionID:           reservation.PlacementDecisionID,
+		PlacementPayloadDigest:        reservation.PlacementPayloadDigest,
 		PolicyRevision:         reservation.PolicyRevision,
 		FenceEpoch:             fence,
 		RenewalSequence:        0,
@@ -80,7 +82,7 @@ func (s *Store) ReserveLease(ctx context.Context, reservation statestore.LeaseRe
 		return statestore.LeaseReservationResult{}, err
 	}
 	s.leases[lease.ID] = lease
-	s.placementLeases[lease.PlacementDecisionID] = lease.ID
+	s.placementLeases[placementScope{principal: lease.PlacementAuthorityPrincipal, decisionID: lease.PlacementDecisionID}] = lease.ID
 	s.maxFence[lease.TaskID] = lease.FenceEpoch
 	return statestore.LeaseReservationResult{Lease: lease}, nil
 }
