@@ -34,6 +34,23 @@ var migrations = []string{
 	UNIQUE (principal, idempotency_key)
 ) STRICT;
 CREATE INDEX admissions_by_principal ON admissions (principal)`,
+	// 3: durable lease reservations / fencing epochs
+	`CREATE TABLE leases (
+	lease_id                     TEXT    NOT NULL PRIMARY KEY,
+	task_id                      TEXT    NOT NULL REFERENCES tasks (task_id),
+	task_ir_digest               TEXT    NOT NULL CHECK (length(task_ir_digest) = 64),
+	attempt_id                   TEXT    NOT NULL,
+	worker_identity              TEXT    NOT NULL CHECK (length(worker_identity) BETWEEN 1 AND 256),
+	placement_decision_id        TEXT    NOT NULL UNIQUE CHECK (length(placement_decision_id) BETWEEN 1 AND 128),
+	placement_payload_digest     TEXT    NOT NULL CHECK (length(placement_payload_digest) = 64),
+	policy_revision              TEXT    NOT NULL CHECK (length(policy_revision) BETWEEN 1 AND 128),
+	fence_epoch                  INTEGER NOT NULL CHECK (fence_epoch >= 1),
+	renewal_sequence             INTEGER NOT NULL CHECK (renewal_sequence >= 0),
+	issued_at_ns                 INTEGER NOT NULL,
+	expires_at_ns                INTEGER NOT NULL CHECK (expires_at_ns > issued_at_ns),
+	UNIQUE (task_id, fence_epoch)
+) STRICT;
+CREATE INDEX leases_by_task_expiry ON leases (task_id, expires_at_ns)`,
 }
 
 // migrate brings the database to the latest version. It is idempotent, rejects
