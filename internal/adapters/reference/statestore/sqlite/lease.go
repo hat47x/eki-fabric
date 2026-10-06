@@ -245,3 +245,5 @@ func (c leaseColumns) record() (leasestate.LeaseRecord, error) {
 func corruptLease(id string, err error) error {
 	return fmt.Errorf("%w: lease %s: %v", ErrCorruptRecord, id, err)
 }
+
+var _ statestore.LeaseStore = (*Store)(nil)
