@@ -29,26 +29,6 @@ func (s *Store) ReserveLease(ctx context.Context, reservation statestore.LeaseRe
 	}
 	defer func() { _ = tx.Rollback() }()
 
-	existing, err := scanLease(tx.QueryRowContext(ctx, `
-SELECT lease_id, task_id, task_ir_digest, attempt_id, worker_identity,
-       placement_decision_id, placement_payload_digest, policy_revision,
-       fence_epoch, renewal_sequence, issued_at_ns, expires_at_ns
-FROM leases WHERE placement_decision_id = ?`, reservation.PlacementDecisionID))
-	switch {
-	case err == nil:
-		if existing.PlacementPayloadDigest != reservation.PlacementPayloadDigest {
-			return statestore.LeaseReservationResult{}, fmt.Errorf(
-				"%w: decision %q",
-				statestore.ErrPlacementDecisionConflict,
-				reservation.PlacementDecisionID,
-			)
-		}
-		return statestore.LeaseReservationResult{Lease: existing, Replayed: true}, nil
-	case errors.Is(err, sql.ErrNoRows):
-	default:
-		return statestore.LeaseReservationResult{}, err
-	}
-
 	task, err := scanTask(tx.QueryRowContext(ctx, `
 SELECT task_id, task_ir_digest, phase, terminal_outcome, cancellation_requested, revision, created_at_ns, updated_at_ns
 FROM tasks WHERE task_id = ?`, reservation.TaskID.String()))
@@ -67,6 +47,26 @@ FROM tasks WHERE task_id = ?`, reservation.TaskID.String()))
 			statestore.ErrConflict,
 			reservation.TaskID,
 		)
+	}
+
+	existing, err := scanLease(tx.QueryRowContext(ctx, `
+SELECT lease_id, task_id, task_ir_digest, attempt_id, worker_identity,
+       placement_decision_id, placement_payload_digest, policy_revision,
+       fence_epoch, renewal_sequence, issued_at_ns, expires_at_ns
+FROM leases WHERE placement_decision_id = ?`, reservation.PlacementDecisionID))
+	switch {
+	case err == nil:
+		if existing.PlacementPayloadDigest != reservation.PlacementPayloadDigest {
+			return statestore.LeaseReservationResult{}, fmt.Errorf(
+				"%w: decision %q",
+				statestore.ErrPlacementDecisionConflict,
+				reservation.PlacementDecisionID,
+			)
+		}
+		return statestore.LeaseReservationResult{Lease: existing, Replayed: true}, nil
+	case errors.Is(err, sql.ErrNoRows):
+	default:
+		return statestore.LeaseReservationResult{}, err
 	}
 
 	var activeID string
