@@ -91,6 +91,8 @@ SQLiteはtransactional databaseとして、program crash、OS crash、power fail
 
 具体的なversion pinとtransitive dependencyは、実装branchでGo toolchainによって`go.mod` / `go.sum`へ解決し、その状態をtestしたうえでcommitします。
 
+**実装結果（2026-10-06）**: 実装branchでGo 1.27.0（Linux）の`go get`により`modernc.org/sqlite` **v1.60.1**（2026-09-29公開）をpinし、`go mod tidy` / `go mod verify`で整合を確認しました。v1.59.0は採用時点の候補でしたが、実装時点で新しいpatchが出ていたためv1.60.1を選びました。
+
 ## 5. Driver比較
 
 ### `modernc.org/sqlite` — 採用
@@ -272,3 +274,23 @@ go vet ./...
 このADRを`main`へmergeした後、durable SQLite Adapterの実装は別branchで行います。
 
 実装環境で依存をGo toolingから取得し、`go.mod` / `go.sum`を生成し、上記restart / CAS / migration testを通した状態だけをmerge対象にします。
+
+## 14. Implementation record（2026-10-06）
+
+Reference Adapterは`internal/adapters/reference/statestore/sqlite`へ実装しました。§6、§8、§9、§12で「実装時に確定する」とした点は次のとおりです。
+
+| 項目 | 確定内容 |
+|---|---|
+| Journal mode | WAL。`synchronous=FULL`を併用する。WALの`NORMAL`は電源断で直近のtransactionを失い得るため、commit before dispatch（§10）を満たす側を選ぶ |
+| Connection | `database/sql`の接続数を1に固定する。writerが一つのSQLiteでは、自前のgoroutine間の`SQLITE_BUSY`を避けられ、transaction境界が単純になる。`busy_timeout`は外部processのlockに備えて5秒 |
+| Schema version | `PRAGMA user_version`。migrationは追記のみで、各stepを個別のtransactionで適用する。新しいversionのDBは`ErrUnsupportedSchema`で拒否する |
+| Schema | `STRICT` table。phase、terminal outcome、revision、時刻の順序、terminalとoutcomeの対応を`CHECK`でも守り、Adapterを迂回した書き込みも拒否する |
+| Duplicate / CAS | `INSERT ... ON CONFLICT DO NOTHING`と`UPDATE ... WHERE revision = ?`の影響行数で判定し、driver固有のerror codeへ依存しない |
+| File permission | driverが開く前に0600で作成する。Windowsではmode bitが意味を持たない |
+| 時刻 | UTCのUnixNano（int64）で保存する |
+
+確認した内容は、共通のState Store契約と Durability契約に加え、§12の次の項目です。close / reopen後の保持、CAS成功、stale revisionの拒否、duplicateの拒否、migrationのrollback、unsupported schemaの拒否、reader / writerの並行smoke。あわせて、Adapterを迂回した不正な行のSchema拒否、SQL断片を含むIDがデータとして扱われること、予約文字を含むpathを確認しています。
+
+`go test ./...`、`go vet ./...`、`-race`（State Store packages）、`go mod verify`が、Go 1.27.0（WSL2、Linux）で通りました。Windows上のbuild・testは未確認です。
+
+保存するのはTask recordだけです。Attempt / Lease、delivery intent（outbox）等のtableは、それぞれの作業単位で追加します。

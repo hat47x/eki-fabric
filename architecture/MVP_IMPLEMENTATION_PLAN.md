@@ -999,7 +999,7 @@ Section 20の初期列挙はすでに一部完了しているため、現在の�
 
 未達かつ優先は次のとおりです。
 
-1. **M0 durable State Store** — SQLite reference adapter。restart後のTask identity / revision保持がM0 gateの未達点。
+1. ~~**M0 durable State Store**~~ — SQLite reference adapterを実装済み（2026-10-06、ADR-0003 §14）。restart後のTask identity / revision保持を確認した。Task以外のtable（Attempt / Lease、outbox）は未実装。
 2. **P2 concrete COSE decoder** — dependency取得可能環境でstrict decoderを既存SPIへ接続。
    - Placement Approval payloadについては、型付きCore contract / decoder SPI / strict CBOR Reference adapterを`feature/placement-approval-payload-decoder`で実装中。
    - RFC 8949 deterministic re-encode比較、closed schema、duplicate key / indefinite length / unknown field / P2 bindingの負例を含む。

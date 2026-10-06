@@ -19,8 +19,9 @@
 - `internal/core/taskstate` — TaskRecordの最小不変条件
 - `internal/spi/statestore` — State Store interface
 - `internal/adapters/reference/statestore/memory` — CAS semanticsを確認するin-memory reference adapter
+- `internal/adapters/reference/statestore/sqlite` — durable reference adapter（SQLite、WAL、migration）
 
-in-memory adapterは開発用です。Process restartで状態を失うため、M0のrestart gateを満たしません。
+in-memory adapterは開発用です。Process restartで状態を失うため、M0のrestart gateを満たしません。restart gateはSQLite adapterが満たします。
 
 ## 必要なGo version
 
@@ -122,4 +123,6 @@ M0 / DP-1のReference durable State StoreにはSQLiteを採用します。選定
 
 Reference Adapterは単一Control Plane hostのlocal filesystem向けです。SQLite fileをNFS / SMB等のnetwork filesystemへ置いてmulti-host Control Planeを構成する用途には使いません。
 
-次の作業単位では`modernc.org/sqlite`をGo toolingで正しく依存解決し、restart後もTask identityとrevisionを保持できるSQLite Adapterを追加します。
+SQLite Reference Adapterは`internal/adapters/reference/statestore/sqlite`にあり、`modernc.org/sqlite` v1.60.1を使います。共通のState Store契約とDurability契約を通り、migration、WAL、restart後のTask identityとrevisionの保持を確認済みです（2026-10-06、Go 1.27.0 / Linux）。
+
+次の作業単位は、strict COSE_Sign1 Concrete Adapterです。

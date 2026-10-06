@@ -437,13 +437,13 @@ current main `9e990e7c89924fb4005264e7556b41e0e3fb62b1` を計画と再照合し
 現状は次のとおりです。
 
 - `go.mod`はGo 1.27.0だけを宣言し、外部module requirementはまだ固定していない。
-- SQLite durable State Store adapterは未実装で、M0のrestart耐性は未達。
+- SQLite durable State Store adapterは2026-10-06に実装済み（ADR-0003 §14）。restart後のTask identityとrevisionの保持を確認した。Attempt / Lease、delivery intent等のtableは未実装。
 - strict COSE decoderはSPI / conformance harness / vectorsまで存在するが、fxamacker/cborを使うConcrete Adapterは未実装。
 - learned scheduling関連のresearch codeはmainへ入っているが、MVPではResearch / laterの位置づけを維持し、M0 blockerより先に昇格させない。
 
-依存取得可能な検証環境が戻った場合の優先順位を次で固定する。
+依存取得可能な検証環境が戻った場合の優先順位を次で固定する（1は2026-10-06に完了）。
 
-1. **SQLite durable State Store** — `modernc.org/sqlite`をversion固定し、共通State Store conformance、migration、WAL、close/reopen restart testを通す。これはM0 gateの直接blocker。
+1. ~~**SQLite durable State Store**~~ **完了** — `modernc.org/sqlite`をversion固定し、共通State Store conformance、migration、WAL、close/reopen restart testを通す。これはM0 gateの直接blocker。
 2. **strict COSE_Sign1 Concrete Adapter** — `fxamacker/cbor/v2`をversion固定し、deterministic re-encode / Sig_structure / negative vectorを既存conformanceへ接続する。
 3. その後にM0 vertical sliceのTask submit/status、Worker registration、one Worker executionをdurable state上で接続する。
 

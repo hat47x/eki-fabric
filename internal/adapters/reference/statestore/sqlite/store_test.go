@@ -1,0 +1,328 @@
+package sqlite
+
+import (
+	"context"
+	"database/sql"
+	"errors"
+	"os"
+	"path/filepath"
+	"runtime"
+	"sync"
+	"testing"
+	"time"
+
+	"github.com/hat47x/eki-fabric/conformance/statestoretest"
+	"github.com/hat47x/eki-fabric/internal/core/contract"
+	"github.com/hat47x/eki-fabric/internal/core/ids"
+	"github.com/hat47x/eki-fabric/internal/core/taskstate"
+	"github.com/hat47x/eki-fabric/internal/spi/statestore"
+)
+
+func openStore(t testing.TB, path string) *Store {
+	t.Helper()
+	store, err := Open(context.Background(), path)
+	if err != nil {
+		t.Fatalf("Open(%q) error = %v", path, err)
+	}
+	return store
+}
+
+func TestTaskStoreContract(t *testing.T) {
+	statestoretest.RunTaskStoreContract(t, func(t testing.TB) statestore.TaskStore {
+		t.Helper()
+		store := openStore(t, filepath.Join(t.TempDir(), "state.db"))
+		t.Cleanup(func() {
+			if err := store.Close(); err != nil {
+				t.Errorf("Close() error = %v", err)
+			}
+		})
+		return store
+	})
+}
+
+func TestDurabilityContract(t *testing.T) {
+	statestoretest.RunDurabilityContract(t, statestoretest.DurableFactory{
+		Open: func(t testing.TB, location string) (statestore.TaskStore, func() error) {
+			store := openStore(t, location)
+			return store, store.Close
+		},
+	})
+}
+
+func TestOpenRequiresPath(t *testing.T) {
+	if _, err := Open(context.Background(), ""); err == nil {
+		t.Fatal("Open(\"\") error = nil, want error")
+	}
+}
+
+func TestOpenIsIdempotent(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "state.db")
+	record := newTaskRecord(t, "idempotent")
+
+	first := openStore(t, path)
+	if err := first.CreateTask(context.Background(), record); err != nil {
+		t.Fatalf("CreateTask() error = %v", err)
+	}
+	if err := first.Close(); err != nil {
+		t.Fatalf("Close() error = %v", err)
+	}
+
+	// Opening an already migrated database must not re-run or reset anything.
+	for i := 0; i < 3; i++ {
+		store := openStore(t, path)
+		if _, err := store.LoadTask(context.Background(), record.ID); err != nil {
+			t.Fatalf("LoadTask() after reopen %d error = %v", i, err)
+		}
+		if err := store.Close(); err != nil {
+			t.Fatalf("Close() error = %v", err)
+		}
+	}
+}
+
+func TestSchemaVersionIsRecorded(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "state.db")
+	store := openStore(t, path)
+	defer store.Close()
+
+	var version int
+	if err := store.db.QueryRow(`PRAGMA user_version`).Scan(&version); err != nil {
+		t.Fatalf("read user_version: %v", err)
+	}
+	if version != len(migrations) {
+		t.Fatalf("user_version = %d, want %d", version, len(migrations))
+	}
+}
+
+func TestOpenRejectsNewerSchema(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "state.db")
+	store := openStore(t, path)
+	if _, err := store.db.Exec(`PRAGMA user_version = 999`); err != nil {
+		t.Fatalf("set user_version: %v", err)
+	}
+	if err := store.Close(); err != nil {
+		t.Fatalf("Close() error = %v", err)
+	}
+
+	_, err := Open(context.Background(), path)
+	if !errors.Is(err, ErrUnsupportedSchema) {
+		t.Fatalf("Open() error = %v, want ErrUnsupportedSchema", err)
+	}
+}
+
+func TestFailedMigrationRollsBackAndKeepsPreviousVersion(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "state.db")
+	db, err := sql.Open("sqlite", dsn(path))
+	if err != nil {
+		t.Fatalf("sql.Open() error = %v", err)
+	}
+	defer db.Close()
+	db.SetMaxOpenConns(1)
+
+	steps := []string{
+		`CREATE TABLE a (id INTEGER PRIMARY KEY)`,
+		// Creates a table and then fails, so the whole step must roll back.
+		`CREATE TABLE b (id INTEGER PRIMARY KEY); CREATE TABLE a (id INTEGER PRIMARY KEY)`,
+	}
+	if err := migrate(context.Background(), db, steps); err == nil {
+		t.Fatal("migrate() error = nil, want failure on the second step")
+	}
+
+	var version int
+	if err := db.QueryRow(`PRAGMA user_version`).Scan(&version); err != nil {
+		t.Fatalf("read user_version: %v", err)
+	}
+	if version != 1 {
+		t.Fatalf("user_version = %d, want 1 (first step kept, second rolled back)", version)
+	}
+	var n int
+	if err := db.QueryRow(`SELECT count(*) FROM sqlite_master WHERE name = 'b'`).Scan(&n); err != nil {
+		t.Fatalf("query sqlite_master: %v", err)
+	}
+	if n != 0 {
+		t.Fatal("table b exists after the failed step; migration was not rolled back")
+	}
+}
+
+func TestSchemaRejectsInvalidRowsEvenIfAdapterIsBypassed(t *testing.T) {
+	store := openStore(t, filepath.Join(t.TempDir(), "state.db"))
+	defer store.Close()
+
+	digest := contract.SHA256([]byte("check")).Hex()
+	cases := map[string]string{
+		"unknown phase":                `INSERT INTO tasks VALUES ('t1', '` + digest + `', 'bogus', '', 0, 1, 1, 1)`,
+		"terminal without outcome":     `INSERT INTO tasks VALUES ('t2', '` + digest + `', 'terminal', '', 0, 1, 1, 1)`,
+		"outcome on non-terminal task": `INSERT INTO tasks VALUES ('t3', '` + digest + `', 'ready', 'completed', 0, 1, 1, 1)`,
+		"zero revision":                `INSERT INTO tasks VALUES ('t4', '` + digest + `', 'ready', '', 0, 0, 1, 1)`,
+		"updated before created":       `INSERT INTO tasks VALUES ('t5', '` + digest + `', 'ready', '', 0, 1, 2, 1)`,
+		"short digest":                 `INSERT INTO tasks VALUES ('t6', 'abcd', 'ready', '', 0, 1, 1, 1)`,
+	}
+	for name, stmt := range cases {
+		if _, err := store.db.Exec(stmt); err == nil {
+			t.Errorf("%s: insert succeeded, want constraint failure", name)
+		}
+	}
+}
+
+func TestSQLInjectionLikeIDIsTreatedAsData(t *testing.T) {
+	store := openStore(t, filepath.Join(t.TempDir(), "state.db"))
+	defer store.Close()
+
+	record := newTaskRecord(t, "injection")
+	if err := store.CreateTask(context.Background(), record); err != nil {
+		t.Fatalf("CreateTask() error = %v", err)
+	}
+	_, err := store.LoadTask(context.Background(), ids.TaskID("x' OR '1'='1"))
+	if !errors.Is(err, statestore.ErrNotFound) {
+		t.Fatalf("LoadTask() error = %v, want ErrNotFound", err)
+	}
+}
+
+func TestConcurrentReadersAndWriterSmoke(t *testing.T) {
+	store := openStore(t, filepath.Join(t.TempDir(), "state.db"))
+	defer store.Close()
+
+	record := newTaskRecord(t, "concurrent-rw")
+	if err := store.CreateTask(context.Background(), record); err != nil {
+		t.Fatalf("CreateTask() error = %v", err)
+	}
+
+	const writes = 50
+	var wg sync.WaitGroup
+	errs := make(chan error, 8)
+
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		current := record
+		for i := 0; i < writes; i++ {
+			next := current
+			next.Revision = current.Revision + 1
+			next.UpdatedAt = current.UpdatedAt.Add(time.Second)
+			if err := store.CompareAndSwapTask(context.Background(), current.ID, current.Revision, next); err != nil {
+				errs <- err
+				return
+			}
+			current = next
+		}
+	}()
+
+	for r := 0; r < 4; r++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			var last uint64
+			for i := 0; i < 200; i++ {
+				got, err := store.LoadTask(context.Background(), record.ID)
+				if err != nil {
+					errs <- err
+					return
+				}
+				if got.Revision < last {
+					errs <- errors.New("revision went backwards for a reader")
+					return
+				}
+				last = got.Revision
+			}
+		}()
+	}
+
+	wg.Wait()
+	close(errs)
+	for err := range errs {
+		t.Errorf("concurrent access error = %v", err)
+	}
+
+	got, err := store.LoadTask(context.Background(), record.ID)
+	if err != nil {
+		t.Fatalf("LoadTask() error = %v", err)
+	}
+	if got.Revision != record.Revision+writes {
+		t.Fatalf("final revision = %d, want %d", got.Revision, record.Revision+writes)
+	}
+}
+
+func TestCreateTaskIsAtomicAcrossRestart(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "state.db")
+	record := newTaskRecord(t, "terminal")
+	record.Phase = taskstate.TaskPhaseTerminal
+	record.TerminalOutcome = taskstate.TerminalOutcomeCompleted
+	record.CancellationRequested = true
+
+	store := openStore(t, path)
+	if err := store.CreateTask(context.Background(), record); err != nil {
+		t.Fatalf("CreateTask() error = %v", err)
+	}
+	if err := store.Close(); err != nil {
+		t.Fatalf("Close() error = %v", err)
+	}
+
+	reopened := openStore(t, path)
+	defer reopened.Close()
+	got, err := reopened.LoadTask(context.Background(), record.ID)
+	if err != nil {
+		t.Fatalf("LoadTask() error = %v", err)
+	}
+	if got.Phase != taskstate.TaskPhaseTerminal ||
+		got.TerminalOutcome != taskstate.TerminalOutcomeCompleted ||
+		!got.CancellationRequested ||
+		got.TaskIRDigest != record.TaskIRDigest ||
+		!got.CreatedAt.Equal(record.CreatedAt) {
+		t.Fatalf("round trip mismatch:\n got: %#v\nwant: %#v", got, record)
+	}
+}
+
+func TestDatabaseFileIsOwnerOnly(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("POSIX permission bits are not meaningful on Windows")
+	}
+	path := filepath.Join(t.TempDir(), "state.db")
+	store := openStore(t, path)
+	defer store.Close()
+
+	info, err := os.Stat(path)
+	if err != nil {
+		t.Fatalf("Stat() error = %v", err)
+	}
+	if perm := info.Mode().Perm(); perm&0o077 != 0 {
+		t.Fatalf("database file mode = %o, want no group/other access", perm)
+	}
+}
+
+func TestPathWithReservedCharacters(t *testing.T) {
+	dir := filepath.Join(t.TempDir(), "dir with space")
+	if err := os.MkdirAll(dir, 0o700); err != nil {
+		t.Fatalf("MkdirAll() error = %v", err)
+	}
+	path := filepath.Join(dir, "state#1?.db")
+
+	record := newTaskRecord(t, "reserved-path")
+	store := openStore(t, path)
+	if err := store.CreateTask(context.Background(), record); err != nil {
+		t.Fatalf("CreateTask() error = %v", err)
+	}
+	if err := store.Close(); err != nil {
+		t.Fatalf("Close() error = %v", err)
+	}
+	if _, err := os.Stat(path); err != nil {
+		t.Fatalf("expected database at %q: %v", path, err)
+	}
+
+	reopened := openStore(t, path)
+	defer reopened.Close()
+	if _, err := reopened.LoadTask(context.Background(), record.ID); err != nil {
+		t.Fatalf("LoadTask() error = %v", err)
+	}
+}
+
+func newTaskRecord(t testing.TB, seed string) taskstate.TaskRecord {
+	t.Helper()
+	id, err := ids.NewTaskID()
+	if err != nil {
+		t.Fatalf("NewTaskID() error = %v", err)
+	}
+	record, err := taskstate.NewTask(id, contract.SHA256([]byte(seed)), time.Date(2026, 10, 6, 0, 0, 0, 0, time.UTC))
+	if err != nil {
+		t.Fatalf("NewTask() error = %v", err)
+	}
+	return record
+}
