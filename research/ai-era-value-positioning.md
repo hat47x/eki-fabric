@@ -151,7 +151,7 @@ H2のとおり、供給が逼迫する時期には、組織間の余剰共有に
 
 ### 6.1 Acceptance Scenario候補
 
-以下の`AI-n`は本書内だけの仮の番号です。採用する場合は、[Acceptance Scenarios](../requirements/ACCEPTANCE_SCENARIOS.md)の慣例に従って`PAS-CAND-nn`として登録し、評価後に正式なPAS番号を与えます。
+以下の`AI-n`は本書内の番号です。2026-10-06に、AI-1〜AI-5をそれぞれ`PAS-CAND-07`〜`PAS-CAND-11`として[Acceptance Scenarios](../requirements/ACCEPTANCE_SCENARIOS.md)へ登録しました（評価待ち）。
 
 | 候補 | 状況 | 既存との関係 |
 |---|---|---|
@@ -208,9 +208,9 @@ H2のとおり、供給が逼迫する時期には、組織間の余剰共有に
 
 ## 8. 次の手順の提案
 
-1. この文書を叩き台に、`product/value.md`への追記（§6.3）の要否をレビューする。
-2. 候補AI-1〜AI-5のうち、既存要求の拡張で足りるものと、新しいRequirementが必要なものを分ける。
-3. Open Question（§6.2）を`plan/UPSTREAM_PLAN.md`の管理対象へ移す。
+1. ~~`product/value.md`への追記（§6.3）の要否をレビューする。~~ 2026-10-06に、§1.1の位置づけとあわせて[Product Value](../product/value.md)へ反映した。
+2. PAS-CAND-07〜11（AI-1〜AI-5）のうち、既存要求の拡張で足りるものと、新しいRequirementが必要なものを分ける。
+3. Open Question（§6.2）の扱いを`plan/UPSTREAM_PLAN.md`の2026-10-06の記録から辿れるようにした。個別の解決は今後の評価で行う。
 4. Spike候補は、MVPの優先度（`plan/UPSTREAM_PLAN.md`のmainline priority guard）を損なわない範囲で選ぶ。MVPのvertical sliceは変えない。
 
 ## 9. 参照した外部情報

@@ -290,7 +290,7 @@ MVPのvertical slice（悪意あるClientから受理し、2台以上のNative W
 
 ### 反映候補のAcceptance Scenario
 
-`ORC-n`は本書内だけの仮の番号です。採用する場合は`PAS-CAND-nn`として登録します。
+`ORC-n`は本書内の番号です。2026-10-06に、ORC-1〜ORC-5をそれぞれ`PAS-CAND-12`〜`PAS-CAND-16`として[Acceptance Scenarios](../requirements/ACCEPTANCE_SCENARIOS.md)へ登録しました（評価待ち）。
 
 | 候補 | 状況 | 既存との関係 |
 |---|---|---|

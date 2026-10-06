@@ -449,6 +449,25 @@ current main `9e990e7c89924fb4005264e7556b41e0e3fb62b1` を計画と再照合し
 
 依存取得不能の間は、未検証の`go.mod` / `go.sum`、placeholder adapter、実行していないverification結果をcommitしない。Research laneを進める場合も、M0 blockerの代替進捗として扱わない。
 
+### 2026-10-06 位置づけの見直し — 管理クラスタとの統合とTEIの稼働基盤
+
+今後2〜5年の生成AI・AI Agentの普及を想定し、Product Valueの位置づけを見直した。検討は [AI時代の価値と位置づけ](../research/ai-era-value-positioning.md) と [既存オーケストレータとの接続、およびSEI・TEIとの層構造](../research/orchestrator-integration-and-layering.md) にある。
+
+決めたこと（正本は[Product Value](../product/value.md)）:
+
+- EKIの価値の中心を、遊休資源の安さではなく、信頼性の異なる多様な資源への統治された配置と検証可能な実行に置く。
+- 管理された資源（専用サーバ、クラウド、既存オーケストレータが管理するクラスタ）と遊休・一時資源を、同じTask契約で扱う。既存オーケストレータは置き換えず、資源の供給元として複数系統に接続する。
+- TEIはEKIを実行基盤の一つとして使い、その上で稼働する（TEI → EKIの一方向）。
+- 統治の方針は、Clientの経路ではなくAdministrative Planeの経路でEKIへ入れる。
+
+まだ決めていないこと:
+
+- 最初のResource Provider Adapterの参照実装の範囲。調査メモではKubernetes + Kueue、次にSlurm、次にNomadを推奨しているが、利用組織の実環境の確認が必要。
+- Resource Provider Adapterの契約の語彙、管理クラスタの信頼ドメインの扱い、選択肢B・C（調査メモ§3）の扱い。
+- 候補Scenario PAS-CAND-07〜16（[Acceptance Scenarios](../requirements/ACCEPTANCE_SCENARIOS.md)）の評価と、そこからRequirement側へ戻す論点。
+
+この見直しは、上のmainline priority guardの順位を変えない。Resource Provider Adapterの検討は、M0 vertical sliceの成立後に、Spikeとして始める。
+
 ## 作業原則
 
 - Requirementの不確実性を減らす作業を優先する。
