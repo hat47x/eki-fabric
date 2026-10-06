@@ -34,13 +34,14 @@ type Config struct {
 }
 
 type LeaseRecord struct {
-	ID                     ids.LeaseID
-	TaskID                 ids.TaskID
-	TaskIRDigest           contract.Digest
-	AttemptID              ids.AttemptID
-	WorkerIdentity         string
-	PlacementDecisionID    string
-	PlacementPayloadDigest contract.Digest
+	ID                          ids.LeaseID
+	TaskID                      ids.TaskID
+	TaskIRDigest                contract.Digest
+	AttemptID                   ids.AttemptID
+	WorkerIdentity              string
+	PlacementAuthorityPrincipal string
+	PlacementDecisionID         string
+	PlacementPayloadDigest      contract.Digest
 	PolicyRevision         string
 	FenceEpoch             uint64
 	RenewalSequence        uint64
