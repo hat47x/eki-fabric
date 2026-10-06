@@ -1004,7 +1004,7 @@ Section 20の初期列挙はすでに一部完了しているため、現在の�
    - Placement Approval payloadについては、型付きCore contract / decoder SPI / strict CBOR Reference adapterを`feature/placement-approval-payload-decoder`で実装中。
    - RFC 8949 deterministic re-encode比較、closed schema、duplicate key / indefinite length / unknown field / P2 bindingの負例を含む。
    - 外部moduleを取得したfocused testは2026-10-06に実施済み（Go 1.27.0、WSL2）。
-   - COSE envelope decode → payload decode → cryptographic verification → current-state revalidationのcompositionは後続。
+   - COSE envelope decode → payload decode → cryptographic verification → current-state revalidationのcompositionは`internal/core/placementverify`に実装済み（2026-10-06）。LSE-1自体は未実装。
 3. durable stateを前提にM0 E2EをTask submit/status → Worker registration → one Worker local executionまで接続。
 
 `learned scheduler`はSection 4 / 11で定義したとおりMVP必須ではない。Research実装がmainに存在しても、上記M0/M1 gateの優先順位を変更しない。

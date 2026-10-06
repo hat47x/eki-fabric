@@ -20,6 +20,7 @@
 - `internal/spi/statestore` — State Store interface
 - `internal/adapters/reference/statestore/memory` — CAS semanticsを確認するin-memory reference adapter
 - `internal/adapters/reference/statestore/sqlite` — durable reference adapter（SQLite、WAL、migration）
+- `internal/core/placementverify` — Placement Approvalの検証をCOSE decodeから現在状態の再検証までつなぐ
 
 in-memory adapterは開発用です。Process restartで状態を失うため、M0のrestart gateを満たしません。restart gateはSQLite adapterが満たします。
 
