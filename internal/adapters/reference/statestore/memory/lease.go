@@ -99,3 +99,5 @@ func (s *Store) LoadLease(ctx context.Context, id ids.LeaseID) (leasestate.Lease
 	}
 	return lease, nil
 }
+
+var _ statestore.LeaseStore = (*Store)(nil)
