@@ -13,3 +13,11 @@ func TestTaskStoreContract(t *testing.T) {
 		return New()
 	})
 }
+
+
+func TestLeaseStoreContract(t *testing.T) {
+	statestoretest.RunLeaseStoreContract(t, func(t testing.TB) statestoretest.TaskLeaseStore {
+		t.Helper()
+		return New()
+	})
+}
