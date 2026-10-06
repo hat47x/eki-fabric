@@ -27,11 +27,13 @@ type LeaseReservation struct {
 	ExpectedTaskRevision       uint64
 	AttemptID                  ids.AttemptID
 	WorkerIdentity             string
-	PlacementDecisionID        string
-	PlacementPayloadDigest     contract.Digest
-	PolicyRevision             string
-	IssuedAt                   time.Time
-	ExpiresAt                  time.Time
+	PlacementAuthorityPrincipal string
+	PlacementDecisionID         string
+	PlacementPayloadDigest      contract.Digest
+	PlacementExpiresAt          time.Time
+	PolicyRevision              string
+	IssuedAt                    time.Time
+	ExpiresAt                   time.Time
 }
 
 func (r LeaseReservation) Validate() error {
@@ -53,11 +55,17 @@ func (r LeaseReservation) Validate() error {
 	if r.WorkerIdentity == "" || len(r.WorkerIdentity) > 256 || !utf8.ValidString(r.WorkerIdentity) {
 		return errors.New("lease reservation: invalid Worker identity")
 	}
+	if r.PlacementAuthorityPrincipal == "" || len(r.PlacementAuthorityPrincipal) > 256 || !utf8.ValidString(r.PlacementAuthorityPrincipal) {
+		return errors.New("lease reservation: invalid Placement authority principal")
+	}
 	if r.PlacementDecisionID == "" || len(r.PlacementDecisionID) > 128 || !utf8.ValidString(r.PlacementDecisionID) {
 		return errors.New("lease reservation: invalid Placement Decision ID")
 	}
 	if r.PlacementPayloadDigest.IsZero() {
 		return errors.New("lease reservation: Placement payload digest is required")
+	}
+	if r.PlacementExpiresAt.IsZero() || r.ExpiresAt.After(r.PlacementExpiresAt) {
+		return errors.New("lease reservation: Lease expiry exceeds Placement Approval expiry")
 	}
 	if r.PolicyRevision == "" || len(r.PolicyRevision) > 128 || !utf8.ValidString(r.PolicyRevision) {
 		return errors.New("lease reservation: invalid policy revision")
