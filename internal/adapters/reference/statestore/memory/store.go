@@ -16,13 +16,18 @@ type idempotencyScope struct {
 	key       string
 }
 
+type placementScope struct {
+	principal  string
+	decisionID string
+}
+
 type Store struct {
-	mu         sync.RWMutex
-	admissions map[ids.TaskID]statestore.Admission
-	idempotent map[idempotencyScope]ids.TaskID
+	mu              sync.RWMutex
+	admissions      map[ids.TaskID]statestore.Admission
+	idempotent      map[idempotencyScope]ids.TaskID
 	tasks           map[ids.TaskID]taskstate.TaskRecord
 	leases          map[ids.LeaseID]leasestate.LeaseRecord
-	placementLeases map[string]ids.LeaseID
+	placementLeases map[placementScope]ids.LeaseID
 	maxFence        map[ids.TaskID]uint64
 }
 
@@ -32,7 +37,7 @@ func New() *Store {
 		admissions:      make(map[ids.TaskID]statestore.Admission),
 		idempotent:      make(map[idempotencyScope]ids.TaskID),
 		leases:          make(map[ids.LeaseID]leasestate.LeaseRecord),
-		placementLeases: make(map[string]ids.LeaseID),
+		placementLeases: make(map[placementScope]ids.LeaseID),
 		maxFence:        make(map[ids.TaskID]uint64),
 	}
 }
