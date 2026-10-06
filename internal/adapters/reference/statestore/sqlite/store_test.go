@@ -101,6 +101,32 @@ func TestOpenIsIdempotent(t *testing.T) {
 	}
 }
 
+func TestVersion2DatabaseUpgradesToLeaseSchemaWithoutLosingTask(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "state.db")
+	old, err := openWithMigrations(context.Background(), path, migrations[:2])
+	if err != nil {
+		t.Fatalf("open v2 store: %v", err)
+	}
+	record := newTaskRecord(t, "v2-upgrade")
+	record.Phase = taskstate.TaskPhaseReady
+	if err := old.CreateTask(context.Background(), record); err != nil {
+		t.Fatalf("CreateTask() on v2 error = %v", err)
+	}
+	if err := old.Close(); err != nil {
+		t.Fatalf("close v2 store: %v", err)
+	}
+
+	upgraded := openStore(t, path)
+	defer upgraded.Close()
+	got, err := upgraded.LoadTask(context.Background(), record.ID)
+	if err != nil {
+		t.Fatalf("LoadTask() after v3 migration error = %v", err)
+	}
+	if got.ID != record.ID || got.TaskIRDigest != record.TaskIRDigest || got.Phase != record.Phase {
+		t.Fatalf("Task changed across v2 -> v3 migration: got=%#v want=%#v", got, record)
+	}
+}
+
 func TestSchemaVersionIsRecorded(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "state.db")
 	store := openStore(t, path)
