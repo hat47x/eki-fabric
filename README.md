@@ -99,6 +99,7 @@ EKI Fabricは、まず企業内の遊休計算資源を安全に利用できる�
 - [Worker Assurance Model](requirements/ASSURANCE_MODEL.md) — Workerの保証を単一のTrust Levelにしない理由
 - [Acceptance Scenarios](requirements/ACCEPTANCE_SCENARIOS.md) — 実際の利用・攻撃場面から要求を圧力試験する
 - [Reference Systems Research](research/reference-systems.md) — 既存システムや標準から何を学ぶか
+- [AI時代の価値と位置づけ](research/ai-era-value-positioning.md) / [既存オーケストレータとの接続](research/orchestrator-integration-and-layering.md) — 今後2〜5年を想定した位置づけの検討（調査メモ、正本ではない）
 - [Upstream Plan](plan/UPSTREAM_PLAN.md) — Architectureへ入るまでに何を確認するか
 
 ## 現在地
