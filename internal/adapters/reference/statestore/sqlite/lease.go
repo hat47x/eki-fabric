@@ -51,9 +51,12 @@ FROM tasks WHERE task_id = ?`, reservation.TaskID.String()))
 
 	existing, err := scanLease(tx.QueryRowContext(ctx, `
 SELECT lease_id, task_id, task_ir_digest, attempt_id, worker_identity,
-       placement_decision_id, placement_payload_digest, policy_revision,
+       placement_authority_principal, placement_decision_id, placement_payload_digest, policy_revision,
        fence_epoch, renewal_sequence, issued_at_ns, expires_at_ns
-FROM leases WHERE placement_decision_id = ?`, reservation.PlacementDecisionID))
+FROM leases WHERE placement_authority_principal = ? AND placement_decision_id = ?`,
+		reservation.PlacementAuthorityPrincipal,
+		reservation.PlacementDecisionID,
+	))
 	switch {
 	case err == nil:
 		if existing.PlacementPayloadDigest != reservation.PlacementPayloadDigest {
@@ -89,17 +92,22 @@ LIMIT 1`, reservation.TaskID.String(), reservation.IssuedAt.UTC().UnixNano()).Sc
 		return statestore.LeaseReservationResult{}, fmt.Errorf("find active lease for task %s: %w", reservation.TaskID, err)
 	}
 
-	var maxFence int64
-	if err := tx.QueryRowContext(ctx, `
-SELECT COALESCE(MAX(fence_epoch), 0) FROM leases WHERE task_id = ?`,
+	var lastFence int64
+	err = tx.QueryRowContext(ctx, `
+SELECT last_fence_epoch FROM lease_fences WHERE task_id = ?`,
 		reservation.TaskID.String(),
-	).Scan(&maxFence); err != nil {
+	).Scan(&lastFence)
+	switch {
+	case err == nil:
+	case errors.Is(err, sql.ErrNoRows):
+		lastFence = 0
+	default:
 		return statestore.LeaseReservationResult{}, fmt.Errorf("read fence epoch for task %s: %w", reservation.TaskID, err)
 	}
-	if maxFence < 0 || maxFence == math.MaxInt64 {
+	if lastFence < 0 || lastFence == math.MaxInt64 {
 		return statestore.LeaseReservationResult{}, fmt.Errorf("%w: fence epoch exhausted for task %s", statestore.ErrConflict, reservation.TaskID)
 	}
-	fence := uint64(maxFence + 1)
+	fence := uint64(lastFence + 1)
 
 	lease, err := leasestate.New(leasestate.Config{
 		ID:                     reservation.LeaseID,
@@ -107,8 +115,9 @@ SELECT COALESCE(MAX(fence_epoch), 0) FROM leases WHERE task_id = ?`,
 		TaskIRDigest:           reservation.TaskIRDigest,
 		AttemptID:              reservation.AttemptID,
 		WorkerIdentity:         reservation.WorkerIdentity,
-		PlacementDecisionID:    reservation.PlacementDecisionID,
-		PlacementPayloadDigest: reservation.PlacementPayloadDigest,
+		PlacementAuthorityPrincipal: reservation.PlacementAuthorityPrincipal,
+		PlacementDecisionID:           reservation.PlacementDecisionID,
+		PlacementPayloadDigest:        reservation.PlacementPayloadDigest,
 		PolicyRevision:         reservation.PolicyRevision,
 		FenceEpoch:             fence,
 		RenewalSequence:        0,
@@ -120,16 +129,30 @@ SELECT COALESCE(MAX(fence_epoch), 0) FROM leases WHERE task_id = ?`,
 	}
 
 	_, err = tx.ExecContext(ctx, `
+INSERT INTO lease_fences (task_id, last_fence_epoch)
+VALUES (?, ?)
+ON CONFLICT (task_id) DO UPDATE SET last_fence_epoch = excluded.last_fence_epoch
+WHERE lease_fences.last_fence_epoch = ?`,
+		lease.TaskID.String(),
+		int64(lease.FenceEpoch),
+		lastFence,
+	)
+	if err != nil {
+		return statestore.LeaseReservationResult{}, fmt.Errorf("advance fence epoch for task %s: %w", lease.TaskID, err)
+	}
+
+	_, err = tx.ExecContext(ctx, `
 INSERT INTO leases (
 	lease_id, task_id, task_ir_digest, attempt_id, worker_identity,
-	placement_decision_id, placement_payload_digest, policy_revision,
+	placement_authority_principal, placement_decision_id, placement_payload_digest, policy_revision,
 	fence_epoch, renewal_sequence, issued_at_ns, expires_at_ns
-) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		lease.ID.String(),
 		lease.TaskID.String(),
 		lease.TaskIRDigest.Hex(),
 		lease.AttemptID.String(),
 		lease.WorkerIdentity,
+		lease.PlacementAuthorityPrincipal,
 		lease.PlacementDecisionID,
 		lease.PlacementPayloadDigest.Hex(),
 		lease.PolicyRevision,
@@ -153,7 +176,7 @@ func (s *Store) LoadLease(ctx context.Context, id ids.LeaseID) (leasestate.Lease
 	}
 	lease, err := scanLease(s.db.QueryRowContext(ctx, `
 SELECT lease_id, task_id, task_ir_digest, attempt_id, worker_identity,
-       placement_decision_id, placement_payload_digest, policy_revision,
+       placement_authority_principal, placement_decision_id, placement_payload_digest, policy_revision,
        fence_epoch, renewal_sequence, issued_at_ns, expires_at_ns
 FROM leases WHERE lease_id = ?`, id.String()))
 	if errors.Is(err, sql.ErrNoRows) {
@@ -170,6 +193,7 @@ func scanLease(row rowScanner) (leasestate.LeaseRecord, error) {
 		&c.taskIRDigest,
 		&c.attemptID,
 		&c.workerIdentity,
+		&c.placementAuthorityPrincipal,
 		&c.placementDecisionID,
 		&c.placementPayloadDigest,
 		&c.policyRevision,
@@ -188,8 +212,9 @@ type leaseColumns struct {
 	taskID                 string
 	taskIRDigest           string
 	attemptID              string
-	workerIdentity         string
-	placementDecisionID    string
+	workerIdentity              string
+	placementAuthorityPrincipal string
+	placementDecisionID         string
 	placementPayloadDigest string
 	policyRevision         string
 	fenceEpoch             int64
@@ -228,8 +253,9 @@ func (c leaseColumns) record() (leasestate.LeaseRecord, error) {
 		TaskIRDigest:           taskIR,
 		AttemptID:              attemptID,
 		WorkerIdentity:         c.workerIdentity,
-		PlacementDecisionID:    c.placementDecisionID,
-		PlacementPayloadDigest: placementDigest,
+		PlacementAuthorityPrincipal: c.placementAuthorityPrincipal,
+		PlacementDecisionID:           c.placementDecisionID,
+		PlacementPayloadDigest:        placementDigest,
 		PolicyRevision:         c.policyRevision,
 		FenceEpoch:             uint64(c.fenceEpoch),
 		RenewalSequence:        uint64(c.renewalSequence),
