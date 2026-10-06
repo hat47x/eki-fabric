@@ -88,6 +88,31 @@ func RunLeaseStoreContract(t *testing.T, newStore LeaseFactory) {
 		}
 	})
 
+	t.Run("expired-placement-replay-does-not-mint-a-new-fence", func(t *testing.T) {
+		store := newStore(t)
+		task := readyTask(t, store, "expired-replay")
+		firstReq := leaseReservation(t, task, "placement-1", leaseNow, leaseNow.Add(time.Minute))
+		first, err := store.ReserveLease(context.Background(), firstReq)
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		replay := firstReq
+		replay.LeaseID = mustLeaseID(t)
+		replay.IssuedAt = first.Lease.ExpiresAt.Add(time.Second)
+		replay.ExpiresAt = replay.IssuedAt.Add(time.Minute)
+		again, err := store.ReserveLease(context.Background(), replay)
+		if err != nil {
+			t.Fatalf("expired placement replay error = %v", err)
+		}
+		if !again.Replayed || again.Lease.ID != first.Lease.ID || again.Lease.FenceEpoch != first.Lease.FenceEpoch {
+			t.Fatalf("expired placement replay minted new lease: first=%#v again=%#v", first, again)
+		}
+		if again.Lease.ActiveAt(replay.IssuedAt) {
+			t.Fatal("expired placement replay revived the old lease")
+		}
+	})
+
 	t.Run("future-issued-lease-still-reserves-the-fence", func(t *testing.T) {
 		store := newStore(t)
 		task := readyTask(t, store, "future-fence")
