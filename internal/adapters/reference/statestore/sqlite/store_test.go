@@ -127,6 +127,84 @@ func TestVersion2DatabaseUpgradesToLeaseSchemaWithoutLosingTask(t *testing.T) {
 	}
 }
 
+func TestFenceEpochSurvivesLeaseHistoryGarbageCollection(t *testing.T) {
+	store := openStore(t, filepath.Join(t.TempDir(), "state.db"))
+	defer store.Close()
+
+	task := newTaskRecord(t, "lease-history-gc")
+	task.Phase = taskstate.TaskPhaseReady
+	if err := store.CreateTask(context.Background(), task); err != nil {
+		t.Fatalf("CreateTask() error = %v", err)
+	}
+	attempt1, err := ids.NewAttemptID()
+	if err != nil {
+		t.Fatal(err)
+	}
+	lease1, err := ids.NewLeaseID()
+	if err != nil {
+		t.Fatal(err)
+	}
+	now := time.Date(2026, 10, 6, 12, 0, 0, 0, time.UTC)
+	first, err := store.ReserveLease(context.Background(), statestore.LeaseReservation{
+		LeaseID:                     lease1,
+		TaskID:                      task.ID,
+		TaskIRDigest:                task.TaskIRDigest,
+		ExpectedTaskRevision:        task.Revision,
+		AttemptID:                   attempt1,
+		WorkerIdentity:              "worker-a",
+		PlacementAuthorityPrincipal: "control-plane/plc-1",
+		PlacementDecisionID:         "placement-gc-1",
+		PlacementPayloadDigest:      contract.SHA256([]byte("placement-gc-1")),
+		PlacementExpiresAt:          now.Add(2 * time.Minute),
+		PolicyRevision:              "policy-42",
+		IssuedAt:                    now,
+		ExpiresAt:                   now.Add(time.Minute),
+	})
+	if err != nil {
+		t.Fatalf("first ReserveLease() error = %v", err)
+	}
+	if first.Lease.FenceEpoch != 1 {
+		t.Fatalf("first fence = %d, want 1", first.Lease.FenceEpoch)
+	}
+
+	// Simulate a future retention job that drops expired Lease history. The
+	// independent lease_fences row must preserve the anti-replay epoch.
+	if _, err := store.db.Exec(`DELETE FROM leases WHERE lease_id = ?`, first.Lease.ID.String()); err != nil {
+		t.Fatalf("delete expired Lease history: %v", err)
+	}
+
+	attempt2, err := ids.NewAttemptID()
+	if err != nil {
+		t.Fatal(err)
+	}
+	lease2, err := ids.NewLeaseID()
+	if err != nil {
+		t.Fatal(err)
+	}
+	secondNow := first.Lease.ExpiresAt.Add(time.Nanosecond)
+	second, err := store.ReserveLease(context.Background(), statestore.LeaseReservation{
+		LeaseID:                     lease2,
+		TaskID:                      task.ID,
+		TaskIRDigest:                task.TaskIRDigest,
+		ExpectedTaskRevision:        task.Revision,
+		AttemptID:                   attempt2,
+		WorkerIdentity:              "worker-b",
+		PlacementAuthorityPrincipal: "control-plane/plc-1",
+		PlacementDecisionID:         "placement-gc-2",
+		PlacementPayloadDigest:      contract.SHA256([]byte("placement-gc-2")),
+		PlacementExpiresAt:          secondNow.Add(2 * time.Minute),
+		PolicyRevision:              "policy-42",
+		IssuedAt:                    secondNow,
+		ExpiresAt:                   secondNow.Add(time.Minute),
+	})
+	if err != nil {
+		t.Fatalf("second ReserveLease() error = %v", err)
+	}
+	if second.Lease.FenceEpoch != 2 {
+		t.Fatalf("fence after Lease history GC = %d, want 2", second.Lease.FenceEpoch)
+	}
+}
+
 func TestSchemaVersionIsRecorded(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "state.db")
 	store := openStore(t, path)
