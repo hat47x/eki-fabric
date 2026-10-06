@@ -464,7 +464,7 @@ current main `9e990e7c89924fb4005264e7556b41e0e3fb62b1` を計画と再照合し
 
 - 最初のResource Provider Adapterの参照実装の範囲。調査メモではKubernetes + Kueue、次にSlurm、次にNomadを推奨しているが、利用組織の実環境の確認が必要。
 - Resource Provider Adapterの契約の語彙、管理クラスタの信頼ドメインの扱い、選択肢B・C（調査メモ§3）の扱い。
-- 候補Scenario PAS-CAND-07〜16（[Acceptance Scenarios](../requirements/ACCEPTANCE_SCENARIOS.md)）の評価と、そこからRequirement側へ戻す論点。
+- 候補Scenario PAS-CAND-07〜16の評価は完了した（[評価記録](PAS_CAND_07_16_EVALUATION_2026-10-06.md)）。RQ-054の草案のレビューと、Open Questionの解決が残る。
 
 この見直しは、上のmainline priority guardの順位を変えない。Resource Provider Adapterの検討は、M0 vertical sliceの成立後に、Spikeとして始める。
 

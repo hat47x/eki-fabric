@@ -647,6 +647,8 @@ Trace: RQ-001, RQ-003, RQ-009, RQ-011, RQ-014, RQ-019, RQ-024, RQ-047
 - **PAS-CAND-07〜11**：生成AIとAI Agentの普及により、Clientが機械になり、生成物の実行と確認が増える状況です。背景は [AI時代の価値と位置づけ](../research/ai-era-value-positioning.md) にあります。
 - **PAS-CAND-12〜16**：KubernetesやSlurmのような既存のオーケストレータが管理するクラスタを、資源の供給元としてEKIへ接続する状況です（[Product Value](../product/value.md)「Managed and opportunistic resources on one fabric」）。背景は [既存オーケストレータとの接続、およびSEI・TEIとの層構造](../research/orchestrator-integration-and-layering.md) にあります。
 
+評価の結果は [PAS-CAND-07〜16の評価](../plan/PAS_CAND_07_16_EVALUATION_2026-10-06.md) にあります（10件のうち5件は既存要求で扱え、3件は既存要求の文言を補い、1件に新Requirementの草案、1件は設計判断として残しました）。
+
 ここから新しいRequirementは作りません。既存のRequirementで扱えない点は「Requirement側へ戻す論点」として記し、レビューを経てProduct RequirementsまたはThreat Modelへ反映します。いずれもM0 / MVPの成立条件ではなく、`plan/UPSTREAM_PLAN.md`の優先順位も変えません。
 
 ### PAS-CAND-07 — AI Agentの連鎖による依頼の増殖（評価待ち）

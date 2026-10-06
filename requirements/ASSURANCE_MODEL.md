@@ -108,6 +108,10 @@ Workerを無条件に信用せず、ResultがTaskの要求を満たしたこと�
 - hardware vendor / architecture
 - network / region
 - Validator / Verifier
+- model lineage（モデルの重み・系統・学習データ由来。生成AIのTaskで、同じ誤りを悪意なく再現し得る単位）
+- resource provider（実行を担った管理クラスタ等の運営者）
+
+独立性が崩れる原因は、攻撃者による複数Identityの作成だけではありません。同じモデルを同じ環境で3回動かして一致しても、同じ誤りを3回再現しただけかもしれません。EKIはモデルの系譜が独立しているかどうかの意味判断を所有しません（RQ-045）。判断に使える記録として、どのdimensionが同じで、どれが異なっていたかを残せることを求めます。
 
 高保証Taskでは、単に`worker_id`が違うだけで独立しているとはみなしません。
 
