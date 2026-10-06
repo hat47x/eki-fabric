@@ -6,6 +6,7 @@ import (
 	"sync"
 
 	"github.com/hat47x/eki-fabric/internal/core/ids"
+	"github.com/hat47x/eki-fabric/internal/core/leasestate"
 	"github.com/hat47x/eki-fabric/internal/core/taskstate"
 	"github.com/hat47x/eki-fabric/internal/spi/statestore"
 )
@@ -19,14 +20,20 @@ type Store struct {
 	mu         sync.RWMutex
 	admissions map[ids.TaskID]statestore.Admission
 	idempotent map[idempotencyScope]ids.TaskID
-	tasks      map[ids.TaskID]taskstate.TaskRecord
+	tasks           map[ids.TaskID]taskstate.TaskRecord
+	leases          map[ids.LeaseID]leasestate.LeaseRecord
+	placementLeases map[string]ids.LeaseID
+	maxFence        map[ids.TaskID]uint64
 }
 
 func New() *Store {
 	return &Store{
-		tasks:      make(map[ids.TaskID]taskstate.TaskRecord),
-		admissions: make(map[ids.TaskID]statestore.Admission),
-		idempotent: make(map[idempotencyScope]ids.TaskID),
+		tasks:           make(map[ids.TaskID]taskstate.TaskRecord),
+		admissions:      make(map[ids.TaskID]statestore.Admission),
+		idempotent:      make(map[idempotencyScope]ids.TaskID),
+		leases:          make(map[ids.LeaseID]leasestate.LeaseRecord),
+		placementLeases: make(map[string]ids.LeaseID),
+		maxFence:        make(map[ids.TaskID]uint64),
 	}
 }
 
