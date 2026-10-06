@@ -1,4 +1,4 @@
-# ADR-0007 — 「EKIへ載せない」判断をSchedulerより前のSuitability Gateで行う
+# ADR-0007 「EKIへ載せない」判断をSchedulerより前のSuitability Gateで行う
 
 - Status: **Proposed**
 - Date: 2026-10-06

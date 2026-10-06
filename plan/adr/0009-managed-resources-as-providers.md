@@ -1,4 +1,4 @@
-# ADR-0009 — 管理された資源は既存オーケストレータを置き換えず、Resource Providerとして接続する
+# ADR-0009 管理された資源は既存オーケストレータを置き換えず、Resource Providerとして接続する
 
 - Status: **Proposed**
 - Date: 2026-10-06

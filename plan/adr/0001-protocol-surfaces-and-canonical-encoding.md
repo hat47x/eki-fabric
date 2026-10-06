@@ -1,23 +1,23 @@
-# ADR-0001 — Protocol Surfaces and Canonical Security Encoding
+# ADR-0001 通信面ごとのProtocolと、署名対象の正規エンコーディング
 
 - Status: **Accepted for MVP Baseline 0.1**
 - Date: 2026-09-21
-- Scope: External Client Plane / Worker Plane / out-of-process Adapter Plane / signed Authority Decisions
+- Scope: External Client Plane、Worker Plane、out-of-processのAdapter Plane、署名付きのAuthority Decision
 
 ## Context
 
-EKI Fabricは、未知のApplication、Native Worker、将来のBrowser Worker、企業Network、複数言語Adapterを同時に扱う必要があります。
+EKI Fabricは、未知のApplication、Native Worker、将来のBrowser Worker、企業のNetwork、複数の言語で書かれたAdapterを同時に扱う必要があります。
 
-一方、次の要件は同じProtocol技術へ最適化されません。
+ところが、次の要件は一つのProtocol技術では同時に満たせません。
 
-- External APIはcurl等から扱いやすく、language-neutralで、企業Proxyと共存しやすいこと。
-- Worker Planeはoutbound session、streaming、deadline、typed message、efficient binary encodingが欲しいこと。
-- Security-sensitive Decisionは異なる言語・build・schema evolutionを跨いでも署名対象bytesが曖昧にならないこと。
-- Bulk ArtifactはRPC messageへbase64埋込せずData Planeでstreamすること。
+- External APIは、curlなどから扱いやすく、特定の言語に依存せず、企業のProxyと共存しやすい必要がある。
+- Worker Planeでは、Workerから外向きに張るsession、streaming、deadline、型付きのmessage、効率のよいbinary encodingが欲しい。
+- Securityに関わるDecisionでは、言語、build、schemaの進化が違っても、署名対象のbytesが一つに定まらなければならない。
+- 大きなArtifactは、RPCのmessageへbase64で埋め込まず、Data Planeでstreamする必要がある。
 
-特にProtocol Buffersの公式文書は、deterministic serializationであってもcanonical serializationではなく、異なる言語やbuild、unknown fieldを跨いだstable fingerprintとして使うべきではないと説明しています。
+特にProtocol Buffersの公式文書は、deterministic serializationはcanonical serializationではないと説明しています。同じ文書は、言語やbuildが違う場合やunknown fieldがある場合に、Protobufのbytesを安定したfingerprintとして使うべきではないとも述べています。
 
-そのため、Transport IDLとCryptographic canonical formを同一にしません。
+そのため、通信に使うIDLと、署名に使う正規形（canonical form）を同じものにはしません。
 
 ## Decision Summary
 
@@ -25,48 +25,48 @@ EKI Fabricは、未知のApplication、Native Worker、将来のBrowser Worker�
 
 **HTTPS + JSON HTTP API + OpenAPI**をBaselineとします。
 
-- OpenAPI Specification: 3.2.1をArchitecture上のcurrent targetとする。
-- P0 schemaではtooling互換性を優先し、3.2-only featureへ依存しないconservative subsetから開始する。
-- JSON bodyはstrict parse / schema validationする。
-- HTTP error bodyはRFC 9457 Problem Detailsを基本形とする。
-- Artifact bulk bytesはJSONへbase64埋込せずData Plane upload/downloadへ分離する。
-- Public Task statusは初回MVPではpollingで成立させ、event streamingは後続拡張とする。
+- Architecture上で目標とするOpenAPI Specificationのversionは3.2.1とする。
+- P0 schemaでは、toolとの互換性を優先する。3.2だけにある機能へ依存しない、控えめな部分集合から始める。
+- JSON bodyは、厳格にparseしてからschemaで検証する。
+- HTTPのerror bodyは、RFC 9457のProblem Detailsを基本の形にする。
+- Artifactの大きなbytesは、JSONへbase64で埋め込まず、Data Planeのupload / downloadへ分ける。
+- 初回MVPでは、TaskのPublic statusをpollingで取得できれば足りるとする。event streamingは後の拡張とする。
 
 ### Worker Plane
 
 **Protocol Buffers IDL + Connect protocol over HTTPS**をReference Transportとします。
 
-- Workerはoutbound-first connectionを使用する。
-- Connect protocolをMVP referenceとし、HTTP/1.1 / HTTP/2環境との共存を優先する。
-- 同一Protobuf service definitionからgRPC / gRPC-Web interoperabilityを将来利用できる構造を保つ。
-- Long-lived streamingがenterprise proxyで利用困難な環境向けに、unary / bounded polling型のfallback profileをProtocol semantics上許容する。
-- Workerへinternal Queue / Broker protocolを直接公開しない。
+- Workerは、自分から外向きに接続を張る（outbound-first）。
+- MVPの参照実装ではConnect protocolを使い、HTTP/1.1やHTTP/2の環境と共存できることを優先する。
+- 同じProtobufのservice定義から、将来gRPCやgRPC-Webとも相互運用できる構造を保つ。
+- 企業のproxyが長時間のstreamingを通さない環境もある。そうした環境向けに、unaryやpollingを一定回数で区切るfallback profileを、Protocolの意味の上で認める。
+- 内部のQueueやBrokerのprotocolを、Workerへ直接公開しない。
 
 ### Out-of-process Adapter Plane
 
-**Protocol Buffers IDL + Connect reference protocol**を基本とします。
+**Protocol Buffers IDL + Connectの参照protocol**を基本とします。
 
-In-process Go Adapterは同じLogical SPIをGo interfaceで実装できますが、Go interfaceをSPIの唯一の正本にしません。
+同じプロセス内で動くGoのAdapterは、同じ論理SPIをGoのinterfaceとして実装できます。ただし、GoのinterfaceをSPIの唯一の正本にはしません。
 
 ### Signed Authority Decisions
 
 **Deterministically Encoded CBOR + CDDL + COSE_Sign1**をBaselineとします。
 
-- CBOR: RFC 8949 core deterministic encoding requirementsを基礎にする。
-- Schema notation: CDDLを使用する。
-- Signature envelope: COSE_Sign1を使用する。
-- Signature algorithm profile / key typeは別ADRまたはSecurity Profileで決める。
-- security-critical payloadへfloating pointを原則使わない。
-- timestamp / revision / byte count / budget等は単位を固定したintegerとして表現する。
-- unknown critical field / unsupported decision versionはfail closedする。
+- CBORは、RFC 8949のcore deterministic encodingの要件を基礎にする。
+- schemaの記法にはCDDLを使う。
+- 署名の外枠（envelope）にはCOSE_Sign1を使う。
+- 署名algorithmとkeyの種類は、別のADRかSecurity Profileで決める。
+- Securityに関わるpayloadでは、原則として浮動小数点を使わない。
+- timestamp、revision、byte数、budgetなどは、単位を固定した整数で表す。
+- 未知のcritical fieldや、対応していないDecisionのversionを受け取ったら、処理を進めずに拒否する（fail closed）。
 
 ### Semantic Fingerprint
 
-Task idempotencyやDecision bindingで、raw JSON bytesやraw Protobuf serializationをfingerprintしません。
+Taskの冪等性（idempotency）の判定やDecisionとの結び付けでは、受け取ったJSONのbytesやProtobufをserializeしたbytesを、そのままfingerprintにしません。
 
-External JSONをstrict parse / validate / normalizeした後、用途別のsemantic fingerprint projectionをdeterministic CBORへencodeし、そのbytesをhashします。
+External JSONを厳格にparseし、検証し、正規化します。そのうえで、用途ごとに決めた意味上の射影（semantic fingerprint projection）をdeterministic CBORへencodeし、そのbytesのhashを取ります。
 
-Artifact Content DigestだけはArtifact raw bytesそのものを対象にします。
+Artifactの内容を表すContent Digestだけは、Artifactの生のbytesそのものを対象にします。
 
 ---
 
@@ -74,119 +74,115 @@ Artifact Content DigestだけはArtifact raw bytesそのものを対象にしま
 
 ### External HTTP / JSON
 
-未知のClientにSDK必須を強制しません。
+未知のClientに、SDKの使用を強制しないためです。
 
-HTTP APIは:
+HTTP APIには、次の利点があります。
 
-- curl / generic HTTP clientから利用可能
-- Browser / CLI / Python / Go / Rust等から扱いやすい
-- enterprise proxy / gateway / observabilityと統合しやすい
-- OpenAPIで人間とmachineの両方へ説明しやすい
+- curlや汎用のHTTP clientから使える。
+- Browser、CLI、Python、Go、Rustなどから扱いやすい。
+- 企業のproxy、gateway、監視の仕組みに組み込みやすい。
+- OpenAPIで、人にも機械にも説明しやすい。
 
-という利点があります。
-
-OpenAPI公式Specification indexでは2026-09-10公開の3.2.1が掲載されています。3.2系ではstreaming media typeの記述も強化されていますが、MVP P0ではstreaming機能自体を必須にしません。
+OpenAPIの公式Specification一覧には、2026-09-10に公開された3.2.1が載っています。3.2系ではstreamingのmedia typeの記述も強化されていますが、MVPのP0ではstreaming機能そのものを必須にしません。
 
 ### Worker Connect / Protobuf
 
-Worker Planeでは、public REST resource modelより:
+Worker Planeでは、公開RESTのresource modelよりも、次の性質が重要です。
 
-- typed request / response
-- server / client streaming
+- 型付きのrequestとresponse
+- server側とclient側のstreaming
 - deadline
-- generated clients
-- binary payload efficiency
-- message evolution
+- 自動生成されるclient
+- binary payloadの効率
+- messageの進化への対応
 
-が重要です。
+Connectは、Protobufのschemaからコードを生成し、Connect、gRPC、gRPC-Webのそれぞれと互換の口を持ちます。Connect protocol自体は、HTTP/1.1とHTTP/2の上で動きます。
 
-ConnectはProtobuf schemaから生成され、Connect / gRPC / gRPC-Webの互換Surfaceを持ち、Connect protocol自体はHTTP/1.1 / HTTP/2上で動作します。
+EKIの企業向けの既定構成は、外向き通信だけで動き、proxyと共存できることです。また、将来はBrowser Workerを持ちます。Connectはこの二つと相性がよいと判断しました。
 
-EKIのenterprise defaultがoutbound-only / proxy-compatibleであること、将来Browser Workerを持つことと相性がよいと判断します。
+ただし、Connectのlibrary自体をEKI Coreの意味上の契約にはしません。
 
-ただしConnect library自体をEKI Core semantic contractにはしません。
-
-Transportを別実装へ変更してもWorker Contract semanticsは維持します。
+Transportを別の実装へ替えても、Worker Contractの意味は変わりません。
 
 ### Deterministic CBOR / COSE
 
-Authority Decisionでは、署名検証側が同一semantic payloadから同じbytesを再構築できる必要があります。
+Authority Decisionでは、署名を検証する側が、同じ意味のpayloadから同じbytesを組み立て直せる必要があります。
 
-RFC 8949はdeterministic CBORのcore requirementsを定義しています。
+RFC 8949は、deterministic CBORの基本要件を定めています。
 
-COSE_Sign1はsingle signerのsigned data objectを標準化しています。
+COSE_Sign1は、署名者が一人のsigned data objectを標準化したものです。
 
-CBORは64-bit integerやbyte stringを自然に扱えるため、JCSのI-JSON number制約をSecurity payloadへ持ち込みにくい利点があります。
+CBORは64-bitの整数やbyte stringをそのまま扱えます。そのため、JCSが前提とするI-JSONの数値の制約を、Securityのpayloadへ持ち込まずに済みます。
 
 ---
 
 ## Alternatives Considered
 
-### A. Everything REST / JSON
+### A. すべてをREST / JSONにする
 
 利点は次のとおりです。
 
-- 最も分かりやすい
-- curl / Browser / proxy friendly
-- OpenAPI一つで統一可能
+- 最も分かりやすい。
+- curl、Browser、proxyと相性がよい。
+- OpenAPI一つで統一できる。
 
-不採用理由は次のとおりです。
+採用しなかった理由は次のとおりです。
 
-- Worker long-lived streaming / typed generated protocolで追加設計が必要
-- signed Decisionのcanonicalizationを別途解決する必要がある
-- binary worker chatterの効率が下がる
+- Workerの長時間streamingや、型付きで生成されるprotocolには、追加の設計が必要になる。
+- 署名付きDecisionの正規化を、別に解決しなければならない。
+- Workerとの細かいbinaryのやり取りの効率が下がる。
 
-External Planeには採用しますが、全Planeへは広げません。
+External Planeには採用しますが、すべてのPlaneへは広げません。
 
-### B. Everything gRPC / Protobuf
-
-利点は次のとおりです。
-
-- mature RPC
-- bidirectional streaming
-- polyglot code generation
-- efficient binary encoding
-
-不採用理由は次のとおりです。
-
-- public unknown ClientにgRPC toolchainを要求したくない
-- Browser / proxy環境では追加のgRPC-Web / gateway考慮が必要
-- Protobuf serializationはcryptographic canonical formではない
-
-Worker / Adapter Planeの候補として利用します。
-
-### C. Connect / Protobuf for everything
+### B. すべてをgRPC / Protobufにする
 
 利点は次のとおりです。
 
-- HTTP friendly
-- browser friendly
-- gRPC compatibility
-- generated clients
+- 成熟したRPCである。
+- 双方向streamingがある。
+- 多くの言語向けにコードを生成できる。
+- binary encodingが効率的である。
 
-不採用理由は次のとおりです。
+採用しなかった理由は次のとおりです。
 
-- public resource APIを特定RPC ecosystemへ寄せすぎる
-- OpenAPI / plain HTTP integrationを第一級に保ちたい
-- cryptographic canonicalization問題は残る
+- 公開APIを使う未知のClientに、gRPCのtoolchainを求めたくない。
+- Browserやproxyの環境では、gRPC-Webやgatewayの追加検討が要る。
+- Protobufのserializationは、暗号用の正規形ではない。
 
-### D. JSON + JCS for signed Decision
+Worker PlaneとAdapter Planeの候補としては利用します。
 
-JCS (RFC 8785)はJSONのcanonical representationを定義しており、有力候補です。
+### C. すべてをConnect / Protobufにする
 
-不採用理由は次のとおりです。
+利点は次のとおりです。
 
-- I-JSON / IEEE 754 double precision制約をSecurity-critical numeric fieldへ持ち込む
-- byte stringや大きなintegerをstring encodingへ寄せる必要がある
-- Internal Authority payloadは人間可読wireである必要性が低い
+- HTTPと相性がよい。
+- Browserと相性がよい。
+- gRPCと互換性がある。
+- clientを自動生成できる。
 
-External requestのlogging / comparison用途には利用可能ですが、Baseline signature encodingには採用しません。
+採用しなかった理由は次のとおりです。
 
-### E. Raw Protobuf deterministic bytesをsign
+- 公開resource APIが、特定のRPCの生態系へ寄りすぎる。
+- OpenAPIや素のHTTPとの統合を、第一級のまま保ちたい。
+- 暗号用の正規化の問題は残る。
 
-不採用です。
+### D. 署名付きDecisionにJSON + JCSを使う
 
-Protobuf公式文書がdeterministic serializationとcanonical serializationを明確に区別し、異なる言語/build/schema evolutionを跨いだgeneric fingerprintingを推奨していません。
+JCS（RFC 8785）はJSONの正規表現を定めており、有力な候補でした。
+
+採用しなかった理由は次のとおりです。
+
+- I-JSONとIEEE 754の倍精度の制約を、Securityに関わる数値fieldへ持ち込むことになる。
+- byte stringや大きな整数を、文字列へ変換して表す必要がある。
+- 内部のAuthority payloadでは、wire上で人が読めることの必要性が低い。
+
+External requestのlogや比較の用途には使えますが、Baselineの署名encodingには採用しません。
+
+### E. Protobufのdeterministicなbytesに署名する
+
+採用しません。
+
+Protobufの公式文書は、deterministic serializationとcanonical serializationをはっきり区別しています。そして、言語、build、schemaの進化をまたいだ汎用のfingerprintとして使うことを推奨していません。
 
 ---
 
@@ -194,56 +190,50 @@ Protobuf公式文書がdeterministic serializationとcanonical serializationを�
 
 ### HTTP
 
-- TLS protected HTTPS
-- HTTP/1.1を最低互換Surfaceとして許容
-- HTTP/2を利用可能
-- HTTP/3をMVP必須にしない
+- TLSで保護したHTTPSを使う。
+- 最低限の互換性としてHTTP/1.1を認める。
+- HTTP/2を使える。
+- HTTP/3はMVPでは必須にしない。
 
 ### JSON
 
-External JSONは:
+External JSONに対しては、次の処理を行います。
 
-- duplicate property reject
-- maximum body size
-- maximum nesting
-- maximum string / array / metadata count
-- integer range validation
-- unknown core field reject
+- 重複したpropertyを拒否する。
+- bodyの最大sizeを制限する。
+- 入れ子の最大の深さを制限する。
+- 文字列、配列、metadataの最大数を制限する。
+- 整数の範囲を検証する。
+- 未知のcore fieldを拒否する。
 
-を行います。
+JSONのnumberが任意の精度の整数を表せるとは期待しません。
 
-JSON numberへ任意精度integerを暗黙に期待しません。
-
-security / budget上64-bit精度が必要なfieldはschema上のrangeを明示し、必要ならdecimal string等の明示表現を採用します。
+Securityやbudgetの都合で64-bitの精度が必要なfieldは、schema上で範囲を明示します。必要であれば、10進の文字列のような明示的な表現を使います。
 
 ### OpenAPI
 
-OpenAPI 3.2.1をcanonical API description targetとします。
+API記述の正本として目標とするのはOpenAPI 3.2.1です。
 
-ただし2026-09時点で3.2.1は新しいため、P0では:
+ただし、2026-09の時点で3.2.1は新しいため、P0では次の控えめな部分集合を使います。
 
-- ordinary JSON request / response
-- standard HTTP methods
-- no required 3.2-only streaming construct
+- 通常のJSONのrequestとresponse
+- 標準のHTTP method
+- 3.2にしかないstreamingの構文を必須にしない
 
-のconservative subsetを使います。
-
-Toolchainが3.2.1を処理できない場合、source semantic schemaを弱めずに3.1-compatible derived artifactを生成できる余地を残します。
+Toolchainが3.2.1を処理できない場合に備えて、元の意味のschemaを弱めずに、3.1互換の派生物を生成できる余地を残します。
 
 ### Error
 
-HTTP errorsはRFC 9457 `application/problem+json`を基本にします。
+HTTPのerrorは、RFC 9457の`application/problem+json`を基本にします。
 
-EKI固有extensionとして:
+EKI固有の拡張として、次の項目を追加できます。
 
-- stable error code
-- task / attempt correlation where disclosure-safe
-- retryable category
-- policy reason category
+- 安定したerror code
+- 開示しても安全な範囲での、TaskやAttemptとの対応付け
+- retryできるかどうかの分類
+- policyによる拒否理由の分類
 
-を追加できます。
-
-`detail`文字列をmachine logicに使わせません。
+`detail`の文字列を、機械側の処理の判断に使わせません。
 
 ---
 
@@ -251,20 +241,20 @@ EKI固有extensionとして:
 
 ### Protobuf
 
-ProtobufはWorker PlaneのIDL / transport message formatとして使用します。
+Protobufは、Worker PlaneのIDLと、通信するmessageの形式として使います。
 
 用途は次のとおりです。
 
 - WorkerHello
 - ResourceAdvertisement
-- WorkOffer / WorkOrder carrier
+- WorkOfferとWorkOrderの運搬
 - WorkOrderAck
 - Heartbeat
-- LeaseRenewalRequest / Result
-- ResultClaim carrier
-- Stop / Reclaim signal
+- LeaseRenewalRequestとその結果
+- ResultClaimの運搬
+- StopとReclaimの通知
 
-Security-sensitive Authority Decisionの署名対象そのものには使いません。
+Securityに関わるAuthority Decisionの、署名対象そのものには使いません。
 
 ### Connect
 
@@ -272,46 +262,41 @@ Reference transportはConnectです。
 
 理由は次のとおりです。
 
-- standard HTTP infrastructureへ載せやすい
-- HTTP/1.1 / HTTP/2を扱える
-- gRPC / gRPC-Web ecosystemとのinteroperability pathを持つ
-- Browser Workerへ拡張しやすい
-- Goのnet/httpとの統合が軽い
+- 標準的なHTTPの基盤に載せやすい。
+- HTTP/1.1とHTTP/2を扱える。
+- gRPCやgRPC-Webの生態系と相互運用する道がある。
+- Browser Workerへ広げやすい。
+- Goのnet/httpと軽く統合できる。
 
 ### Session modes
 
-MVPでは二つを許容します。
+MVPでは次の二つの方式を認めます。
 
 1. streaming session
-2. polling / unary fallback
+2. pollingまたはunaryによるfallback
 
-両方では次のとおりです。
+どちらの方式でも、次の値は同じにします。
 
 - WorkOrder ID
 - Attempt ID
 - Lease revision
-- duplicate tolerance
+- 重複して届いたときの扱い
 
-を同じにし、transport modeでState semanticsを変えません。
+通信の方式によって、状態の意味を変えません。
 
 ---
 
 ## Bulk Artifact Profile
 
-Artifact bytesはRPC messageに入れません。
+ArtifactのbytesはRPCのmessageに入れません。
 
-Control Plane APIでUpload Intent / ArtifactGrantを取得し、Data Plane endpointへ:
+Control PlaneのAPIでUpload IntentやArtifactGrantを取得し、Data Planeのendpointへ転送します。転送には`application/octet-stream`や、Adapterごとのmultipart、再開可能な転送方式などを使います。
 
-- `application/octet-stream`
-- multipart / resumable adapter-specific transport
+Content Digestは、Artifactの生のbytesを対象にします。
 
-等でtransferします。
+圧縮する場合は、保存した識別子が圧縮後のbytesを指すのか、展開した論理上のbytesを指すのかを、ArtifactのMediaやProfileで明示します。
 
-Content Digestはraw Artifact bytesを対象にします。
-
-compressionを使用する場合、stored identityがcompressed bytesかlogical decompressed bytesかをArtifact Media/Profileで明示します。
-
-archive expansion後内容を元Artifact Digestと混同しません。
+archiveを展開した後の中身を、元のArtifactのDigestと取り違えません。
 
 ---
 
@@ -319,48 +304,44 @@ archive expansion後内容を元Artifact Digestと混同しません。
 
 ### Payload
 
-Decision payloadはdeterministic CBORでencodeします。
+Decisionのpayloadは、deterministic CBORでencodeします。
 
 ### Schema
 
-CDDLで各versionのallowed map / field / typeを定義します。
+各versionで認めるmap、field、型をCDDLで定義します。
 
 ### Envelope
 
-COSE_Sign1を使用します。
+COSE_Sign1を使います。
 
-Protected metadataに最低限:
+Protected metadataでは、少なくとも次の項目を扱える構造にします。
 
-- algorithm identifier
-- key identifier
-- content / decision type
+- algorithmの識別子
+- keyの識別子
+- contentまたはDecisionの種類
 
-を扱える構造とします。
-
-Authority ID、Decision Kind、schema versionはsignature-covered semanticsから外さないようにします。
+Authority ID、Decision Kind、schemaのversionは、署名で保護される意味の中に必ず含めます。
 
 ### Cryptographic algorithm
 
 このADRでは固定しません。
 
-理由は次のとおりです。
+次の観点を、別のSecurity Profileで比較するためです。
 
-- enterprise PKI / KMS適合性
-- platform crypto support
-- algorithm agility
-- current standards
+- 企業のPKIやKMSとの適合性
+- platformが対応する暗号
+- algorithmを後から替えられること
+- 現行の標準
 
-を別途Security Profileで比較するためです。
-
-WorkerがalgorithmをClient inputから選ばせる構造にはしません。
+Workerが、Clientからの入力に従ってalgorithmを選ぶ構造にはしません。
 
 ---
 
 ## Fingerprint Profile
 
-Idempotencyやbinding digestは用途別Projectionを定義します。
+冪等性の判定やbinding digestには、用途ごとの射影（Projection）を定義します。
 
-例は次のとおりです。
+たとえば次のようなものです。
 
 ```text
 TaskRequestFingerprintV1
@@ -372,51 +353,45 @@ TaskRequestFingerprintV1
   reliability semantics
 ```
 
-External JSONの:
+External JSONの次のような違いでは、Fingerprintが変わらないことを目指します。
 
-- whitespace
-- object property order
-- equivalent textual formatting
+- 空白
+- objectのpropertyの順序
+- 同じ意味になる表記の違い
 
-でFingerprintが変わらないことを目指します。
-
-一方、意味が異なるunknown / omitted / default fieldを誤って同一視しないよう、Projection versionを固定します。
+一方で、未知のfield、省略されたfield、既定値のfieldは、意味が違うことがあります。これらを誤って同じものとみなさないよう、Projectionのversionを固定します。
 
 ---
 
 ## Security Parser Boundary
 
-External JSON parser、Protobuf decoder、CBOR decoderはいずれもattack surfaceです。
+External JSONのparser、Protobufのdecoder、CBORのdecoderは、いずれも攻撃を受ける入口です。
 
-共通制約は次のとおりです。
+共通して次の制約を求めます。
 
-- maximum message bytes
-- maximum nesting
-- bounded repeated fields
-- bounded string / bytes
-- decompression limit
-- no recursive unbounded extension
-- unknown critical semantics reject
-- parser panic isolation / fuzzing
-
-を要求します。
+- messageの最大bytes数
+- 入れ子の最大の深さ
+- 繰り返しfieldの数の上限
+- 文字列とbytesの長さの上限
+- 展開後のsizeの上限
+- 際限なく再帰する拡張を認めない
+- 未知のcriticalな意味を拒否する
+- parserのpanicの隔離とfuzzing
 
 ---
 
 ## Compression
 
-Control message compressionはoptionalです。
+Control messageの圧縮は任意です。
 
-Compression bombを避けるため:
+圧縮爆弾（展開すると巨大になるデータ）を避けるため、次の制約を適用します。
 
-- compressed size limit
-- decompressed size limit
-- supported algorithm allowlist
-- no nested transparent compression
+- 圧縮後のsizeの上限
+- 展開後のsizeの上限
+- 対応するalgorithmの許可リスト
+- 入れ子になった透過的な圧縮を認めない
 
-を適用します。
-
-Bulk Artifact compressionはArtifact profile / Safe Processing Budgetで別に扱います。
+大きなArtifactの圧縮は、ArtifactのprofileとSafe Processing Budgetで別に扱います。
 
 ---
 
@@ -424,24 +399,24 @@ Bulk Artifact compressionはArtifact profile / Safe Processing Budgetで別に�
 
 ### External API
 
-- additive optional fieldはminor evolution候補
-- semantic changeはversionを上げる
-- unknown core fieldはMVP strict modeでreject
-- namespaced optional extensionだけforward-compatibleに扱う
+- 任意で追加されるfieldは、minorな進化の候補とする。
+- 意味を変える場合は、versionを上げる。
+- MVPの厳格modeでは、未知のcore fieldを拒否する。
+- 名前空間付きの任意の拡張だけを、前方互換として扱う。
 
 ### Protobuf
 
-- field number reuse禁止
-- removed fieldはreserve
-- enum unknown値をSecurity Decisionで安全側へ処理
-- required security semanticsをunknown fieldに置かない
+- field番号を再利用しない。
+- 削除したfieldはreserveする。
+- Security Decisionでは、未知のenumの値を、権限を与えない側の値として処理する。
+- Securityに必須の意味を、未知のfieldに持たせない。
 
 ### Signed CBOR Decision
 
-- Decision schema version必須
-- unknown field policyをversionごとに定義
-- security-critical unknownはreject
-- signed old versionをsilent reinterpretしない
+- Decisionのschemaのversionを必須にする。
+- 未知のfieldの扱いを、versionごとに定義する。
+- Securityに関わる未知の要素は拒否する。
+- 署名済みの古いversionを、知らないうちに別の意味で解釈しない。
 
 ---
 
@@ -451,14 +426,14 @@ Bulk Artifact compressionはArtifact profile / Safe Processing Budgetで別に�
 
 - HTTPS
 - JSON
-- OpenAPI 3.2.1 description
-- RFC 9457 errors
+- OpenAPI 3.2.1による記述
+- RFC 9457のerror
 
 ### P1 Worker
 
-- Protobuf schema
-- Connect reference transport
-- polling fallback
+- Protobufのschema
+- Connectの参照transport
+- pollingによるfallback
 
 ### P2 Security Decision
 
@@ -468,7 +443,7 @@ Bulk Artifact compressionはArtifact profile / Safe Processing Budgetで別に�
 
 ### Bulk
 
-- Data Plane binary transfer
+- Data Planeでのbinary転送
 
 ---
 
@@ -476,21 +451,21 @@ Bulk Artifact compressionはArtifact profile / Safe Processing Budgetで別に�
 
 ### Positive
 
-- External Clientは特定SDKに依存しない。
-- Worker Planeはtyped / streaming-friendly。
-- future Browser Workerへ同一Protobuf service modelを再利用しやすい。
-- signed DecisionがProtobuf serialization stabilityへ依存しない。
-- Control metadataとbulk dataが分離される。
-- language-neutralityを維持しつつGo reference implementationを簡潔にできる。
+- External Clientは特定のSDKに依存しない。
+- Worker Planeは型付きで、streamingを扱いやすい。
+- 将来のBrowser Workerで、同じProtobufのservice modelを使い回しやすい。
+- 署名付きDecisionが、Protobufのserializationの安定性に依存しない。
+- Controlのmetadataと大きなdataが分かれる。
+- 特定の言語に依存しない性質を保ちながら、Goの参照実装を簡潔にできる。
 
 ### Cost
 
-- JSON / Protobuf / CBORの3 data representationを扱う必要がある。
-- semantic modelとwire modelの変換Testが必要。
-- CDDL / COSE toolchainを追加する。
-- Schema source-of-truthの管理ルールが必要。
+- JSON、Protobuf、CBORの3つのデータ表現を扱う必要がある。
+- 意味のmodelとwireのmodelの間の変換をテストする必要がある。
+- CDDLとCOSEのtoolchainが加わる。
+- どのschemaを正本とするかの管理ルールが必要になる。
 
-この複雑さは、Security signature bytesとpublic/worker ergonomicsを一つのformatへ無理に押し込むより明示的であると判断します。
+署名のbytesと、公開APIやWorkerの使いやすさを、一つの形式へ無理に押し込むことはしません。この複雑さを抱える方が、それより明示的だと判断しました。
 
 ---
 
@@ -498,32 +473,32 @@ Bulk Artifact compressionはArtifact profile / Safe Processing Budgetで別に�
 
 ### JSON / OpenAPI
 
-- duplicate property
-- unknown core field
-- numeric boundary
-- oversized body
-- invalid UTF-8 / string constraint
-- semantic fingerprint stability
+- 重複したproperty
+- 未知のcore field
+- 数値の境界
+- 大きすぎるbody
+- 不正なUTF-8と文字列の制約
+- 意味上のfingerprintの安定性
 
 ### Protobuf / Connect
 
-- unknown enum security behavior
-- duplicate delivery
-- stream reconnect
-- HTTP/1.1 fallback
-- message size limit
-- deadline / cancellation
+- 未知のenumに対するSecurity上の振る舞い
+- 重複した配送
+- streamの再接続
+- HTTP/1.1でのfallback
+- messageのsizeの上限
+- deadlineとcancel
 
 ### CBOR / COSE
 
-- non-deterministic encoding reject or canonical re-encode policy
-- duplicate map key
-- wrong Decision Kind
-- wrong key ID / Authority
-- mutated payload
-- stale version
-- unknown critical field
-- signature algorithm allowlist
+- deterministicでないencodingを拒否するか、正規の形に再encodeするかの方針
+- mapの重複したkey
+- 誤ったDecision Kind
+- 誤ったkey IDやAuthority
+- 改変されたpayload
+- 古いversion
+- 未知のcritical field
+- 署名algorithmの許可リスト
 
 ---
 
@@ -533,7 +508,7 @@ Bulk Artifact compressionはArtifact profile / Safe Processing Budgetで別に�
 - RFC 9457 Problem Details: https://www.rfc-editor.org/rfc/rfc9457.html
 - gRPC Core Concepts: https://grpc.io/docs/what-is-grpc/core-concepts/
 - Connect: https://connectrpc.com/
-- Protocol Buffers — Serialization Is Not Canonical: https://protobuf.dev/programming-guides/serialization-not-canonical/
+- Protocol Buffers, Serialization Is Not Canonical: https://protobuf.dev/programming-guides/serialization-not-canonical/
 - RFC 8949 CBOR: https://www.rfc-editor.org/rfc/rfc8949.html
 - RFC 8610 CDDL: https://www.rfc-editor.org/rfc/rfc8610.html
 - RFC 9052 COSE Structures: https://www.rfc-editor.org/rfc/rfc9052.html
@@ -541,13 +516,13 @@ Bulk Artifact compressionはArtifact profile / Safe Processing Budgetで別に�
 
 ## Follow-up
 
-次はこのADRに基づきP0 machine-readable schemaを作成します。
+次は、このADRにもとづいてP0の機械可読なschemaを作ります。
 
 対象は次のとおりです。
 
 - TaskRequest
-- Task public status
-- RFC 9457 EKI Problem extension
-- Artifact ingest intent / descriptor
+- Taskの公開status
+- RFC 9457のEKI向けProblem拡張
+- Artifactの取り込みintentとdescriptor
 
-Worker Protobuf / signed Decision CDDLはP1 / P2として別work unitで追加します。
+WorkerのProtobufと、署名付きDecisionのCDDLは、P1とP2として別の作業単位で追加します。

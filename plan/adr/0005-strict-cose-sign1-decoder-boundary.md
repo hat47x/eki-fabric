@@ -1,20 +1,20 @@
-# ADR-0005 — Strict COSE_Sign1 envelope and CBOR codec boundary
+# ADR-0005 COSE_Sign1の外枠を厳格に扱う範囲と、CBOR codecとの境界
 
 - Status: **Accepted; Concrete Adapter implemented and dependency locked (2026-10-06)**
 - Date: 2026-09-22
-- Scope: P2 signed Authority Decision envelope decoding
+- Scope: P2の署名付きAuthority Decisionの外枠（envelope）のdecode
 
 ## 1. Context
 
-P2 payload、Authority/key lifecycle、pre-crypto verification、EdDSA/ES256 cryptographic primitiveまで実装しました。
+ここまでに、P2のpayload、Authorityとkeyのlifecycle、暗号処理の前に行う検証、EdDSAとES256の暗号機能を実装しました。
 
-残る入口は、Client/transportから受け取ったraw `COSE_Sign1` bytesを、現在のtyped Verifier boundaryへ安全に接続する部分です。
+残っている入口は、Clientや通信路から受け取った生の`COSE_Sign1`のbytesを、現在の型付きVerifierの境界へ安全につなぐ部分です。
 
-この境界はhostile input parserであり、単に「CBORをdecodeできる」だけでは不十分です。duplicate map key、indefinite-length item、過剰nesting、detached payload、headerのprotected/unprotected移動、unknown profile、非決定的encoding等をfail-closedで扱う必要があります。
+この境界は、悪意のある入力を読むparserです。「CBORをdecodeできる」だけでは足りません。次のような入力を、処理を進めずにすべて拒否する（fail closed）必要があります。mapの重複したkey、長さを定めないitem、深すぎる入れ子、detached payload、headerをprotectedとunprotectedの間で移したもの、未知のprofile、deterministicでないencoding。
 
 ## 2. Decision
 
-EKI Baselineでは、signed Decision envelopeを次のstrict profileへ固定します。
+EKI Baselineでは、署名付きDecisionの外枠を、次の厳格なprofileに固定します。
 
 ~~~text
 CBOR tag           = 18 (COSE_Sign1)
@@ -26,19 +26,19 @@ signature          = 64-byte bstr
 external AAD       = empty bstr
 ~~~
 
-tagged/untaggedの両方を受け付けるのではなく、EKI carrierではtag 18を必須とします。
+tagの付いた形と付かない形の両方を受け付けることはしません。EKIの運搬用の型（carrier）では、tag 18を必須とします。
 
-## 3. Why tagged-only
+## 3. tag付きの形だけを受け付ける理由
 
-RFC 9052はCOSE_Sign1のtagged/untagged両形式を許容します。
+RFC 9052は、COSE_Sign1について、tagの付いた形と付かない形の両方を認めています。
 
-一方、EKI P1 `SignedDecisionCarrier`はopaque bytesとしてCOSE objectを運び、別media type parameterによるmessage-type識別を持ちません。
+一方、EKIのP1の`SignedDecisionCarrier`は、COSE objectを中身を解釈しないbytesとして運びます。media typeのparameterなど、messageの種類を別に示す手段も持ちません。
 
-そのためBaselineではCBOR tag 18を必須にし、message typeの曖昧性を入口で除去します。
+そのためBaselineでは、CBORのtag 18を必須にし、messageの種類が曖昧になる余地を入口でなくします。
 
 ## 4. Protected header
 
-Baseline protected headerは次の4項目だけを許可します。
+Baselineのprotected headerで認めるのは、次の4項目だけです。
 
 ~~~text
 1       alg          -8 (EdDSA) / -7 (ES256)
@@ -47,120 +47,120 @@ Baseline protected headerは次の4項目だけを許可します。
 -70000  eki-profile  "eki.signed-decision/v1"
 ~~~
 
-`-70000`はCOSE Header ParametersのPrivate Use integer range（-65536より小さい値）から選びます。
+`-70000`は、COSE Header ParametersのPrivate Use用の整数の範囲（-65536より小さい値）から選んだものです。
 
-EKI profile headerはcustom security-critical semanticsなので、standard `crit` headerへ`-70000`を必ず含めます。
+EKIのprofile headerは、EKI独自のSecurity上重要な意味を持ちます。そのため、標準の`crit` headerに、必ず`-70000`を含めます。
 
-`alg`と`kid`も必ずprotected側へ置きます。RFC 9052上は`kid`をunprotectedへ置くこともできますが、EKI Baselineでは許可しません。
+`alg`と`kid`も、必ずprotected側へ置きます。RFC 9052では`kid`をunprotected側へ置くこともできますが、EKI Baselineでは認めません。
 
 ## 5. Unprotected header
 
-MVP / Baselineのunprotected headerはempty mapへ固定します。
+MVPとBaselineでは、unprotected headerを空のmapに固定します。
 
-理由は、現在必要なrouting/security semanticsをすべてprotected payload/headerへ持たせており、unprotected extensionを許可する実益がないためです。
+現在必要な経路制御とSecurityの意味は、すべて保護されたpayloadとheaderに持たせています。unprotected側の拡張を認めても、実際の利益がありません。
 
-countersignature、timestamp、x5chain、network hint等を将来必要とする場合はprofile versionまたは明示的extensionとして追加します。
+将来、countersignature、timestamp、x5chain、networkのhintなどが必要になった場合は、profileのversionを上げるか、明示的な拡張として追加します。
 
-## 6. Attached payload only
+## 6. Payloadは同梱の形だけを認める
 
-`payload = nil`のdetached formは拒否します。
+`payload = nil`という、payloadを外に置く形（detached）は拒否します。
 
-Workerが署名対象bytesを別channelやCaller contextから補完する構造を作らず、検証対象payloadをCOSE object内で自己完結させます。
+署名対象のbytesを、Workerが別の経路や呼び出し側の文脈から補う構造は作りません。検証するpayloadは、COSE objectの中だけで完結させます。
 
 ## 7. Deterministic encoding
 
-次をRFC 8949 Core Deterministic Encodingとして要求します。
+次の2つには、RFC 8949のCore Deterministic Encodingを求めます。
 
-- protected header mapのencoded bytes
-- P2 signed Decision payload
+- protected headerのmapをencodeしたbytes
+- P2の署名付きDecisionのpayload
 
-concrete decoderはdecode成功だけでcanonicalityを判断しません。decode後に同一semantic valueをCore Deterministic Encodingで再encodeし、元bytesと一致することを確認します。
+具体的なdecoderは、decodeに成功したことだけでは、正規の形かどうかを判断しません。decodeした後、同じ意味の値をCore Deterministic Encodingでencodeし直し、元のbytesと一致することを確かめます。
 
-outer COSE objectについても、transport-level malleabilityを抑えるためdeterministic formを生成側Baselineとします。Decision identityやidempotencyはCOSE object bytesやsignature bytesへ依存せず、signed Decision ID / payload digest / nonceを使います。
+外側のCOSE objectも、通信路の途中で形を変えられる余地を減らすため、生成する側ではdeterministicな形をBaselineとします。Decisionの識別や冪等性の判定は、COSE objectや署名のbytesに頼りません。署名付きDecisionのID、payloadのdigest、nonceを使います。
 
-## 8. CBOR dependency
+## 8. CBORへの依存
 
-Concrete codecの第一候補を`github.com/fxamacker/cbor/v2`とします。
+具体的なcodecの第一候補は、`github.com/fxamacker/cbor/v2`とします。
 
-採用理由は次のとおりです。
+採用の理由は次のとおりです。
 
-- RFC 8949対応
-- Core Deterministic Encoding preset
-- duplicate map key rejection option
-- indefinite-length item rejection option
-- nesting / map pair / array element上限
-- unknown struct field error option
-- fuzzingとsecurity-oriented decode controls
-- MIT License
-- 2026-09時点でもreleaseが継続している
+- RFC 8949に対応している。
+- Core Deterministic Encodingの設定が用意されている。
+- mapの重複したkeyを拒否する設定がある。
+- 長さを定めないitemを拒否する設定がある。
+- 入れ子の深さ、mapのpairの数、arrayの要素数に上限を設けられる。
+- 未知のstruct fieldをerrorにする設定がある。
+- fuzzingと、Securityを意識したdecodeの制御がある。
+- MIT Licenseである。
+- 2026-09の時点でもreleaseが続いている。
 
-ADR作成時点では、実行環境で`proxy.golang.org`へのegressが許可されず、`go get`によるmodule lockと実testを実行できませんでした（実装は§18の実装記録を参照）。
+このADRを作った時点では、実行環境から`proxy.golang.org`への通信が許可されていませんでした。そのため、`go get`でmoduleをlockすることも、実際にtestすることもできませんでした（実装については§18の実装記録を参照）。
 
-したがってこのADRではdependencyを`go.mod`へまだ追加しません。取得・lock・testできる環境でversionを固定した時点でConcrete Adapterをmerge対象にします。
+したがって、このADRの時点では、依存関係を`go.mod`へまだ追加しません。取得、lock、testができる環境でversionを固定した時点で、具体的なAdapterをmergeの対象にします。
 
 ## 9. go-cose
 
-`github.com/veraison/go-cose`はCOSE_Sign1の成熟した参照実装として設計・test・interop確認に利用しますが、Baselineの直接dependencyにはしません。
+`github.com/veraison/go-cose`は、成熟したCOSE_Sign1の参照実装です。設計、test、相互運用の確認には使いますが、Baselineの直接の依存関係にはしません。
 
-理由は、EKIではすでに次を独自のsecurity boundaryとして固定しているためです。
+EKIは、次の項目をすでに独自のSecurityの境界として固定しているからです。
 
-- Authority role / Decision kind binding
-- Admin-managed Key Registry
-- algorithm allowlist
-- key lifecycle / revocation
-- trust bundle freshness
-- Decision lifetime
-- typed signing key selection
-- cryptographic primitive
+- Authority roleとDecisionの種類との結び付け
+- 管理者が管理するKey Registry
+- algorithmの許可リスト
+- keyのlifecycleと失効
+- trust bundleの新しさ
+- Decisionの有効期間
+- 型付きの署名keyの選び方
+- 暗号機能
 
-go-coseのgeneric Signer / Verifier / extensible algorithm/header modelをそのまま採用すると、この責務と重複し、EKI固有のfail-closed profileを迂回する入口を増やす可能性があります。
+go-coseの汎用のSigner、Verifier、拡張できるalgorithmとheaderのmodelをそのまま採用すると、これらの責務と重なります。そして、疑わしい入力を拒否するEKI固有のprofileを迂回する入口が増えるおそれがあります。
 
-一方、go-coseが`fxamacker/cbor/v2`を内部利用し、COSE_Sign1やSig_structureをどのように組み立てるかはReferenceとして積極的に照合します。
+一方で、go-coseは内部で`fxamacker/cbor/v2`を使っています。go-coseがCOSE_Sign1やSig_structureをどう組み立てているかは、参照として積極的に照らし合わせます。
 
-## 10. Parser limits
+## 10. Parserの上限
 
-ADR-0004の上限を維持します。
+ADR-0004で決めた上限を維持します。
 
-- total COSE_Sign1: 256 KiB以下
-- protected header encoded bytes: 4 KiB以下
-- `kid`: 128 bytes以下
+- COSE_Sign1の全体は256 KiB以下とする。
+- encodeしたprotected headerは4 KiB以下とする。
+- `kid`は128 bytes以下とする。
 
-Concrete decoderではこれに加え、CBOR nesting、array elements、map pairsをprotocol必要量より十分小さいhard limitへ設定します。
+具体的なdecoderでは、これに加えて、CBORの入れ子の深さ、arrayの要素数、mapのpairの数に、protocolで必要な量より十分に小さい固定の上限を設けます。
 
-Baseline structureが小さいため、library defaultを無条件に使いません。
+Baselineの構造は小さいので、libraryの既定値をそのまま使うことはしません。
 
-## 11. Unknown and duplicate fields
+## 11. 未知のfieldと重複したfield
 
-protected headerは4項目だけを許可し、unknown labelを拒否します。
+protected headerでは4項目だけを認め、未知のlabelは拒否します。
 
-duplicate map keyは常にmalformedとして拒否します。
+mapの重複したkeyは、常に形式が不正なものとして拒否します。
 
-protectedとunprotectedに同一labelが現れる問題は、unprotectedをempty mapへ固定することでBaselineでは構造的に排除します。
+同じlabelがprotectedとunprotectedの両方に現れる問題は、unprotectedを空のmapに固定することで、Baselineでは構造的に起こらなくします。
 
-## 12. Algorithm mapping
+## 12. Algorithmの対応
 
-Go Coreでは`Algorithm.COSEIdentifier()`と`AlgorithmFromCOSEIdentifier()`を相互変換として持ちます。
+Go Coreでは、`Algorithm.COSEIdentifier()`と`AlgorithmFromCOSEIdentifier()`で、相互に変換できるようにします。
 
 ~~~text
 EdDSA -> -8 -> EdDSA
 ES256 -> -7 -> ES256
 ~~~
 
-unknown COSE algorithm identifierをfallbackやcustom registrationで受け入れません。
+未知のCOSE algorithm識別子を、代替のalgorithmへの切り替えや独自の登録によって受け入れることはしません。
 
-## 13. Machine-readable contract
+## 13. 機械可読なcontract
 
-`spec/decisions/v1/cose-profile.cddl`をouter envelope/profileの正本として追加します。
+外側の枠とprofileの正本として、`spec/decisions/v1/cose-profile.cddl`を追加します。
 
-`spec/decisions/v1/decisions.cddl`は引き続きembedded payloadの正本です。
+中に入るpayloadの正本は、引き続き`spec/decisions/v1/decisions.cddl`です。
 
-Go constantsとのdriftは`conformance/protocol/cose_profile_schema_test.go`で検出します。
+Goの定数との食い違いは、`conformance/protocol/cose_profile_schema_test.go`で検出します。
 
-CDDLだけではCore Deterministic Encodingのbyte-level canonicalityを完全には表現できないため、これはConcrete Adapterのconformance testで補います。
+CDDLだけでは、Core Deterministic Encodingのbyte単位の正規性を完全には表せません。この部分は、具体的なAdapterのconformance testで補います。
 
-## 14. Verification order
+## 14. 検証の順序
 
-Concrete decoder導入後の順序は次です。
+具体的なdecoderを入れた後の順序は、次のとおりです。
 
 ~~~text
 1. transport / total byte limit
@@ -179,55 +179,55 @@ Concrete decoder導入後の順序は次です。
 14. Decision-specific subject / prerequisite / current-state validation
 ~~~
 
-## 15. Error mapping
+## 15. Errorの対応付け
 
-Concrete parserはlibrary errorを外部へそのまま公開せず、既存`VerificationReason`へ正規化します。
+具体的なparserは、libraryのerrorをそのまま外へ公開しません。既存の`VerificationReason`へ正規化します。
 
-- malformed CBOR / wrong tag / wrong shape -> `MALFORMED_COSE`
-- invalid/missing/duplicate protected header -> `PROTECTED_HEADER_INVALID`
-- wrong EKI profile -> `UNSUPPORTED_PROFILE`
-- non-deterministic protected header -> `PROTECTED_HEADER_INVALID`
-- non-deterministic signed Decision payload -> `PAYLOAD_NOT_DETERMINISTIC`
-- unknown/disabled algorithm -> `ALGORITHM_NOT_ALLOWED`
+- 不正なCBOR、誤ったtag、誤った形は`MALFORMED_COSE`にする。
+- protected headerの不正、欠落、重複は`PROTECTED_HEADER_INVALID`にする。
+- 誤ったEKI profileは`UNSUPPORTED_PROFILE`にする。
+- deterministicでないprotected headerは`PROTECTED_HEADER_INVALID`にする。
+- deterministicでない署名付きDecisionのpayloadは`PAYLOAD_NOT_DETERMINISTIC`にする。
+- 未知のalgorithmや無効にしたalgorithmは`ALGORITHM_NOT_ALLOWED`にする。
 
 ## 16. Non-goals
 
-このwork unitでは以下を行いません。
+この作業単位では、次のことを扱いません。
 
 - COSE_Sign
 - countersignature
 - detached payload
-- arbitrary external AAD
-- arbitrary/custom algorithm registration
-- x5chain / WebPKI trust bootstrap
-- COSE_KeyをTrust Rootとして受理
-- generic CBOR RPC/data serializationへの拡張
+- 任意のexternal AAD
+- 任意のalgorithmや独自のalgorithmの登録
+- x5chainやWebPKIによる信頼の立ち上げ
+- COSE_KeyをTrust Rootとして受け入れること
+- 汎用のCBORによるRPCやdataのserializationへの拡張
 
 ## 17. Sources
 
-- RFC 8949 — https://www.rfc-editor.org/rfc/rfc8949.html
-- RFC 9052 — https://www.rfc-editor.org/rfc/rfc9052.html
-- RFC 9053 — https://www.rfc-editor.org/rfc/rfc9053.html
-- IANA COSE registry — https://www.iana.org/assignments/cose/
-- fxamacker/cbor — https://github.com/fxamacker/cbor
-- veraison/go-cose — https://github.com/veraison/go-cose
+- RFC 8949: https://www.rfc-editor.org/rfc/rfc8949.html
+- RFC 9052: https://www.rfc-editor.org/rfc/rfc9052.html
+- RFC 9053: https://www.rfc-editor.org/rfc/rfc9053.html
+- IANA COSE registry: https://www.iana.org/assignments/cose/
+- fxamacker/cbor: https://github.com/fxamacker/cbor
+- veraison/go-cose: https://github.com/veraison/go-cose
 
-## 18. Implementation status / Follow-up
+## 18. 実装の状況とFollow-up
 
-dependency取得不能時の先行作業として、strict conformance vectors、`internal/spi/cosedecoder`、`conformance/cosedecodertest`まで実装しました。
+依存関係を取得できなかった間の先行作業として、厳格なconformance vector、`internal/spi/cosedecoder`、`conformance/cosedecodertest`までを実装しました。
 
-SPIはConcrete codecからCoreへCBOR library依存を漏らさず、exact protected-header bytes、attached payload、signature、algorithm、`kid`だけを返します。error時のpartial Envelopeを禁止し、byte sliceはdefensive copyします。Goのnil sliceとempty sliceが混同されないよう、detached nil payloadは拒否し、attached empty bstrは保持します。
+このSPIは、具体的なcodecからCoreへ、CBOR libraryへの依存を漏らしません。返すのは、protected headerの正確なbytes、同梱のpayload、署名、algorithm、`kid`だけです。errorのときに途中まで埋めたEnvelopeを返すことを禁止し、byte sliceは防御的にcopyします。Goのnil sliceと空のsliceを取り違えないよう、nilのdetached payloadは拒否し、同梱された空のbstrは保持します。
 
-共通harnessはrepository fixtureを`go:embed`で利用し、envelope / protected / payload phaseのstable reason、正常系Sig_structure、crypto phaseまで進むtampered signatureをConcrete Adapterへ要求します。
+共通のharnessは、repositoryのfixtureを`go:embed`で読み込みます。そして、具体的なAdapterに次のことを求めます。envelope、protected、payloadの各段階で安定した理由を返すこと。正常系のSig_structureを組み立てること。署名を改ざんした入力では、暗号の段階まで進んでから拒否すること。
 
-次のConcrete workでは、module dependencyを取得・lock・testできる環境で`fxamacker/cbor/v2`を固定し、strict COSE_Sign1 decoderとSig_structure encoderをこのSPIへ実装します。
+次の具体的な作業では、moduleの依存関係を取得、lock、testできる環境で`fxamacker/cbor/v2`を固定します。そのうえで、厳格なCOSE_Sign1のdecoderとSig_structureのencoderを、このSPIに実装します。
 
 ### 実装記録（2026-10-06）
 
-`internal/adapters/reference/cosedecoder/cbor`にstrict COSE_Sign1 decoderとSignature1 encoderを実装しました。`fxamacker/cbor/v2` v2.9.2は`go.mod` / `go.sum`で固定済みで、Go 1.27.0（WSL2、Linux）で全conformance vectorを通ります。このほかに、truncation、1 byte変異、payloadの形と上限、protected header、unprotected header、outer arrayのarity、nilのcodec、署名の往復を確認し、40秒のfuzz（約120万実行）でpanicや未正規化のerrorがないことを確認しました。
+`internal/adapters/reference/cosedecoder/cbor`に、厳格なCOSE_Sign1のdecoderとSignature1のencoderを実装しました。`fxamacker/cbor/v2`のv2.9.2を`go.mod`と`go.sum`で固定し、Go 1.27.0（WSL2、Linux）ですべてのconformance vectorが通ります。ほかに次の項目も確認しました。途中で切れた入力、1 byteだけ変えた入力、payloadの形と上限、protected header、unprotected header、外側のarrayの要素数、nilのcodec、署名の往復。また、40秒のfuzz（約120万回の実行）で、panicや正規化されていないerrorが出ないことも確認しました。
 
-共通fixtureの`kid_too_long`は、実装に当てて初めて不正なbytesだと分かりました。kidの長さ接頭辞は129 bytesなのに本体は133 bytesあり、protected headerの長さと合わず、outer arrayの段階でMALFORMED_COSEとして拒否されていました。意図した「kidが128 bytesを超える」入力にならないため、期待reasonは変えずに、同じ構造で本体を129 bytesに作り直しました。他の20 vectorは変更していません。
+共通fixtureの`kid_too_long`は、実装に当てて初めて、bytesが不正だと分かりました。kidの長さを示す接頭辞は129 bytesなのに、本体は133 bytesありました。そのためprotected headerの長さと合わず、外側のarrayの段階でMALFORMED_COSEとして拒否されていました。これでは、意図した「kidが128 bytesを超える」入力になりません。期待する理由は変えずに、同じ構造のまま本体を129 bytesに作り直しました。ほかの20個のvectorは変えていません。
 
-vectorを実装へ当てずに作った結果なので、今後vectorを追加するときは、対象の段階より浅い段階で拒否されないことを実装で確認してください。
+このvectorは、実装に当てずに作ったために誤っていました。今後vectorを追加するときは、狙った段階より手前の段階で拒否されていないことを、実装で確かめてください。
 
-dependency取得が引き続き不可能な環境では、parserを独自実装して回避しません。
+依存関係を引き続き取得できない環境でも、parserを独自に実装して回避することはしません。

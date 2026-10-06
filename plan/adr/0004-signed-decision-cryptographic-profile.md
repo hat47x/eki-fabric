@@ -1,16 +1,16 @@
-# ADR-0004 — Signed Decision cryptographic profile
+# ADR-0004 署名付きDecisionの暗号Profile
 
 - Status: **Accepted for M0 / Enterprise baseline**
 - Date: 2026-09-22
-- Scope: P2 COSE_Sign1 Authority Decisions
+- Scope: P2のCOSE_Sign1によるAuthority Decision
 
 ## 1. Context
 
-P2でWorkOrder、Lease、Placement Approval、Executor Approval、Artifact Grantのcanonical signed payloadをdeterministic CBORとして固定しました。
+P2では、WorkOrder、Lease、Placement Approval、Executor Approval、Artifact Grantについて、署名対象となる正規のpayloadをdeterministic CBORとして固定しました。
 
-次に、signature algorithm、key identity、rotation / revocation、Worker-side verification、KMS / HSM接続の境界を固定します。
+次に固定するのは、次の境界です。署名algorithm、keyの識別、keyの交換（rotation）と失効（revocation）、Worker側での検証、KMSやHSMとの接続。
 
-重要なのは、暗号signatureが正しいこととEKI上のAuthorizationが成立することを同一視しないことです。
+このとき重要なのは、暗号上の署名が正しいことと、EKI上で権限が認められることを同じものとみなさないことです。
 
 ~~~text
 valid signature
@@ -21,15 +21,15 @@ valid signature
 
 ## 2. Algorithm profile
 
-EKI Baselineでは次の2 profileを第一級に扱います。
+EKI Baselineでは、次の2つのprofileを第一級に扱います。
 
 ### Software Reference Profile
 
 - COSE algorithm: **EdDSA (-8)**
 - curve: **Ed25519**
 - key type: **OKP**
-- COSEではPure EdDSAを使用
-- M0 software reference signer / verifierの最初の実装対象
+- COSEではPure EdDSAを使う。
+- M0のsoftwareによる参照用のSignerとVerifierで、最初に実装する。
 
 ### Enterprise Interoperability Profile
 
@@ -37,15 +37,15 @@ EKI Baselineでは次の2 profileを第一級に扱います。
 - curve: **P-256**
 - hash: **SHA-256**
 - key type: **EC2**
-- KMS / HSM / enterprise PKI連携の第一候補
+- KMS、HSM、企業のPKIと連携するときの第一候補とする。
 
-Deploymentは明示的allowlistで利用profileを選びます。Client / Worker / Task inputがalgorithmを指定してallowlistを広げることはできません。
+どのprofileを使うかは、Deploymentが明示的な許可リストで選びます。Client、Worker、Taskの入力でalgorithmを指定して、許可リストを広げることはできません。
 
 ## 3. Algorithm agility
 
-Protocol自体をEd25519またはP-256専用にはしません。
+Protocolそのものを、Ed25519専用やP-256専用にはしません。
 
-ただし「何でも受理するalgorithm agility」は設けません。
+ただし、「どのalgorithmでも受け入れる」という意味での柔軟性は設けません。
 
 ~~~text
 protected alg
@@ -54,11 +54,11 @@ protected alg
   ∩ deployment allowlist
 ~~~
 
-が一致する場合だけverifyします。unknown / deprecated / disabled algorithmへfallbackしません。
+上の4つがすべて一致する場合にだけ検証します。未知のalgorithm、非推奨のalgorithm、無効にしたalgorithmへ代わりに切り替えることはしません。
 
-## 4. Key isolation
+## 4. Keyの分離
 
-最低限、次のAuthority roleは別signing keyへ分けます。
+少なくとも次のAuthority roleには、それぞれ別の署名keyを使います。
 
 - EXE-1 Executor Admission
 - PLC-1 Placement Authorization
@@ -66,66 +66,66 @@ protected alg
 - DAT-1 Artifact / Data Capability
 - WOR-1 WorkOrder
 
-一つのprivate keyをこれら複数roleで共有することをBaselineにはしません。
+一つのprivate keyをこれら複数のroleで共有する構成を、Baselineにはしません。
 
-Small Managed Profileで同一processへAuthorityを同居させる場合も、key identity / handleは分離します。
+Small Managed Profileで複数のAuthorityを同じprocessに同居させる場合も、keyの識別子とhandleは分けます。
 
-## 5. Standards alignment
+## 5. 標準との整合
 
-COSE algorithm identifierとkey type / curveの整合はRFC 9053へ従います。
+COSEのalgorithm識別子と、keyの種類やcurveとの整合は、RFC 9053に従います。
 
-- EdDSA = -8
-- ES256 = -7
-- EdDSAではOKP + supported Edwards curve
-- ES256ではEC2 + P-256 + SHA-256
+- EdDSAは-8とする。
+- ES256は-7とする。
+- EdDSAでは、OKPと、対応するEdwards curveを使う。
+- ES256では、EC2、P-256、SHA-256を使う。
 
-Verifierはalgorithmだけでなくkey type / curveも確認します。
+Verifierは、algorithmだけでなく、keyの種類とcurveも確認します。
 
-FIPS 186-5はECDSAとEdDSAをDigital Signature Standardとして扱います。NIST SP 800-57 Part 1 Rev.5のkey lifecycle / compromise guidanceをKey Registry設計の参考にします。
+FIPS 186-5は、ECDSAとEdDSAをDigital Signature Standardとして扱っています。Key Registryの設計では、NIST SP 800-57 Part 1 Rev.5が示すkeyのlifecycleと漏えい時の扱いを参考にします。
 
-## 6. Why Ed25519 first for M0
+## 6. M0でEd25519を先に実装する理由
 
-M0 Reference ImplementationではEd25519を先に実装します。
+M0のReference Implementationでは、Ed25519を先に実装します。理由は次のとおりです。
 
-- Go標準libraryで利用できる
-- deterministic signature
-- fixed-size key / signatureで実装が単純
-- ASN.1 DER変換を必要としない
-- software-only Reference Signerを小さく作れる
+- Goの標準libraryで使える。
+- 署名がdeterministicになる。
+- keyと署名の長さが固定なので、実装が単純になる。
+- ASN.1 DERへの変換が要らない。
+- softwareだけで動く参照用のSignerを小さく作れる。
 
-これはEnterprise環境へEd25519を強制する判断ではありません。
+これは、Enterprise環境にEd25519を強制する判断ではありません。
 
-## 7. Why ES256 is first-class
+## 7. ES256を第一級にする理由
 
-Enterprise KMS / HSM / PKIとの接続を考慮し、P-256 / ES256を第一級profileとして扱います。
+企業のKMS、HSM、PKIとの接続を考え、P-256とES256を第一級のprofileとして扱います。
 
-COSE ES256 signatureはASN.1 DERではなく、RFC 9053で定義されるfixed-width `R || S` byte stringとして扱います。
+COSEのES256の署名は、ASN.1 DERではなく、RFC 9053で定められた固定長の`R || S`というbyte列として扱います。
 
-Reference implementationでES256を追加する際は、Go crypto APIとのencoding boundaryをtestで固定します。
+参照実装にES256を加えるときは、Goのcrypto APIとの間のencodingの境界を、testで固定します。
 
-## 8. COSE protected header profile
+## 8. COSEのprotected headerのprofile
 
-M0 / BaselineのCOSE_Sign1 protected headerは少なくとも次を含みます。
+M0とBaselineでは、COSE_Sign1のprotected headerに、少なくとも次の項目を含めます。
 
 - `alg`
 - `kid`
-- signed-decision content/profile identifier
+- 署名付きDecisionであることを示すcontentとprofileの識別子
 
-protected header map自体もdeterministic CBORでencodeします。
+protected headerのmapそのものも、deterministic CBORでencodeします。
 
-`alg`はKey RegistryとAuthority Policyのallowlistへ照合します。
+`alg`は、Key RegistryとAuthority Policyの許可リストと照合します。
 
-`kid`はopaque identifierであり、local Trust / Key Registry内のrecordを選ぶindexです。COSE message内の未知key materialをTrust Rootとして自動採用しません。
+`kid`は中身に意味を持たない識別子で、手元のTrust StoreやKey Registryの中からrecordを選ぶための索引です。COSE messageの中に入っている未知のkeyを、Trust Rootとして自動的に採用することはしません。
 
-content/profileはP2 payloadとしてdecodeする前に確認し、unprotected headerだけを判定根拠にはしません。
+contentとprofileは、P2のpayloadとしてdecodeする前に確認します。unprotected headerだけを判定の根拠にはしません。
 
-MVPのexternal AADはempty bstrへ固定し、detached payload、countersignature、multisignatureは利用しません。
+MVPでは、external AADを空のbstrに固定します。detached payload、countersignature、multisignatureは使いません。
 
 ## 9. Key Registry
 
-VerifierはAdministrative Planeで管理されたKey Registryを参照します。
+Verifierは、Administrative Planeで管理されたKey Registryを参照します。
 
-Logical record:
+論理上のrecordは次のとおりです。
 
 ~~~text
 Key ID / kid
@@ -145,43 +145,43 @@ Policy revision
 Created / updated audit metadata
 ~~~
 
-Private key materialをWorkerへ配布しません。Workerはverificationに必要なpublic trust materialだけを持ちます。
+private keyをWorkerへ配りません。Workerが持つのは、検証に必要な公開の信頼情報だけです。
 
-## 10. `kid` reuse
+## 10. `kid`の再利用
 
-同一Trust Domain内で、同じ`kid`を別public keyへ再利用しません。
+同じTrust Domainの中では、同じ`kid`を別の公開keyに使い回しません。
 
-Rotationでは新しい`kid`を発行し、古いDecisionの`kid`が将来別keyへ解釈されないようにします。
+keyを交換するときは新しい`kid`を発行します。こうして、古いDecisionの`kid`が、将来別のkeyとして解釈されないようにします。
 
-## 11. Key states
+## 11. Keyの状態
 
-Baselineでは少なくとも次を区別します。
+Baselineでは、少なくとも次の状態を区別します。
 
 ### PENDING
 
-登録済みだがsign / verify authorityにはまだ使わない。
+登録は済んでいるが、署名にも検証にもまだ使わない状態です。
 
 ### ACTIVE
 
-新しいDecisionのsigningとverificationに利用できる。
+新しいDecisionの署名と検証に使える状態です。
 
 ### VERIFY_ONLY
 
-新規signingには使わない。有効期間中に発行された既存Decisionのverificationにだけ利用する。通常rotation後の旧keyに使います。
+新しい署名には使わず、有効期間中に発行された既存のDecisionの検証にだけ使う状態です。通常のkey交換の後の、古いkeyに使います。
 
 ### REVOKED
 
-live authorizationのverificationへ利用しない。routine retirement以外の失効に使います。
+現在の権限の検証には使わない状態です。定期的な引退以外の理由による失効に使います。
 
 ### COMPROMISED
 
-private key compromiseを想定するstate。そのkeyで署名された未期限Decisionをlive authorizationとして信用しません。
+private keyが漏えいしたと想定する状態です。このkeyで署名され、まだ期限が切れていないDecisionを、現在の権限として信用しません。
 
-過去Audit Artifactとしてsignature bytesを保持することと、現在Authorizationへ使えることを分けます。
+過去のAudit Artifactとして署名のbytesを保管しておくことと、それを現在の権限の判断に使えることとは、分けて扱います。
 
-## 12. Rotation
+## 12. Keyの交換
 
-標準rotation:
+標準的な交換の流れは次のとおりです。
 
 ~~~text
 K1 ACTIVE
@@ -196,43 +196,43 @@ K2 ACTIVE
 K1 archival / removal from online verifier set
 ~~~
 
-新旧keyのoverlap期間を許容できますが、Signerがどのkeyを使うかはAuthority Policyが決めます。Client / Workerは`kid`を選べません。
+新旧のkeyが重なる期間は認めます。ただし、Signerがどちらのkeyを使うかを決めるのはAuthority Policyです。ClientやWorkerは`kid`を選べません。
 
-## 13. Revocation propagation
+## 13. 失効の伝わり方
 
-Workerはlocal Trust Store / Key Registry snapshotを使ってverifyできます。
+Workerは、手元のTrust StoreやKey Registryのsnapshotを使って検証できます。
 
-ただしstale Trust Storeで無期限に新WorkOrderを受理しません。Deployment Profileはtrust bundle revision、validated time、maximum allowed stalenessを設定します。
+ただし、古いTrust Storeのまま、新しいWorkOrderを期限なく受け入れ続けることはしません。Deployment Profileで、trust bundleのrevision、検証した時刻、許容する古さの上限を設定します。
 
-revocation updateを受けたら以後のWorkOrder acceptanceへ反映します。exact staleness durationはMVP implementation configで決めます。
+失効の更新を受け取ったら、それ以降のWorkOrderの受け入れに反映します。許容する古さの具体的な長さは、MVPの実装の設定で決めます。
 
-## 14. Key compromise containment
+## 14. Keyが漏えいしたときの被害の封じ込め
 
-Authority roleごとのkey separationにより、たとえばWOR-1 key compromiseだけでExecutor Admission、Placement Authorization、Artifact Grant、Leaseの有効なDecisionを偽造できない構造を維持します。
+Authority roleごとにkeyを分けているので、たとえばWOR-1のkeyが漏えいしても、それだけではExecutor Admission、Placement Authorization、Artifact Grant、Leaseの有効なDecisionを偽造できません。この構造を保ちます。
 
-WorkerはWorkOrderだけでなくprerequisite Decisionを独立verifyします。
+Workerは、WorkOrderだけでなく、その前提となるDecisionもそれぞれ独立に検証します。
 
-## 15. Signer boundary
+## 15. Signerの境界
 
-Signer SPIをgenericな `Sign(bytes) -> signature` としてScheduler等へ広く渡しません。
+Signer SPIを、`Sign(bytes) -> signature`のような汎用の形で、Schedulerなどへ広く渡しません。
 
-Logical requestには少なくともAuthority role、Decision kind、canonical payload、expected Authority Principal、policy revision / signing contextを含めます。
+論理上のrequestには、少なくとも次の項目を含めます。Authority role、Decisionの種類、正規のpayload、期待するAuthority Principal、policyのrevisionや署名の文脈。
 
-Signer Adapter / Authority Serviceがrole、kind、active key、algorithm、payload profileを確認してからCOSE_Sign1を生成します。
+Signer AdapterやAuthority Serviceは、role、種類、ACTIVEなkey、algorithm、payloadのprofileを確認してから、COSE_Sign1を生成します。
 
 SchedulerはSignerを直接持ちません。
 
-## 16. Key selection
+## 16. Keyの選び方
 
-Callerが任意`kid`を渡してsigning keyを選ぶ構造をBaselineにしません。
+呼び出し側が任意の`kid`を渡して署名keyを選ぶ構造は、Baselineにしません。
 
-Authority / Signer側がrole、trust domain、algorithm profile、key state、activation policyからactive keyを選びます。
+ACTIVEなkeyは、AuthorityやSigner側が、role、trust domain、algorithmのprofile、keyの状態、有効化のpolicyにもとづいて選びます。
 
-test / migration用のexplicit key selectionが必要でもAdministrative capabilityとして分離します。
+testやmigrationのためにkeyを明示的に選ぶ必要がある場合も、その操作はAdministrativeな権限として分けます。
 
-## 17. Verifier order
+## 17. Verifierの確認順序
 
-Worker-side verifierは概念的に次の順序で確認します。
+Worker側のVerifierは、概念上、次の順序で確認します。
 
 ~~~text
 1. total COSE object size / nesting limit
@@ -255,58 +255,58 @@ Worker-side verifierは概念的に次の順序で確認します。
 18. Decision-specific semantic checks
 ~~~
 
-signatureが正しいだけでstep 14以降を省略しません。
+署名が正しかったというだけで、step 14以降を省きません。
 
-## 18. Time validation
+## 18. 時刻の検証
 
-Verifierはmanaged clockを基準に、issued timeが不合理な未来ではないこと、expires > issued、現在時刻が有効期間内であること、bounded clock skewだけを許容することを確認します。
+Verifierは、管理された時計を基準に次のことを確認します。発行時刻が不自然に未来でないこと。期限が発行時刻より後であること。現在時刻が有効期間の中にあること。時計のずれは上限の範囲内だけ許すこと。
 
-Worker自身の任意wall clockをAuthorityへしません。exact skew秒数はDeployment configurationで固定し、Client Taskごとに変更できません。
+Worker自身の任意の時計を、Authorityの根拠にしません。許容するずれの具体的な秒数はDeploymentの設定で固定し、ClientがTaskごとに変えることはできません。
 
-## 19. Decision lifetime
+## 19. Decisionの有効期間
 
-Decision TTLは種類ごとにPolicyで上限を持ちます。
+Decisionの有効期間（TTL）には、種類ごとにPolicyで上限を設けます。
 
-- Leaseは短命
-- WorkOrderはprerequisite expiryを越えない
-- Artifact GrantはTask / Lease用途に必要な短命scope
-- Executor Approvalは比較的長くできるがrevocation可能
+- Leaseの有効期間は短くする。
+- WorkOrderの有効期間は、前提となるDecisionの期限を越えない。
+- Artifact Grantの有効範囲は、TaskやLeaseの用途に必要な、短い範囲に限る。
+- Executor Approvalは比較的長くできるが、失効させられるようにする。
 
-ClientがTTLを指定して延長できません。
+ClientがTTLを指定して延ばすことはできません。
 
-## 20. Private key protection
+## 20. Private keyの保護
 
 ### Development
 
-ephemeral / local development keyを許容し、Production profileと区別します。
+使い捨てのkeyや、開発用のlocalなkeyを認めます。ただし、Production用のprofileとは区別します。
 
 ### DP-1 Small Managed
 
-少なくともdedicated key file / OS key store、restrictive filesystem ACL、roleごとの別key、secretのlog/config dump禁止を要求します。
+少なくとも次のことを求めます。専用のkey fileまたはOSのkey storeを使う。filesystemのACLを厳しくする。roleごとに別のkeyを使う。secretをlogや設定のdumpに出さない。
 
 ### DP-2 Enterprise
 
-KMS / HSM等、private keyをControl Plane application memoryへexportしないAdapterを第一候補とします。
+KMSやHSMのように、private keyをControl Planeのapplicationのmemoryへ取り出さないAdapterを、第一候補とします。
 
-Signer SPIはlocal software keyとKMS/HSMの両方を同じAuthority semanticsで扱います。
+Signer SPIは、localのsoftware keyとKMSやHSMの両方を、同じAuthorityの意味で扱います。
 
-## 21. Public key distribution
+## 21. 公開keyの配布
 
-Workerへ渡すpublic trust materialはAdmin-managed bundleです。
+Workerへ渡す公開の信頼情報は、管理者が管理するbundleです。
 
-Workerが受信したCOSE objectからembedded public key、arbitrary certificate、URL、JWKS endpointを自動Trust Rootとして追加しません。
+Workerは、受け取ったCOSE objectに含まれる公開key、任意の証明書、URL、JWKSのendpointを、自動的にTrust Rootへ加えません。
 
-将来x5chain等を使う場合もconfigured trust anchorとpolicyへchain validationする別profileとします。
+将来x5chainなどを使う場合も、設定されたtrust anchorとpolicyに照らして証明書のchainを検証する、別のprofileとします。
 
 ## 22. Federation
 
-Foreign Trust DomainのAuthority keyをlocal Trust Storeへ追加しただけでlocal WorkOrder Authorityとして扱いません。
+他のTrust DomainのAuthority keyを手元のTrust Storeに加えただけで、それを手元のWorkOrderのAuthorityとして扱うことはしません。
 
-標準FederationではProvider domainがforeign intentをlocal Admissionへ通し、Provider local Authorityがlocal Worker向けDecisionを発行します。
+標準的なFederationでは、Provider側のdomainが、外部から来た依頼を自分のAdmissionに通します。そのうえで、Provider側のAuthorityが、自分のWorker向けのDecisionを発行します。
 
-## 23. Error handling
+## 23. Errorの扱い
 
-Verifierはmachine-readable reason categoryを持ちます。
+Verifierは、機械が読める理由の分類を持ちます。
 
 - MALFORMED_COSE
 - PROTECTED_HEADER_INVALID
@@ -328,76 +328,76 @@ Verifierはmachine-readable reason categoryを持ちます。
 - TRUST_BUNDLE_STALE
 - TIME_WINDOW_INVALID
 
-WorkerからClientへ内部詳細をそのまま公開することは標準にしません。
+WorkerからClientへ、内部の詳細をそのまま公開することは標準にしません。
 
-## 24. Size limits
+## 24. Sizeの上限
 
-M0 reference verifierはsigned Decisionをsmall control metadataとして扱います。
+M0の参照用Verifierは、署名付きDecisionを小さなcontrol用のmetadataとして扱います。
 
-- COSE_Sign1 total bytes: 256 KiB以下
-- protected header encoded bytes: 4 KiB以下
-- `kid`: 128 bytes以下
+- COSE_Sign1の全体は256 KiB以下とする。
+- encodeしたprotected headerは4 KiB以下とする。
+- `kid`は128 bytes以下とする。
 
-より厳しいDeployment limitを設定できます。bulk dataや証拠Artifactをsigned Decisionへinlineしません。
+Deploymentでより厳しい上限を設定できます。大きなdataや証拠のArtifactを、署名付きDecisionの中に直接入れません。
 
 ## 25. Audit
 
-Signing / verificationではAuthority role、Decision kind / ID、kid、algorithm、payload digest、policy revision、result、failure category、timestampをsecretなしでAudit可能にします。
+署名と検証については、次の項目を、secretを含めずにAuditできるようにします。Authority role、Decisionの種類とID、kid、algorithm、payloadのdigest、policyのrevision、結果、失敗の分類、timestamp。
 
-private key、raw secret、unnecessary Artifact contentをlogしません。
+private key、生のsecret、不要なArtifactの中身はlogに出しません。
 
 ## 26. Conformance
 
-### Algorithm confusion
+### Algorithmの取り違え
 
-- Ed25519 key + ES256 alg reject
-- P-256 key + EdDSA alg reject
-- unknown / disabled alg reject
+- Ed25519のkeyとES256のalgの組み合わせを拒否する。
+- P-256のkeyとEdDSAのalgの組み合わせを拒否する。
+- 未知のalgや無効にしたalgを拒否する。
 
-### Key identity / lifecycle
+### Keyの識別とlifecycle
 
-- unknown kid reject
-- reused kid / changed key material reject at registry load
-- wrong Authority role / Principal reject
-- PENDING / VERIFY_ONLY signing reject
-- REVOKED / COMPROMISED live authorization reject
+- 未知のkidを拒否する。
+- kidの再利用や、key materialの変更を、registryの読み込み時に拒否する。
+- 誤ったAuthority roleやPrincipalを拒否する。
+- PENDINGやVERIFY_ONLYのkeyでの署名を拒否する。
+- REVOKEDやCOMPROMISEDのkeyを、現在の権限の根拠としては拒否する。
 
 ### COSE
 
-- alg only in unprotected header reject
-- kid only in unprotected header reject
-- wrong profile reject
-- detached payload reject
-- malformed / oversized COSE reject
+- algがunprotected headerにしかない場合は拒否する。
+- kidがunprotected headerにしかない場合は拒否する。
+- 誤ったprofileを拒否する。
+- detached payloadを拒否する。
+- 形式が不正なCOSEや、大きすぎるCOSEを拒否する。
 
 ### Payload
 
-- non-deterministic payload reject
-- wrong Decision kind reject
-- expired reject
-- Task / Attempt / Worker mismatch reject
-- stale Lease / policy reject
+- deterministicでないpayloadを拒否する。
+- 誤ったDecisionの種類を拒否する。
+- 期限切れを拒否する。
+- Task、Attempt、Workerの不一致を拒否する。
+- 古いLeaseやpolicyを拒否する。
 
 ## 27. Non-goals
 
-このProfileはTLS certificate profile、OAuth token signing、Artifact encryption、Secret encryption、public WebPKI、multi-party approvalを定義しません。
+このProfileでは、次のものを定義しません。TLSの証明書のprofile、OAuthのtokenの署名、Artifactの暗号化、Secretの暗号化、公開WebPKI、複数者による承認。
 
-用途の違うkeyを一つの万能EKI keyへ統合しません。
+用途の違うkeyを、なんでもできる一つのEKI keyへまとめることはしません。
 
 ## 28. Sources
 
-- RFC 9052 — https://www.rfc-editor.org/rfc/rfc9052.html
-- RFC 9053 — https://www.rfc-editor.org/rfc/rfc9053.html
-- RFC 8032 — https://www.rfc-editor.org/rfc/rfc8032.html
-- FIPS 186-5 — https://csrc.nist.gov/pubs/fips/186-5/final
-- NIST SP 800-57 Part 1 Rev.5 — https://csrc.nist.gov/pubs/sp/800/57/pt1/r5/final
+- RFC 9052: https://www.rfc-editor.org/rfc/rfc9052.html
+- RFC 9053: https://www.rfc-editor.org/rfc/rfc9053.html
+- RFC 8032: https://www.rfc-editor.org/rfc/rfc8032.html
+- FIPS 186-5: https://csrc.nist.gov/pubs/fips/186-5/final
+- NIST SP 800-57 Part 1 Rev.5: https://csrc.nist.gov/pubs/sp/800/57/pt1/r5/final
 
-## 29. Implementation status / Follow-up
+## 29. 実装の状況とFollow-up
 
-M0 Signer / Verifier domain boundary、in-memory Trust Registry、pre-crypto policy gate、およびstandard-library cryptographic primitive boundaryまで実装しました。
+M0のSignerとVerifierのdomainの境界、memory上のTrust Registry、暗号処理の前に行うpolicyの検査、標準libraryの暗号機能との境界までを実装しました。
 
-Reference Software SignerはEdDSA/Ed25519とES256/P-256を扱い、ES256 signatureはCOSEのfixed-width 64-byte `R || S`形式を使います。これはM0 / development / DP-1向けreferenceであり、DP-2 Enterpriseではprivate keyをapplication memoryへexportしないKMS / HSM Adapterを引き続き第一候補とします。
+参照用のSoftware Signerは、EdDSA/Ed25519とES256/P-256を扱います。ES256の署名には、COSEの固定長64 bytesの`R || S`形式を使います。これはM0、開発、DP-1向けの参照実装です。DP-2 Enterpriseでは、引き続き、private keyをapplicationのmemoryへ取り出さないKMSやHSMのAdapterを第一候補とします。
 
-Signerはtyped Authority requestとRegistry-selected primary keyを要求し、genericな`Sign(bytes)` capabilityとしてScheduler等へ公開しません。signature verificationもpre-crypto gateを前後に再評価します。ただし最終Authorizationの原子性はcrypto layerだけでは保証せず、Execution直前のcurrent Lease / Policy / Decision validationを別途要求します。
+Signerは、型付きのAuthorityのrequestと、Registryが選んだprimary keyを要求します。汎用の`Sign(bytes)`という権限として、Schedulerなどへ公開することはしません。署名の検証の前後でも、暗号処理の前に行うpolicyの検査をもう一度行います。ただし、最終的な権限判断の原子性は、暗号の層だけでは保証しません。実行の直前に、現在のLease、Policy、Decisionを別に検証することを求めます。
 
-次の実装workはcanonical Decision payload decoderとCOSE protected-header parserです。COSE / CBOR library dependencyはSQLiteと同様にGo toolingで取得・lock・testできる環境で導入し、未検証dependency lockを推測でcommitしません。
+次の実装作業は、正規のDecision payloadのdecoderと、COSEのprotected headerのparserです。COSEやCBORのlibraryへの依存は、SQLiteと同じく、Goのtoolで取得、lock、testができる環境で導入します。検証していない依存関係のlockを、推測でcommitしません。

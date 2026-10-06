@@ -1,92 +1,90 @@
-# ADR-0002 — GoをReference Implementation Languageとする
+# ADR-0002 Reference ImplementationにGoを採用する
 
 - Status: **Accepted for MVP**
 - Date: 2026-09-21
 
 ## Context
 
-EKI FabricのMVPでは、Control PlaneとEndpoint Worker Agentを実際に動かし、Task / Attempt / Lease、Local Governor、Artifact transfer、Result verificationを一つのvertical sliceとして検証する必要があります。
+EKI FabricのMVPでは、Control PlaneとEndpoint Worker Agentを実際に動かす必要があります。そのうえで、Task、Attempt、Lease、Local Governor、Artifactの転送、Resultの検証を、一つのvertical sliceとして確かめます。
 
 一方でRQ-002により、External ContractをReference実装の言語専用にしてはいけません。
 
 したがって、次の二つは別の判断です。
 
 1. EKIのReference Implementationを何語で書くか
-2. EKIのProtocol / Contractを何語から利用できるか
+2. EKIのProtocolとContractを、何語から利用できるか
 
 ## Decision
 
-**Reference ImplementationはGoを採用します。**
+**Reference ImplementationにはGoを採用します。**
 
-ただし、
+ただし、外部Contractの正本は次のとおりとし、Goのstructやinterfaceを外部Contractの正本にはしません。
 
-- External Client Contractの正本は `spec/external/openapi.json`
-- Worker / Adapter Contractは後続のlanguage-neutral IDL
-- signed Authority DecisionはCDDL / COSE
+- External Client Contractの正本は`spec/external/openapi.json`とする。
+- WorkerとAdapterのContractは、後で作る言語非依存のIDLとする。
+- 署名付きのAuthority Decisionは、CDDLとCOSEで定める。
 
-とし、Go struct / interfaceを外部Contractの正本にしません。
+Goの実装packageは、原則として`internal/`の下に置きます。
 
-Goの実装packageは原則 `internal/` 配下へ置きます。
-
-将来のGo SDKは、Core実装packageを直接公開するのではなく、External Contract向けの独立した `sdk/go` として扱います。
+将来のGo SDKは、Core実装のpackageを直接公開しません。External Contract向けの独立した`sdk/go`として扱います。
 
 ## 主な理由
 
 ### Endpoint Agentを軽く配布しやすい
 
-業務端末や個人端末で常駐する可能性があるため、単一binary化しやすく、OSごとの配布が比較的単純で、標準libraryだけでもHTTP、TLS、process、filesystem等の基盤を作りやすい点を重視します。
+Agentは業務端末や個人端末で常駐する可能性があります。そのため、単一のbinaryにしやすいこと、OSごとの配布が比較的単純なこと、標準libraryだけでもHTTP、TLS、process、filesystemなどの基盤を作りやすいことを重視しました。
 
-### Control PlaneとAgentで共通実装を持てる
+### Control PlaneとAgentで共通の実装を持てる
 
-Task ID、Lease検証、Digest、bounded I/O、structured error等の共通logicを同じmoduleで再利用できます。
+Task ID、Leaseの検証、Digest、上限付きのI/O、構造化されたerrorなどの共通の処理を、同じmoduleで使い回せます。
 
-### 実装参加の敷居を過度に上げない
+### 実装に参加する敷居を上げすぎない
 
-EKIは分散system、security、worker runtime等を同時に扱います。言語側まで高い習熟を前提にせず、Architecture上難しい部分へ集中しやすくします。
+EKIは、分散system、security、Workerのruntimeなどを同時に扱います。言語にまで高い習熟を求めないことで、Architecture上の難しい部分へ集中しやすくします。
 
-### 既存Spikeを活用できる
+### 既存のSpikeを活かせる
 
-既存SpikeでGoを使って検証してきたため、上流工程で得た小さな実証を捨てずに済みます。
+これまでのSpikeではGoを使って検証してきました。Goを選べば、上流工程で得た小さな実証を捨てずに済みます。
 
 ## Goを選んでも固定しないもの
 
-- External Clientの利用言語
-- Executor実装言語
-- out-of-process Adapter実装言語
-- Browser Worker実装
-- Proof / Attestation verifierの実装言語
+- External Clientが使う言語
+- Executorの実装言語
+- out-of-processのAdapterの実装言語
+- Browser Workerの実装
+- ProofやAttestationを検証する部品の実装言語
 - Application側の言語
 
-WASMやexternal service Adapter等を通じて、他言語をfirst-classに扱える構造を維持します。
+WASMや外部serviceのAdapterなどを通じて、ほかの言語も第一級に扱える構造を保ちます。
 
-## RustをCore Referenceにしない理由
+## RustをCoreのReferenceにしない理由
 
-Rustはmemory safetyや低level制御の点で有力です。
+Rustは、memory安全性や低水準の制御の点で有力です。
 
-ただしMVPの中心課題はunsafe codeを大量に書くことではなく、Authority separation、durable state、protocol validation、endpoint governance、recovery semanticsを正しく実装することです。
+しかし、MVPの中心課題は、unsafeなcodeを大量に書くことではありません。権限の分離、永続化された状態、protocolの検証、端末の統治、障害からの回復の意味を、正しく実装することです。
 
-初期Reference全体をRustへ寄せるより、Goで実装参加の負荷を抑え、native sandbox backend等の必要箇所だけ別実装を接続できるSPIを保つ方を選びます。
+初期のReferenceをすべてRustへ寄せることはしません。Goで実装参加の負担を抑え、nativeのsandbox backendのように必要な箇所だけを別の実装で接続できるSPIを保つ方を選びます。
 
-Rust製AdapterやRuntimeを排除する判断ではありません。
+RustのAdapterやRuntimeを排除する判断ではありません。
 
 ## Consequences
 
 ### Positive
 
-- M0を小さく開始できる。
-- Control / Agentの共通実装が容易。
-- Cross-platform binaryを作りやすい。
-- 既存Spikeの知見を移しやすい。
-- 初見の開発者がRepositoryを追いやすい。
+- M0を小さく始められる。
+- ControlとAgentの共通実装を作りやすい。
+- 複数platform向けのbinaryを作りやすい。
+- 既存のSpikeで得た知見を移しやすい。
+- 初めて読む開発者がRepositoryを追いやすい。
 
 ### Cost / Risk
 
-- Go runtime / GCが一部の厳しいruntime用途に不向きな場合がある。
-- OS-specific sandboxやGPU runtimeでは別言語・native componentが必要になり得る。
-- Go interfaceを外部SPIだと誤認しやすい。
+- GoのruntimeやGCが、一部の厳しいruntimeの用途に向かない場合がある。
+- OS固有のsandboxやGPUのruntimeでは、別の言語やnativeの部品が必要になり得る。
+- Goのinterfaceを、外部のSPIだと誤解しやすい。
 
-最後の点を防ぐため、Go packageは `internal/` を基本とし、machine-readable specを正本にします。
+最後の誤解を防ぐため、Goのpackageは`internal/`を基本にし、機械可読なspecを正本にします。
 
 ## Follow-up
 
-Repository Layoutでは `cmd/eki-control`、`cmd/eki-agent`、`internal/core`、`internal/control`、`internal/agent`、`internal/spi`、`internal/adapters`、`spec/`、`conformance/` を基礎にします。
+Repository Layoutは、`cmd/eki-control`、`cmd/eki-agent`、`internal/core`、`internal/control`、`internal/agent`、`internal/spi`、`internal/adapters`、`spec/`、`conformance/`を基礎にします。

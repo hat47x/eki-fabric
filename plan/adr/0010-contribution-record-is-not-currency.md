@@ -1,4 +1,4 @@
-# ADR-0010 — Contribution Recordは検証可能な事実の記録とし、残高・移転・価格をCoreへ持たない
+# ADR-0010 Contribution Recordは検証可能な事実の記録とし、残高・移転・価格をCoreへ持たない
 
 - Status: **Proposed**
 - Date: 2026-10-06

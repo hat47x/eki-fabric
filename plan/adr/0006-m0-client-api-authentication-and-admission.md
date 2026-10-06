@@ -1,11 +1,11 @@
-# ADR-0006 — M0のClient API認証とTask Admissionの境界
+# ADR-0006 M0のClient API認証とTask Admissionの境界
 
 - Status: **Accepted for M0 / DP-0, DP-1**
 - Date: 2026-10-06
 
 ## 1. Context
 
-P0 External Contract（`spec/external/openapi.json`）は、すべてのoperationで認証を必須（`x-eki-authentication-required: true`）としつつ、認証方式そのものは固定していません。具体方式（OIDC、mTLS等）は別のSecurity work unitで決める前提です。
+P0 External Contract（`spec/external/openapi.json`）は、すべてのoperationで認証を必須（`x-eki-authentication-required: true`）にしていますが、認証方式そのものは固定していません。OIDCやmTLSなどの具体的な方式は、別のSecurityの作業単位で決める前提です。
 
 一方、M0 vertical sliceでは、悪意あるClientからTaskを受理するところから確認する必要があります。認証なしで動かす暫定版は作りません。「あとで認証を足す」前提で作ると、匿名で動く経路がテストと設計の既定になり、後から塞ぎにくくなるためです。
 
@@ -52,11 +52,11 @@ M0で意図して拒否するものは次のとおりです。いずれも「後
 ### 2.4 冪等性
 
 - Keyは**principalごと**。別のprincipalが同じKey文字列を使っても衝突しない。
-- 同じKey・同じ正規化後のrequestなら、同じTaskへ収束する（HTTPは同じ`202`）。同じKeyで別のrequestなら`409`。
-- 比較に使うfingerprintは、key順、空白、省略されたdefaultに依存しない。一方、数値は送られたliteralのまま扱う（`1`と`1.0`は別のrequest）。これは「別のrequestを同一視する」誤りではなく、「同じrequestを別と扱ってconflictにする」側に倒した選択である。
+- 同じKeyで、正規化した後のrequestも同じなら、同じTaskを返す（HTTPは同じ`202`）。同じKeyで別のrequestなら`409`。
+- 比較に使うfingerprintは、key順、空白、省略されたdefaultに依存しない。一方、数値は送られたliteralのまま扱う（`1`と`1.0`は別のrequest）。誤るとしても「別のrequestを同じものとみなす」のではなく、「同じrequestを別のものとしてconflictにする」側を選んだ、ということである。
 - 受理と冪等性の記録と未完了Task数の確認は、一つのtransactionで行う。同時に来た同じKeyの提出が二つのTaskを作ることも、同時の提出が上限を超えることもない。
 - 再提出（replay）は、上限に達していても拒否しない。
-- Cancelの`Idempotency-Key`は契約上必須だが保存しない。Cancelは繰り返しても結果が変わらないため。
+- Cancelの`Idempotency-Key`は契約上は必須だが、保存はしない。Cancelは繰り返しても結果が変わらないからである。
 
 ### 2.5 可視性
 
@@ -84,7 +84,7 @@ M0で意図して拒否するものは次のとおりです。いずれも「後
 - 固定tokenは失効できない（設定を変えて再起動する）。
 - 一つのprocessの未完了Task数上限だけで、request rateの制限は持たない。
 - P0 OpenAPIが宣言していない`401`、`405`、`501`を、認証と未実装のために返す。P0へ反映する場合は別途contractを更新する。
-- Admission後にpolicyが厳しくなった場合、同じKeyの再提出がpolicyの検査で`422`になる。元のTaskへ収束するのは、policyを通る間だけである。この順序は、新規の不正な作業を先に拒否することを優先した結果である。
+- Admission後にpolicyが厳しくなった場合、同じKeyの再提出がpolicyの検査で`422`になる。元のTaskが返るのは、policyを通る間だけである。この順序は、新規の不正な作業を先に拒否することを優先した結果である。
 
 ## 4. 実装記録（2026-10-06）
 
