@@ -6,40 +6,40 @@
 
 ## 1. Context
 
-[value.md](../../product/value.md)は、「Worker数や総FLOPSそのものを成功指標にすること」と「全資源を最大使用率まで使い切ること」を、EKIが価値としないものに挙げています。
+[value.md](../../product/value.md)は、EKIが価値としないものとして「Worker数や総FLOPSそのものを成功指標にすること」と「全資源を最大使用率まで使い切ること」を挙げています。
 
-しかし、分散計算基盤のdemoや評価は、指標を決めないと自然に「何台つながったか」「どれだけ速く処理したか」へ寄ります。その結果、次のような誤った最適化が起きます。
+それでも、指標を決めずにおくと、分散計算基盤のdemoや評価は「何台つながったか」「どれだけ速く処理したか」に寄っていきます。その結果として起きる誤った最適化には、次のようなものがあります。
 
-- 例: 業務端末の利用率を上げるほど数字が良くなるため、Local Governorのreclaimが「性能低下」として扱われる。
-- 例: Workerが返したResultの件数を成果として数え、検証されていないClaimを成果に混ぜる。
-- 例: 分散しなかったTask（ADR-0007の`LOCAL_OR_EXISTING_EXECUTION`）が「使われなかった」と数えられる。
+- 業務端末の利用率を上げるほど数字が良く見えるので、Local Governorが資源を利用者へ返すこと（reclaim）が性能低下として扱われる。
+- Workerが返したResultの件数を成果として数え、検証されていないClaimまで成果に混ざる。
+- 分散しないと判断したTask（ADR-0007の`LOCAL_OR_EXISTING_EXECUTION`）が、「使われなかった」として数えられる。
 
 ## 2. Decision
 
-MVP以降のdemo、benchmark、受け入れ判定で、次の指標群を**主指標**とする。Worker数、総FLOPS、資源利用率は補助指標としてだけ報告し、単独で成功を主張しない。
+MVP以降のdemo、benchmark、受け入れ判定では、次の表の指標を主指標とする。Worker数、総FLOPS、資源利用率は補助指標としてだけ報告し、それだけで成功を主張しない。
 
-| 価値 | 主指標 | 測り方の要点 |
+| 価値 | 主指標 | 測り方 |
 |---|---|---|
-| Human first | 端末利用者の復帰からcapacity縮小までの時間、opt-out後に残った実行の有無 | Local Governorの記録とWorker上の実観測を突き合わせる。中央の記録だけで判定しない |
-| Claims are not facts | 受理されたResultのうち、Assurance Level付きで検証されたものの割合と、その検証方式 | 未検証Claimは成果として数えない（RQ-019、RQ-021） |
-| Economically sensible | Suitability Gateの判定分布、Fabric実行と既存手段の比較（転送・検証コスト込み） | 「分散しなかった」判定も正常な成果として報告する |
-| Reliability by contract | reclaimやWorker離脱後のretry回数と、重複実行・Authority増幅が起きなかったこと | RQ-052、#57のvertical sliceで確認する |
-| Verifiable contribution | 検証済みContribution Recordの件数と、それが根拠にした事実 | 価格・換算値は出さない（ADR-0010） |
+| Human first | 利用者が端末へ戻ってから計算資源が縮小されるまでの時間。opt-outの後に実行が残っていないか | Local Governorの記録と、Worker上で実際に観測した結果を突き合わせる。中央の記録だけでは判定しない |
+| Claims are not facts | 受理したResultのうち、Assurance Level付きで検証されたものの割合と、その検証方式 | 未検証のClaimは成果として数えない（RQ-019、RQ-021） |
+| Economically sensible | Suitability Gateが各判定をどれだけ返したか。Fabricで実行した場合と既存手段との比較 | 比較には転送と検証のコストも含める。「分散しなかった」という判定も正常な成果として報告する |
+| Reliability by contract | reclaimやWorkerの離脱の後に起きたretryの回数。重複実行やAuthorityの増幅が起きなかったか | RQ-052と#57のvertical sliceで確認する |
+| Verifiable contribution | 検証済みのContribution Recordの件数と、その根拠になった事実 | 価格や換算値は出さない（ADR-0010） |
 
-指標は、それぞれが根拠とした記録（Audit、Governor log、Verification record）へ辿れる形で出力する。
+各指標は、根拠にした記録（Audit、Governor log、Verification record）までたどれる形で出力する。
 
 ## 3. Consequences
 
 ### Positive
 
-- reclaimや「分散しない」判定を、製品価値の発揮として説明できる。
-- demoの数字が、そのまま導入判断の根拠になる。
+- reclaimや「分散しない」という判定を、製品価値を発揮した結果として説明できる。
+- demoの数字を、そのまま導入判断の根拠に使える。
 
 ### Negative / Limitations
 
-- 指標の収集に、Governor側とVerifier側の記録が必要になり、MVPの実装範囲が増える。
-- 「既存手段との比較」は環境依存であり、一般化できる範囲を記録に添える必要がある（Spikeと同じ扱い）。
+- 指標を集めるには、Governor側とVerifier側の両方の記録が要る。そのぶんMVPで実装する範囲が広がる。
+- 既存手段との比較は環境によって結果が変わる。Spikeと同じく、一般化できる範囲を記録に添える必要がある。
 
 ## 4. Open Questions
 
-- 端末利用者への影響（体感遅延）を、プライバシーを侵さずにどこまで測るか（RQ-040）。
+- 端末利用者が感じる遅れを、利用者のプライバシーを侵さずにどこまで測れるか（RQ-040）。

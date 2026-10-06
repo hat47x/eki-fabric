@@ -6,33 +6,33 @@
 
 ## 1. Context
 
-[value.md](../../product/value.md)「Managed and opportunistic resources on one fabric」は、専用サーバやKubernetes / Slurm等が管理するクラスタと、業務端末やBrowser等の一時的な資源を、同じTask契約・配置判断・検証・監査で扱うことを掲げています。
+[value.md](../../product/value.md)の「Managed and opportunistic resources on one fabric」は、2種類の資源を同じTask契約、同じ配置判断、同じ検証、同じ監査で扱うことを掲げています。一つは専用サーバや、KubernetesやSlurmなどが管理するクラスタです。もう一つは業務端末やBrowserのように一時的に使える資源です。
 
-単純な方法として、次の二つが考えられますが、どちらも価値と矛盾します。
+単純に作る方法は二つ考えられますが、どちらもこの価値と矛盾します。
 
-- **EKIがクラスタを直接管理する**: Node管理、常駐Service、ネットワーク構成までEKIが持つと、既存オーケストレータの置換になり、企業の運用経路（原則 §12）と衝突する。
-- **管理された資源を「信頼済み」として特別扱いする**: Kubernetes上のWorkerは検証不要、とすると、改変されたPodや設定ミスが検証を素通りする（原則 §1、§9）。
+- **EKIがクラスタを直接管理する方法**では、Nodeの管理、常駐Service、ネットワーク構成までEKIが持つことになる。これは既存オーケストレータを置き換えることになり、企業が使い慣れた運用経路（原則 §12）とぶつかる。
+- **管理された資源を信頼済みとして特別扱いする方法**では、たとえば「Kubernetes上のWorkerは検証しない」と決めることになる。そうすると、改変されたPodや設定ミスが検証を通り抜けてしまう（原則 §1、§9）。
 
 ## 2. Decision
 
-1. 既存オーケストレータは、**Resource Provider**としてEKIへ接続する。EKIはProviderへ「この制約で、この期間、この量の実行枠」を依頼し、Providerがその枠をWorkerとして提供する。Pod配置やNode管理はオーケストレータの責務のまま残す。
-2. 管理された資源から来るWorkerも、他のWorkerと同じLease、WorkOrder、Result検証の経路を通る。「管理されている」ことは、Assurance Levelや配置の優先度を上げる**根拠の一つ**として、Admin-managed policyでだけ表現する。Worker自身の申告では表現できない（RQ-047）。
-3. Providerの接続は、特定製品のAPIをCoreへ入れず、Extension SPI（[EXTENSION_SPI.md](../../architecture/EXTENSION_SPI.md)）のAdapterとして実装する。MVP後の最初の検証で、性質の異なる2系統（例: Kubernetes系とbatch scheduler系）を接続できることを確認する。1系統だけの対応は、その製品の拡張と区別できないため、完了としない。
-4. 終わりのない常駐Service（業務Application本体等）はEKIの対象外とし、Providerへの依頼にも含めない。
+1. 既存オーケストレータは、**Resource Provider**としてEKIへ接続する。EKIはProviderへ、制約、期間、量を指定して実行枠を依頼する。Providerはその枠をWorkerとして提供する。Podの配置やNodeの管理は、引き続きオーケストレータが受け持つ。
+2. 管理された資源から来たWorkerも、ほかのWorkerと同じく、Lease、WorkOrder、Resultの検証を経る。「管理されている」ことは、Assurance Levelや配置の優先度を上げる根拠の一つにすぎない。この根拠は管理者が設定するpolicyでだけ表現し、Worker自身の申告では表現できない（RQ-047）。
+3. Providerの接続では、特定製品のAPIをCoreへ入れない。Extension SPI（[EXTENSION_SPI.md](../../architecture/EXTENSION_SPI.md)）のAdapterとして実装する。MVP後の最初の検証では、Kubernetes系とbatch scheduler系のように性質の異なる2系統を接続できることを確かめる。1系統だけでは、その製品の拡張機能と区別がつかないので、完了としない。
+4. 業務Application本体のように終わりのない常駐ServiceはEKIの対象外とし、Providerへの依頼にも含めない。
 
 ## 3. Consequences
 
 ### Positive
 
-- 遊休資源の活用が難しい組織でも、管理クラスタの統治だけで導入価値が成り立つ。
-- 管理資源と遊休資源の間で、Result検証と監査の基準が分かれない。
+- 遊休資源を活用しにくい組織でも、管理クラスタを統治するだけで導入価値が成り立つ。
+- 管理された資源と遊休資源とで、Resultの検証や監査の基準が分かれない。
 
 ### Negative / Limitations
 
-- オーケストレータ側の待ち時間（Pod起動、queue待ち）が配置判断へ入り、Suitability Gate（ADR-0007）の規則が複雑になる。
-- Provider Adapterの資格情報はEKI内で最も強い権限の一つになり得るため、Control Plane authority separation（RQ-051）の対象に含める必要がある。
+- Podの起動やqueueの待ちといったオーケストレータ側の待ち時間が配置判断に入ってくるので、Suitability Gate（ADR-0007）の規則が複雑になる。
+- Provider Adapterが持つ資格情報は、EKIの中でも特に強い権限の一つになり得る。そのため、Control Planeの権限分離（RQ-051）の対象に含める必要がある。
 
 ## 4. Open Questions
 
-- Providerが確保した枠を、EKIのLease失効時にどの速さで回収できるか（RQ-048、RQ-052）。
+- EKIのLeaseが失効したとき、Providerが確保した枠をどれだけ速く回収できるか（RQ-048、RQ-052）。
 - 2系統目に何を選ぶかを、どのAcceptance Scenarioから導くか。

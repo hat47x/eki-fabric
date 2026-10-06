@@ -481,11 +481,11 @@ current main `9e990e7c89924fb4005264e7556b41e0e3fb62b1` を計画と再照合し
 
 ### 2026-10-06 product value ADRs
 
-製品価値（`product/value.md`、`product/principles.md`）を設計・評価の判断へつなぐため、次のADRをProposedとして追加した。技術ADR（0001〜0006）の優先順位は変えず、M0 blockerの代替進捗として扱わない。
+製品価値（`product/value.md`、`product/principles.md`）を設計と評価の判断へつなげるため、次のADRをProposedとして追加した。技術ADR（0001〜0006）の優先順位は変えない。これらのADRを、M0 blockerを解消する作業の代わりの進捗として扱わない。
 
-- `plan/adr/0007-workload-suitability-gate-before-placement.md` — 「EKIへ載せない」判断をSchedulerより前のGateで行う（RQ-014、#58）。
-- `plan/adr/0008-product-value-evidence-metrics.md` — 成功指標をWorker数・FLOPSではなく、守られた人と検証済みの成果で測る（#65、#66）。
-- `plan/adr/0009-managed-resources-as-providers.md` — 管理クラスタは置き換えずResource Providerとして接続し、信頼を免除しない（#67）。
-- `plan/adr/0010-contribution-record-is-not-currency.md` — Contribution Recordに残高・移転・価格を持たせない（RQ-038、#68）。
+- `plan/adr/0007-workload-suitability-gate-before-placement.md`: 「EKIへ載せない」判断を、Schedulerより前のGateで行う（RQ-014、#58）。
+- `plan/adr/0008-product-value-evidence-metrics.md`: 成功指標を、Worker数やFLOPSではなく、守られた人と検証済みの成果で測る（#65、#66）。
+- `plan/adr/0009-managed-resources-as-providers.md`: 管理クラスタを置き換えず、Resource Providerとして接続する。管理されていることを理由に検証を省かない（#67）。
+- `plan/adr/0010-contribution-record-is-not-currency.md`: Contribution Recordに残高、移転、価格を持たせない（RQ-038、#68）。
 
-隣接Product（SUI / SEI / TEI）への非依存の機械検査は#69で扱う。
+隣接Product（SUI、SEI、TEI）に依存していないことの機械的な検査は、#69で扱う。

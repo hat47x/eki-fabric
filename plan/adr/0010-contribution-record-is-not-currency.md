@@ -6,29 +6,29 @@
 
 ## 1. Context
 
-[value.md](../../product/value.md)「Verifiable contribution」と原則 §11は、資源提供を検証可能に記録しつつ、通貨・市場価格・現金化・交換レートをEKIが提供しないことを定めています。
+[value.md](../../product/value.md)の「Verifiable contribution」と原則 §11は、資源の提供を検証可能な形で記録すると同時に、EKIが通貨、市場価格、現金化、交換レートを提供しないことを定めています。
 
-この境界は、実装の途中で崩れやすいものです。
+この境界は、実装を進める途中で崩れやすいものです。
 
-- 例: 利便性のため「Providerごとの累計Credit」fieldを足すと、それは残高になる。残高があれば移転や売買の要求が生まれ、EKIが事実上の通貨発行者になる。
-- 例: Contributionを報酬に結びつけると、一人の攻撃者が多数のWorker Identityを作って記録を水増しする動機（Sybil攻撃）が強くなる。
+- 便利だからと「Providerごとの累計Credit」というfieldを足すと、それは残高になる。残高があれば、移転や売買をしたいという要求が出てくる。そうなると、EKIは実質的に通貨の発行者になる。
+- Contributionを報酬に結びつけると、Sybil攻撃の動機が強まる。Sybil攻撃とは、一人の攻撃者が多数のWorker Identityを作り、この場合は記録を水増しすることである。
 
 ## 2. Decision
 
-1. Contribution Recordは、「誰の資源が、どのTask・Attemptで、どの期間・量を提供し、何がどの方式で検証されたか」という**事実の記録**とする。数値は物理量（CPU秒、転送量等）と検証状態だけを持つ。
-2. EKI Coreのschemaと APIに、残高、Principal間の移転、価格、交換レート、Creditの発行を表すfield・operationを持たない。これをconformance test（schemaの禁止field検査）で機械的に守る。
-3. 集計（Providerごとの合計等）は読み出し時の派生値として提供してよいが、保存された状態として扱わず、移転の対象にしない。
-4. 社内配賦、寄付証明、相互利用Credit等への写像は、外部PolicyがContribution Recordを読み取って行う（RQ-037）。外部の写像結果をEKIへ書き戻して配置やAuthorityを変える経路は作らない。
-5. 未検証のClaimに基づくContributionは、検証済みと区別して記録する。Reputationと同様、Contributionの量はsecurity root of trustにしない（RQ-023）。
+1. Contribution Recordは事実の記録とする。記録するのは、誰の資源が、どのTaskとAttemptで、どの期間にどれだけ提供され、何がどの方式で検証されたかである。数値として持つのは、CPU秒や転送量などの物理量と、検証の状態だけにする。
+2. EKI CoreのschemaとAPIには、残高、Principal間の移転、価格、交換レート、Creditの発行を表すfieldやoperationを持たない。これをconformance testで、禁止されたfieldがないかを検査して機械的に守る。
+3. Providerごとの合計のような集計値は、読み出すときに計算して返してよい。ただし、集計値を保存された状態として扱わず、移転の対象にもしない。
+4. 社内配賦、寄付の証明、相互利用Creditなどへの写像は、外部のPolicyがContribution Recordを読み取って行う（RQ-037）。外部で写像した結果をEKIへ書き戻し、配置やAuthorityを変える経路は作らない。
+5. 未検証のClaimにもとづくContributionは、検証済みのものと区別して記録する。Reputationと同じく、Contributionの量をsecurity root of trustにしない（RQ-023）。
 
 ## 3. Consequences
 
 ### Positive
 
-- EKIが通貨・市場の運営者として扱われる法的・運用上のリスクを避けられる。
-- Public-interest Compute Grant（RQ-034）で、提供者と受益者が互いを全面的に信頼しなくても、事実の記録を共有できる。
+- EKIが通貨や市場の運営者とみなされる、法的・運用上のリスクを避けられる。
+- Public-interest Compute Grant（RQ-034）では、提供者と受益者が互いを全面的に信頼していなくても、事実の記録を共有できる。
 
 ### Negative / Limitations
 
-- 利用者は報酬制度を自前で作る必要がある。EKIは記録の形式と検証方式を提供するだけである。
-- 外部制度が記録へ強い経済的価値を与えた場合のSybil耐性は、EKI単体では保証できない（RQ-022、Needs research）。
+- 報酬制度は利用者が自分で作る必要がある。EKIが提供するのは、記録の形式と検証方式だけである。
+- 外部の制度が記録に強い経済的価値を与えた場合、Sybil攻撃に耐えられるかどうかはEKI単体では保証できない（RQ-022、Needs research）。
