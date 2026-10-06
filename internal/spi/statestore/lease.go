@@ -1,0 +1,83 @@
+package statestore
+
+import (
+	"context"
+	"errors"
+	"fmt"
+	"time"
+	"unicode/utf8"
+
+	"github.com/hat47x/eki-fabric/internal/core/contract"
+	"github.com/hat47x/eki-fabric/internal/core/ids"
+	"github.com/hat47x/eki-fabric/internal/core/leasestate"
+)
+
+var (
+	// ErrLeaseActive means another unexpired lease already owns the Task fence.
+	ErrLeaseActive = errors.New("an active lease already exists")
+	// ErrPlacementDecisionConflict means a decision ID was reused with different
+	// signed payload bytes. Decision IDs cannot be rebound to new meaning.
+	ErrPlacementDecisionConflict = errors.New("placement decision ID reused with different payload")
+)
+
+type LeaseReservation struct {
+	LeaseID                    ids.LeaseID
+	TaskID                     ids.TaskID
+	TaskIRDigest               contract.Digest
+	ExpectedTaskRevision       uint64
+	AttemptID                  ids.AttemptID
+	WorkerIdentity             string
+	PlacementDecisionID        string
+	PlacementPayloadDigest     contract.Digest
+	PolicyRevision             string
+	IssuedAt                   time.Time
+	ExpiresAt                  time.Time
+}
+
+func (r LeaseReservation) Validate() error {
+	if _, err := ids.ParseLeaseID(r.LeaseID.String()); err != nil {
+		return fmt.Errorf("lease reservation: lease ID: %w", err)
+	}
+	if _, err := ids.ParseTaskID(r.TaskID.String()); err != nil {
+		return fmt.Errorf("lease reservation: task ID: %w", err)
+	}
+	if r.TaskIRDigest.IsZero() {
+		return errors.New("lease reservation: TaskIR digest is required")
+	}
+	if r.ExpectedTaskRevision == 0 {
+		return errors.New("lease reservation: expected Task revision must be positive")
+	}
+	if _, err := ids.ParseAttemptID(r.AttemptID.String()); err != nil {
+		return fmt.Errorf("lease reservation: attempt ID: %w", err)
+	}
+	if r.WorkerIdentity == "" || len(r.WorkerIdentity) > 256 || !utf8.ValidString(r.WorkerIdentity) {
+		return errors.New("lease reservation: invalid Worker identity")
+	}
+	if r.PlacementDecisionID == "" || len(r.PlacementDecisionID) > 128 || !utf8.ValidString(r.PlacementDecisionID) {
+		return errors.New("lease reservation: invalid Placement Decision ID")
+	}
+	if r.PlacementPayloadDigest.IsZero() {
+		return errors.New("lease reservation: Placement payload digest is required")
+	}
+	if r.PolicyRevision == "" || len(r.PolicyRevision) > 128 || !utf8.ValidString(r.PolicyRevision) {
+		return errors.New("lease reservation: invalid policy revision")
+	}
+	if r.IssuedAt.IsZero() || r.ExpiresAt.IsZero() || !r.IssuedAt.Before(r.ExpiresAt) {
+		return errors.New("lease reservation: invalid issued/expires window")
+	}
+	return nil
+}
+
+type LeaseReservationResult struct {
+	Lease    leasestate.LeaseRecord
+	Replayed bool
+}
+
+// LeaseStore reserves durable fencing state before any signed Lease is emitted.
+//
+// Implementations must make Task revision/cancellation checks, active-Lease
+// exclusion, placement replay handling, and FenceEpoch allocation atomic.
+type LeaseStore interface {
+	ReserveLease(ctx context.Context, reservation LeaseReservation) (LeaseReservationResult, error)
+	LoadLease(ctx context.Context, id ids.LeaseID) (leasestate.LeaseRecord, error)
+}
