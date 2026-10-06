@@ -105,7 +105,6 @@ type AdmissionStore interface {
 type Store interface {
 	TaskStore
 	AdmissionStore
-	LeaseStore
 }
 
 // ValidIdempotencyKey reports whether key satisfies the P0 Idempotency-Key
