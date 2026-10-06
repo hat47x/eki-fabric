@@ -48,7 +48,7 @@ func (s *Store) ReserveLease(ctx context.Context, reservation statestore.LeaseRe
 	}
 
 	for _, lease := range s.leases {
-		if lease.TaskID == reservation.TaskID && lease.ActiveAt(reservation.IssuedAt) {
+		if lease.TaskID == reservation.TaskID && lease.ExpiresAt.After(reservation.IssuedAt.UTC()) {
 			return statestore.LeaseReservationResult{}, fmt.Errorf(
 				"%w: task %s fence=%d",
 				statestore.ErrLeaseActive,
