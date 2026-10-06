@@ -58,6 +58,27 @@ func RunLeaseStoreContract(t *testing.T, newStore LeaseFactory) {
 		}
 	})
 
+	t.Run("same-decision-id-from-different-plc-principal-is-distinct", func(t *testing.T) {
+		store := newStore(t)
+		task := readyTask(t, store, "principal-scope")
+		first := leaseReservation(t, task, "placement-1", leaseNow, leaseNow.Add(time.Minute))
+		if _, err := store.ReserveLease(context.Background(), first); err != nil {
+			t.Fatal(err)
+		}
+
+		secondNow := first.ExpiresAt.Add(time.Nanosecond)
+		second := leaseReservation(t, task, "placement-1", secondNow, secondNow.Add(time.Minute))
+		second.PlacementAuthorityPrincipal = "control-plane/plc-2"
+		second.PlacementPayloadDigest = contract.SHA256([]byte("plc-2 payload"))
+		got, err := store.ReserveLease(context.Background(), second)
+		if err != nil {
+			t.Fatalf("different PLC principal collided on Decision ID: %v", err)
+		}
+		if got.Replayed || got.Lease.FenceEpoch != 2 {
+			t.Fatalf("different PLC principal was treated as replay: %#v", got)
+		}
+	})
+
 	t.Run("decision-id-cannot-be-rebound", func(t *testing.T) {
 		store := newStore(t)
 		task := readyTask(t, store, "decision-rebind")
@@ -335,11 +356,13 @@ func leaseReservation(t testing.TB, task taskstate.TaskRecord, decisionID string
 		ExpectedTaskRevision:   task.Revision,
 		AttemptID:              mustAttemptID(t),
 		WorkerIdentity:         "worker-a",
-		PlacementDecisionID:    decisionID,
-		PlacementPayloadDigest: contract.SHA256([]byte("payload:" + decisionID)),
-		PolicyRevision:         "policy-42",
-		IssuedAt:               issued,
-		ExpiresAt:              expires,
+		PlacementAuthorityPrincipal: "control-plane/plc-1",
+		PlacementDecisionID:           decisionID,
+		PlacementPayloadDigest:        contract.SHA256([]byte("payload:" + decisionID)),
+		PlacementExpiresAt:            expires.Add(time.Minute),
+		PolicyRevision:                "policy-42",
+		IssuedAt:                      issued,
+		ExpiresAt:                     expires,
 	}
 }
 
@@ -368,6 +391,7 @@ func assertLeaseEqual(t testing.TB, got, want leasestate.LeaseRecord) {
 		got.TaskIRDigest != want.TaskIRDigest ||
 		got.AttemptID != want.AttemptID ||
 		got.WorkerIdentity != want.WorkerIdentity ||
+		got.PlacementAuthorityPrincipal != want.PlacementAuthorityPrincipal ||
 		got.PlacementDecisionID != want.PlacementDecisionID ||
 		got.PlacementPayloadDigest != want.PlacementPayloadDigest ||
 		got.PolicyRevision != want.PolicyRevision ||
