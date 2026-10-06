@@ -121,7 +121,7 @@ func RunLeaseStoreContract(t *testing.T, newStore LeaseFactory) {
 		replay := firstReq
 		replay.LeaseID = mustLeaseID(t)
 		replay.IssuedAt = first.Lease.ExpiresAt.Add(time.Second)
-		replay.ExpiresAt = replay.IssuedAt.Add(time.Minute)
+		replay.ExpiresAt = firstReq.PlacementExpiresAt
 		again, err := store.ReserveLease(context.Background(), replay)
 		if err != nil {
 			t.Fatalf("expired placement replay error = %v", err)
@@ -257,6 +257,16 @@ func RunLeaseStoreContract(t *testing.T, newStore LeaseFactory) {
 		}
 		if success != 1 || active != 1 {
 			t.Fatalf("concurrent results success=%d active=%d, want 1/1", success, active)
+		}
+	})
+
+	t.Run("lease-cannot-outlive-placement-approval", func(t *testing.T) {
+		store := newStore(t)
+		task := readyTask(t, store, "placement-expiry")
+		reservation := leaseReservation(t, task, "placement-1", leaseNow, leaseNow.Add(time.Minute))
+		reservation.PlacementExpiresAt = leaseNow.Add(30 * time.Second)
+		if _, err := store.ReserveLease(context.Background(), reservation); err == nil {
+			t.Fatal("ReserveLease() accepted a Lease that outlives Placement Approval")
 		}
 	})
 
