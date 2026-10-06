@@ -21,6 +21,17 @@ func (s *Store) ReserveLease(ctx context.Context, reservation statestore.LeaseRe
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
+	task, ok := s.tasks[reservation.TaskID]
+	if !ok {
+		return statestore.LeaseReservationResult{}, fmt.Errorf("%w: task %s", statestore.ErrNotFound, reservation.TaskID)
+	}
+	if task.Revision != reservation.ExpectedTaskRevision ||
+		task.TaskIRDigest != reservation.TaskIRDigest ||
+		task.CancellationRequested ||
+		(task.Phase != taskstate.TaskPhaseReady && task.Phase != taskstate.TaskPhaseActive) {
+		return statestore.LeaseReservationResult{}, fmt.Errorf("%w: task %s changed before lease reservation", statestore.ErrConflict, reservation.TaskID)
+	}
+
 	if existingID, ok := s.placementLeases[reservation.PlacementDecisionID]; ok {
 		existing := s.leases[existingID]
 		if existing.PlacementPayloadDigest != reservation.PlacementPayloadDigest {
@@ -34,17 +45,6 @@ func (s *Store) ReserveLease(ctx context.Context, reservation statestore.LeaseRe
 	}
 	if _, exists := s.leases[reservation.LeaseID]; exists {
 		return statestore.LeaseReservationResult{}, fmt.Errorf("%w: lease %s", statestore.ErrAlreadyExists, reservation.LeaseID)
-	}
-
-	task, ok := s.tasks[reservation.TaskID]
-	if !ok {
-		return statestore.LeaseReservationResult{}, fmt.Errorf("%w: task %s", statestore.ErrNotFound, reservation.TaskID)
-	}
-	if task.Revision != reservation.ExpectedTaskRevision ||
-		task.TaskIRDigest != reservation.TaskIRDigest ||
-		task.CancellationRequested ||
-		(task.Phase != taskstate.TaskPhaseReady && task.Phase != taskstate.TaskPhaseActive) {
-		return statestore.LeaseReservationResult{}, fmt.Errorf("%w: task %s changed before lease reservation", statestore.ErrConflict, reservation.TaskID)
 	}
 
 	for _, lease := range s.leases {
