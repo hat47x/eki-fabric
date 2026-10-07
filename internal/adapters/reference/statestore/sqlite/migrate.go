@@ -48,11 +48,13 @@ CREATE TABLE leases (
 	placement_authority_principal TEXT    NOT NULL CHECK (length(placement_authority_principal) BETWEEN 1 AND 256),
 	placement_decision_id         TEXT    NOT NULL CHECK (length(placement_decision_id) BETWEEN 1 AND 128),
 	placement_payload_digest      TEXT    NOT NULL CHECK (length(placement_payload_digest) = 64),
+	placement_expires_at_ns       INTEGER NOT NULL,
 	policy_revision               TEXT    NOT NULL CHECK (length(policy_revision) BETWEEN 1 AND 128),
 	fence_epoch                   INTEGER NOT NULL CHECK (fence_epoch >= 1),
 	renewal_sequence              INTEGER NOT NULL CHECK (renewal_sequence >= 0),
 	issued_at_ns                  INTEGER NOT NULL,
 	expires_at_ns                 INTEGER NOT NULL CHECK (expires_at_ns > issued_at_ns),
+	CHECK (placement_expires_at_ns >= expires_at_ns),
 	UNIQUE (placement_authority_principal, placement_decision_id),
 	UNIQUE (task_id, fence_epoch)
 ) STRICT;
