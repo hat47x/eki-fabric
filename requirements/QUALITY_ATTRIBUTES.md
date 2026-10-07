@@ -55,6 +55,9 @@ EKIでは、こうしたTrade-offを「実装してから気付く」のでは�
 - `single_component_reachable_authorities`
 - `cross_role_forgery_rejection`
 - `high_value_authority_overlap`
+- `executor_digest_mismatch_rejection`
+- `stale_executor_approval_rejection`
+- `executor_revocation_propagation_delay`
 
 ### 注意
 
