@@ -35,7 +35,7 @@ func (s *Store) ReserveLease(ctx context.Context, reservation statestore.LeaseRe
 	scope := placementScope{principal: reservation.PlacementAuthorityPrincipal, decisionID: reservation.PlacementDecisionID}
 	if existingID, ok := s.placementLeases[scope]; ok {
 		existing := s.leases[existingID]
-		if existing.PlacementPayloadDigest != reservation.PlacementPayloadDigest {
+		if !reservation.MatchesReservedPlacement(existing) {
 			return statestore.LeaseReservationResult{}, fmt.Errorf(
 				"%w: decision %q",
 				statestore.ErrPlacementDecisionConflict,
@@ -72,7 +72,8 @@ func (s *Store) ReserveLease(ctx context.Context, reservation statestore.LeaseRe
 		PlacementAuthorityPrincipal: reservation.PlacementAuthorityPrincipal,
 		PlacementDecisionID:           reservation.PlacementDecisionID,
 		PlacementPayloadDigest:        reservation.PlacementPayloadDigest,
-		PolicyRevision:         reservation.PolicyRevision,
+		PlacementExpiresAt:            reservation.PlacementExpiresAt,
+		PolicyRevision:                reservation.PolicyRevision,
 		FenceEpoch:             fence,
 		RenewalSequence:        0,
 		IssuedAt:               reservation.IssuedAt,
