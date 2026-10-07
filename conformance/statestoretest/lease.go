@@ -328,6 +328,167 @@ func RunLeaseStoreContract(t *testing.T, newStore LeaseFactory) {
 		}
 	})
 
+	t.Run("attempt-revision-drift-fails-closed", func(t *testing.T) {
+		store := newStore(t)
+		task := readyTask(t, store, "attempt-revision-drift")
+		reservation := leaseReservation(t, store, task, "placement-1", leaseNow, leaseNow.Add(time.Minute))
+
+		current, err := store.LoadAttempt(context.Background(), reservation.AttemptID)
+		if err != nil {
+			t.Fatal(err)
+		}
+		replanned := current
+		replanned.Revision++
+		replanned.UpdatedAt = current.UpdatedAt.Add(time.Second)
+		if err := store.CompareAndSwapAttempt(context.Background(), current.ID, current.Revision, replanned); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := store.ReserveLease(context.Background(), reservation); !errors.Is(err, statestore.ErrConflict) {
+			t.Fatalf("ReserveLease() error = %v, want ErrConflict for stale Attempt revision", err)
+		}
+	})
+
+	t.Run("worker-replan-invalidates-stale-placement-binding", func(t *testing.T) {
+		store := newStore(t)
+		task := readyTask(t, store, "attempt-worker-replan")
+		reservation := leaseReservation(t, store, task, "placement-1", leaseNow, leaseNow.Add(time.Minute))
+
+		current, err := store.LoadAttempt(context.Background(), reservation.AttemptID)
+		if err != nil {
+			t.Fatal(err)
+		}
+		replanned := current
+		replanned.WorkerIdentity = "worker-b"
+		replanned.Revision++
+		replanned.UpdatedAt = current.UpdatedAt.Add(time.Second)
+		if err := store.CompareAndSwapAttempt(context.Background(), current.ID, current.Revision, replanned); err != nil {
+			t.Fatal(err)
+		}
+
+		reservation.ExpectedAttemptRevision = replanned.Revision
+		if _, err := store.ReserveLease(context.Background(), reservation); !errors.Is(err, statestore.ErrConflict) {
+			t.Fatalf("ReserveLease() error = %v, want ErrConflict for stale Worker binding", err)
+		}
+	})
+
+	t.Run("exact-replay-survives-benign-attempt-progress", func(t *testing.T) {
+		store := newStore(t)
+		task := readyTask(t, store, "attempt-replay-progress")
+		reservation := leaseReservation(t, store, task, "placement-1", leaseNow, leaseNow.Add(time.Minute))
+		first, err := store.ReserveLease(context.Background(), reservation)
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		assigned, err := store.LoadAttempt(context.Background(), reservation.AttemptID)
+		if err != nil {
+			t.Fatal(err)
+		}
+		dispatched := assigned
+		dispatched.Phase = attemptstate.AttemptPhaseDispatched
+		dispatched.Revision++
+		dispatched.UpdatedAt = assigned.UpdatedAt.Add(time.Second)
+		if err := store.CompareAndSwapAttempt(context.Background(), assigned.ID, assigned.Revision, dispatched); err != nil {
+			t.Fatal(err)
+		}
+
+		replay := reservation
+		replay.LeaseID = mustLeaseID(t)
+		again, err := store.ReserveLease(context.Background(), replay)
+		if err != nil {
+			t.Fatalf("replay after Attempt progress error = %v", err)
+		}
+		if !again.Replayed || again.Lease.ID != first.Lease.ID || again.Lease.FenceEpoch != first.Lease.FenceEpoch {
+			t.Fatalf("Attempt progress changed replay authority: first=%#v replay=%#v", first, again)
+		}
+	})
+
+	t.Run("replay-after-attempt-close-fails-closed", func(t *testing.T) {
+		store := newStore(t)
+		task := readyTask(t, store, "attempt-replay-closed")
+		reservation := leaseReservation(t, store, task, "placement-1", leaseNow, leaseNow.Add(time.Minute))
+		if _, err := store.ReserveLease(context.Background(), reservation); err != nil {
+			t.Fatal(err)
+		}
+
+		assigned, err := store.LoadAttempt(context.Background(), reservation.AttemptID)
+		if err != nil {
+			t.Fatal(err)
+		}
+		closed := assigned
+		closed.Phase = attemptstate.AttemptPhaseClosed
+		closed.CloseReason = attemptstate.CloseReasonReclaimed
+		closed.Revision++
+		closed.UpdatedAt = assigned.UpdatedAt.Add(time.Second)
+		if err := store.CompareAndSwapAttempt(context.Background(), assigned.ID, assigned.Revision, closed); err != nil {
+			t.Fatal(err)
+		}
+
+		replay := reservation
+		replay.LeaseID = mustLeaseID(t)
+		if _, err := store.ReserveLease(context.Background(), replay); !errors.Is(err, statestore.ErrConflict) {
+			t.Fatalf("closed Attempt replay error = %v, want ErrConflict", err)
+		}
+	})
+
+	t.Run("attempt-close-races-lease-reservation-with-one-winner", func(t *testing.T) {
+		store := newStore(t)
+		task := readyTask(t, store, "attempt-close-race")
+		reservation := leaseReservation(t, store, task, "placement-1", leaseNow, leaseNow.Add(time.Minute))
+		placing, err := store.LoadAttempt(context.Background(), reservation.AttemptID)
+		if err != nil {
+			t.Fatal(err)
+		}
+		closed := placing
+		closed.Phase = attemptstate.AttemptPhaseClosed
+		closed.CloseReason = attemptstate.CloseReasonSuperseded
+		closed.Revision++
+		closed.UpdatedAt = placing.UpdatedAt.Add(time.Second)
+
+		start := make(chan struct{})
+		results := make(chan error, 2)
+		var wg sync.WaitGroup
+		wg.Add(2)
+		go func() {
+			defer wg.Done()
+			<-start
+			_, err := store.ReserveLease(context.Background(), reservation)
+			results <- err
+		}()
+		go func() {
+			defer wg.Done()
+			<-start
+			results <- store.CompareAndSwapAttempt(context.Background(), placing.ID, placing.Revision, closed)
+		}()
+		close(start)
+		wg.Wait()
+		close(results)
+
+		var success, conflict int
+		for err := range results {
+			switch {
+			case err == nil:
+				success++
+			case errors.Is(err, statestore.ErrConflict):
+				conflict++
+			default:
+				t.Fatalf("unexpected race error = %v", err)
+			}
+		}
+		if success != 1 || conflict != 1 {
+			t.Fatalf("Attempt close vs Lease reserve success=%d conflict=%d, want 1/1", success, conflict)
+		}
+	})
+
+	t.Run("missing-attempt-fails-closed", func(t *testing.T) {
+		store := newStore(t)
+		task := readyTask(t, store, "missing-attempt")
+		reservation := unbackedLeaseReservation(t, task, "placement-missing-attempt", leaseNow, leaseNow.Add(time.Minute))
+		if _, err := store.ReserveLease(context.Background(), reservation); !errors.Is(err, statestore.ErrNotFound) {
+			t.Fatalf("missing Attempt error = %v, want ErrNotFound", err)
+		}
+	})
+
 	t.Run("cancellation-fails-closed", func(t *testing.T) {
 		store := newStore(t)
 		task := readyTask(t, store, "cancel")
