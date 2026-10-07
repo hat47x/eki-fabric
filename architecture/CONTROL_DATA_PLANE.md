@@ -4,21 +4,19 @@ Status: **Baseline 0.1 — 2026-09-21**
 
 ## 1. この文書の目的
 
-EKI Fabricでは、Taskの受付、Policy判断、Placement、Lease、WorkOrder発行などの制御情報と、Model、Dataset、Document、Result、Checkpointなどの大きなbyte列を同じ経路へ集約しません。
+EKI Fabricでは、Taskの受け付け、Policyの判断、Placement、Lease、WorkOrderの発行などの制御の情報と、Model、Dataset、Document、Result、Checkpointなどの大きなbyte列とを、同じ経路に集約しません。
 
-この文書では、
+この文書では、次のことをArchitecture Baselineとして定義します。
 
 - Control Planeが何を扱うか
 - Data Planeが何を扱うか
-- ArtifactのIdentityとAccess Authorityをどう分けるか
-- WorkerがDataへ到達するまでに何を検証するか
-- Cache / localityをSecurity Authorityにしない方法
-- 大量転送やretryがNetworkを圧迫しないための境界
-- small deploymentからFederationまで同じ論理構造をどう保つか
+- ArtifactのIdentityとAccess Authorityを、どう分けるか
+- WorkerがDataに到達するまでに、何を検証するか
+- Cacheとlocalityを、Security Authorityにしない方法
+- 大量の転送やretryが、Networkを圧迫しないための境界
+- 小規模なdeploymentからFederationまで、同じ論理構造を、どう保つか
 
-をArchitecture Baselineとして定義します。
-
-関連は次のとおりです。
+関連する文書は、次のとおりです。
 
 - AUTHORITY_BOUNDARIES.md
 - CONTRACT_BOUNDARIES.md
@@ -30,7 +28,7 @@ EKI Fabricでは、Taskの受付、Policy判断、Placement、Lease、WorkOrder�
 
 ## 2. 最も重要な分離
 
-EKIでは次を同一視しません。
+EKIでは、次のものを同一視しません。
 
 ~~~text
 Artifact Content Identity
@@ -64,74 +62,72 @@ Cacheに同じDigestがあることも、Security requirementを満たす根拠�
 
 ## 3.1 Control Plane
 
-Control Planeは小さなmetadata、Decision、Stateを扱います。
+Control Planeが扱うのは、小さなmetadata、Decision、Stateです。
 
-主な対象は次のとおりです。
+主な対象は、次のとおりです。
 
 - TaskRequest / AdmittedTask / TaskIR
 - Attempt
-- ResourceAdvertisement summary
-- PlacementProposal / Approval
+- ResourceAdvertisementの要約
+- PlacementProposalとApproval
 - Lease
-- ExecutorApproval metadata
-- Artifact metadata / Grant metadata
+- ExecutorApprovalのmetadata
+- Artifactのmetadataと、Grantのmetadata
 - WorkOrder
-- Task / Attempt state
-- VerificationResult / AcceptedResult metadata
-- Contribution metadata
-- Audit metadata
-- Quota / Budget reservation
-- Federation / Policy configuration
+- TaskとAttemptのstate
+- VerificationResultとAcceptedResultのmetadata
+- Contributionのmetadata
+- Auditのmetadata
+- Quotaとbudgetの予約
+- FederationとPolicyの設定
 
-Control Planeの標準経路へ、ModelやDataset本体のGB単位byte列を流しません。
+Control Planeの標準の経路に、ModelやDataset本体のGB単位のbyte列を流しません。
 
 ## 3.2 Data Plane
 
-Data Planeは大きなbyte列の保存・転送・検証・cacheを扱います。
+Data Planeが扱うのは、大きなbyte列の、保存、転送、検証、cacheです。
 
-主な対象は次のとおりです。
+主な対象は、次のとおりです。
 
-- Client upload
-- Executor Artifact bytes
-- Task Input Artifact
+- Clientのupload
+- Executor Artifactのbytes
+- TaskのInput Artifact
 - Result Artifact
 - Checkpoint
-- Proof / Evidenceのlarge object
-- Safe ingest / decode対象
-- Worker local cache
-- managed site cache
-- external object store
-- application-owned storage adapter
+- ProofとEvidenceのlarge object
+- 安全にingestやdecodeする対象
+- Workerのlocal cache
+- 管理されたsite cache
+- 外部のobject store
+- アプリケーションが所有するstorage adapter
 
-Data PlaneもAuthorization不要の自由なbyte pipeではありません。
+Data Planeも、Authorizationが不要な、自由なbyteのpipeではありません。
 
-ArtifactGrantやOutput Binding等のControl Plane DecisionをData Plane側で強制します。
+ArtifactGrantやOutput Bindingなど、Control PlaneのDecisionを、Data Plane側で強制します。
 
 ## 3.3 Administrative Plane
 
-Storage backend登録、Artifact Store credential設定、Federation export policy、encryption key policy等はAdministrative Planeです。
+Storage backendの登録、Artifact Storeのcredentialの設定、Federationのexport policy、encryption keyのpolicyなどは、Administrative Planeです。
 
-通常Task requestから変更できません。
+通常のTask requestからは、変更できません。
 
 ---
 
-# 4. Control PlaneをData Proxyにしない理由
+# 4. Control Planeを、Data Proxyにしない理由
 
-すべてのArtifactをControl Plane Service経由にすると、実装初期は単純に見えます。
+すべてのArtifactをControl Plane Service経由にすると、実装の初期は単純に見えます。
 
-しかし長期的には、
+しかし、長期的には、次のような問題が生じます。
 
-- Control PlaneのNetwork帯域が全Taskのbottleneckになる
-- 大規模Model transferでTask admissionまで影響する
-- retry stormがControl Planeを巻き込む
-- Data breach時のblast radiusが広がる
-- Federation / cloud / site-local storageの利点を失う
-- cache localityを活かしにくい
-- small control metadataとbulk dataのSLOが衝突する
+- Control Planeのnetworkの帯域が、すべてのTaskのbottleneckになる。
+- 大規模なModelの転送が、Task admissionにまで影響する。
+- retry stormが、Control Planeを巻き込む。
+- Data breachのときの、blast radiusが広がる。
+- Federation、cloud、site-localなstorageの利点を失う。
+- cache localityを活かしにくい。
+- 小さなcontrol metadataと、bulk dataとで、SLOが衝突する。
 
-という問題が生じます。
-
-そのため標準構成は、
+そのため、標準の構成は、次のとおりにします。
 
 ~~~text
 Control Plane
@@ -143,11 +139,9 @@ Worker ─────────────── Data Plane Store / Cache
        bulk bytes
 ~~~
 
-とします。
+小規模なDeploymentで、同じProcessが両方の機能を実装することは、認めます。
 
-小規模Deploymentで同一Processが両機能を実装することは許容します。
-
-ただしLogical API、Quota、Credential、AuditはControl / Dataで分離し、後で別Processへ移せる構造を保ちます。
+ただし、論理的なAPI、Quota、Credential、Auditは、ControlとDataで分離します。そして、あとで別のProcessに移せる構造を保ちます。
 
 ---
 
@@ -155,39 +149,35 @@ Worker ─────────────── Data Plane Store / Cache
 
 ## 5.1 Content Digest
 
-Content Digestはbyte列のIdentityです。
+Content Digestは、byte列のIdentityです。
 
-例は次のとおりです。
+たとえば、次のとおりです。
 
 ~~~text
 sha256:<digest>
 ~~~
 
-実際のhash algorithm negotiationは後続Contractで定義します。
+実際のhash algorithmのnegotiationは、後続のContractで定義します。
 
-Content Digestは、
+Content Digestは、次の用途に使います。
 
-- transfer corruption検出
-- cache verification
-- immutable identity
-- duplicate content認識
-- Executor exact artifact binding
-
-に利用します。
+- 転送で壊れたことの検出
+- cacheの検証
+- 変更できないidentity
+- 重複したcontentの認識
+- Executorの正確なartifactへのbinding
 
 ## 5.2 Artifact Record
 
 同じbyte列でも、Security Contextは異なり得ます。
 
-たとえば同じpublic model fileが、
+たとえば、同じpublicなmodel fileが、次のように、別々のRecordを持つことがあります。
 
-- Organization Aのapproved model
-- Organization Bのunreviewed upload
-- Public dataset mirror
+- Organization Aの、承認済みのmodel
+- Organization Bの、未審査のupload
+- Public datasetのmirror
 
-として別Recordを持つことがあります。
-
-Artifact Recordは概念的に次を持ちます。
+Artifact Recordは、概念上、次のものを持ちます。
 
 ~~~text
 Artifact Record ID
@@ -205,40 +195,38 @@ Created / updated metadata
 Policy revision
 ~~~
 
-## 5.3 同じDigestだからRecordを統合しない
+## 5.3 同じDigestだからといって、Recordを統合しない
 
 Content-addressed storageを使っても、
 
-> 同じDigestなので同じAuthorizationでよい
+> 同じDigestなので、同じAuthorizationでよい
 
 とはしません。
 
-Authorization、classification、retention、provenanceはArtifact Record単位です。
+Authorization、classification、retention、provenanceは、Artifact Recordの単位です。
 
-物理backendがdedupするかどうかはStorage Adapterの実装詳細です。
+物理的なbackendがdedupするかどうかは、Storage Adapterの実装の詳細です。
 
-## 5.4 Cross-tenant dedup
+## 5.4 Tenantをまたぐdedup
 
-Cross-tenant physical dedupは、
+Tenantをまたぐ物理的なdedupは、次のものを生む可能性があります。
 
-- Artifact存在のside channel
-- cache hit timing
-- deletion / retentionの干渉
+- Artifactが存在することのside channel
+- cache hitのtiming
+- 削除とretentionの干渉
 - classification metadataの混同
 
-を生む可能性があります。
+Baselineでは、cross-tenantなdedupを、Security機能として利用しません。
 
-Baselineではcross-tenant dedupをSecurity機能として利用しません。
-
-Storage backendが内部的にdedupする場合も、logical Record / Grant / auditはTenantごとに分離し、Clientへdedup hitを露出しないことを要求します。
+Storage backendが内部的にdedupする場合も、論理的なRecord、Grant、auditは、Tenantごとに分離します。そして、dedupがhitしたことを、Clientに露出しないことを、要求します。
 
 ---
 
-# 6. Artifact locationはAuthorityではない
+# 6. Artifactのlocationは、Authorityではない
 
-Artifact RecordはStorage Locationを参照できます。
+Artifact Recordは、Storage Locationを参照できます。
 
-例は次のとおりです。
+たとえば、次のとおりです。
 
 ~~~text
 location-A
@@ -251,68 +239,64 @@ location-C
   external application store
 ~~~
 
-しかしSchedulerやClientへraw URI、bucket name、internal hostを広く公開しません。
+しかし、SchedulerやClientに、生のURI、bucket名、内部のhostを、広く公開しません。
 
-Data Authority / Storage Adapterだけがtransport-specific locationを解決します。
+transportに固有のlocationを解決するのは、Data AuthorityとStorage Adapterだけです。
 
-Schedulerへ渡すのは必要に応じて、
+Schedulerに渡すのは、必要に応じて、次のような、無害化した要約です。
 
 - locality class
-- site / region affinity
-- estimated missing bytes
-- estimated transfer cost
-- cache confidence / freshness
-
-のようなsanitized summaryです。
+- siteやregionのaffinity
+- 足りないbyte数の見積もり
+- 転送のコストの見積もり
+- cacheの確からしさと新しさ
 
 ---
 
 # 7. Storage Adapter
 
-EKI Coreは特定Object Storeへ固定しません。
+EKI Coreは、特定のObject Storeに固定しません。
 
-Storage Adapterは概念的に次を提供します。
+Storage Adapterは、概念上、次のものを提供します。
 
-- Put / Upload Session
-- Get / Read Session
-- Head / metadata
-- range read capability if supported
-- content digest evidence
-- immutable object support
-- delete / retention operation
-- locality description
-- optional server-side encryption
-- optional multipart / resumable transfer
+- PutとUpload Session
+- GetとRead Session
+- Headとmetadata
+- 対応している場合の、range read capability
+- content digestのevidence
+- 変更できないobjectのサポート
+- deleteとretentionの操作
+- localityの記述
+- 任意の、server-sideのencryption
+- 任意の、multipartとresumableな転送
 
-候補実装は次のとおりです。
+実装の候補は、次のとおりです。
 
 - local filesystem
-- HTTP object store
-- S3-compatible storage
-- OCI-compatible registry for suitable artifacts
-- application-owned store
-- managed cloud object storage
+- HTTPのobject store
+- S3互換のstorage
+- 適したartifact向けの、OCI互換のregistry
+- アプリケーションが所有するstore
+- 管理されたcloudのobject storage
 
-Artifact Contract自体をS3 objectやOCI manifestと同一にしません。
+Artifact Contract自体を、S3 objectやOCI manifestと同一にはしません。
 
 ---
 
 # 8. Data Access Broker / Resolver
 
-ArtifactGrantはSecurity Decisionです。
+ArtifactGrantは、Security Decisionです。
 
-しかし実際のtransportでは、
+しかし、実際のtransportには、次のような違いがあります。
 
-- mTLS request
-- short-lived bearer token
+- mTLSのrequest
+- 短い有効期間のbearer token
 - presigned URL
-- signed header
-- local IPC capability
+- 署名付きのheader
+- ローカルのIPC capability
 - filesystem descriptor
 
-等の違いがあります。
-
-そこでBaselineでは、
+そこで、Baselineでは、次の変換の境界を置きます。
 
 ~~~text
 ArtifactGrant
@@ -324,45 +308,39 @@ Data Access Broker / Storage Adapter
 transport-specific short-lived access
 ~~~
 
-という変換境界を置きます。
+Data Access Brokerは、独立したMicroserviceである必要はありません。
 
-Data Access Brokerは独立Microservice必須ではありません。
+Data AuthorityとStore Adapterの中の、論理的なfunctionとして実装できます。
 
-Data Authority / Store Adapter内のlogical functionとして実装できます。
+## 8.1 WorkerはStorage credentialを持たない
 
-## 8.1 WorkerがStorage credentialを持たない
+Workerに、次のものを渡しません。
 
-Workerへ、
+- bucket全体のcredential
+- accountのsecret
+- 長い有効期間のcloud key
+- 組織全体のfilesystem credential
 
-- bucket-wide credential
-- account secret
-- long-lived cloud key
-- organization-wide filesystem credential
+必要なArtifactと操作と有効期限に範囲を限った、短い有効期間のaccessに変換します。
 
-を渡しません。
+## 8.2 Transport credentialを、WorkOrderに永続的に埋め込まない
 
-必要Artifact / operation / expiryへscopeした短命accessへ変換します。
+WorkOrderに、長い有効期間のpresigned URLなどを直接埋め込むと、次の問題が増えます。
 
-## 8.2 Transport credentialをWorkOrderへ永久埋込しない
-
-WorkOrderへ長寿命のpresigned URL等を直接埋め込むと、
-
-- log leak
-- queue滞留
+- logからの漏えい
+- queueに滞留すること
 - replay
-- cancellation後の利用
+- cancellationの後の利用
 
-の問題が増えます。
+標準の形として、WorkOrderがArtifactGrant IDとbindingを持ちます。そして、Workerが実行の直前に、Worker IdentityとGrantを提示して、transportのaccessを取得する構造を、優先します。
 
-標準形はWorkOrderがArtifactGrant ID / bindingを持ち、Workerが実行直前にWorker IdentityとGrantを提示してtransport accessを取得する構造を優先します。
-
-小規模Deploymentでdirect tokenを埋める場合も、WorkOrder / Leaseより短いTTLとscopeを要求します。
+小規模なDeploymentで、directなtokenを埋め込む場合も、WorkOrderやLeaseより短いTTLとscopeを、要求します。
 
 ---
 
 # 9. Read path
 
-WorkerがInput Artifactを取得する標準流れは次です。
+WorkerがInput Artifactを取得する、標準の流れは、次のとおりです。
 
 ~~~text
 1. Worker verifies WorkOrder
@@ -381,38 +359,36 @@ WorkerがInput Artifactを取得する標準流れは次です。
 8. Only verified Artifact is exposed to Executor
 ~~~
 
-## 9.1 Digest verification before execution
+## 9.1 実行の前のDigestの検証
 
-Executor Artifactや通常Inputは、完全性を確認する前にExecutorへ渡さないことを標準にします。
+Executor Artifactや通常のInputは、完全性を確認する前に、Executorに渡さないことを、標準にします。
 
-特にExecutable Artifactは、実行直前のactual bytesをDigestへ照合します。
+特に、Executable Artifactは、実行の直前の、実際のbytesをDigestに照合します。
 
-## 9.2 Large streaming input
+## 9.2 大きなstreaming input
 
-非常に大きなArtifactを全量downloadしてから処理できない場合があります。
+非常に大きなArtifactを、全量downloadしてから処理できない場合があります。
 
-その場合は後続拡張として、
+その場合は、後続の拡張として、次のものを利用できます。
 
 - chunk manifest
 - Merkle tree
-- independently authenticated chunks
-- range-scoped sub-artifact
+- 独立して認証されたchunk
+- rangeに範囲を限った、sub-artifact
 
-等を利用できます。
-
-Whole-object Digestしかないのに、未検証streamをSecurity上「Digest確認済み」とは表現しません。
+Whole-objectのDigestしかないのに、未検証のstreamを、Security上「Digest確認済み」とは表現しません。
 
 ## 9.3 Range read
 
-Range readを許す場合、ArtifactGrantがrange accessを許可している必要があります。
+Range readを許す場合は、ArtifactGrantが、range accessを許可している必要があります。
 
-Partial readしたbyte列について、whole-object Digestだけから未取得範囲まで検証済みとは扱いません。
+部分的に読んだbyte列について、whole-objectのDigestだけから、未取得の範囲まで検証済みとは扱いません。
 
 ---
 
 # 10. Upload / Ingest path
 
-Clientや外部SystemからのArtifact uploadはControl Plane requestとData transferを分けます。
+Clientや外部のSystemからのArtifactのuploadは、Control Planeのrequestと、Dataの転送とを、分けます。
 
 ~~~text
 Client
@@ -437,62 +413,60 @@ Artifact Record
 
 ## 10.1 Upload Intent
 
-Control Planeは概念的に次を確定します。
+Control Planeは、概念上、次のことを確定します。
 
-- uploader Principal
-- maximum compressed / raw bytes
-- expected media type if any
-- expected digest if known
-- Data Class floor
-- allowed ingest profile
+- uploaderのPrincipal
+- 圧縮後と展開後の、最大のbyte数
+- 期待するmedia type（ある場合）
+- 期待するdigest（分かっている場合）
+- Data Classの下限
+- 許可するingest profile
 - expiry
-- quota reservation
+- quotaの予約
 
 ## 10.2 Quarantine / staging
 
-Upload完了直後のbyte列を、すぐapproved Task Inputとして公開しません。
+upload完了の直後のbyte列を、すぐに、承認済みのTask Inputとして公開しません。
 
-少なくともContent Identity確定前、Safe Processing前、malware / parser policy前などの状態を区別できる必要があります。
+少なくとも、次の状態を区別できる必要があります。Content Identityを確定する前。Safe Processingの前。malwareやparserのpolicyの前。
 
-一つの単純なtrusted=true fieldへ集約しません。
+一つの単純なtrusted=trueというfieldに、集約しません。
 
-## 10.3 Declared digestを信用しない
+## 10.3 宣言されたdigestを信用しない
 
-Uploaderが宣言したDigestはexpectationとして利用できます。
+Uploaderが宣言したDigestは、期待値として利用できます。
 
-Final Artifact Content Digestはtrusted ingest boundaryまたはStorage Adapter Evidenceで確認します。
+最終的なArtifact Content Digestは、信頼できるingestの境界か、Storage AdapterのEvidenceで確認します。
 
-Worker / Clientの自己申告Digestだけでverified contentに昇格しません。
+ClientやWorkerの自己申告のDigestだけでは、検証済みのcontentに昇格しません。
 
 ---
 
-# 11. Content digest finalization
+# 11. Content digestの確定
 
-Upload方式によって、Digest計算場所は変わり得ます。
+Uploadの方式によって、Digestを計算する場所は変わり得ます。
 
-## 11.1 Gateway streamed upload
+## 11.1 Gatewayを経由するstreamed upload
 
-Data Plane Gatewayがbytesを受け取る場合、streamingしながらDigestとbyte数を計測できます。
+Data Plane Gatewayがbytesを受け取る場合、streamingしながら、Digestとbyte数を計測できます。
 
-## 11.2 Direct-to-store upload
+## 11.2 Object storeへのdirect upload
 
-Client / Workerがobject storeへ直接uploadする場合、Control Planeをbandwidth pathから外せます。
+ClientやWorkerが、object storeに直接uploadする場合、Control Planeを帯域の経路から外せます。
 
-ただしUploader自己申告だけではContent Digestを確定しません。
+ただし、Uploaderの自己申告だけでは、Content Digestを確定しません。
 
-Storage Adapterが、
+Storage Adapterが、次のものをEvidenceとして提供できる場合は、Policyに応じて利用できます。
 
-- trusted cryptographic checksum
-- immutable object metadata
-- finalized object size
+- 信頼できる暗号学的なchecksum
+- 変更できないobjectのmetadata
+- 確定したobjectのsize
 
-をEvidenceとして提供できる場合はPolicyに応じて利用できます。
+十分なEvidenceがないbackendでは、Finalizerが再度readして、Digestを確認する必要があります。
 
-十分なEvidenceがないbackendでは、Finalizerが再readしてDigestを確認する必要があります。
+## 11.3 確定のstate
 
-## 11.3 Finalization state
-
-Artifact Recordは、
+Artifact Recordは、次のような、独立したfacetを持てる構造にします。
 
 ~~~text
 uploaded
@@ -502,56 +476,52 @@ provenance-evaluated
 available-for-profile-X
 ~~~
 
-のような独立facetを持てる構造にします。
-
-単一のlinear statusだけで、Provenance / Integrity / Safe Processing / Authorizationを混同しません。
+単一の直線的なstatusだけで、Provenance、Integrity、Safe Processing、Authorizationを、混同しません。
 
 ---
 
 # 12. Safe Processing Plane
 
-Archive展開、Document parsing、Image decode、Model inspection等はTask本体の外でもResourceを消費し、攻撃面になります。
+Archiveの展開、Documentのparse、Imageのdecode、Modelの検査などは、Task本体の外でもResourceを消費し、攻撃を受ける面になります。
 
-BaselineではSafe ProcessingをData Plane内の明示的なbounded workloadとして扱います。
+Baselineでは、Safe Processingを、Data Plane内の、明示的に上限を設けたworkloadとして扱います。
 
 ## 12.1 Budget
 
-少なくとも必要に応じては次のとおりです。
+少なくとも、必要に応じて、次のものを制限します。
 
-- input bytes
-- expanded bytes
-- file count
-- nesting
+- inputのbyte数
+- 展開後のbyte数
+- fileの数
+- 入れ子の深さ
 - CPU time
 - Memory
 - temp disk
-- output bytes
+- outputのbyte数
 - wall time
 
-を制限します。
+## 12.2 Parserの隔離
 
-## 12.2 Parser isolation
+正式な実装では、ParserやConverterを、Control Planeのmain processに、無制限に組み込みません。
 
-正式実装ではParser / ConverterをControl Plane main processへ無制限に組み込みません。
-
-候補は次のとおりです。
+候補は、次のとおりです。
 
 - child sandbox
 - container
 - WASM
-- dedicated parser service
+- 専用のparser service
 
-は後続比較です。
+どれを選ぶかは、後続で比べます。
 
-## 12.3 Failure containment
+## 12.3 障害の封じ込め
 
-malicious file一つのparser crash / OOMがTask AdmissionやScheduler全体を落とす構造を標準にはしません。
+悪意のあるfile一つによる、parserのcrashやOOMが、Task AdmissionやScheduler全体を落とす構造は、標準にはしません。
 
 ---
 
 # 13. Output path
 
-Worker outputもuntrusted bytesです。
+Workerのoutputも、untrustedなbytesです。
 
 ~~~text
 Executor
@@ -574,92 +544,84 @@ Verification / Acceptance
 
 ## 13.1 Output Binding
 
-WorkOrderはarbitrary output URLを持ちません。
+WorkOrderは、任意のoutput URLを持ちません。
 
-Output Bindingは、
+Output Bindingは、次のものに結び付けます。
 
 - Task
 - Attempt
 - Worker
-- maximum output size
-- target Artifact Record scope
+- 最大のoutput size
+- 対象のArtifact Recordのscope
 - operation
 - expiry
 
-へbindingします。
+## 13.2 Outputのsize
 
-## 13.2 Output size
+Clientが、巨大なResultを生成して、Quotaを迂回できないよう、複数の境界で制限します。
 
-Clientが巨大Resultを生成してQuotaを迂回できないよう、
+- Executorのlocalなoutput limit
+- Data Planeのupload limit
+- Control Planeのbudgetとの突き合わせ
 
-- Executor local output limit
-- Data Plane upload limit
-- Control Plane budget reconciliation
+## 13.3 Result acceptanceの前のArtifact
 
-の複数境界で制限します。
+uploadされたOutputが存在することと、Accepted Resultであることとは、別です。
 
-## 13.3 Result acceptance前のArtifact
-
-UploadされたOutputが存在することと、Accepted Resultであることは別です。
-
-Rejected / conflicting Result Artifactも監査・再検証のためretention policyに従って保持できる必要があります。
+RejectedなResultや、競合するResultのArtifactも、監査と再検証のために、retention policyに従って保持できる必要があります。
 
 ---
 
 # 14. Checkpoint path
 
-CheckpointはOutputと似ていますが、再実行に利用されるため追加条件があります。
+Checkpointは、Outputと似ています。ただし、再実行に利用されるため、追加の条件があります。
 
-Checkpoint Artifactを再利用する前に、
+Checkpoint Artifactを再利用する前に、次のことを確認します。
 
-- Task / Executor compatibility
-- Checkpoint schema / version
+- TaskとExecutorの互換性
+- Checkpointのschemaとversion
 - Artifact Digest
 - Safe Processing
 - Data Class
-- Producer provenance
-- target Worker authorization
+- 生成者のprovenance
+- 対象のWorkerのauthorization
 
-を確認します。
+Workerがcheckpoint=trueと自己申告するだけで、再実行のInputに昇格することはありません。
 
-Workerがcheckpoint=trueと自己申告するだけで再実行Inputへ昇格しません。
+Checkpointの再利用は、任意のoptimizationです。
 
-Checkpoint再利用はoptional optimizationです。
-
-安全に検証できないCheckpointは捨ててTaskを再実行できる構造を優先します。
+安全に検証できないCheckpointは、捨てて、Taskを再実行できる構造を、優先します。
 
 ---
 
 # 15. Cache architecture
 
-## 15.1 CacheはOptimization
+## 15.1 CacheはOptimizationである
 
-Cache hitはSecurity Decisionではありません。
+Cache hitは、Security Decisionではありません。
 
-Schedulerはcache localityをPlacement costへ利用できますが、Workerは実byte列をDigestへ検証します。
+Schedulerは、cache localityをPlacementのcostに利用できます。ただし、Workerは、実際のbyte列をDigestに対して検証します。
 
-## 15.2 Worker local cache
+## 15.2 Workerのlocal cache
 
-Worker Agent配下のcacheは、
+Worker Agentの下にあるcacheは、次のものを管理できます。
 
 - Content Digest
-- verified size
-- local path / object handle
-- last verified time
+- 検証済みのsize
+- localのpathやobject handle
+- 最後に検証した時刻
 - security scope
-- optional encryption state
+- 任意の、encryptionのstate
 
-等を管理できます。
+Clientは、cacheのpathを指定できません。
 
-Clientからcache pathを指定できません。
+## 15.3 管理されたsite cache
 
-## 15.3 Managed site cache
+Officeやsite単位で、共用のcacheを置くことは、WANのtrafficを減らすのに有効です。
 
-Office / site単位で共用cacheを置くことは、WAN traffic削減に有効です。
+ただし、enterpriseの既定では、任意のWorker同士を、P2Pのrelayにはしません。
 
-ただしenterprise defaultでは任意Worker同士をP2P relayにしません。
-
-Managed site cacheは明示的なData Plane componentとして、
+管理されたsite cacheは、明示的なData Planeのcomponentとして、次のものを持ちます。
 
 - identity
 - policy
@@ -667,60 +629,56 @@ Managed site cacheは明示的なData Plane componentとして、
 - audit
 - data class
 
-を持ちます。
-
 ## 15.4 P2P
 
-arbitrary worker-to-worker transferは標準Enterprise Profileでは無効です。
+任意のworker間の直接の転送は、標準のEnterprise Profileでは、無効です。
 
-将来、明示的なtrusted profileでpeer transferを導入する余地は残しますが、
+将来、明示的なtrusted profileで、peer transferを導入する余地は残します。ただし、次の問題を、別に解決する必要があります。
 
-- Grant enforcement
-- peer identity
-- topology leak
+- Grantの強制
+- peerのidentity
+- topologyの漏えい
 - cache poisoning
-- traffic amplification
-- NAT / firewall
+- trafficの増幅
+- NATとfirewall
 - revocation
-
-を別途解決する必要があります。
 
 ---
 
-# 16. Cache security scope
+# 16. Cacheのsecurity scope
 
-同じDigestだから、すべてのTaskから同じcache entryを読めるとは限りません。
+同じDigestだからといって、すべてのTaskが、同じcache entryを読めるとは限りません。
 
-少なくとも次を区別できる必要があります。
+少なくとも、次の区別を表現できる必要があります。
 
-- public cacheable
-- tenant scoped
-- organization scoped
-- confidential / no-shared-cache
-- ephemeral
-- executor-only
+- publicでcacheしてよい
+- tenantの範囲
+- organizationの範囲
+- confidentialで、共有cacheを使わない
+- 使い捨て
+- executor専用
 
-Confidential Artifactをad-hoc Workerやpublic Browser cacheへ置かないことをPolicyで表現します。
+ConfidentialなArtifactを、アドホックなWorkerや、公開のBrowser cacheに置かないことを、Policyで表現します。
 
-## 16.1 Cache existence side channel
+## 16.1 Cacheの存在のside channel
 
-Clientへ、
+Clientには、
 
-> digest XはWorker Yにcache済み
+> digest Xは、Worker Yにcache済み
 
-というraw情報を返しません。
+という生の情報を返しません。
 
-Scheduler内部でも必要以上にexact topologyを広げません。
+Scheduler内部でも、必要以上に、正確なtopologyを広げません。
 
-Cache hit / miss latencyを通じたcross-tenant existence leakもQuality / Security review対象です。
+Cache hitとmissのlatencyを通じた、tenantをまたぐ存在の漏えいも、QualityとSecurityのレビューの対象です。
 
 ---
 
 # 17. Locality Observation
 
-Schedulerへ渡すLocality情報はAuthorityではなくObservationです。
+Schedulerに渡すLocalityの情報は、AuthorityではなくObservationです。
 
-概念例は次のとおりです。
+概念上の例は、次のとおりです。
 
 ~~~text
 Artifact Digest
@@ -733,140 +691,132 @@ observed at
 source
 ~~~
 
-Worker self-reportのcache claimはlow-assurance sourceとして扱います。
+Workerの自己申告のcache claimは、保証の低いsourceとして扱います。
 
-Managed cacheやArtifact Store telemetry等、sourceに応じてconfidenceを区別できます。
+管理されたcacheや、Artifact Storeのtelemetryなど、sourceに応じて、confidenceを区別できます。
 
-どのObservationでもArtifact access authorityは作りません。
+どのObservationでも、Artifactへのaccess authorityは作りません。
 
 ---
 
 # 18. Network Budget
 
-RQ-008 / RQ-017に従い、Network transferをResource Budgetの一部として扱います。
+RQ-008とRQ-017に従い、Networkの転送を、Resource Budgetの一部として扱います。
 
-Task / Principal / Provider / Grant単位で必要に応じて:
+Task、Principal、Provider、Grantの単位で、必要に応じて、次のものを制限できる構造にします。
 
-- input bytes
-- output bytes
-- retry transfer bytes
-- prefetch bytes
-- concurrent transfer
-- egress monetary budget
+- inputのbyte数
+- outputのbyte数
+- retryの転送のbyte数
+- prefetchのbyte数
+- 同時の転送
+- egressの金銭的なbudget
 - bandwidth class
 
-を制限できる構造にします。
+## 18.1 予約
 
-## 18.1 Reservation
+Placementの前に、足りないinputと、期待されるoutputから、Network Budgetを予約できます。
 
-Placement前にmissing inputとexpected outputからNetwork Budgetを予約できます。
-
-見積より実転送が増えた場合、Data Plane側でhard limitを強制できます。
+見積もりより、実際の転送が増えた場合は、Data Plane側で、hard limitを強制できます。
 
 ## 18.2 Retry
 
-Retryで同じArtifactを再取得した場合も、元TaskのNetwork Budgetを消費します。
+Retryで、同じArtifactを再取得した場合も、元のTaskのNetwork Budgetを消費します。
 
-Retryによって新しい無制限Budgetを得ません。
+Retryによって、新しい無制限のBudgetを得ることはありません。
 
-## 18.3 Provider / site budget
+## 18.3 ProviderとsiteのBudget
 
-業務Networkを守るため、Provider / site側にもlocal traffic limitを置けます。
+業務のNetworkを守るために、Providerやsite側にも、ローカルのtraffic limitを置けます。
 
-Central SchedulerのTask priorityが高くても、local network policyを越えません。
-
----
-
-# 19. Transfer accounting
-
-Data Planeは少なくとも次を計測できる余地を持ちます。
-
-- requested bytes
-- actual bytes
-- cache hit / miss
-- source / destination class
-- transfer duration
-- retry / resume bytes
-- output bytes
-- rejected transfer
-- throttle reason
-
-Contribution用Resource MeasurementとOperational Telemetryは目的が異なるため、同じCounterでもAssurance / Observerを区別します。
+Central SchedulerのTaskのpriorityが高くても、ローカルのnetwork policyを越えません。
 
 ---
 
-# 20. Mass reclaim時のData Plane
+# 19. 転送のaccounting
 
-大量Workerが同時離脱すると、retryだけでなくArtifact再転送もstormを起こします。
+Data Planeは、少なくとも、次のものを計測できる余地を持ちます。
 
-標準Recoveryでは、
+- 要求されたbyte数
+- 実際のbyte数
+- cacheのhitとmiss
+- sourceとdestinationのclass
+- 転送の所要時間
+- retryとresumeのbyte数
+- outputのbyte数
+- rejectした転送
+- throttleの理由
 
-1. Task retry budget
-2. retry admission window
-3. Artifact transfer budget
-4. per-store concurrency
-5. per-site bandwidth
+Contribution用のResource Measurementと、Operational Telemetryは、目的が異なります。そのため、同じCounterでも、AssuranceとObserverを区別します。
+
+---
+
+# 20. Mass reclaimのときのData Plane
+
+大量のWorkerが同時に離脱すると、retryだけでなく、Artifactの再転送もstormを起こします。
+
+標準のRecoveryでは、次のものを組み合わせます。
+
+1. Taskのretry budget
+2. retryのadmission window
+3. Artifactの転送のbudget
+4. storeごとのconcurrency
+5. siteごとのbandwidth
 6. cache locality
-7. backoff / jitter
+7. backoffとjitter
 8. priority
 
-を組み合わせます。
+## 20.1 重複した転送の抑制
 
-## 20.1 Duplicate transfer suppression
+同じWorkerやsiteに、同じDigestを多数のTaskが必要とする場合、Data Planeは、可能であれば、single-flightやtransfer coalescingを利用できます。
 
-同じWorker / Siteへ同じDigestを多数Taskが必要とする場合、Data Planeは可能ならsingle-flight / transfer coalescingを利用できます。
+Taskごとに、同じ8 GiBのModelを、同時にdownloadすることを避けます。
 
-Taskごとに同じ8 GiB Modelを同時downloadすることを避けます。
+## 20.2 Recoveryの優先順位付け
 
-## 20.2 Recovery prioritization
-
-すべてのTaskを同時に再配置せず、
+すべてのTaskを同時に再配置するのではなく、次のものでRecovery windowを制御します。
 
 - deadline
-- Task priority
-- transfer cost
-- available cache
-- Result value
+- Taskのpriority
+- 転送のコスト
+- 利用できるcache
+- Resultの価値
 - retry budget
 
-でRecovery windowを制御します。
-
-User / Provider reclaim自体を遅延させることはしません。
+UserやProviderのreclaim自体を、遅らせることはしません。
 
 ---
 
 # 21. Prefetch
 
-Prefetchは独立したOptimization Policyです。
+Prefetchは、独立したOptimization Policyです。
 
-通常TaskのArtifact access authorityから、
+通常のTaskのArtifact access authorityから、
 
-> 将来使うかもしれないので配ってよい
+> 将来使うかもしれないので、配ってよい
 
-という権限を自動生成しません。
+という権限を、自動的に生成しません。
 
-Prefetchには別途:
+Prefetchには、別に、次のものを適用します。
 
-- allowed Artifact class
+- 許可するArtifact class
 - destination class
 - Network Budget
 - Storage Budget
-- expected reuse
+- 期待される再利用
 - expiry
 - eviction policy
-- user / provider policy
+- userとproviderのpolicy
 
-を適用します。
-
-Business Endpointへ巨大Modelを無差別に配布しません。
+Business Endpointに、巨大なModelを無差別に配布しません。
 
 ---
 
-# 22. Data Class propagation
+# 22. Data Classのpropagation
 
-OutputのData ClassをWorkerの自己申告で下げません。
+OutputのData Classを、Workerの自己申告で下げません。
 
-Baselineでは原則として、
+Baselineでは、原則として、次のように、安全な側へpropagationする構造を作れるようにします。
 
 ~~~text
 output class
@@ -875,71 +825,65 @@ output class
   >= Executor output policy floor
 ~~~
 
-となる安全側のpropagationを行える構造にします。
-
 ## 22.1 Declassification
 
-generic automatic declassificationはBaselineに含めません。
+汎用の、自動的なdeclassificationは、Baselineに含めません。
 
-匿名化、集計、変換等によってData Classを下げる場合は、
+匿名化、集計、変換などによって、Data Classを下げる場合は、後続の拡張として、次のものを必要とします。
 
-- approved declassification Executor
-- explicit Policy
+- 承認されたdeclassification Executor
+- 明示的なPolicy
 - validation
 - audit
-- dedicated Authority
+- 専用のAuthority
 
-等を必要とする後続拡張として扱います。
-
-「Executorがpublic outputと言った」だけでは下げません。
+「Executorがpublicなoutputだと言った」だけでは、下げません。
 
 ---
 
 # 23. Encryption
 
-## 23.1 In transit
+## 23.1 通信中
 
-Control / Data Planeのtransport confidentiality / integrityは企業標準に適合する暗号化通信を前提とします。
+ControlとData Planeのtransportの、機密性と完全性は、企業の標準に適合する暗号化された通信を、前提とします。
 
-具体TLS profileは後続実装で定義します。
+具体的なTLS profileは、後続の実装で定義します。
 
-## 23.2 At rest
+## 23.2 保存時
 
-Storage backendのat-rest encryptionを利用できます。
+Storage backendの、保存時の暗号化を利用できます。
 
-ただしat-rest encryptionの有無とArtifact content integrityは別です。
+ただし、保存時の暗号化があるかどうかと、Artifactのcontent integrityとは、別です。
 
-## 23.3 Application / client-side encryption
+## 23.3 アプリケーションまたはclient側の暗号化
 
-高いConfidentiality要件では、Data Planeがciphertextだけを保持し、approved execution environmentへだけkeyをreleaseする構成を将来利用できます。
+高いConfidentialityが求められる場合には、将来、次の構成を利用できます。Data Planeがciphertextだけを保持し、承認された実行環境にだけ、keyをreleaseする構成です。
 
-これはRemote Attestation / Key Releaseと連携するoptional profileです。
+これは、Remote AttestationとKey Releaseと連携する、任意のprofileです。
 
-Baseline managed deploymentの必須条件にはしません。
-
----
-
-# 24. Secretは一般Artifact Cacheへ入れない
-
-API key、Database password、private signing material等を通常Artifactとしてcacheしません。
-
-Secret accessはArtifact Data Planeと似たCapability modelを使えますが、
-
-- no persistent worker cache
-- narrow Task / Attempt / Executor binding
-- shorter expiry
-- no contribution / locality optimization
-- redacted audit
-
-を標準とする別Secret Plane / Adapterとして扱います。
-
-Secret bytesをSchedulerへ渡しません。
+Baselineの、managed deploymentの必須条件にはしません。
 
 ---
 
-# 25. Data Plane credential lifetime
+# 24. Secretを、一般のArtifact Cacheに入れない
 
-Transport CredentialのTTLは、原則として依存Decisionより長くしません。
+API key、Databaseのpassword、private signing materialなどを、通常のArtifactとしてcacheしません。
+
+Secretへのaccessは、Artifact Data Planeと似たCapability modelを使えます。ただし、次のものを標準とする、別のSecret PlaneやAdapterとして扱います。
+
+- Workerに永続的なcacheを持たない
+- Task、Attempt、Executorに、狭く結び付ける
+- より短いexpiry
+- contributionやlocalityのoptimizationの対象にしない
+- 伏せ字にしたaudit
+
+Secretのbytesを、Schedulerに渡しません。
+
+---
+
+# 25. Data Plane credentialの有効期間
+
+Transport Credentialの有効期限は、原則として、依存するDecisionより長くしません。
 
 ~~~text
 transport credential expiry
@@ -947,152 +891,142 @@ transport credential expiry
   <= WorkOrder / Lease relevant lifetime
 ~~~
 
-ただし大容量TransferでLeaseより長いsessionが必要な場合は、renewalを明示的に設計します。
+ただし、大容量の転送で、Leaseより長いsessionが必要な場合は、renewalを明示的に設計します。
 
-古いdownload URLを長期間再利用できる状態を避けます。
+古いdownload URLを、長期間再利用できる状態は、避けます。
 
 ---
 
-# 26. Control Plane outage
+# 26. Control Planeの停止
 
-Data Plane accessを毎byte Control Planeへ同期依存させると、Control Plane outageで進行中Transferまで即座に壊れます。
+Data Planeへのaccessを、1 byteごとにControl Planeに同期して依存させると、Control Planeが停止したときに、進行中の転送まで、すぐに壊れます。
 
-一方、長寿命Credentialを発行するとrevocation latencyが増えます。
+一方、長い有効期間のCredentialを発行すると、revocationのlatencyが増えます。
 
-BaselineではこのTrade-offを、
+Baselineでは、このTrade-offを、次のように明示します。
 
-- short-lived access
-- bounded TTL
+- 短い有効期間のaccess
+- TTLに上限を設ける
 - renewal
-- high-sensitivity profileではonline mediation可能
-- already delivered bytesはrevocationできない
+- 機微性の高いprofileでは、onlineでmediationできる
+- すでに渡したbytesは、revocationできない
 
-として明示します。
+Control Planeが停止した後も、すでに発行したCredentialは、expiryまで有効な場合があります。
 
-Control Plane停止後も、既発行Credentialはexpiryまで有効な場合があります。
-
-これを「即時revocation」とは表現しません。
+これを、「即時のrevocation」とは表現しません。
 
 ---
 
 # 27. CancellationとData access
 
-Task cancellation後は、
+Task cancellationの後は、次のことを行います。
 
-- future ArtifactGrant issuance停止
-- existing Grant revoke where supported
-- transport credential renewal停止
-- upload session停止
-- Worker stop request
+- 将来のArtifactGrantの発行を止める
+- 対応している場合は、既存のGrantをrevokeする
+- transport credentialのrenewalを止める
+- upload sessionを止める
+- Workerに、停止を要求する
 
-を行います。
+しかし、悪意のあるWorkerが、すでにdownloadしたDataを、
 
-しかし悪意Workerが既にdownloadしたDataを、
-
-> cancellationしたので削除された
+> cancellationしたので、削除された
 
 とは保証しません。
 
-Confidential Dataはそもそも適切なWorker Assurance / environmentへしか配置しないことが基本です。
+Confidentialなdataは、そもそも、適切なWorker Assuranceと環境にだけ配置することが、基本です。
 
 ---
 
-# 28. Artifact retention / deletion
+# 28. Artifactのretentionとdeletion
 
-Artifact deletionは少なくとも次を分けます。
+Artifactの削除では、少なくとも、次のものを分けます。
 
-- logical reference removal
-- Artifact Record retention
-- physical object deletion
-- cache eviction
-- external store retention
+- 論理的な参照の削除
+- Artifact Recordのretention
+- 物理的なobjectの削除
+- cacheのeviction
+- 外部のstoreのretention
 
-Content Digestが同じ別Recordが存在する場合、一つのRecord削除で他Recordまで消してはいけません。
+Content Digestが同じ、別のRecordが存在する場合、一つのRecordを削除して、他のRecordまで消してはいけません。
 
 ## 28.1 Accepted Result
 
-Accepted Resultが参照するArtifactは、Result retention policyと整合して保持します。
+Accepted Resultが参照するArtifactは、Resultのretention policyと整合するように、保持します。
 
-## 28.2 Unaccepted Result
+## 28.2 受理されなかったResult
 
-Rejected / failed AttemptのOutputも、debug / audit / security investigationのため短期保持する場合があります。
+RejectedやfailedなAttemptのOutputも、debug、audit、security investigationのために、短い期間、保持する場合があります。
 
-## 28.3 Worker copy
+## 28.3 Workerのcopy
 
-Workerへ渡したbyte列の事後削除は、malicious Workerに対して完全保証できません。
+Workerに渡したbyte列を、あとから削除させることは、malicious Workerに対して、完全には保証できません。
 
 ---
 
-# 29. Federation Data Plane
+# 29. FederationのData Plane
 
-Identity Federationが成立しても、Data sharingは自動成立しません。
+Identity Federationが成立しても、Dataの共有は、自動的には成立しません。
 
-外部OrganizationへArtifactを渡すには、別途:
+外部のOrganizationにArtifactを渡すには、別に、次のものを満たす必要があります。
 
-- Beneficiary / Principal
+- BeneficiaryとPrincipal
 - Data Class
-- Grant scope
-- purpose / Task
+- Grantのscope
+- 目的とTask
 - expiry
-- transfer destination
+- 転送先
 - export policy
-
-を満たす必要があります。
 
 ~~~text
 Federated identity valid
   != Artifact export authorized
 ~~~
 
-## 29.1 Cross-organization storage
+## 29.1 組織をまたぐstorage
 
-Federationでは、
+Federationでは、次のような方式から選べます。
 
-- Provider storeからBeneficiary Workerへdirect read
-- neutral shared object store
-- controlled export copy
-- encrypted Artifact transfer
+- Providerのstoreから、Beneficiary Workerへ、直接read
+- 中立の、共有のobject store
+- 制御されたexportのcopy
+- 暗号化したArtifactの転送
 
-等を選択できます。
+Architecture Coreは、一つの方式に固定しません。
 
-Architecture Coreは一方式へ固定しません。
-
-## 29.2 Public-interest Compute Grant
+## 29.2 公益向けのCompute Grant
 
 Compute Resource GrantとData Grantを分けます。
 
-Cloud Providerが公益団体へComputeを提供していても、そのWorkerにOrganization内部Data accessが自動で付くことはありません。
+Cloud Providerが、公益団体にComputeを提供していても、そのWorkerに、Organization内部のData accessが、自動的に付くことはありません。
 
 ---
 
-# 30. Browser / Ad-hoc Worker
+# 30. Browser / アドホックなWorker
 
-Browser WorkerはData Plane上もlower-assurance profileとして扱います。
+Browser Workerは、Data Planeの上でも、保証の低いprofileとして扱います。
 
-標準ではは次のとおりです。
+標準では、次のことを基本にします。
 
-- public / low-sensitivity Artifact
-- short-lived Grant
-- small bounded transfer
-- no persistent secret
-- restricted cache
-- no arbitrary internal endpoint
-- aggressive expiry
-- explicit participation
+- publicや、機微性の低いArtifact
+- 短い有効期間のGrant
+- 小さく、上限のある転送
+- 永続的なsecretを持たない
+- 制限されたcache
+- 任意の内部のendpointに到達しない
+- 積極的なexpiry
+- 明示的な参加
 
-を基本にします。
-
-Browser storage APIにArtifactが残る可能性を考慮し、confidential Dataを標準配置しません。
+Browserのstorage APIに、Artifactが残る可能性を考慮して、confidentialなDataを、標準では配置しません。
 
 ---
 
 # 31. Executor Artifact path
 
-Executor ArtifactもData Planeを通します。
+Executor Artifactも、Data Planeを通します。
 
-Workerはlogical Executor nameから外部registryを自由に解決しません。
+Workerは、論理的なExecutor名から、外部のregistryを自由に解決しません。
 
-標準流れは次のとおりです。
+標準の流れは、次のとおりです。
 
 ~~~text
 ExecutorApproval
@@ -1107,224 +1041,212 @@ Worker local verified cache
 Sandbox execution
 ~~~
 
-Mutable tagはAdmission時にDigestへresolveされ、実行時はDigestが正本です。
+変更できるtagは、Admissionのときに、Digestに解決されます。実行時には、Digestが正本です。
 
 ---
 
-# 32. Model / Dataset reuse
+# 32. ModelとDatasetの再利用
 
-AI / cognition workloadでは巨大Model / Datasetを繰り返し使う可能性があります。
+AIや認知のworkloadでは、巨大なModelやDatasetを、繰り返し使う可能性があります。
 
-EKIでは、
+EKIでは、次のものを分離します。
 
-- model artifact identity
-- model approval
-- model Data Class / license metadata
-- Worker cache
+- model artifactのidentity
+- modelの承認
+- modelのData Classとlicenseのmetadata
+- Workerのcache
 - locality observation
 - prefetch policy
 
-を分離します。
+Modelをcacheしているという理由だけで、そのWorkerが、そのModelを利用する権限を持つとは限りません。
 
-Modelをcacheしているという理由だけで、そのWorkerがModelを利用する権限を持つとは限りません。
-
-License / contractual restrictionもArtifact policy extensionとして扱える余地を持ちます。
+Licenseや契約上の制約も、Artifact policyのextensionとして扱える余地を持ちます。
 
 ---
 
 # 33. Data PlaneとContribution
 
-Contribution accountingでnetwork / storage資源を扱う場合も、Operational Telemetryから自動的にCreditを生成しません。
+Contribution accountingで、networkやstorageの資源を扱う場合も、Operational Telemetryから、自動的にCreditを生成しません。
 
-Data Plane Observerは、
+Data Plane Observerは、次のものを、Measurement Evidenceとして提供できます。
 
-- bytes transferred
-- cache served bytes
-- storage time
+- 転送したbyte数
+- cacheが提供したbyte数
+- storageの時間
 
-等をMeasurement Evidenceとして提供できます。
-
-Contribution AuthorityがAssurance / Policyを確認した後にRecord化します。
+Contribution Authorityが、AssuranceとPolicyを確認した後に、Recordにします。
 
 ---
 
 # 34. Audit
 
-Data Planeの重要Event:
+Data Planeの重要なEventは、次のとおりです。
 
-- ingest intent issued
-- upload started / completed / rejected
-- content digest finalized
-- safe processing result
-- Artifact Record available
-- ArtifactGrant issued / denied / revoked
-- transport access issued
-- download completed / interrupted
-- cache fill / eviction
-- output finalized
-- retention / deletion decision
-- cross-domain export
+- ingest intentの発行
+- uploadの開始、完了、reject
+- content digestの確定
+- safe processingの結果
+- Artifact Recordが利用可能になったこと
+- ArtifactGrantの発行、拒否、revoke
+- transport accessの発行
+- downloadの完了と中断
+- cacheのfillとeviction
+- outputの確定
+- retentionとdeletionの判断
+- ドメインをまたぐexport
 
-をTask / Attempt / Artifact / Principal / Workerへ関連付けられる必要があります。
+これらを、Task、Attempt、Artifact、Principal、Workerに関連付けられる必要があります。
 
-Transport Credential、presigned URL、Secret等をAudit logへ平文記録しません。
+Transport Credential、presigned URL、Secretなどを、Audit logに平文で記録しません。
 
 ---
 
 # 35. Observability
 
-Data Plane metricsは少なくとも:
+Data Planeのmetricsは、少なくとも、次のものを取得できる余地を持ちます。
 
-- transfer bytes
-- transfer duration
-- active transfer count
-- cache hit ratio
-- duplicate transfer ratio
-- ingest reject count
-- safe processing resource use
-- output reject / limit count
-- store error rate
-- per-site network saturation
-- reclaim recovery amplification
+- 転送のbyte数
+- 転送の所要時間
+- 進行中の転送の数
+- cacheのhit率
+- 重複した転送の割合
+- ingestのrejectの数
+- safe processingのresourceの使用量
+- outputのrejectとlimitの数
+- storeのerror率
+- siteごとのnetworkの飽和
+- reclaimからの回復による増幅
 
-を取得できる余地を持ちます。
-
-OpenTelemetry / OTLP等へexport可能にしますが、具体Telemetry backendは固定しません。
+OpenTelemetryやOTLPなどにexportできるようにします。ただし、具体的なTelemetry backendは固定しません。
 
 ---
 
-# 36. Failure semantics
+# 36. 失敗のsemantics
 
-## 36.1 Storage unavailable
+## 36.1 Storageが利用できない
 
-Taskそのものをinvalidとはしません。
+Taskそのものを、invalidとはしません。
 
-別location / cache / retry可能性をTask Stateが評価します。
+別のlocation、cache、retryの可能性を、Task Stateが評価します。
 
-## 36.2 Grant denied
+## 36.2 Grantが拒否された
 
-Placement候補がData requirementを満たせないため、そのAttempt / Placementを再評価します。
+Placementの候補が、Dataの要件を満たせないため、そのAttemptとPlacementを再評価します。
 
-Security requirementを下げて通しません。
+Securityの要件を下げて、通すことはしません。
 
-## 36.3 Digest mismatch
+## 36.3 Digestが一致しない
 
-ArtifactをExecutorへ渡しません。
+ArtifactをExecutorに渡しません。
 
-Cache entryならinvalidateし、source / transfer pathをAudit対象にします。
+Cache entryであれば無効にして、sourceと転送の経路を、Auditの対象にします。
 
-## 36.4 Upload interrupted
+## 36.4 Uploadが中断された
 
-Upload sessionをresume可能にするかはAdapter次第です。
+Upload sessionをresumeできるようにするかは、Adapter次第です。
 
-Incomplete uploadをArtifact Recordとして利用可能にしません。
+未完了のuploadを、Artifact Recordとして利用可能にはしません。
 
-## 36.5 Safe processing failure
+## 36.5 Safe processingの失敗
 
-Content Identityが分かっていてもapproved inputにはなりません。
+Content Identityが分かっていても、承認済みのinputにはなりません。
 
-Failure reasonとResource Budgetを記録します。
+失敗の理由とResource Budgetを記録します。
 
-## 36.6 Output budget exceeded
+## 36.6 Output budgetを超過した
 
-Executor / uploadを停止しAttempt failureとして扱います。
+Executorとuploadを止めて、Attemptの失敗として扱います。
 
-巨大OutputをControl Planeへ返してからrejectしません。
-
----
-
-# 37. Storage location failureとArtifact identity
-
-Artifactが一つのStoreから消えても、Artifact Identityまで消えたことにはなりません。
-
-Artifact Recordは複数Locationを参照できます。
-
-Replication / durability policyはArtifact ClassやDeployment Profileに応じて選択します。
-
-EKIはpersistent source-of-truth databaseそのものではないため、Application-owned source dataのdurabilityをFabricが自動的に引き受けるとは限りません。
+巨大なOutputをControl Planeに返してから、rejectすることはしません。
 
 ---
 
-# 38. Application-owned data
+# 37. Storage locationの障害と、Artifact identity
 
-すべてのDataをEKI Artifact Storeへcopyする必要はありません。
+Artifactが、一つのStoreから消えても、Artifact Identityまで消えたことにはなりません。
 
-Application-owned storageを利用する場合、
+Artifact Recordは、複数のLocationを参照できます。
 
-- registered Storage Adapter
-- explicit Artifact / object reference
+Replicationとdurabilityのpolicyは、Artifact ClassやDeployment Profileに応じて、選びます。
+
+EKIは、永続的なsource-of-truthのdatabaseそのものではありません。そのため、Applicationが所有するsource dataのdurabilityを、Fabricが自動的に引き受けるとは限りません。
+
+---
+
+# 38. アプリケーションが所有するData
+
+すべてのDataを、EKI Artifact Storeにcopyする必要はありません。
+
+アプリケーションが所有するstorageを利用する場合は、次のものを定義します。
+
+- 登録済みのStorage Adapter
+- 明示的なArtifactとobjectの参照
 - Data Authority
-- scoped access
-- integrity expectation
+- 範囲を限ったaccess
+- 完全性への期待
 - locality
-- retention owner
+- retentionの所有者
 
-を定義します。
+Workerに、Databaseのmaster credentialを渡して、Application storageを自由に探索させることはしません。
 
-WorkerへDatabase master credentialを渡してApplication storageを自由に探索させません。
-
-必要ならApplication側Adapterが限定query / object retrievalを提供します。
+必要であれば、Application側のAdapterが、限定されたqueryやobjectの取得を提供します。
 
 ---
 
 # 39. External Adapter
 
-TaskがExternal APIやSystemとData交換する場合、arbitrary network accessではなくregistered External Adapterを利用できます。
+TaskがExternal APIや外部のSystemとDataをやり取りする場合は、任意のnetwork accessではなく、登録済みのExternal Adapterを利用できます。
 
-External Adapterは、
+External Adapterは、次のものを持ちます。
 
-- allowed destination
-- request schema
-- credential handling
+- 許可するdestination
+- requestのschema
+- credentialの扱い
 - rate limit
-- side-effect semantics
-- receipt / confirmation
+- side-effectのsemantics
+- receiptと確認
 - audit
 
-を持ちます。
-
-これによりWorker sandboxへ広いInternet accessを与えずに外部連携できます。
+これによって、Worker sandboxに広いInternetのaccessを与えずに、外部と連携できます。
 
 ---
 
 # 40. Network policy
 
-Workerのnetwork capabilityはdefault denyを基本とします。
+Workerのnetwork capabilityは、default denyを基本とします。
 
-許可類型は次のとおりです。
+許可する類型は、次のとおりです。
 
-1. Control Plane endpoint
-2. Data Plane endpoint
-3. registered External Adapter
-4. explicitly approved network profile
+1. Control Planeのendpoint
+2. Data Planeのendpoint
+3. 登録済みのExternal Adapter
+4. 明示的に承認されたnetwork profile
 
-Data Plane access先もGrantから解決し、Client supplied destinationをそのままallowlistにしません。
+Data Planeのaccess先も、Grantから解決します。Clientが指定したdestinationを、そのままallowlistにすることはしません。
 
 ---
 
-# 41. Site / Region affinity
+# 41. SiteとRegionのaffinity
 
-EnterpriseやFederationでは、Dataをsite / region外へ出せない場合があります。
+EnterpriseやFederationでは、Dataをsiteやregionの外に出せない場合があります。
 
-Artifact Record / Policyは、
+Artifact RecordとPolicyは、次のものを表現できる余地を持ちます。
 
-- allowed region
-- allowed site
-- allowed trust domain
-- egress prohibited
-- residency requirement
+- 許可するregion
+- 許可するsite
+- 許可するtrust domain
+- egressの禁止
+- residencyの要件
 
-等を表現できる余地を持ちます。
-
-Schedulerのlocality scoreより前にhard constraintとして適用します。
+Schedulerのlocality scoreより前に、hard constraintとして適用します。
 
 ---
 
 # 42. Cost modelへの入力
 
-Control / Data PlaneからSchedulerへ提供するcost inputは、Authorityを持たないObservationです。
+Control PlaneとData PlaneからSchedulerに提供するcostの入力は、Authorityを持たないObservationです。
 
-例は次のとおりです。
+たとえば、次のものです。
 
 ~~~text
 missing input bytes
@@ -1337,13 +1259,13 @@ site network pressure
 store availability
 ~~~
 
-learned estimatorを利用しても、Data access / residency / Security constraintを上書きしません。
+learned estimatorを利用しても、Data access、residency、Securityの制約を、上書きしません。
 
 ---
 
-# 43. Small deployment
+# 43. 小規模なdeployment
 
-10台程度のmanaged endpoint poolでは、次のような単純構成を許容します。
+10台程度の、管理されたendpoint poolでは、次のような単純な構成を認めます。
 
 ~~~text
 eki-control
@@ -1357,118 +1279,114 @@ endpoint agents
   verified local cache
 ~~~
 
-Control PlaneとData Access Resolverを同一Binaryにしても構いません。
+Control PlaneとData Access Resolverを、同じBinaryにしてもかまいません。
 
-専用CDN、Kafka、Service Mesh、HSMを必須にしません。
+専用のCDN、Kafka、Service Mesh、HSMを、必須にはしません。
 
 ---
 
 # 44. Enterprise deployment
 
-Enterpriseでは必要に応じて:
+Enterpriseでは、必要に応じて、次のものを利用します。
 
-- redundant Control Plane
-- dedicated object store
+- 冗長なControl Plane
+- 専用のobject store
 - site cache
-- enterprise PKI / IdP
-- KMS / HSM
-- egress control
-- outbound-only Worker
-- proxy-aware transfer
-- regional storage
+- 企業のPKIとIdP
+- KMSとHSM
+- egressの制御
+- outbound-onlyのWorker
+- proxyに対応した転送
+- regionごとのstorage
 - security monitoring
 
-を利用します。
-
-Workerは原則outbound connectionでControl / Data endpointへ到達できる構成を優先します。
+Workerは、原則として、outboundの接続で、ControlとDataのendpointに到達できる構成を、優先します。
 
 ---
 
-# 45. Cloud / Public-interest provider
+# 45. CloudとPublic-interestのprovider
 
-Cloud Provider等が外部Compute Grantを提供する場合、Provider側Data PlaneへBeneficiary dataを置くかどうかは別Policyです。
+Cloud Providerなどが、外部のCompute Grantを提供する場合、Provider側のData Planeに、Beneficiaryのdataを置くかどうかは、別のPolicyです。
 
-Computeだけを提供し、DataはBeneficiary-controlled Storeからshort-lived Grantで取得する構成も可能です。
+Computeだけを提供し、DataはBeneficiaryが管理するStoreから、短い有効期間のGrantで取得する構成も、可能です。
 
-Contribution RecordはCompute / transfer Evidenceを記録できますが、Data sharing agreementを代替しません。
+Contribution Recordは、ComputeとTransferのEvidenceを記録できます。ただし、Data sharingの契約の代わりにはなりません。
 
 ---
 
 # 46. Browser deployment
 
-Browser参加では、
+Browserでの参加では、次のことを基本にします。
 
-- HTTPS origin
-- short-lived Worker identity
-- bounded fetch
-- public Artifact CDN / object store
-- no internal raw topology
-- no long-lived cloud secret
-- tab close / suspension前提
+- HTTPSのorigin
+- 短い有効期間のWorker identity
+- 上限を設けたfetch
+- publicなArtifactのCDNとobject store
+- 内部のtopologyを、生では見せない
+- 長い有効期間のcloud secretを持たない
+- タブを閉じることやsuspensionを前提にする
 
-を基本にします。
-
-Service Worker等のbackground behaviorをstable availabilityとして扱いません。
+Service Workerなどのバックグラウンドの挙動を、安定したavailabilityとして扱いません。
 
 ---
 
 # 47. 非目標
 
-このBaselineは次を目指しません。
+このBaselineは、次のものを、めざしません。
 
-- distributed shared filesystem
-- arbitrary Worker-to-Worker P2P network
-- global coherent cache
-- distributed database
-- object store replacement
-- CDN replacement
-- database replication system
-- universal secret manager
-- unlimited direct Internet access
-- cross-tenant dedupをSecurity propertyとして利用
-- Data deletionをmalicious Workerへ完全保証
+- 分散共有filesystem
+- 任意のWorker間のP2P network
+- global coherentなcache
+- 分散database
+- object storeの置き換え
+- CDNの置き換え
+- database replicationのsystem
+- 汎用のsecret manager
+- 無制限の、直接のInternet access
+- tenantをまたぐdedupを、Security propertyとして利用すること
+- 悪意のあるWorkerに対して、Dataの削除を完全に保証すること
 
 ---
 
 # 48. Architecture Invariants
 
-Control / Data Planeで維持する不変条件をまとめます。
+Control / Data Planeで維持する不変条件を、まとめます。
 
-1. Control Plane metadata pathへbulk Artifactを標準集約しない。
-2. Content DigestはAccess Authorityではない。
-3. Artifact RecordのAuthorization / ClassificationをDigestだけで統合しない。
-4. Storage Locationを知るだけでData access authorityを得ない。
-5. ArtifactGrantはTask / Attempt / Worker / operation / expiryへscopeする。
-6. Workerへlong-lived storage credentialを配らない。
-7. Executorへ渡す前にArtifact Integrityを確認する。
-8. Safe Processing前のArtifactをapproved inputと同一視しない。
-9. Cache localityはOptimizationでありSecurity Evidenceではない。
-10. Clientへinternal topology / cache inventoryを不要に露出しない。
-11. Retry transferも同じResource Budgetへ計上する。
-12. mass reclaimでunbounded duplicate transferを起こさない。
-13. Outputはauthorized sink / size boundを持つ。
-14. Output Data ClassをWorker自己申告で下げない。
-15. Secretを通常Artifact cacheへ置かない。
-16. Federation IdentityだけでData Export Authorityを作らない。
-17. Browser / ad-hoc Workerへconfidential dataを標準配置しない。
-18. cancellation後も既送信Dataの事後削除を保証しない。
-19. mutable aliasを実行時Content Identityにしない。
-20. arbitrary Worker-side fetchを標準動作にしない。
+1. Control Planeのmetadata pathに、bulk Artifactを標準では集約しない。
+2. Content Digestは、Access Authorityではない。
+3. Artifact RecordのAuthorizationとClassificationを、Digestだけで統合しない。
+4. Storage Locationを知るだけでは、Data access authorityを得ない。
+5. ArtifactGrantは、Task、Attempt、Worker、operation、expiryに範囲を限る。
+6. Workerに、長い有効期間のstorage credentialを配らない。
+7. Executorに渡す前に、Artifact Integrityを確認する。
+8. Safe Processingの前のArtifactを、承認済みのinputと同一視しない。
+9. Cache localityは、Optimizationであり、Security Evidenceではない。
+10. Clientに、内部のtopologyとcacheの一覧を、不必要に露出しない。
+11. Retryの転送も、同じResource Budgetに計上する。
+12. mass reclaimで、際限のない重複した転送を起こさない。
+13. Outputは、認可されたsinkとsizeの上限を持つ。
+14. OutputのData Classを、Workerの自己申告で下げない。
+15. Secretを、通常のArtifact cacheに置かない。
+16. Federation Identityだけで、Data Export Authorityを作らない。
+17. Browserやアドホックなworkerに、confidentialなdataを、標準では配置しない。
+18. cancellationの後も、すでに送ったDataの事後の削除を、保証しない。
+19. 変更できるaliasを、実行時のContent Identityにしない。
+20. 任意のWorker側のfetchを、標準の動作にしない。
 
 ---
 
 # 49. 次のWork Unitへの入力
 
-次はDeployment ProfilesをArchitecture正本として具体化します。
+次は、Deployment Profilesを、Architectureの正本として具体化します。
 
-この文書から引き継ぐもの。
+この文書から引き継ぐものは、次のとおりです。
 
-- logical AuthorityはDeployment規模によらず維持
-- Control / Data Planeはlogical separationを維持
-- small deploymentではProcess統合可能
-- enterpriseではsite cache / KMS / proxy等を追加可能
-- browser / ad-hocはlower-assurance profile
-- federationではIdentityとData Exportを分離
-- public-interest grantではCompute GrantとData Grantを分離
+- 論理的なAuthorityは、Deploymentの規模によらず維持する。
+- Control PlaneとData Planeの、論理的な分離を維持する。
+- 小規模なdeploymentでは、Processを統合できる。
+- enterpriseでは、site cache、KMS、proxyなどを追加できる。
+- browserとアドホックは、保証の低いprofileとする。
+- federationでは、IdentityとData Exportを分離する。
+- public-interestのgrantでは、Compute GrantとData Grantを分離する。
 
-Deployment Profileの後、Task / Attempt / Lease / Recovery state model、Extension SPIへ進みます。
+Deployment Profileの後に、Task、Attempt、Lease、Recoveryのstate modelと、Extension SPIに進みます。
