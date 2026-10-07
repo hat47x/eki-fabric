@@ -625,6 +625,39 @@ func RunLeaseDurabilityContract(t *testing.T, factory DurableLeaseFactory) {
 		}
 		assertLeaseEqual(t, got, first.Lease)
 
+		assigned, err := reopened.LoadAttempt(context.Background(), firstReq.AttemptID)
+		if err != nil {
+			t.Fatalf("LoadAttempt() after restart error = %v", err)
+		}
+		if assigned.Phase != attemptstate.AttemptPhaseAssigned ||
+			assigned.LeaseID != first.Lease.ID ||
+			assigned.WorkerIdentity != first.Lease.WorkerIdentity {
+			t.Fatalf("Attempt/Lease binding changed across restart: %#v", assigned)
+		}
+
+		replay := firstReq
+		replay.LeaseID = mustLeaseID(t)
+		replayed, err := reopened.ReserveLease(context.Background(), replay)
+		if err != nil {
+			t.Fatalf("ReserveLease() replay after restart error = %v", err)
+		}
+		if !replayed.Replayed || replayed.Lease.ID != first.Lease.ID ||
+			replayed.Lease.FenceEpoch != first.Lease.FenceEpoch {
+			t.Fatalf("restart replay did not converge: first=%#v replay=%#v", first, replayed)
+		}
+
+		closed := assigned
+		closed.Phase = attemptstate.AttemptPhaseClosed
+		closed.CloseReason = attemptstate.CloseReasonLeaseExpired
+		closed.Revision++
+		closed.UpdatedAt = first.Lease.ExpiresAt
+		if closed.UpdatedAt.Before(assigned.UpdatedAt) {
+			closed.UpdatedAt = assigned.UpdatedAt
+		}
+		if err := reopened.CompareAndSwapAttempt(context.Background(), assigned.ID, assigned.Revision, closed); err != nil {
+			t.Fatalf("close first Attempt after expiry: %v", err)
+		}
+
 		secondNow := first.Lease.ExpiresAt.Add(time.Nanosecond)
 		secondReq := leaseReservation(t, reopened, task, "placement-2", secondNow, secondNow.Add(time.Minute))
 		second, err := reopened.ReserveLease(context.Background(), secondReq)
