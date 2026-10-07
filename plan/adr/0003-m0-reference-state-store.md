@@ -268,7 +268,23 @@ SQLiteをあらゆる用途に使おうとはしません。これらの制約�
 
 `go test ./...`、`go vet ./...`、状態ストアのパッケージに対する`-race`、`go mod verify`は、Go 1.27.0（WSL2、Linux）で通りました。Windows上でのビルドとテストは、まだ確認していません。
 
-保存しているのはタスクの記録だけです。試行やリース、配送意図（outbox）などのテーブルは、それぞれの作業単位で追加します。
+mainで永続化しているのは、TaskとAdmissionの記録です。Attemptと配送意図（outbox）は、後続の作業単位で追加します。LeaseはPR #71で実装中ですが、検証ゲートを通過するまでは採用済みとは扱いません。
+
+## 14.1 リース永続化の追加実装（2026-10-07、PR #71）
+
+PR #71では、LSE-1が署名付きLeaseを外へ出す前に、リースの予約状態とfencing epochをSQLiteへ永続化する実装を進めています。この変更はまだdraftであり、§12の検証ゲートを通過するまでは採用済みとは扱いません。
+
+物理的には同じSQLiteデータベースを使いますが、Admission用の`statestore.Store`とLSE-1用の`LeaseStore`は別のinterfaceにしています。ADM-2へLeaseの書き込み権限を型として渡さないためです。
+
+schema version 3では、`leases`と`lease_fences`を追加します。`leases`はTask、TaskIR、Attempt、Worker、Placement ApprovalのTrust Domain、PLC-1 principal、Decision ID、payload digest、Placementの有効期限、Policy revision、FenceEpoch、Leaseの有効期間を保持します。`lease_fences`には、Taskごとの最後のFenceEpochをLease履歴とは別に残します。期限切れLeaseを将来削除しても、FenceEpochが巻き戻らないための記録です。
+
+同じPlacement Decisionの再送は、Trust Domain、PLC-1 principal、Decision ID、payload digestと対象のbindingが一致する場合に限り、既存のLeaseへ収束します。同じscopeのDecision IDを別のpayloadやTask、Attempt、Worker、Policyへ結び直す場合は拒否します。別のTrust Domainまたは別のPLC-1 principalで同じDecision IDが使われた場合は、別のDecisionです。
+
+Leaseの有効期限はPlacement Approvalの有効期限を超えられません。また、Taskの取消し、実行できないphase、未失効のLease、Task revisionの競合を同じtransaction内で確認し、新しいFenceEpochの採番とLeaseのinsertまでを一つの永続化境界にします。
+
+PR #71では、メモリ実装とSQLite実装へ同じconformance contractを適用します。再送の収束、Decisionの結び直しの拒否、同一Taskへの二重Leaseの拒否、並行予約の単一勝者、再起動後のLeaseとFenceEpochの保持、Lease履歴削除後のFenceEpoch保持、version 2からversion 3へのmigrationで既存Taskを保持することを確認する設計です。
+
+現時点ではAttemptの永続化と、`placementverify.Verified`からだけLease予約を構築するLSE-1 serviceは未実装です。したがって、PR #71だけでLSE-1のend-to-end実装が完了したとは扱いません。
 
 ## 15. 出典
 
@@ -281,6 +297,6 @@ SQLiteをあらゆる用途に使おうとはしません。これらの制約�
 
 ## 16. 今後の作業
 
-このADRを`main`へマージした後、永続化するSQLiteアダプタの実装は別のブランチで行います。
+SQLiteの参照アダプタとTask・Admissionの永続化はmainへ入っています。次に確認するのは、PR #71のLease永続化が§12の検証ゲートを満たすことです。その後も、Attemptと配送意図（outbox）の永続化が残ります。
 
-実装環境でGoのツールを使って依存関係を取得し、`go.mod`と`go.sum`を生成します。そのうえで、上記の再起動、CAS、マイグレーションのテストを通した状態だけをマージの対象にします。
+LSE-1の次の実装では、callerが`LeaseReservation`のAuthority情報を任意に組み立てる形にはしません。検証済みの`placementverify.Verified`と、現在のTask・Attempt状態、LSE-1のlocal policyから予約内容を導出します。durable reservationのcommitに成功する前に、署名付きLeaseを外へ出さない順序を維持します。

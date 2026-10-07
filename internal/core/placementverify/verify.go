@@ -17,8 +17,10 @@ import (
 	"errors"
 	"fmt"
 	"time"
+	"unicode/utf8"
 
 	"github.com/hat47x/eki-fabric/internal/core/authority"
+	"github.com/hat47x/eki-fabric/internal/core/contract"
 	"github.com/hat47x/eki-fabric/internal/core/decisionpayload"
 	"github.com/hat47x/eki-fabric/internal/core/decisiontrust"
 	"github.com/hat47x/eki-fabric/internal/core/ids"
@@ -56,8 +58,8 @@ func New(cfg Config) (*Verifier, error) {
 		return nil, fmt.Errorf("%w: payload decoder is required", ErrInvalidConfig)
 	case cfg.Boundary == nil:
 		return nil, fmt.Errorf("%w: verifier boundary is required", ErrInvalidConfig)
-	case cfg.TrustDomain == "":
-		return nil, fmt.Errorf("%w: trust domain is required", ErrInvalidConfig)
+	case cfg.TrustDomain == "" || len(cfg.TrustDomain) > 256 || !utf8.ValidString(cfg.TrustDomain):
+		return nil, fmt.Errorf("%w: trust domain must be 1..256 valid UTF-8 bytes", ErrInvalidConfig)
 	}
 	return &Verifier{
 		codec:       cfg.Codec,
@@ -83,12 +85,15 @@ type Request struct {
 type Verified struct {
 	approval            decisionpayload.PlacementApproval
 	keyID               decisiontrust.KeyID
+	trustDomain         string
 	trustBundleRevision uint64
 	verifiedAt          time.Time
 }
 
 func (v Verified) Approval() decisionpayload.PlacementApproval { return v.approval }
-func (v Verified) KeyID() decisiontrust.KeyID                  { return v.keyID }
+func (v Verified) PayloadDigest() contract.Digest               { return v.approval.PayloadDigest() }
+func (v Verified) KeyID() decisiontrust.KeyID                   { return v.keyID }
+func (v Verified) TrustDomain() string                         { return v.trustDomain }
 func (v Verified) TrustBundleRevision() uint64                 { return v.trustBundleRevision }
 func (v Verified) VerifiedAt() time.Time                       { return v.verifiedAt }
 
@@ -156,6 +161,7 @@ func (v *Verifier) Verify(req Request) (Verified, error) {
 	return Verified{
 		approval:            approval,
 		keyID:               record.ID(),
+		trustDomain:         v.trustDomain,
 		trustBundleRevision: req.TrustBundle.Revision,
 		verifiedAt:          req.Now.UTC(),
 	}, nil

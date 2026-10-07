@@ -267,15 +267,34 @@ func wantReason(t *testing.T, err error, want decisiontrust.VerificationReason) 
 
 func TestVerifyAcceptsAValidSignedApproval(t *testing.T) {
 	f := newFixture(t)
-	got, err := f.verifier().Verify(f.request(f.sign(f.payloadBytes(payloadOptions{}))))
+	payload := f.payloadBytes(payloadOptions{})
+	got, err := f.verifier().Verify(f.request(f.sign(payload)))
 	if err != nil {
 		t.Fatalf("Verify() error = %v", err)
 	}
 	if got.IsZero() {
 		t.Fatal("Verify() returned the zero Verified without an error")
 	}
-	if got.KeyID() != keyID || got.TrustBundleRevision() != 3 || !got.VerifiedAt().Equal(now) {
-		t.Fatalf("unexpected Verified: key=%s bundle=%d at=%s", got.KeyID(), got.TrustBundleRevision(), got.VerifiedAt())
+	if got.KeyID() != keyID ||
+		got.TrustDomain() != trustDomain ||
+		got.TrustBundleRevision() != 3 ||
+		!got.VerifiedAt().Equal(now) {
+		t.Fatalf(
+			"unexpected Verified: key=%s domain=%q bundle=%d at=%s",
+			got.KeyID(),
+			got.TrustDomain(),
+			got.TrustBundleRevision(),
+			got.VerifiedAt(),
+		)
+	}
+	if got.PayloadDigest() != contract.SHA256(payload) ||
+		got.PayloadDigest() != got.Approval().PayloadDigest() {
+		t.Fatalf(
+			"verified payload digest = %s approval digest = %s want %s",
+			got.PayloadDigest(),
+			got.Approval().PayloadDigest(),
+			contract.SHA256(payload),
+		)
 	}
 	if got.Approval().TaskID().String() != taskID || got.Approval().WorkerIdentity() != workerID {
 		t.Fatalf("approval did not carry the signed subject: %#v", got.Approval())
@@ -465,8 +484,10 @@ func TestNewRequiresEveryDependency(t *testing.T) {
 	for name, mutate := range map[string]func(*placementverify.Config){
 		"codec":        func(c *placementverify.Config) { c.Codec = nil },
 		"payload":      func(c *placementverify.Config) { c.Payload = nil },
-		"boundary":     func(c *placementverify.Config) { c.Boundary = nil },
-		"trust domain": func(c *placementverify.Config) { c.TrustDomain = "" },
+		"boundary":             func(c *placementverify.Config) { c.Boundary = nil },
+		"empty trust domain":   func(c *placementverify.Config) { c.TrustDomain = "" },
+		"long trust domain":    func(c *placementverify.Config) { c.TrustDomain = string(bytes.Repeat([]byte("x"), 257)) },
+		"invalid trust domain": func(c *placementverify.Config) { c.TrustDomain = string([]byte{0xff}) },
 	} {
 		cfg := full
 		mutate(&cfg)
@@ -572,6 +593,9 @@ func TestZeroVerifiedCannotBeRevalidated(t *testing.T) {
 	var zero placementverify.Verified
 	if !zero.IsZero() {
 		t.Fatal("zero Verified reports it is not zero")
+	}
+	if !zero.PayloadDigest().IsZero() {
+		t.Fatalf("zero Verified exposed a payload digest: %s", zero.PayloadDigest())
 	}
 	wantReason(t, zero.Revalidate(currentState(t)), decisiontrust.ReasonSchemaUnsupported)
 }

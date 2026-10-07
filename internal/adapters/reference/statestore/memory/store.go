@@ -5,7 +5,9 @@ import (
 	"fmt"
 	"sync"
 
+	"github.com/hat47x/eki-fabric/internal/core/attemptstate"
 	"github.com/hat47x/eki-fabric/internal/core/ids"
+	"github.com/hat47x/eki-fabric/internal/core/leasestate"
 	"github.com/hat47x/eki-fabric/internal/core/taskstate"
 	"github.com/hat47x/eki-fabric/internal/spi/statestore"
 )
@@ -15,18 +17,32 @@ type idempotencyScope struct {
 	key       string
 }
 
+type placementScope struct {
+	trustDomain string
+	principal   string
+	decisionID  string
+}
+
 type Store struct {
-	mu         sync.RWMutex
-	admissions map[ids.TaskID]statestore.Admission
-	idempotent map[idempotencyScope]ids.TaskID
-	tasks      map[ids.TaskID]taskstate.TaskRecord
+	mu              sync.RWMutex
+	admissions      map[ids.TaskID]statestore.Admission
+	idempotent      map[idempotencyScope]ids.TaskID
+	tasks           map[ids.TaskID]taskstate.TaskRecord
+	attempts        map[ids.AttemptID]attemptstate.AttemptRecord
+	leases          map[ids.LeaseID]leasestate.LeaseRecord
+	placementLeases map[placementScope]ids.LeaseID
+	maxFence        map[ids.TaskID]uint64
 }
 
 func New() *Store {
 	return &Store{
-		tasks:      make(map[ids.TaskID]taskstate.TaskRecord),
-		admissions: make(map[ids.TaskID]statestore.Admission),
-		idempotent: make(map[idempotencyScope]ids.TaskID),
+		tasks:           make(map[ids.TaskID]taskstate.TaskRecord),
+		attempts:        make(map[ids.AttemptID]attemptstate.AttemptRecord),
+		admissions:      make(map[ids.TaskID]statestore.Admission),
+		idempotent:      make(map[idempotencyScope]ids.TaskID),
+		leases:          make(map[ids.LeaseID]leasestate.LeaseRecord),
+		placementLeases: make(map[placementScope]ids.LeaseID),
+		maxFence:        make(map[ids.TaskID]uint64),
 	}
 }
 
