@@ -371,8 +371,25 @@ func TestFenceEpochSurvivesLeaseHistoryGarbageCollection(t *testing.T) {
 		t.Fatalf("first fence = %d, want 1", first.Lease.FenceEpoch)
 	}
 
+	assigned, err := store.LoadAttempt(context.Background(), attempt1.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	closed := assigned
+	closed.Phase = attemptstate.AttemptPhaseClosed
+	closed.CloseReason = attemptstate.CloseReasonLeaseExpired
+	closed.Revision++
+	closed.UpdatedAt = first.Lease.ExpiresAt
+	if closed.UpdatedAt.Before(assigned.UpdatedAt) {
+		closed.UpdatedAt = assigned.UpdatedAt
+	}
+	if err := store.CompareAndSwapAttempt(context.Background(), assigned.ID, assigned.Revision, closed); err != nil {
+		t.Fatalf("close expired Attempt before Lease GC: %v", err)
+	}
+
 	// Simulate a future retention job that drops expired Lease history. The
-	// independent lease_fences row must preserve the anti-replay epoch.
+	// Attempt keeps the Lease ID as audit provenance while lease_fences keeps
+	// the monotonic anti-replay epoch independently of Lease history.
 	if _, err := store.db.Exec(`DELETE FROM leases WHERE lease_id = ?`, first.Lease.ID.String()); err != nil {
 		t.Fatalf("delete expired Lease history: %v", err)
 	}
