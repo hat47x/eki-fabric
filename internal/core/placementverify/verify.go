@@ -20,6 +20,7 @@ import (
 	"unicode/utf8"
 
 	"github.com/hat47x/eki-fabric/internal/core/authority"
+	"github.com/hat47x/eki-fabric/internal/core/contract"
 	"github.com/hat47x/eki-fabric/internal/core/decisionpayload"
 	"github.com/hat47x/eki-fabric/internal/core/decisiontrust"
 	"github.com/hat47x/eki-fabric/internal/core/ids"
@@ -90,7 +91,8 @@ type Verified struct {
 }
 
 func (v Verified) Approval() decisionpayload.PlacementApproval { return v.approval }
-func (v Verified) KeyID() decisiontrust.KeyID                  { return v.keyID }
+func (v Verified) PayloadDigest() contract.Digest               { return v.approval.PayloadDigest() }
+func (v Verified) KeyID() decisiontrust.KeyID                   { return v.keyID }
 func (v Verified) TrustDomain() string                         { return v.trustDomain }
 func (v Verified) TrustBundleRevision() uint64                 { return v.trustBundleRevision }
 func (v Verified) VerifiedAt() time.Time                       { return v.verifiedAt }
