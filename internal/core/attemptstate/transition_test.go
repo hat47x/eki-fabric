@@ -76,6 +76,18 @@ func TestAttemptTransitionRejectsAuthorityRebinding(t *testing.T) {
 	assigned.UpdatedAt = assigned.UpdatedAt.Add(time.Second)
 	mustTransition(t, placing, assigned)
 
+	t.Run("worker while assigning", func(t *testing.T) {
+		next := placing
+		next.Phase = AttemptPhaseAssigned
+		next.WorkerIdentity = "worker-b"
+		next.LeaseID = mustLeaseID(t)
+		next.Revision++
+		next.UpdatedAt = next.UpdatedAt.Add(time.Second)
+		if err := ValidateTransition(placing, next); !errors.Is(err, ErrInvalidAttemptTransition) {
+			t.Fatalf("error = %v, want ErrInvalidAttemptTransition", err)
+		}
+	})
+
 	t.Run("worker after assignment", func(t *testing.T) {
 		next := assigned
 		next.Phase = AttemptPhaseDispatched
