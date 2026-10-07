@@ -189,7 +189,7 @@ func (s *Store) LoadLease(ctx context.Context, id ids.LeaseID) (leasestate.Lease
 	}
 	lease, err := scanLease(s.db.QueryRowContext(ctx, `
 SELECT lease_id, task_id, task_ir_digest, attempt_id, worker_identity,
-       placement_authority_principal, placement_decision_id, placement_payload_digest, policy_revision,
+       placement_authority_principal, placement_decision_id, placement_payload_digest, placement_expires_at_ns, policy_revision,
        fence_epoch, renewal_sequence, issued_at_ns, expires_at_ns
 FROM leases WHERE lease_id = ?`, id.String()))
 	if errors.Is(err, sql.ErrNoRows) {
