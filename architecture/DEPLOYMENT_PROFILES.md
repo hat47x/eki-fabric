@@ -4,20 +4,18 @@ Status: **Baseline 0.1 — 2026-09-21**
 
 ## 1. この文書の目的
 
-EKI Fabricは、10〜30台程度の社内Endpointから、Browserを含むアドホック参加、複数組織のFederation、Cloud Provider等による公益Compute Grantまで同じCore Principleで扱うことを目指します。
+EKI Fabricは、10〜30台ほどの社内Endpointから、Browserを含むアドホックな参加、複数の組織のFederation、Cloud Providerなどによる公益のCompute Grantまで、同じCore Principleで扱うことを、めざします。
 
-一方で、すべての利用形態へ同じ数のService、同じPKI、同じDatabase、同じNetwork構成を強制すると、小規模利用での導入負荷が過剰になります。
+一方で、すべての利用の形態に、同じ数のService、同じPKI、同じDatabase、同じNetworkの構成を強制すると、小規模な利用では、導入の負荷が過剰になります。
 
-この文書では、
+この文書では、次の方針で、Deployment Profileを定義します。
 
-- Logical Authorityは共通に維持する
-- Process / Host / Network境界はDeployment規模に応じて比例化する
-- Security Principleを簡略化の名目で消さない
-- FederationやBrowser向けの機能を小規模構成へ無条件に要求しない
+- Logical Authorityは、共通に維持する。
+- Process、Host、Networkの境界は、Deploymentの規模に応じて、比例的に決める。
+- Security Principleを、簡略化という名目で、消さない。
+- FederationやBrowser向けの機能を、小規模な構成に、無条件には要求しない。
 
-という方針でDeployment Profileを定義します。
-
-関連は次のとおりです。
+関連する文書は、次のとおりです。
 
 - AUTHORITY_BOUNDARIES.md
 - CONTRACT_BOUNDARIES.md
@@ -31,57 +29,55 @@ EKI Fabricは、10〜30台程度の社内Endpointから、Browserを含むアド
 
 Deployment Profileは、
 
-> このProfileだからWorkerは信頼できる
+> このProfileだから、Workerは信頼できる
 
 という意味ではありません。
 
-たとえばSmall Managed Organization Profileでも、侵害された社員PCや改変Agentを想定します。
+たとえば、Small Managed Organization Profileでも、侵害された社員のPCや、改変されたAgentを想定します。
 
-Browser / Ad-hoc Profileでも、すべてのResultを無条件に捨てるわけではなく、Task側のResult Assuranceに応じて検証します。
+Browser / Ad-hoc Profileでも、すべてのResultを無条件に捨てるわけではありません。Task側のResult Assuranceに応じて、検証します。
 
-Profileは主に、
+Profileが主に表すのは、次のものです。
 
-- 物理Component構成
-- Network exposure
-- Identity integration
+- 物理的なComponentの構成
+- Networkへの露出
+- Identityの統合
 - Worker class
-- Data Class上限
-- Availability expectation
-- Operator model
-- Administration boundary
+- Data Classの上限
+- Availabilityへの期待
+- Operatorのmodel
+- Administrationの境界
 
-を表します。
-
-Assuranceは別軸です。
+Assuranceは、別の軸です。
 
 ---
 
-# 3. 全Profileで共通の不変条件
+# 3. すべてのProfileで共通の不変条件
 
-どのDeploymentでも次を維持します。
+どのDeploymentでも、次のことを維持します。
 
-1. Client RequestをWorkerへ直接渡さない。
-2. Client Plane / Worker Plane / Administrative Planeのcredentialを分ける。
-3. SchedulerはSecurity Authorityではない。
-4. WorkOrderはAuthorityが確定したDecisionを束ねる。
-5. WorkerはWorkOrderと前提Decisionを再検証する。
-6. Local Governorは中央より厳しい上限を適用できる。
-7. ArtifactGrantとTask submission authorityを分ける。
-8. Content DigestとArtifact authorizationを分ける。
+1. Client Requestを、Workerに直接渡さない。
+2. Client Plane、Worker Plane、Administrative Planeのcredentialを分ける。
+3. Schedulerは、Security Authorityではない。
+4. WorkOrderは、Authorityが確定したDecisionを束ねる。
+5. Workerは、WorkOrderと前提のDecisionを再検証する。
+6. Local Governorは、中央より厳しい上限を適用できる。
+7. ArtifactGrantと、Task submissionのauthorityを分ける。
+8. Content Digestと、Artifactのauthorizationを分ける。
 9. ResultClaimとAcceptedResultを分ける。
-10. Worker self-reportだけで高保証Result / Contributionを確定しない。
-11. Federation IdentityとResource / Data Authorizationを分ける。
-12. Browser / ad-hoc参加を内部LAN membershipへ変換しない。
-13. arbitrary Worker-to-Worker P2PをEnterprise標準にしない。
-14. Worker loss / reclaim / retryを通常状態として扱う。
-15. Security-critical unknownは安全側へ評価する。
-16. 未解決研究をProfileの暗黙前提にしない。
+10. Workerの自己申告だけで、高い保証のResultやContributionを確定しない。
+11. Federation Identityと、ResourceやDataのAuthorizationを分ける。
+12. Browserやアドホックな参加を、内部LANのmembershipに変換しない。
+13. 任意のWorker間のP2Pを、Enterpriseの標準にしない。
+14. Workerの損失、reclaim、retryを、通常の状態として扱う。
+15. Security-criticalなunknownは、安全な側に評価する。
+16. 未解決の研究を、Profileの暗黙の前提にしない。
 
 ---
 
-# 4. 共通Logical Component
+# 4. 共通の論理Component
 
-物理配置に関係なく、概念上は次を識別します。
+物理的な配置に関係なく、概念上は、次のものを識別します。
 
 ## Client-facing
 
@@ -91,26 +87,26 @@ Assuranceは別軸です。
 
 ## Worker-facing
 
-- Worker Enrollment / Identity
+- Worker EnrollmentとIdentity
 - Worker Gateway
-- Lease / WorkOrder delivery
+- LeaseとWorkOrderの配送
 - Data Access Resolver
-- Telemetry / ResultClaim ingress
+- TelemetryとResultClaimのingress
 
 ## Runtime Control
 
 - Task Admission
-- Task State / Recovery
+- Task StateとRecovery
 - Scheduler
 - Placement Authorization
 - Lease Authority
 - WorkOrder Authority
-- Artifact / Data Authority
-- Result Verification / Acceptance
+- ArtifactとData Authority
+- Result VerificationとAcceptance
 
 ## Administrative
 
-- Trust / Policy Administration
+- TrustとPolicyのAdministration
 - Executor Admission
 - Federation Administration
 - Compute Grant Administration
@@ -118,43 +114,41 @@ Assuranceは別軸です。
 ## Data Plane
 
 - Artifact Store Adapter
-- Ingest / Safe Processing
+- IngestとSafe Processing
 - Worker Cache
-- optional Site Cache
-- Result / Checkpoint Storage
+- 任意の、Site Cache
+- ResultとCheckpointのStorage
 
-一つのBinaryに複数Componentを載せることはできますが、Logical AuthorityのIdentity / key / state write boundaryは残します。
+一つのBinaryに、複数のComponentを載せることはできます。ただし、Logical AuthorityのIdentity、key、stateを書き込む境界は、残します。
 
 ---
 
-# 5. Network原則
+# 5. Networkの原則
 
-## 5.1 Workerはoutbound-first
+## 5.1 Workerは、outbound-firstである
 
-標準ProfileではWorkerへのInbound Firewall開放を要求しません。
+標準のProfileでは、Workerに対する、Inboundのfirewallの開放を要求しません。
 
-WorkerからControl / Data Planeへ、
+WorkerからControl PlaneやData Planeに、次のものを使って接続できる構造を、優先します。
 
 - HTTPS
-- mTLS可能なoutbound connection
-- proxy compatible connection
-- long polling / streaming / WebSocket等の候補
+- mTLSを使えるoutboundの接続
+- proxyに対応した接続
+- long polling、streaming、WebSocketなどの候補
 
-で接続できる構造を優先します。
+具体的なtransportは、後続の実装で決めます。
 
-具体transportは後続実装で決めます。
+## 5.2 Worker間の直接の通信は、標準では使わない
 
-## 5.2 Worker間直接通信は標準では使わない
+Worker間の任意のP2P、LAN discovery、multicast、mesh overlayを、標準の要件にしません。
 
-Worker間の任意P2P、LAN discovery、multicast、mesh overlayを標準要件にしません。
+Managed Site Cacheなどが必要な場合は、明示的なData Planeのcomponentとして導入します。
 
-Managed Site Cache等が必要なら、明示的なData Plane Componentとして導入します。
+## 5.3 Admin Planeは、別のSurfaceである
 
-## 5.3 Admin Planeは別Surface
+Federation root、Executor admission、Trust rootなどの、価値の高い操作を、通常のClientやWorkerのAPIと同じcredential scopeに載せません。
 
-Federation root、Executor admission、Trust root等の高価値操作は、通常Client / Worker APIと同じcredential scopeへ載せません。
-
-Small Profileで同じProcess / portを使う場合も、route / audience / authorizationを分けます。
+Small Profileで、同じProcessやportを使う場合も、route、audience、authorizationを分けます。
 
 ---
 
@@ -162,11 +156,11 @@ Small Profileで同じProcess / portを使う場合も、route / audience / auth
 
 ## 6.1 目的
 
-Local development、Unit / Integration Test、Protocol試験に使います。
+ローカルでの開発、UnitとIntegrationのTest、Protocolの試験に使います。
 
-Production Securityを主張するProfileではありません。
+Productionレベルのsecurityを主張するProfileではありません。
 
-## 6.2 最小構成例
+## 6.2 最小構成の例
 
 ~~~text
 developer machine
@@ -187,24 +181,24 @@ local worker agent
 
 ## 6.3 許容する簡略化
 
-- local loopback transport
-- development key
-- embedded database
-- filesystem artifact store
-- single process
-- deterministic mock identity
+- local loopbackのtransport
+- 開発用のkey
+- 組み込みのdatabase
+- filesystemのartifact store
+- 単一のprocess
+- 決定的なmockのidentity
 
 ## 6.4 簡略化してはいけないもの
 
-Dev ProfileでもContract意味はProductionと同じにします。
+Dev Profileでも、Contractの意味は、Productionと同じにします。
 
-- TaskRequestとWorkOrderを同一struct扱いしない
-- Client credentialとWorker credentialを同一roleにしない
-- Schedulerへall-authority shortcutを作らない
-- ResultClaimを即AcceptedResultにしない
-- ArtifactGrantを省略してarbitrary filesystem pathを渡さない
+- TaskRequestとWorkOrderを、同じstructとして扱わない。
+- Client credentialとWorker credentialを、同じroleにしない。
+- Schedulerに、すべてのauthorityを持たせる近道を作らない。
+- ResultClaimを、すぐにAcceptedResultにしない。
+- ArtifactGrantを省略して、任意のfilesystem pathを渡さない。
 
-Productionだけ別Security Architectureになる状態を避けます。
+Productionだけが別のSecurity Architectureになる状態を、避けます。
 
 ---
 
@@ -212,23 +206,23 @@ Productionだけ別Security Architectureになる状態を避けます。
 
 ## 7.1 想定
 
-- 10〜50台程度の社員PC / Workstation
-- Endpointが主用途
-- 一部GPU搭載
-- 単一組織
-- 既存社内Network
-- 専任Platform Teamが大きくない
-- PAS-01中心
+- 10〜50台ほどの、社員のPCやWorkstation
+- Endpointが主な用途
+- 一部にGPUを搭載
+- 単一の組織
+- 既存の社内Network
+- 専任のPlatform Teamが大きくない
+- PAS-01が中心
 
 ## 7.2 目標
 
-専用分散基盤を大量導入せず、
+専用の分散基盤を大量に導入せずに、
 
-> 一般的な社内Systemとして説明できる最小構成
+> 一般的な社内Systemとして説明できる、最小の構成
 
-を成立させます。
+を成り立たせます。
 
-## 7.3 推奨物理構成
+## 7.3 推奨する物理構成
 
 ~~~text
              existing IdP / PKI
@@ -250,7 +244,7 @@ Endpoint Agents
   verified cache
 ~~~
 
-eki-controlの中に、
+eki-controlの中に、次のものを同居させられます。
 
 - Task Admission
 - Task State
@@ -258,63 +252,61 @@ eki-controlの中に、
 - Placement Authorization
 - Lease
 - Data Access Resolver
-- WorkOrder assembly / signing
-- Result Verification / Acceptance
+- WorkOrderの組み立てと署名
+- Result VerificationとAcceptance
 
-を同居させることができます。
+## 7.4 同じProcessでも分けるもの
 
-## 7.4 同一Processでも分けるもの
-
-- Authority-specific key handle
+- Authorityごとのkey handle
 - interface
-- policy decision
-- persistent state repository
-- audit event
-- credential audience
+- policyの判断
+- 永続的な状態のrepository
+- auditのevent
+- credentialのaudience
 
-Scheduler moduleがWorkOrder signing keyを直接呼べる構造にはしません。
+Scheduler moduleが、WorkOrderのsigning keyを直接呼べる構造にはしません。
 
 ## 7.5 Metadata Store
 
-専用distributed databaseを必須にしません。
+専用の分散databaseを、必須にしません。
 
-単一node DBでも開始できます。
+単一nodeのDBでも、開始できます。
 
-ただしTask / Attempt / Lease / Decision historyをdurableに保存し、Process restartでAuthority stateが曖昧にならない必要があります。
+ただし、Task、Attempt、Lease、Decisionの履歴を、永続的に保存します。Processが再起動しても、Authorityの状態があいまいにならない必要があります。
 
-具体DBは後続比較です。
+具体的なDBは、後続で比べます。
 
 ## 7.6 Artifact Store
 
-Local object store、NAS上の専用Object interface、S3-compatible store等を利用できます。
+Localのobject store、NAS上の専用のObject interface、S3互換のstoreなどを利用できます。
 
-WorkerへNAS全体のcredentialを配りません。
+Workerに、NAS全体のcredentialを配りません。
 
 ## 7.7 Identity
 
-既存IdP / Enterprise PKIへ接続できることを優先します。
+既存のIdPや、企業のPKIに接続できることを、優先します。
 
-EKI独自の大規模PKIを必須にしません。
+EKI独自の大規模なPKIを、必須にしません。
 
-小規模組織ではmanaged enrollment credentialも候補ですが、Client / Worker / Admin roleは分離します。
+小規模な組織では、管理されたenrollment credentialも候補です。ただし、Client、Worker、Adminのroleは分離します。
 
 ## 7.8 Network
 
-- Worker inbound port不要
-- HTTPS / enterprise proxy対応
-- LAN multicast不要
-- arbitrary endpoint-to-endpoint connection不要
-- Artifact Storeへのscopeされたoutbound access
+次のことを、基本にします。
 
-を基本にします。
+- Workerにinbound portが不要
+- HTTPSと企業のproxyに対応
+- LANのmulticastが不要
+- 任意のendpoint同士の接続が不要
+- Artifact Storeへの、範囲を限ったoutboundのaccess
 
-## 7.9 Failure expectation
+## 7.9 障害への期待
 
-eki-control単一node障害中は新規Task受付や新規Leaseが止まる可能性があります。
+eki-controlが単一nodeの場合、その障害の間は、新しいTaskの受け付けや、新しいLeaseが止まる可能性があります。
 
-ただしEndpoint user safetyはLocal Governorで維持します。
+ただし、Endpointの利用者の安全は、Local Governorで維持します。
 
-小規模Profileの初期版でControl Plane HAを必須にしません。
+小規模なProfileの初期版では、Control PlaneのHAを必須にしません。
 
 ---
 
@@ -322,18 +314,18 @@ eki-control単一node障害中は新規Task受付や新規Leaseが止まる可�
 
 ## 8.1 想定
 
-- 数百〜数万Worker
-- 複数Site / Region
-- managed Endpoint、Workstation、Server混在
-- Enterprise IdP / PKI
-- Security / Audit要件
-- Proxy / Firewall
-- Artifact量が大きい
-- Control Plane HAが必要
+- 数百から数万のWorker
+- 複数のSiteとRegion
+- 管理されたEndpoint、Workstation、Serverの混在
+- 企業のIdPとPKI
+- SecurityとAuditの要件
+- ProxyとFirewall
+- Artifactの量が大きい
+- Control PlaneのHAが必要
 
-## 8.2 物理分離の方向
+## 8.2 物理的な分離の方向
 
-Logical AuthorityをNetwork / Process境界へさらに分離できます。
+Logical Authorityを、Networkやprocessの境界で、さらに分離できます。
 
 ~~~text
 Client API Gateway
@@ -367,47 +359,45 @@ Worker Gateways
 
 ## 8.3 Worker Gateway
 
-Worker connection terminationを、high-value Authorityと分離できます。
+Workerの接続の終端を、価値の高いAuthorityから分離できます。
 
-Gateway compromiseで、
+Gatewayが侵害されても、次のものまで取られないようにします。
 
 - Executor Approval
 - Data Grant Policy
-- Federation configuration
-- WorkOrder signing root
+- Federationの設定
+- WorkOrderのsigning root
 
-まで取られないようにします。
+Gatewayが担うのは、主に、認証済みmessageのrelay、rate limit、接続の管理です。
 
-Gatewayはauthenticated message relay / rate limit / connection managementを中心にします。
+## 8.4 価値の高いsigner
 
-## 8.4 High-value signer
+WorkOrder、Executor Approval、Federationなどのsigning keyは、KMSやHSMなどに置ける構造を取ります。
 
-WorkOrder / Executor Approval / Federation等のsigning keyはKMS / HSM等へ置ける構造を取ります。
-
-Scheduler / parser / public gateway processへraw private keyを配りません。
+Scheduler、parser、公開のgateway processには、生のprivate keyを配りません。
 
 ## 8.5 Site Cache
 
-WAN transfer削減のためmanaged site cacheを導入できます。
+WANの転送を減らすために、管理されたsite cacheを導入できます。
 
-Site Cacheは明示的identity / Data Class / quota / auditを持ち、任意Worker relayとは区別します。
+Site Cacheは、明示的なidentity、Data Class、quota、auditを持ちます。任意のWorkerのrelayとは、区別します。
 
-## 8.6 Regional policy
+## 8.6 Regionのpolicy
 
-Data residency、egress、latency、store locationをhard constraintとしてPlacement前に適用できます。
+Dataのresidency、egress、latency、storeのlocationを、hard constraintとして、Placementの前に適用できます。
 
 ## 8.7 HA
 
-Control Plane HAは、
+Control PlaneのHAは、次のものと関係します。
 
-- state ownership
-- leader / lease
-- signer concurrency
-- duplicate attempt
-- clock / expiry
-- queue semantics
+- stateの所有
+- leaderとlease
+- signerの並行性
+- 重複したattempt
+- clockとexpiry
+- queueのsemantics
 
-と関係するため、Task State ModelのWork Unitで具体化します。
+そのため、Task State ModelのWork Unitで具体化します。
 
 ---
 
@@ -415,16 +405,16 @@ Control Plane HAは、
 
 ## 9.1 想定
 
-- Browser tab
-- 個人PC Native Worker
-- イベント参加者
-- 強い事前審査なし
-- public-interest / public data
-- PAS-08中心
+- Browserのtab
+- 個人のPCのNative Worker
+- イベントの参加者
+- 強い事前審査がない
+- public-interestとpublic data
+- PAS-08が中心
 
 ## 9.2 最も重要な原則
 
-参加者をBeneficiary / Providerの内部Networkへ入れません。
+参加者を、BeneficiaryやProviderの内部のNetworkに入れません。
 
 ~~~text
 Internet
@@ -436,81 +426,73 @@ Public Worker Gateway
 Low-assurance Worker Pool
 ~~~
 
-内部Control Planeへ直接接続させる必要はありません。
+内部のControl Planeに、直接接続させる必要はありません。
 
 ## 9.3 Public Worker Gateway
 
-外部Worker向けGatewayは、
+外部のWorker向けのGatewayは、次のものを担当できます。
 
-- short-lived identity
+- 短い有効期間のidentity
 - enrollment
 - rate limit
-- session management
-- workload profile restriction
-- public error surface
-- abuse detection
+- sessionの管理
+- workload profileの制限
+- 公開用のerror surface
+- abuseの検出
 
-を担当できます。
+価値の高いAdmin APIと、同じSurfaceには置きません。
 
-High-value Admin APIと同じSurfaceへ置きません。
+## 9.4 Taskの適格性
 
-## 9.4 Task eligibility
-
-標準では、
+標準では、次のTaskを優先します。
 
 - public
-- disposable
-- low-sensitivity
-- short-lived
+- 使い捨て
+- 機微性が低い
+- 短い
 - stateless
-- retryable
-- result verifiable
+- retryできる
+- resultを検証できる
 
-なTaskを優先します。
+Confidentialなtaskを、
 
-Confidential Taskを、
+> BrowserだけれどTLSで安全
 
-> BrowserだからTLSで安全
-
-という理由で割り当てません。
+という理由で割り当てることはしません。
 
 ## 9.5 Executor
 
-Browser Runtimeで実行可能なapproved Executorへ限定します。
+Browser Runtimeで実行できる、承認済みのExecutorに限定します。
 
-任意JavaScript URLをTask Clientが指定する形にはしません。
+任意のJavaScriptのURLを、Task Clientが指定する形にはしません。
 
 ## 9.6 Artifact
 
-Public / low-sensitivity Artifactを、
+Publicや機微性の低いArtifactを、次のものから取得できます。
 
 - CDN
-- public object store
-- short-lived scoped URL
+- publicなobject store
+- 短い有効期間で、範囲を限ったURL
 
-等から取得できます。
+内部のObject Storeのcredentialは、渡しません。
 
-内部Object Store credentialは渡しません。
+## 9.7 参加の可視性
 
-## 9.7 Participation visibility
+BrowserのUIでは、次のことを、分かりやすく表示できる必要があります。
 
-Browser UIでは、
+- Computeを提供している
+- 現在のResourceの利用
+- PauseとStop
+- 対象のProjectとBeneficiary
+- PrivacyとData Classの要約
 
-- Compute提供中
-- 現在のResource利用
-- Pause / Stop
-- 対象Project / Beneficiary
-- Privacy / Data Class summary
-
-を分かりやすく表示できる必要があります。
-
-hidden iframeや通常閲覧に偽装した参加を標準にしません。
+hidden iframeや、通常の閲覧に偽装した参加を、標準にはしません。
 
 ## 9.8 Availability
 
-Tab close、suspension、battery saver等を正常系として扱います。
+Tabを閉じること、suspension、battery saverなどを、正常な状態として扱います。
 
-厳しいdeadlineの唯一Workerにしません。
+厳しいdeadlineを持つTaskの、唯一のWorkerにはしません。
 
 ---
 
@@ -518,14 +500,14 @@ Tab close、suspension、battery saver等を正常系として扱います。
 
 ## 10.1 想定
 
-- Company A / Company B
-- それぞれ独自Control Plane / Identity Authority
-- 限定的Executor / Compute / Data協力
-- PAS-10中心
+- Company AとCompany B
+- それぞれが独自のControl PlaneとIdentity Authorityを持つ
+- 限定的なExecutor、Compute、Dataの協力
+- PAS-10が中心
 
-## 10.2 Shared Control Planeを前提にしない
+## 10.2 共有のControl Planeを前提にしない
 
-標準Federationでは、各Organizationが自分のControl PlaneとTrust Domainを維持します。
+標準のFederationでは、各Organizationが、自分のControl PlaneとTrust Domainを維持します。
 
 ~~~text
 Organization A                       Organization B
@@ -537,30 +519,28 @@ A Artifact Authority               B Artifact Authority
        └──── explicit federation ─────────┘
 ~~~
 
-一つのglobal rootへ統合しません。
+一つのglobal rootに統合しません。
 
 ## 10.3 Federation Gateway
 
-Organization間通信をlogical Federation Gatewayへ集約できます。
+Organizationの間の通信を、論理的なFederation Gatewayに集約できます。
 
-Gatewayは、
+Gatewayが扱うものは、次のとおりです。
 
-- foreign identity validation
-- trust-domain binding
+- 外部のidentityの検証
+- trust domainのbinding
 - federation policy
-- grant / export contract
+- grantとexportのcontract
 - rate limit
 - audit
 
-を扱います。
+Gatewayが、相手のOrganizationのすべての権限を獲得するわけではありません。
 
-Gatewayが相手Organizationの全権限を獲得するわけではありません。
+## 10.4 Taskのhandoff
 
-## 10.4 Task handoff
+Beneficiary AのTaskを、Provider BのWorkerで動かす場合、BはAのTaskRequestを、B内部のWorkOrderとして直接は信用しません。
 
-Beneficiary AのTaskをProvider BのWorkerで動かす場合、BはAのTaskRequestをB内部WorkOrderとして直接信用しません。
-
-概念上は次のとおりです。
+概念上は、次のとおりです。
 
 ~~~text
 A admitted intent
@@ -576,25 +556,23 @@ B scheduler / placement / lease
 B WorkOrder
 ~~~
 
-BのWorkerがAのControl Plane署名を直接万能Authorityとして受け入れる構造にはしません。
+BのWorkerが、AのControl Planeの署名を、万能のAuthorityとして直接受け入れる構造にはしません。
 
-## 10.5 Result return
+## 10.5 Resultの返却
 
-Result Artifactは、
+Result Artifactは、次のものを通して、Aに返せます。
 
-- B側Result Verification
+- B側のResult Verification
 - export policy
 - Artifact Grant
 
-を通してAへ返せます。
-
-Aは必要に応じて自分のResult Acceptance Policyで再評価します。
+Aは、必要に応じて、自分のResult Acceptance Policyで再評価します。
 
 ## 10.6 Data
 
-Federation Identity成立だけではData exportしません。
+Federation Identityが成立しただけでは、Dataをexportしません。
 
-Dataは別Export Grantを必要とします。
+Dataには、別のExport Grantが必要です。
 
 ---
 
@@ -603,66 +581,62 @@ Dataは別Export Grantを必要とします。
 ## 11.1 想定
 
 - Cloud Provider
-- 大手企業
-- 大学 / 公益団体
-- 余剰GPU / compute
-- 期間限定・preemptible
-- PAS-11中心
+- 大手の企業
+- 大学や公益団体
+- 余剰のGPUとcompute
+- 期間が限られ、preemptibleである
+- PAS-11が中心
 
-これはFederationの一利用形態ですが、Provider reclaimとContributionが重要なので独立Profileとして整理します。
+これは、Federationの一つの利用形態です。ただし、ProviderのreclaimとContributionが重要なので、独立したProfileとして整理します。
 
 ## 11.2 Compute Grant
 
-ProviderはGrantごとに、
+Providerは、Grantごとに、次のものを制約できます。
 
 - Beneficiary
 - Resource Class
-- maximum capacity
+- 最大のcapacity
 - time window
 - priority
 - preemptibility
 - Data Class
-- allowed Executor class
-- Network / egress policy
-- Contribution measurement profile
+- 許可するExecutor class
+- Networkとegressのpolicy
+- Contributionの測定のprofile
 
-を制約できます。
+## 11.3 Beneficiaryは、Providerの内部LANに入らない
 
-## 11.3 BeneficiaryはProvider内部LANへ入らない
+Beneficiary Clientは、Provider内部のWorkerに直接接続しません。
 
-Beneficiary ClientはProvider内部Workerへ直接接続しません。
-
-Provider側Federation / Grant GatewayへTask intentを渡し、Provider local Control PlaneがWorkerを選びます。
+Provider側のFederationとGrantのGatewayに、Task intentを渡します。そして、Providerのローカルなcontrol planeが、Workerを選びます。
 
 ## 11.4 Reclaim
 
-Providerの通常需要が増えた場合、future capacityを縮小・停止できます。
+Providerの通常の需要が増えた場合、将来のcapacityを縮小または停止できます。
 
-ReclaimはGrant契約で想定済みの正常事象です。
+Reclaimは、Grantの契約で想定済みの、正常な事象です。
 
-Task retry / migrationはmass reclaim recovery policyを通します。
+Taskのretryとmigrationは、mass reclaim recoveryのpolicyを通します。
 
 ## 11.5 Data
 
-Compute GrantとData Grantは別です。
+Compute GrantとData Grantは、別です。
 
-Provider Workerは、
+Provider Workerは、次のものを使えます。
 
-- Beneficiary Artifact Storeからscopeされたread
-- controlled export copy
+- Beneficiary Artifact Storeからの、範囲を限ったread
+- 制御されたexportのcopy
 - public dataset
 
-等を使えます。
-
-GrantがあるからBeneficiary全Dataを読めるわけではありません。
+Grantがあるからといって、Beneficiaryのすべてのdataを読めるわけではありません。
 
 ## 11.6 Contribution
 
-ProviderはResource Measurement EvidenceをContribution Authorityへ渡せます。
+Providerは、Resource Measurement Evidenceを、Contribution Authorityに渡せます。
 
-外部のCSR / ESG / mutual credit等へどう利用するかはProvider / Beneficiary側Policyです。
+外部のCSR、ESG、mutual creditなどに、どう利用するかは、ProviderとBeneficiary側のPolicyです。
 
-EKI Coreは価値を決めません。
+EKI Coreは、価値を決めません。
 
 ---
 
@@ -670,50 +644,44 @@ EKI Coreは価値を決めません。
 
 ## 12.1 想定
 
-Endpointと異なり、
+Endpointとは異なり、次のものをWorkerとして使う構成です。
 
-- 24/7 server
-- dedicated workstation
-- managed GPU server
-
-をWorkerとして使う構成です。
+- 24時間365日動くserver
+- 専用のworkstation
+- 管理されたGPU server
 
 ## 12.2 違い
 
-Availability expectationをEndpointより高くできます。
+Availabilityへの期待を、Endpointより高くできます。
 
-Local user returnによるreclaimは少ない可能性があります。
+Localの利用者が戻ることによるreclaimは、少ない可能性があります。
 
-しかし、
+しかし、次のものについての原則は、変えません。
 
 - malicious Worker
 - supply chain
-- Result corruption
+- Resultの破損
 - Artifact authority
-- WorkOrder validation
-
-の原則は変えません。
+- WorkOrderの検証
 
 ## 12.3 Role
 
-Dedicated Poolは、
+Dedicated Poolは、次のものに利用できます。
 
-- managed anchor recomputation
-- high-assurance validator
-- stable cache
-- deadline-sensitive task
+- 管理されたanchorによる、再計算
+- 高い保証のvalidator
+- 安定したcache
+- deadlineが厳しいtask
 
-へ利用できます。
-
-ただしdedicated=trueを自動的にtrusted=trueへ変換しません。
+ただし、dedicated=trueを、自動的にtrusted=trueに変換しません。
 
 ---
 
-# 13. Profile Composition
+# 13. Profileの組み合わせ
 
-実際のOrganizationは複数Profileを組み合わせられます。
+実際のOrganizationは、複数のProfileを組み合わせられます。
 
-例は次のとおりです。
+たとえば、次のとおりです。
 
 ~~~text
 Company
@@ -724,17 +692,17 @@ Company
   DP-3 public volunteer pool
 ~~~
 
-TaskはData Class / Assurance / Resource requirementにより適切なPoolだけを候補にします。
+Taskは、Data Class、Assurance、Resourceの要件によって、適切なPoolだけを候補にします。
 
-Profileを跨ぐときもContractは変えません。
+Profileをまたぐときも、Contractは変えません。
 
 ---
 
 # 14. Worker ClassとDeployment Profile
 
-Worker ClassとDeployment Profileは別です。
+Worker Classと、Deployment Profileは、別のものです。
 
-Worker Class例:
+Worker Classの例は、次のとおりです。
 
 - endpoint
 - workstation
@@ -744,229 +712,223 @@ Worker Class例:
 - federated
 - cloud
 
-Deployment ProfileはSystem全体の構成です。
+Deployment Profileは、System全体の構成です。
 
-DP-2 Enterprise内にendpoint / workstation / serverが共存できます。
+DP-2 Enterpriseの中に、endpoint、workstation、serverが共存できます。
 
-一つのWorker ClassだけでProfileを決めません。
+一つのWorker Classだけで、Profileを決めることはしません。
 
 ---
 
-# 15. Data ClassのProfile上限
+# 15. Profileごとの、Data Classの上限
 
-Profileごとに標準的な上限を持てます。
+Profileごとに、標準的な上限を持てます。
 
-例は次のとおりです。
+たとえば、次のとおりです。
 
-| Profile | 標準的なData Class方向 |
+| Profile | 標準的なData Classの方向 |
 | --- | --- |
-| DP-0 Dev | synthetic / test中心 |
-| DP-1 Small Managed | organization policy範囲 |
-| DP-2 Enterprise | policy / assurance次第 |
-| DP-3 Browser / Ad-hoc | public / low-sensitivity中心 |
-| DP-4 Federation | explicit export grant範囲 |
-| DP-5 Public-interest Grant | grant contract範囲 |
-| DP-6 Dedicated | managed policy範囲 |
+| DP-0 Dev | syntheticとtestが中心 |
+| DP-1 Small Managed | organization policyの範囲 |
+| DP-2 Enterprise | policyとassurance次第 |
+| DP-3 Browser / Ad-hoc | publicと機微性の低いものが中心 |
+| DP-4 Federation | 明示的なexport grantの範囲 |
+| DP-5 Public-interest Grant | grantの契約の範囲 |
+| DP-6 Dedicated | 管理されたpolicyの範囲 |
 
-これは絶対Levelではありません。
+これは、絶対的なLevelではありません。
 
-たとえばDP-4でもConfidential Computingが成立する場合は高機密Taskを扱える可能性があります。
+たとえば、DP-4でも、Confidential Computingが成り立つ場合は、機密性の高いTaskを扱える可能性があります。
 
-Task AssuranceとEvidenceで最終判断します。
+最終的には、Taskのassuranceと、Evidenceで判断します。
 
 ---
 
-# 16. Identity deployment
+# 16. Identityのdeployment
 
 ## DP-1
 
-- existing IdP
-- enterprise PKI
-- managed enrollment
+次のいずれかを利用できます。
 
-のいずれかを利用可能。
+- 既存のIdP
+- 企業のPKI
+- 管理されたenrollment
 
 ## DP-2
 
-- enterprise workload identity
-- short-lived service credential
-- mTLS
-- KMS-backed authority
+次のものを強化できます。
 
-等を強化可能。
+- 企業のworkload identity
+- 短い有効期間のservice credential
+- mTLS
+- KMSに支えられたauthority
 
 ## DP-3
 
-- short-lived browser / native identity
-- anonymous / pseudonymous participationも可能
-- identity strengthをResult correctnessへ読み替えない
+- 短い有効期間のbrowserやnativeのidentity
+- 匿名や、仮名での参加も可能
+- identityの強さを、Resultが正しいことに読み替えない
 
-## DP-4 / DP-5
+## DP-4とDP-5
 
-- Trust Domain namespace
-- explicit federation
-- foreign bundle / issuer binding
-- non-transitive trust
+次のものを要求します。
 
-を要求します。
+- Trust Domainのnamespace
+- 明示的なfederation
+- 外部のbundleとissuerのbinding
+- 非推移的なtrust
 
 ---
 
-# 17. Component co-location matrix
+# 17. Componentの同居のmatrix
 
-Baselineで許容する物理統合の方向を示します。
+Baselineで認める、物理的な統合の方向を示します。
 
 | Component | DP-1 Small | DP-2 Enterprise | DP-3 Ad-hoc | DP-4 Federation | DP-5 Grant |
 | --- | --- | --- | --- | --- | --- |
-| Client API | controlと同居可 | Gateway分離可 | public入口分離推奨 | domainごと | beneficiary/provider別 |
-| Worker Gateway | controlと同居可 | 分離推奨 | public gateway分離 | domainごと | provider側分離可 |
-| Scheduler | control内 | 独立scale可 | internal | domainごと | provider local |
-| Placement | control内logical分離 | signer/policy分離可 | internal | domain local | provider local |
-| WorkOrder Authority | control内key分離 | KMS/HSM分離推奨 | internal | domain local | provider local |
-| Artifact Authority | resolverと同居可 | Data Plane分離推奨 | public low-data用分離 | domain local | data owner local |
-| Artifact Store | local / existing | regional | public store/CDN | domainごと | beneficiary/provider選択 |
-| Admin Plane | restricted route | separate management | public入口と分離 | domainごと | provider / beneficiary別 |
-| Federation Gateway | 不要 | optional | 不要 | 必要 | 必要 |
-| Contribution Authority | optional | optional | project policy | domain policy | provider側有力 |
+| Client API | controlと同居可 | Gatewayを分離可 | publicの入口を分離することを推奨 | domainごと | beneficiaryとproviderで別 |
+| Worker Gateway | controlと同居可 | 分離を推奨 | public gatewayを分離 | domainごと | provider側で分離可 |
+| Scheduler | control内 | 独立してscale可 | internal | domainごと | provider local |
+| Placement | control内で論理的に分離 | signerとpolicyを分離可 | internal | domain local | provider local |
+| WorkOrder Authority | control内でkeyを分離 | KMS/HSMでの分離を推奨 | internal | domain local | provider local |
+| Artifact Authority | resolverと同居可 | Data Planeでの分離を推奨 | public low-data用に分離 | domain local | data owner local |
+| Artifact Store | localまたは既存 | regional | public store/CDN | domainごと | beneficiaryかproviderが選択 |
+| Admin Plane | 制限したroute | 別の管理 | publicの入口と分離 | domainごと | providerとbeneficiaryで別 |
+| Federation Gateway | 不要 | 任意 | 不要 | 必要 | 必要 |
+| Contribution Authority | 任意 | 任意 | projectのpolicy | domainのpolicy | provider側が有力 |
 
-この表はService数の必須値ではありません。
+この表は、Serviceの数の必須値ではありません。
 
 ---
 
-# 18. Credential exposure matrix
+# 18. Credentialの露出のmatrix
 
 ## Small Managed
 
-同じProcess内でも:
+同じProcessの中でも、次のものを、同じSecretにまとめない方向を、標準にします。
 
 - Client credential
 - Worker credential
 - Admin credential
-- WorkOrder signing key
-- Artifact Grant signing key
-
-を同一Secretへまとめない方向を標準にします。
+- WorkOrderのsigning key
+- Artifact Grantのsigning key
 
 ## Enterprise
 
-High-value keyはKMS/HSMへ置き、Gateway / Schedulerへ直接配りません。
+価値の高いkeyは、KMSやHSMに置き、GatewayやSchedulerには直接配りません。
 
 ## Ad-hoc
 
-Public Worker Gatewayが持つCredentialは、Admin / Executor Admission / Federation rootへ使えません。
+Public Worker Gatewayが持つCredentialは、Admin、Executor Admission、Federation rootには使えません。
 
 ## Federation
 
-相手Domain credentialをlocal admin roleへ変換しません。
+相手のDomainのcredentialを、ローカルのadmin roleに変換しません。
 
 ---
 
-# 19. Queue / Broker exposure
+# 19. Queue / Brokerの露出
 
-Internal Queue / BrokerをWorkerへ直接公開しません。
+Internalなqueueやbrokerを、Workerに直接公開しません。
 
-WorkerがNATS / Kafka / Redis等のinternal credentialを持ち、任意subject / topicへpublishする構造を標準にはしません。
+WorkerがNATS、Kafka、Redisなどの内部のcredentialを持ち、任意のsubjectやtopicにpublishできる構造は、標準にはしません。
 
-Worker Planeはstable API / protocol boundaryを通します。
+Worker Planeは、安定したAPIとprotocolの境界を通します。
 
-Queue implementationを後で変えてもExternal Worker Contractを保てるようにします。
+あとでQueueの実装を変えても、External Worker Contractを保てるようにします。
 
 ---
 
-# 20. Control Plane scaling
+# 20. Control Planeのscaling
 
-Control Planeで水平scaleしやすいComponent:
+Control Planeで、水平にscaleしやすいComponentは、次のとおりです。
 
 - API ingress
 - Worker Gateway
-- Scheduler proposal generation
-- read-only metadata query
+- Schedulerのproposalの生成
+- 読み取り専用のmetadataのquery
 
-State consistencyが重要なComponent:
+State consistencyが重要なComponentは、次のとおりです。
 
-- Task State transition
+- Task Stateの遷移
 - Lease Authority
-- Quota reservation
-- WorkOrder issue
+- Quotaの予約
+- WorkOrderの発行
 - Result Acceptance
 
-を区別します。
+この2つを区別します。
 
-具体consensus / DB transaction方式はState Model work unitで決めます。
-
----
-
-# 21. Scheduler scaling
-
-SchedulerはSecurity Authorityではないため、複数instanceへscaleしやすい構造を取れます。
-
-複数Schedulerが異なるProposalを出しても、Placement / Lease Authorityが最終整合性を取ります。
-
-Learned estimatorを導入する場合もScheduler instanceの一部としてshadow evaluationできます。
+具体的なconsensusやDB transactionの方式は、State Modelのwork unitで決めます。
 
 ---
 
-# 22. Worker session model
+# 21. Schedulerのscaling
 
-WorkerはControl Planeへoutbound sessionを作ります。
+Schedulerは、Security Authorityではありません。そのため、複数のinstanceにscaleしやすい構造を取れます。
 
-候補は次のとおりです。
+複数のSchedulerが異なるProposalを出しても、PlacementとLease Authorityが、最終的な整合性を取ります。
+
+Learned estimatorを導入する場合も、Scheduler instanceの一部として、shadowで評価できます。
+
+---
+
+# 22. Workerのsession model
+
+Workerは、Control Planeに対して、outboundのsessionを作ります。
+
+候補は、次のとおりです。
 
 - long polling
 - streaming RPC
 - WebSocket
 - message relay
 
-は後続比較です。
+どれを選ぶかは、後続で比べます。
 
-重要なのは、
+重要なのは、次のことです。
 
-- inbound port不要
-- Worker identity binding
-- session expiry
-- reconnect可能
-- duplicate delivery耐性
-- WorkOrder idempotent acceptance
-- Local Governor独立
-
-です。
+- inbound portが不要
+- Worker identityのbinding
+- sessionのexpiry
+- 再接続できる
+- 重複した配送に耐える
+- WorkOrderを冪等に受け入れる
+- Local Governorが独立している
 
 ---
 
-# 23. Offline / disconnected behavior
+# 23. Offline / 切断されたときの挙動
 
-WorkerがControl Planeから切断されても、
+WorkerがControl Planeから切断されても、次のものは動作します。
 
 - Local Governor
-- current resource limit
-- WorkOrder local expiry
-- Sandbox enforcement
+- 現在のresource limit
+- WorkOrderのローカルなexpiry
+- Sandboxの強制
 
-は動作します。
+新しいWorkOrderのauthorityを、自分で生成することはしません。
 
-新しいWorkOrder authorityを自分で生成しません。
+Leaseのexpiryの後も、実行を続けることをTask Profileが許可するかは、後続のState Modelで定義します。
 
-Lease expiry後の継続実行をTask Profileが許可するかは後続State Modelで定義します。
-
-安全側では新規処理開始を止めます。
+安全な側では、新しい処理の開始を止めます。
 
 ---
 
-# 24. Proxy / Enterprise Network
+# 24. ProxyとEnterprise Network
 
-Enterprise ProfileではHTTP proxy等を利用できる必要があります。
+Enterprise Profileでは、HTTP proxyなどを利用できる必要があります。
 
-Worker通信を特殊なUDP / inbound tunnelだけに依存させません。
+Workerの通信を、特殊なUDPや、inboundのtunnelだけに依存させません。
 
-Artifact transferもproxy / egress policyと整合できるAdapterを選べます。
+Artifactの転送も、proxyとegress policyと整合できるAdapterを選べます。
 
-Low-latency P2Pを必須にしない理由の一つです。
+低いlatencyのP2Pを必須にしない理由の一つです。
 
 ---
 
 # 25. Firewall
 
-標準的に必要な通信方向は次のとおりです。
+標準的に必要な通信の方向は、次のとおりです。
 
 ~~~text
 Client
@@ -983,42 +945,40 @@ Control components
   -> Metadata Store / Queue / KMS / Data Authority
 ~~~
 
-Workerへの任意Inboundを標準要求にしません。
+Workerへの任意のInboundを、標準では要求しません。
 
 ---
 
-# 26. DNS / discovery
+# 26. DNSとdiscovery
 
-WorkerがLAN multicastでControl Planeを探索することを標準にしません。
+WorkerがLANのmulticastでControl Planeを探索することを、標準にはしません。
 
-Managed configuration、Enrollment response、well-known endpoint等でControl / Data endpointを取得できます。
+ControlとDataのendpointは、管理された設定、Enrollmentのresponse、well-knownなendpointなどで、取得できます。
 
-Discovery情報自体をClientへ内部Topologyとして露出しません。
+Discoveryの情報自体を、Clientに、内部のTopologyとして露出しません。
 
 ---
 
-# 27. Upgrade / version skew
+# 27. Upgradeとversionのずれ
 
-Large deploymentではControl PlaneとWorkerのversionが一時的にずれます。
+大規模なdeploymentでは、Control PlaneとWorkerのversionが、一時的にずれます。
 
-Contract Boundaryのschema versionを使い、
+Contract Boundaryのschema versionを使って、次のものを明示します。
 
-- minimum supported version
-- maximum supported version
+- 最小の対応version
+- 最大の対応version
 - critical feature
 - optional extension
 
-を明示します。
-
-Unknown security-critical semanticsを古いWorkerがsilent ignoreして実行しません。
+古いWorkerが、未知のsecurity-criticalなsemanticsを、silentに無視して実行することはしません。
 
 ---
 
-# 28. Profile transition
+# 28. Profileの移行
 
-Small ProfileからEnterprise Profileへ移行するとき、Application Contractを変えないことを目指します。
+Small ProfileからEnterprise Profileに移行するとき、Application Contractを変えないことを、めざします。
 
-例は次のとおりです。
+たとえば、次のとおりです。
 
 ~~~text
 DP-1
@@ -1031,85 +991,81 @@ DP-2
   Authority services
 ~~~
 
-でも、
+この場合でも、次のものの意味は同じです。
 
 - TaskRequest
 - WorkOrder
 - ArtifactGrant
 - ResultClaim
 
-の意味は同じです。
-
-Process分割がProtocol semanticsを変えないようにします。
+Processを分割しても、Protocolのsemanticsが変わらないようにします。
 
 ---
 
 # 29. Availability class
 
-Deployment ProfileはControl Plane availability目標にも影響します。
+Deployment Profileは、Control Planeのavailabilityの目標にも影響します。
 
 ## DP-1
 
-短時間のControl Plane停止を許容し、Worker安全性をlocalで維持。
+Control Planeの短時間の停止を許容します。Workerの安全性は、ローカルで維持します。
 
 ## DP-2
 
-HA / rolling upgrade / regional resilienceを要求可能。
+HA、rolling upgrade、regionをまたぐ回復力を、要求できます。
 
 ## DP-3
 
-Public GatewayをDDoS / abuse前提でscale。
+Public Gatewayを、DDoSとabuseを前提にscaleします。
 
 ## DP-4
 
-相手Domain停止時にFederation Taskがqueue / fail safely。
+相手のDomainが停止したとき、Federation Taskが、queueに入るか、安全に失敗します。
 
 ## DP-5
 
-Provider capacity reclaimとBeneficiary connectivity lossを通常事象として扱う。
+Providerのcapacityのreclaimと、Beneficiaryの接続の喪失を、通常の事象として扱います。
 
-具体SLOは実装段階で測定します。
+具体的なSLOは、実装の段階で測定します。
 
 ---
 
-# 30. Observability deployment
+# 30. Observabilityのdeployment
 
-Small Profileでは一つのTelemetry collectorへ集約できます。
+Small Profileでは、一つのTelemetry collectorに集約できます。
 
-Enterprise Profileでは、
+Enterprise Profileでは、次のものを、別のpipelineに分離できます。
 
 - security audit
 - operational metrics
 - tracing
 - contribution measurement
 
-を別pipelineへ分離できます。
-
-Raw Worker telemetryを全Clientへ公開しません。
+Workerの生のtelemetryを、すべてのClientに公開しません。
 
 ---
 
-# 31. Audit deployment
+# 31. Auditのdeployment
 
-High-value EventはProfileに関係なく残します。
+価値の高いEventは、Profileに関係なく、残します。
 
 - Admission
 - Placement
 - Lease
 - Artifact Grant
 - WorkOrder
-- Verification / Acceptance
-- Admin policy change
+- VerificationとAcceptance
+- Adminのpolicyの変更
 - Federation
 - Contribution
 
-Small ProfileだからAuditを省略するのではなく、保存先を簡素化します。
+Small Profileだからといって、Auditを省略するのではなく、保存先を簡素にします。
 
 ---
 
-# 32. Upgrade of authority protection
+# 32. Authorityの保護の段階的な強化
 
-段階的にProtectionを強化できます。
+保護を、段階的に強化できます。
 
 ~~~text
 Development key
@@ -1123,136 +1079,136 @@ KMS
 HSM / multi-party approval
 ~~~
 
-Authority identity / interfaceは同じまま、key protectionを強化できる設計を優先します。
+Authorityのidentityとinterfaceは同じまま、keyの保護を強化できる設計を、優先します。
 
 ---
 
-# 33. Public exposure
+# 33. 公開への露出
 
-Internetへ露出し得るSurface:
+Internetに露出し得るSurfaceは、次のとおりです。
 
-- Client API if required
+- 必要な場合の、Client API
 - Public Worker Gateway
 - Federation Gateway
-- public Artifact Data Plane
+- publicなArtifact Data Plane
 
-Internetへ露出しない方向を標準とするSurface:
+Internetに露出しない方向を標準とするSurfaceは、次のとおりです。
 
-- root policy administration
-- Executor Admission administration
-- KMS / signer internals
+- root policyのadministration
+- Executor Admissionのadministration
+- KMSとsignerの内部
 - metadata database
-- internal queue
-- private Artifact Store admin API
+- 内部のqueue
+- 非公開のArtifact StoreのadminのAPI
 
 ---
 
-# 34. Abuse resistance by profile
+# 34. Profileごとのabuseへの耐性
 
 ## DP-1
 
-Compromised internal Clientを想定。
+侵害された内部のClientを想定します。
 
 ## DP-2
 
-Internal + external Client、large-scale resource abuseを想定。
+内部と外部のClient、大規模なresourceのabuseを想定します。
 
 ## DP-3
 
-anonymous abuse、bot Worker、Sybil、DDoSを強く想定。
+匿名のabuse、botのWorker、Sybil、DDoSを、強く想定します。
 
 ## DP-4
 
-misconfigured / compromised partner domainを想定。
+誤って設定された、または侵害された、partnerのdomainを想定します。
 
 ## DP-5
 
-Beneficiary misuse、Provider reclaim、cross-org accounting disputeを想定。
+Beneficiaryの不正利用、Providerのreclaim、組織をまたぐaccountingの紛争を想定します。
 
-共通Admission / Budget / Result verification principleは変えません。
+共通のAdmission、Budget、Result verificationの原則は、変えません。
 
 ---
 
-# 35. Data locality by profile
+# 35. Profileごとのdataのlocality
 
 ## DP-1
 
-LAN / local cacheを優先しやすい。
+LANとローカルなcacheを、優先しやすい。
 
 ## DP-2
 
-Site / Region / egress costを考慮。
+Site、Region、egressのcostを考慮します。
 
 ## DP-3
 
-public CDN / public storeからのsmall Artifactを優先。
+public CDNやpublic storeからの、小さなArtifactを優先します。
 
 ## DP-4
 
-cross-domain egressをhard policy / costとして扱う。
+Domainをまたぐegressを、hard policyとcostとして扱います。
 
 ## DP-5
 
-Beneficiary Data StoreとProvider Compute Regionの距離が大きい場合、Compute Grantの価値がNetwork costで相殺され得るため、Placement前に評価します。
+Beneficiary Data StoreとProvider Compute Regionの距離が大きい場合、Compute Grantの価値が、Network costで相殺され得ます。そのため、Placementの前に評価します。
 
 ---
 
-# 36. Confidentiality by profile
+# 36. Profileごとの機密性
 
-Profileだけで機密性を決めません。
+Profileだけで、機密性を決めません。
 
-ただし標準defaultは異なります。
+ただし、標準のdefaultは異なります。
 
-- DP-1: managed endpoint policy
-- DP-2: managed + optional confidential execution
-- DP-3: public / disposable
-- DP-4: export policy + remote assurance
-- DP-5: grant + data owner policy
-- DP-6: managed server policy
+- DP-1: 管理されたendpointのpolicy
+- DP-2: 管理されたもの + 任意のconfidential execution
+- DP-3: publicで使い捨て
+- DP-4: export policy + 遠隔でのassurance
+- DP-5: grant + data ownerのpolicy
+- DP-6: 管理されたserverのpolicy
 
-高保証ClaimにはEvidenceが必要です。
+高い保証のClaimには、Evidenceが必要です。
 
 ---
 
-# 37. Result Assurance by profile
+# 37. Profileごとの、Result Assurance
 
-DP-3のanonymous WorkerではReplication / Validator / Proof等が重要です。
+DP-3の匿名のWorkerでは、Replication、Validator、Proofなどが重要です。
 
-DP-6のmanaged anchorをVerificationに利用できます。
+DP-6の、管理されたanchorを、Verificationに利用できます。
 
-DP-1 / DP-2でもWorker identityだけでResultをAcceptedにしません。
+DP-1やDP-2でも、Worker identityだけで、ResultをAcceptedにはしません。
 
 TaskごとにResult Assuranceを指定します。
 
 ---
 
-# 38. Contribution by profile
+# 38. Profileごとの、Contribution
 
-Contribution Accountingはoptionalです。
+Contribution Accountingは、任意です。
 
 ## DP-1
 
-内部cost allocation等。
+内部のcostの配賦など。
 
 ## DP-3
 
-Volunteer contribution record。
+Volunteerのcontribution record。
 
 ## DP-4
 
-cross-organization mutual accounting。
+組織をまたぐ相互のaccounting。
 
 ## DP-5
 
-公益Compute Grant evidence。
+公益のCompute Grantのevidence。
 
-どのProfileでもEKI Core Currencyへ変換しません。
+どのProfileでも、EKI Core Currencyに変換しません。
 
 ---
 
-# 39. Profile selection guide
+# 39. Profileの選択のguide
 
-概略は次のとおりです。
+概略は、次のとおりです。
 
 ~~~text
 単一組織・数十台
@@ -1274,29 +1230,29 @@ Providerが公益Resourceを提供
   -> DP-6 overlay
 ~~~
 
-複数Profileを同時利用できます。
+複数のProfileを、同時に利用できます。
 
 ---
 
-# 40. Minimum Component Principle
+# 40. 最小のComponentの原則
 
-Profile追加によって、すべてのDeploymentに不要Componentを強制しません。
+Profileを追加することによって、すべてのDeploymentに、不要なComponentを強制しません。
 
-例は次のとおりです。
+たとえば、次のとおりです。
 
-- Federationを使わないDP-1にFederation Gatewayを必須にしない。
-- Browserを使わないEnterpriseにPublic Worker Gatewayを必須にしない。
-- Contributionを使わないDeploymentにContribution Authority常駐を必須にしない。
-- TEEを使わないDeploymentにAttestation Verifierを必須にしない。
-- zkVMを使わないDeploymentにProof Verifierを必須にしない。
+- Federationを使わないDP-1に、Federation Gatewayを必須にしない。
+- Browserを使わないEnterpriseに、Public Worker Gatewayを必須にしない。
+- Contributionを使わないDeploymentに、Contribution Authorityを常駐させることを必須にしない。
+- TEEを使わないDeploymentに、Attestation Verifierを必須にしない。
+- zkVMを使わないDeploymentに、Proof Verifierを必須にしない。
 
-Extensionは必要時に追加できる構造にします。
+Extensionは、必要なときに追加できる構造にします。
 
 ---
 
-# 41. Small Profileで省略できないLogical Boundary
+# 41. Small Profileで省略できない論理的な境界
 
-物理Componentを減らしても、次を意味上統合しません。
+物理的なComponentを減らしても、次のものを、意味の上で統合しません。
 
 ~~~text
 Task Admission
@@ -1308,76 +1264,72 @@ Task Admission
   != Result Acceptance
 ~~~
 
-一つのfunction chainで実装しても、Decision identity / audit / policy checkを区別します。
+一つのfunction chainで実装しても、Decisionのidentity、audit、policy checkは、区別します。
 
 ---
 
 # 42. Federation Profileで共有しないもの
 
-標準Federationでは次をglobal shared stateにしません。
+標準のFederationでは、次のものを、global shared stateにしません。
 
 - root private key
-- full identity database
-- full Artifact catalog
-- internal Worker topology
-- internal queue
-- all Task state
-- Administrator role
+- 完全なidentity database
+- 完全なArtifact catalog
+- 内部のWorker topology
+- 内部のqueue
+- すべてのTask state
+- Administratorのrole
 
-必要なContractだけをDomain間で交換します。
+必要なContractだけを、Domainの間で交換します。
 
 ---
 
-# 43. Public Worker isolation
+# 43. Public Workerの隔離
 
-DP-3 public Worker poolはEnterprise internal Worker poolとlogicalに分けます。
+DP-3のpublic Worker poolは、Enterpriseの内部のWorker poolとは、論理的に分けます。
 
-同じControl Planeが管理しても、
+同じControl Planeが管理していても、次のものを分離できます。
 
-- accepted Data Class
-- Executor set
+- 受け入れるData Class
+- Executorの集合
 - Artifact Store
-- Worker Gateway scope
+- Worker Gatewayのscope
 - network policy
-- verification requirement
+- verificationの要件
 
-を分離できます。
-
-Public Worker compromiseからinternal private poolへlateral movementしにくい構造にします。
+Public Workerが侵害されても、内部のprivate poolへ、lateral movementしにくい構造にします。
 
 ---
 
-# 44. Compute Grant isolation
+# 44. Compute Grantの隔離
 
-DP-5ではProviderがGrant用capacity poolを、
+DP-5では、ProviderがGrant用のcapacity poolを、次のいずれかで提供できます。
 
-- dedicated
-- quota carved
-- opportunistic shared
+- 専用
+- quotaを切り出したもの
+- opportunisticに共有するもの
 
-のいずれかで提供できます。
+どの場合も、Beneficiary Taskが、Providerの通常のTaskのSecurity Policyを、迂回しません。
 
-どの場合もBeneficiary TaskがProvider通常TaskのSecurity Policyを迂回しません。
-
-Provider local Placement / Local Governor / reclaim policyが最終上限を持ちます。
+ProviderのローカルなPlacement、Local Governor、reclaim policyが、最終的な上限を持ちます。
 
 ---
 
-# 45. Operational ownership
+# 45. 運用の所有
 
-Deploymentごとに誰が何を運用するかを明確にします。
+Deploymentごとに、誰が何を運用するかを、明確にします。
 
 ## DP-1
 
-Organization operator。
+Organizationのoperator。
 
 ## DP-2
 
-Platform / Security / Endpoint teamsが分担可能。
+Platform、Security、Endpointのteamが分担できます。
 
 ## DP-3
 
-Fabric operator + Participant自身のLocal Governor。
+Fabricのoperatorと、参加者自身のLocal Governor。
 
 ## DP-4
 
@@ -1385,34 +1337,34 @@ Fabric operator + Participant自身のLocal Governor。
 
 ## DP-5
 
-Provider operator + Beneficiary operator。
+Providerのoperatorと、Beneficiaryのoperator。
 
-Responsibility境界をFederationで曖昧にしません。
+Responsibilityの境界を、Federationであいまいにしません。
 
 ---
 
-# 46. Profile-specific evidence
+# 46. Profile固有のevidence
 
-Worker ProfileはPlacementへ使うEvidenceの種類を変えられます。
+Worker Profileは、Placementに使うEvidenceの種類を変えられます。
 
-例は次のとおりです。
+たとえば、次のものです。
 
-- managed enrollment
-- device management status
+- 管理されたenrollment
+- deviceの管理の状況
 - Attestation
-- browser runtime constraints
-- Provider contract
-- Trust Domain membership
+- browserのruntimeの制約
+- Providerの契約
+- Trust Domainのmembership
 
-しかしProfile nameそのものをEvidenceにしません。
+ただし、Profileの名前そのものを、Evidenceにはしません。
 
 ---
 
-# 47. Migration and rollback
+# 47. 移行とrollback
 
-Architecture Component分離を進める際は、Profileを一度に全面移行する必要はありません。
+Architectureの上で、Componentの分離を進めるときに、Profileを一度にすべて移行する必要はありません。
 
-例は次のとおりです。
+たとえば、次のとおりです。
 
 ~~~text
 single eki-control
@@ -1424,65 +1376,65 @@ Data Authority分離
 Signer/KMS分離
 ~~~
 
-各段階でExternal Contractを維持し、rollback可能にします。
+各段階で、External Contractを維持し、rollbackできるようにします。
 
 ---
 
-# 48. Non-goals
+# 48. 非目標
 
-Deployment Profileは次を定義しません。
+Deployment Profileは、次のものを定義しません。
 
-- 特定Cloud Provider
-- Kubernetes必須化
-- Service Mesh必須化
-- SPIFFE必須化
-- NATS / Kafka必須化
-- Postgres必須化
-- S3必須化
+- 特定のCloud Provider
+- Kubernetesを必須にすること
+- Service Meshを必須にすること
+- SPIFFEを必須にすること
+- NATSやKafkaを必須にすること
+- Postgresを必須にすること
+- S3を必須にすること
 - P2P network
-- VM orchestration
-- Kubernetes replacement
+- VMのorchestration
+- Kubernetesの置き換え
 
-必要なPropertyを先に定義し、実装技術は後続比較します。
+必要なPropertyを先に定義し、実装の技術は、後続で比べます。
 
 ---
 
 # 49. Architecture Invariants
 
-1. 小規模ProfileでもLogical Authorityを消さない。
-2. 大規模ProfileでもProcess数だけをSecurity根拠にしない。
-3. Workerはoutbound-firstを標準とする。
-4. Workerへの広いInbound Firewall開放を必須にしない。
-5. arbitrary Worker P2PをEnterprise標準にしない。
-6. Public Worker GatewayとAdmin Planeを同じAuthorityにしない。
-7. Internal QueueをWorkerへ直接公開しない。
-8. Federationでglobal root / global identity namespaceへ統合しない。
+1. 小規模なProfileでも、Logical Authorityを消さない。
+2. 大規模なProfileでも、Processの数だけを、Securityの根拠にしない。
+3. Workerは、outbound-firstを標準とする。
+4. Workerへの、広いInboundのFirewallの開放を、必須にしない。
+5. 任意のWorker間のP2Pを、Enterpriseの標準にしない。
+6. Public Worker GatewayとAdmin Planeを、同じAuthorityにしない。
+7. 内部のQueueを、Workerに直接公開しない。
+8. Federationで、global rootやglobal identity namespaceに統合しない。
 9. Compute GrantとData Grantを分ける。
-10. Browser参加を内部LAN membershipにしない。
-11. dedicated serverを自動的にtrusted Workerとみなさない。
-12. ProfileによってResultClaim / AcceptedResult境界を省略しない。
-13. DP-1からDP-2へ移行してもContract semanticsを変えない。
-14. optional featureを全Profileへ必須化しない。
-15. Public / Ad-hoc poolからPrivate internal poolへのlateral movementを抑える。
-16. Federation partner compromiseをlocal Admin compromiseへ自動拡張しない。
-17. Local GovernorをProfileに関係なく維持する。
-18. ProfileはAssurance Levelの代替ではない。
+10. Browserでの参加を、内部LANのmembershipにしない。
+11. dedicatedなserverを、自動的にtrustedなWorkerとみなさない。
+12. Profileによって、ResultClaimとAcceptedResultの境界を省略しない。
+13. DP-1からDP-2に移行しても、Contractのsemanticsを変えない。
+14. 任意のfeatureを、すべてのProfileに必須にしない。
+15. Public / Ad-hocのpoolから、Privateな内部のpoolへの、lateral movementを抑える。
+16. Federation partnerが侵害されても、ローカルのAdminの侵害に自動的に拡大しない。
+17. Local Governorを、Profileに関係なく維持する。
+18. Profileは、Assurance Levelの代わりにはならない。
 
 ---
 
 # 50. 次のWork Unitへの入力
 
-次はTask / Attempt / Lease / Recovery State Modelを定義します。
+次は、Task、Attempt、Lease、RecoveryのState Modelを定義します。
 
-Deployment Profileから引き継ぐ条件:
+Deployment Profileから引き継ぐ条件は、次のとおりです。
 
-- DP-1単一Control Planeでもrestart recoveryできる。
-- DP-2複数instanceでも二重Attempt / Leaseを制御できる。
-- DP-3 Worker disappearanceを大量に扱える。
-- DP-4 Federation disconnectを表現できる。
-- DP-5 mass reclaimをbounded recoveryできる。
-- side-effect UNKNOWNをfailedへ丸めない。
-- Local Governor reclaimをTask完遂より優先する。
-- Profileにより同じStateの意味を変えない。
+- DP-1の単一のControl Planeでも、再起動後に回復できる。
+- DP-2の複数のinstanceでも、二重のAttemptやLeaseを制御できる。
+- DP-3で、Workerが消えることを、大量に扱える。
+- DP-4で、Federationの切断を表現できる。
+- DP-5で、mass reclaimから、上限を設けて回復できる。
+- side-effectのUNKNOWNを、failedに丸めない。
+- Local Governorのreclaimを、Taskの完了より優先する。
+- Profileによって、同じStateの意味を変えない。
 
-State Modelの後にExtension SPIへ進みます。
+State Modelの後に、Extension SPIに進みます。
