@@ -297,6 +297,101 @@ UPDATE attempts SET attempt_number = 99 WHERE attempt_id = ?`, second.ID.String(
 	}
 }
 
+func TestLeaseSchemaAssignsAttemptAndRejectsWrongBinding(t *testing.T) {
+	store := openStore(t, filepath.Join(t.TempDir(), "state.db"))
+	defer store.Close()
+
+	task := newTaskRecord(t, "lease-attempt-trigger")
+	task.Phase = taskstate.TaskPhaseReady
+	if err := store.CreateTask(context.Background(), task); err != nil {
+		t.Fatal(err)
+	}
+	placing := createPlacingAttemptForSQLite(t, store, task, 1, "worker-a")
+	leaseID, err := ids.NewLeaseID()
+	if err != nil {
+		t.Fatal(err)
+	}
+	now := time.Date(2026, 10, 7, 12, 0, 0, 0, time.UTC)
+	payloadDigest := contract.SHA256([]byte("trigger-placement"))
+	if _, err := store.db.Exec(`
+INSERT INTO lease_fences (task_id, last_fence_epoch) VALUES (?, ?)`,
+		task.ID.String(), 1); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := store.db.Exec(`
+INSERT INTO leases (
+	lease_id, task_id, task_ir_digest, attempt_id, worker_identity,
+	placement_trust_domain, placement_authority_principal, placement_decision_id,
+	placement_payload_digest, placement_expires_at_ns, policy_revision,
+	fence_epoch, renewal_sequence, issued_at_ns, expires_at_ns
+) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		leaseID.String(),
+		task.ID.String(),
+		task.TaskIRDigest.Hex(),
+		placing.ID.String(),
+		placing.WorkerIdentity,
+		"local.example",
+		"control-plane/plc-1",
+		"trigger-placement",
+		payloadDigest.Hex(),
+		now.Add(2*time.Minute).UnixNano(),
+		"policy-42",
+		1,
+		0,
+		now.UnixNano(),
+		now.Add(time.Minute).UnixNano(),
+	); err != nil {
+		t.Fatalf("direct valid Lease insert error = %v", err)
+	}
+	assigned, err := store.LoadAttempt(context.Background(), placing.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if assigned.Phase != attemptstate.AttemptPhaseAssigned ||
+		assigned.LeaseID != leaseID ||
+		assigned.Revision != placing.Revision+1 {
+		t.Fatalf("Lease insert did not atomically assign Attempt: %#v", assigned)
+	}
+
+	other := createPlacingAttemptForSQLite(t, store, task, 2, "worker-b")
+	otherLease, err := ids.NewLeaseID()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := store.db.Exec(`
+INSERT INTO leases (
+	lease_id, task_id, task_ir_digest, attempt_id, worker_identity,
+	placement_trust_domain, placement_authority_principal, placement_decision_id,
+	placement_payload_digest, placement_expires_at_ns, policy_revision,
+	fence_epoch, renewal_sequence, issued_at_ns, expires_at_ns
+) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		otherLease.String(),
+		task.ID.String(),
+		task.TaskIRDigest.Hex(),
+		other.ID.String(),
+		"worker-not-current",
+		"local.example",
+		"control-plane/plc-1",
+		"trigger-placement-wrong-worker",
+		contract.SHA256([]byte("wrong-worker")).Hex(),
+		now.Add(3*time.Minute).UnixNano(),
+		"policy-42",
+		2,
+		0,
+		now.Add(time.Minute).UnixNano(),
+		now.Add(2*time.Minute).UnixNano(),
+	); err == nil {
+		t.Fatal("Lease with wrong Worker binding inserted through direct SQL")
+	}
+	current, err := store.LoadAttempt(context.Background(), other.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if current.Phase != attemptstate.AttemptPhasePlacing || current.LeaseID != "" || current.Revision != other.Revision {
+		t.Fatalf("failed Lease insert mutated Attempt: %#v", current)
+	}
+}
+
 func mustAttemptIDForSQLite(t testing.TB) ids.AttemptID {
 	t.Helper()
 	id, err := ids.NewAttemptID()
