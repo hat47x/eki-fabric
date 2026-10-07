@@ -45,6 +45,7 @@ CREATE TABLE leases (
 	task_ir_digest                TEXT    NOT NULL CHECK (length(task_ir_digest) = 64),
 	attempt_id                    TEXT    NOT NULL,
 	worker_identity               TEXT    NOT NULL CHECK (length(worker_identity) BETWEEN 1 AND 256),
+	placement_trust_domain        TEXT    NOT NULL CHECK (length(placement_trust_domain) BETWEEN 1 AND 256),
 	placement_authority_principal TEXT    NOT NULL CHECK (length(placement_authority_principal) BETWEEN 1 AND 256),
 	placement_decision_id         TEXT    NOT NULL CHECK (length(placement_decision_id) BETWEEN 1 AND 128),
 	placement_payload_digest      TEXT    NOT NULL CHECK (length(placement_payload_digest) = 64),
@@ -55,7 +56,7 @@ CREATE TABLE leases (
 	issued_at_ns                  INTEGER NOT NULL,
 	expires_at_ns                 INTEGER NOT NULL CHECK (expires_at_ns > issued_at_ns),
 	CHECK (placement_expires_at_ns >= expires_at_ns),
-	UNIQUE (placement_authority_principal, placement_decision_id),
+	UNIQUE (placement_trust_domain, placement_authority_principal, placement_decision_id),
 	UNIQUE (task_id, fence_epoch)
 ) STRICT;
 CREATE INDEX leases_by_task_expiry ON leases (task_id, expires_at_ns)`,
