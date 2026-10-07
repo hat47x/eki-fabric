@@ -68,7 +68,7 @@ CREATE INDEX leases_by_task_expiry ON leases (task_id, expires_at_ns)`,
 	attempt_number   INTEGER NOT NULL CHECK (attempt_number >= 1),
 	phase            TEXT    NOT NULL CHECK (phase IN ('created','placing','assigned','dispatched','claimed','verifying','closed')),
 	worker_identity  TEXT    NOT NULL CHECK (length(worker_identity) <= 256),
-	lease_id         TEXT    REFERENCES leases (lease_id),
+	lease_id         TEXT,
 	close_reason     TEXT    NOT NULL CHECK (close_reason IN ('','result_accepted','result_rejected','execution_failure_confirmed','worker_lost','lease_expired','reclaimed','cancelled','superseded','deadline','budget_exhausted','unknown_external_effect','policy_revoked','stale_attempt')),
 	revision         INTEGER NOT NULL CHECK (revision >= 1),
 	created_at_ns    INTEGER NOT NULL,
@@ -82,6 +82,20 @@ CREATE INDEX leases_by_task_expiry ON leases (task_id, expires_at_ns)`,
 	CHECK (lease_id IS NULL OR worker_identity <> '')
 ) STRICT;
 CREATE INDEX attempts_by_task_phase ON attempts (task_id, phase);
+CREATE TRIGGER leases_attempt_insert
+BEFORE INSERT ON leases
+WHEN NOT EXISTS (
+	SELECT 1 FROM attempts
+	WHERE attempt_id = NEW.attempt_id
+	  AND task_id = NEW.task_id
+	  AND task_ir_digest = NEW.task_ir_digest
+	  AND worker_identity = NEW.worker_identity
+	  AND phase = 'placing'
+	  AND lease_id IS NULL
+)
+BEGIN
+	SELECT RAISE(ABORT, 'lease does not bind a current placing Attempt');
+END;
 CREATE TRIGGER attempts_task_ir_insert
 BEFORE INSERT ON attempts
 WHEN NEW.task_ir_digest <> (SELECT task_ir_digest FROM tasks WHERE task_id = NEW.task_id)
