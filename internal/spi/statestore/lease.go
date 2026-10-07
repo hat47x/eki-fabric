@@ -81,6 +81,22 @@ type LeaseReservationResult struct {
 	Replayed bool
 }
 
+// MatchesReservedPlacement checks the payload-bound Placement subject carried
+// into durable Lease state. Lease ID and Lease time window are intentionally
+// excluded: a transport retry may regenerate those caller-side suggestions,
+// but it must not change the Placement authority or subject.
+func (r LeaseReservation) MatchesReservedPlacement(existing leasestate.LeaseRecord) bool {
+	return existing.TaskID == r.TaskID &&
+		existing.TaskIRDigest == r.TaskIRDigest &&
+		existing.AttemptID == r.AttemptID &&
+		existing.WorkerIdentity == r.WorkerIdentity &&
+		existing.PlacementAuthorityPrincipal == r.PlacementAuthorityPrincipal &&
+		existing.PlacementDecisionID == r.PlacementDecisionID &&
+		existing.PlacementPayloadDigest == r.PlacementPayloadDigest &&
+		existing.PlacementExpiresAt.Equal(r.PlacementExpiresAt.UTC()) &&
+		existing.PolicyRevision == r.PolicyRevision
+}
+
 // LeaseStore reserves durable fencing state before any signed Lease is emitted.
 //
 // Implementations must make Task revision/cancellation checks, active-Lease
