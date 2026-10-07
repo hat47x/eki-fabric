@@ -110,6 +110,21 @@ WHEN NOT EXISTS (
 BEGIN
 	SELECT RAISE(ABORT, 'lease does not bind a current placing Attempt');
 END;
+CREATE TRIGGER leases_attempt_assign
+AFTER INSERT ON leases
+BEGIN
+	UPDATE attempts
+	SET phase = 'assigned',
+	    lease_id = NEW.lease_id,
+	    revision = revision + 1,
+	    updated_at_ns = CASE
+		WHEN updated_at_ns < NEW.issued_at_ns THEN NEW.issued_at_ns
+		ELSE updated_at_ns
+	    END
+	WHERE attempt_id = NEW.attempt_id
+	  AND phase = 'placing'
+	  AND lease_id IS NULL;
+END;
 CREATE TRIGGER attempts_task_ir_insert
 BEFORE INSERT ON attempts
 WHEN NEW.task_ir_digest <> (SELECT task_ir_digest FROM tasks WHERE task_id = NEW.task_id)
