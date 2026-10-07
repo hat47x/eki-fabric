@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"sync"
 
+	"github.com/hat47x/eki-fabric/internal/core/attemptstate"
 	"github.com/hat47x/eki-fabric/internal/core/ids"
 	"github.com/hat47x/eki-fabric/internal/core/leasestate"
 	"github.com/hat47x/eki-fabric/internal/core/taskstate"
@@ -27,6 +28,7 @@ type Store struct {
 	admissions      map[ids.TaskID]statestore.Admission
 	idempotent      map[idempotencyScope]ids.TaskID
 	tasks           map[ids.TaskID]taskstate.TaskRecord
+	attempts        map[ids.AttemptID]attemptstate.AttemptRecord
 	leases          map[ids.LeaseID]leasestate.LeaseRecord
 	placementLeases map[placementScope]ids.LeaseID
 	maxFence        map[ids.TaskID]uint64
@@ -35,6 +37,7 @@ type Store struct {
 func New() *Store {
 	return &Store{
 		tasks:           make(map[ids.TaskID]taskstate.TaskRecord),
+		attempts:        make(map[ids.AttemptID]attemptstate.AttemptRecord),
 		admissions:      make(map[ids.TaskID]statestore.Admission),
 		idempotent:      make(map[idempotencyScope]ids.TaskID),
 		leases:          make(map[ids.LeaseID]leasestate.LeaseRecord),

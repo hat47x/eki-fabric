@@ -15,6 +15,13 @@ func TestTaskStoreContract(t *testing.T) {
 }
 
 
+func TestAttemptStoreContract(t *testing.T) {
+	statestoretest.RunAttemptStoreContract(t, func(t testing.TB) statestoretest.TaskAttemptStore {
+		t.Helper()
+		return New()
+	})
+}
+
 func TestLeaseStoreContract(t *testing.T) {
 	statestoretest.RunLeaseStoreContract(t, func(t testing.TB) statestoretest.TaskLeaseStore {
 		t.Helper()
