@@ -115,8 +115,13 @@ func (r LeaseReservation) MatchesReservedPlacement(existing leasestate.LeaseReco
 
 // LeaseStore reserves durable fencing state before any signed Lease is emitted.
 //
-// Implementations must make Task revision/cancellation checks, active-Lease
-// exclusion, placement replay handling, and FenceEpoch allocation atomic.
+// For a new Lease, implementations must make Task and Attempt revision/current
+// state checks, Worker binding, active-Lease exclusion, FenceEpoch allocation,
+// Lease persistence, and Attempt PLACING -> ASSIGNED binding atomic.
+//
+// Exact Placement replay may ignore stale expected revisions because it does
+// not allocate new authority, but only while the current Task is schedulable
+// and the current live Attempt still owns the exact stored Lease.
 type LeaseStore interface {
 	ReserveLease(ctx context.Context, reservation LeaseReservation) (LeaseReservationResult, error)
 	LoadLease(ctx context.Context, id ids.LeaseID) (leasestate.LeaseRecord, error)
