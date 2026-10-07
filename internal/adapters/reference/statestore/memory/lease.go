@@ -3,7 +3,9 @@ package memory
 import (
 	"context"
 	"fmt"
+	"time"
 
+	"github.com/hat47x/eki-fabric/internal/core/attemptstate"
 	"github.com/hat47x/eki-fabric/internal/core/ids"
 	"github.com/hat47x/eki-fabric/internal/core/leasestate"
 	"github.com/hat47x/eki-fabric/internal/core/taskstate"
@@ -45,7 +47,41 @@ func (s *Store) ReserveLease(ctx context.Context, reservation statestore.LeaseRe
 				reservation.PlacementDecisionID,
 			)
 		}
+		attempt, ok := s.attempts[existing.AttemptID]
+		if !ok || !attemptCanReplayLease(attempt, existing) {
+			return statestore.LeaseReservationResult{}, fmt.Errorf(
+				"%w: attempt %s no longer owns replayed lease %s",
+				statestore.ErrConflict,
+				existing.AttemptID,
+				existing.ID,
+			)
+		}
 		return statestore.LeaseReservationResult{Lease: existing, Replayed: true}, nil
+	}
+
+	attempt, ok := s.attempts[reservation.AttemptID]
+	if !ok {
+		return statestore.LeaseReservationResult{}, fmt.Errorf("%w: attempt %s", statestore.ErrNotFound, reservation.AttemptID)
+	}
+	if attempt.TaskID != reservation.TaskID ||
+		attempt.TaskIRDigest != reservation.TaskIRDigest ||
+		attempt.WorkerIdentity != reservation.WorkerIdentity ||
+		attempt.Phase != attemptstate.AttemptPhasePlacing ||
+		attempt.LeaseID != "" {
+		return statestore.LeaseReservationResult{}, fmt.Errorf(
+			"%w: attempt %s changed before new lease reservation",
+			statestore.ErrConflict,
+			reservation.AttemptID,
+		)
+	}
+	if attempt.Revision != reservation.ExpectedAttemptRevision {
+		return statestore.LeaseReservationResult{}, fmt.Errorf(
+			"%w: attempt %s is at revision %d, expected %d",
+			statestore.ErrConflict,
+			reservation.AttemptID,
+			attempt.Revision,
+			reservation.ExpectedAttemptRevision,
+		)
 	}
 	if task.Revision != reservation.ExpectedTaskRevision {
 		return statestore.LeaseReservationResult{}, fmt.Errorf("%w: task %s changed before new lease reservation", statestore.ErrConflict, reservation.TaskID)
@@ -89,6 +125,15 @@ func (s *Store) ReserveLease(ctx context.Context, reservation statestore.LeaseRe
 	if err != nil {
 		return statestore.LeaseReservationResult{}, err
 	}
+	assigned := attempt
+	assigned.Phase = attemptstate.AttemptPhaseAssigned
+	assigned.LeaseID = lease.ID
+	assigned.Revision++
+	assigned.UpdatedAt = laterTime(attempt.UpdatedAt, lease.IssuedAt)
+	if err := attemptstate.ValidateTransition(attempt, assigned); err != nil {
+		return statestore.LeaseReservationResult{}, err
+	}
+
 	s.leases[lease.ID] = lease
 	s.placementLeases[placementScope{
 		trustDomain: lease.PlacementTrustDomain,
@@ -96,7 +141,34 @@ func (s *Store) ReserveLease(ctx context.Context, reservation statestore.LeaseRe
 		decisionID:  lease.PlacementDecisionID,
 	}] = lease.ID
 	s.maxFence[lease.TaskID] = lease.FenceEpoch
+	s.attempts[assigned.ID] = assigned
 	return statestore.LeaseReservationResult{Lease: lease}, nil
+}
+
+func attemptCanReplayLease(attempt attemptstate.AttemptRecord, lease leasestate.LeaseRecord) bool {
+	if attempt.TaskID != lease.TaskID ||
+		attempt.TaskIRDigest != lease.TaskIRDigest ||
+		attempt.WorkerIdentity != lease.WorkerIdentity ||
+		attempt.LeaseID != lease.ID {
+		return false
+	}
+	switch attempt.Phase {
+	case attemptstate.AttemptPhaseAssigned,
+		attemptstate.AttemptPhaseDispatched,
+		attemptstate.AttemptPhaseClaimed,
+		attemptstate.AttemptPhaseVerifying:
+		return true
+	default:
+		return false
+	}
+}
+
+func laterTime(a, b time.Time) time.Time {
+	a, b = a.UTC(), b.UTC()
+	if b.After(a) {
+		return b
+	}
+	return a
 }
 
 func (s *Store) LoadLease(ctx context.Context, id ids.LeaseID) (leasestate.LeaseRecord, error) {
