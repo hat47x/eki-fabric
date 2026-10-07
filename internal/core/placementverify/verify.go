@@ -17,6 +17,7 @@ import (
 	"errors"
 	"fmt"
 	"time"
+	"unicode/utf8"
 
 	"github.com/hat47x/eki-fabric/internal/core/authority"
 	"github.com/hat47x/eki-fabric/internal/core/decisionpayload"
@@ -56,8 +57,8 @@ func New(cfg Config) (*Verifier, error) {
 		return nil, fmt.Errorf("%w: payload decoder is required", ErrInvalidConfig)
 	case cfg.Boundary == nil:
 		return nil, fmt.Errorf("%w: verifier boundary is required", ErrInvalidConfig)
-	case cfg.TrustDomain == "":
-		return nil, fmt.Errorf("%w: trust domain is required", ErrInvalidConfig)
+	case cfg.TrustDomain == "" || len(cfg.TrustDomain) > 256 || !utf8.ValidString(cfg.TrustDomain):
+		return nil, fmt.Errorf("%w: trust domain must be 1..256 valid UTF-8 bytes", ErrInvalidConfig)
 	}
 	return &Verifier{
 		codec:       cfg.Codec,
