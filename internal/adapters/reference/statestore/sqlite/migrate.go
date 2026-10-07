@@ -82,6 +82,20 @@ CREATE INDEX leases_by_task_expiry ON leases (task_id, expires_at_ns)`,
 	CHECK (lease_id IS NULL OR worker_identity <> '')
 ) STRICT;
 CREATE INDEX attempts_by_task_phase ON attempts (task_id, phase);
+CREATE TRIGGER attempts_insert_guard
+BEFORE INSERT ON attempts
+WHEN NEW.phase <> 'created'
+  OR NEW.revision <> 1
+  OR NOT EXISTS (
+	SELECT 1 FROM tasks
+	WHERE task_id = NEW.task_id
+	  AND task_ir_digest = NEW.task_ir_digest
+	  AND cancellation_requested = 0
+	  AND phase IN ('ready','active')
+  )
+BEGIN
+	SELECT RAISE(ABORT, 'attempt is not a valid initial state for current Task');
+END;
 CREATE TRIGGER leases_attempt_insert
 BEFORE INSERT ON leases
 WHEN NOT EXISTS (
