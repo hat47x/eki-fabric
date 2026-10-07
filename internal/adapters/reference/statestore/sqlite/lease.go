@@ -54,7 +54,6 @@ SELECT lease_id, task_id, task_ir_digest, attempt_id, worker_identity,
        fence_epoch, renewal_sequence, issued_at_ns, expires_at_ns
 FROM leases WHERE placement_trust_domain = ? AND placement_authority_principal = ? AND placement_decision_id = ?`,
 		reservation.PlacementTrustDomain,
-		reservation.PlacementTrustDomain,
 		reservation.PlacementAuthorityPrincipal,
 		reservation.PlacementDecisionID,
 	))
