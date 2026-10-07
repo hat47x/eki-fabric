@@ -8,6 +8,7 @@ import (
 	"math"
 	"time"
 
+	"github.com/hat47x/eki-fabric/internal/core/attemptstate"
 	"github.com/hat47x/eki-fabric/internal/core/contract"
 	"github.com/hat47x/eki-fabric/internal/core/ids"
 	"github.com/hat47x/eki-fabric/internal/core/leasestate"
@@ -66,10 +67,64 @@ FROM leases WHERE placement_trust_domain = ? AND placement_authority_principal =
 				reservation.PlacementDecisionID,
 			)
 		}
+		attempt, attemptErr := scanAttempt(tx.QueryRowContext(ctx, `
+SELECT attempt_id, task_id, task_ir_digest, attempt_number, phase,
+       worker_identity, lease_id, close_reason, revision, created_at_ns, updated_at_ns
+FROM attempts WHERE attempt_id = ?`, existing.AttemptID.String()))
+		if errors.Is(attemptErr, sql.ErrNoRows) {
+			return statestore.LeaseReservationResult{}, fmt.Errorf(
+				"%w: replayed lease %s has no current Attempt %s",
+				statestore.ErrConflict,
+				existing.ID,
+				existing.AttemptID,
+			)
+		}
+		if attemptErr != nil {
+			return statestore.LeaseReservationResult{}, attemptErr
+		}
+		if !attemptCanReplayLease(attempt, existing) {
+			return statestore.LeaseReservationResult{}, fmt.Errorf(
+				"%w: attempt %s no longer owns replayed lease %s",
+				statestore.ErrConflict,
+				existing.AttemptID,
+				existing.ID,
+			)
+		}
 		return statestore.LeaseReservationResult{Lease: existing, Replayed: true}, nil
 	case errors.Is(err, sql.ErrNoRows):
 	default:
 		return statestore.LeaseReservationResult{}, err
+	}
+
+	attempt, err := scanAttempt(tx.QueryRowContext(ctx, `
+SELECT attempt_id, task_id, task_ir_digest, attempt_number, phase,
+       worker_identity, lease_id, close_reason, revision, created_at_ns, updated_at_ns
+FROM attempts WHERE attempt_id = ?`, reservation.AttemptID.String()))
+	if errors.Is(err, sql.ErrNoRows) {
+		return statestore.LeaseReservationResult{}, fmt.Errorf("%w: attempt %s", statestore.ErrNotFound, reservation.AttemptID)
+	}
+	if err != nil {
+		return statestore.LeaseReservationResult{}, err
+	}
+	if attempt.TaskID != reservation.TaskID ||
+		attempt.TaskIRDigest != reservation.TaskIRDigest ||
+		attempt.WorkerIdentity != reservation.WorkerIdentity ||
+		attempt.Phase != attemptstate.AttemptPhasePlacing ||
+		attempt.LeaseID != "" {
+		return statestore.LeaseReservationResult{}, fmt.Errorf(
+			"%w: attempt %s changed before new lease reservation",
+			statestore.ErrConflict,
+			reservation.AttemptID,
+		)
+	}
+	if attempt.Revision != reservation.ExpectedAttemptRevision {
+		return statestore.LeaseReservationResult{}, fmt.Errorf(
+			"%w: attempt %s is at revision %d, expected %d",
+			statestore.ErrConflict,
+			reservation.AttemptID,
+			attempt.Revision,
+			reservation.ExpectedAttemptRevision,
+		)
 	}
 
 	if task.Revision != reservation.ExpectedTaskRevision {
@@ -187,10 +242,73 @@ INSERT INTO leases (
 	if err != nil {
 		return statestore.LeaseReservationResult{}, fmt.Errorf("insert lease %s: %w", lease.ID, err)
 	}
+
+	assigned := attempt
+	assigned.Phase = attemptstate.AttemptPhaseAssigned
+	assigned.LeaseID = lease.ID
+	assigned.Revision++
+	assigned.UpdatedAt = laterAttemptTime(attempt.UpdatedAt, lease.IssuedAt)
+	if err := attemptstate.ValidateTransition(attempt, assigned); err != nil {
+		return statestore.LeaseReservationResult{}, err
+	}
+	attemptResult, err := tx.ExecContext(ctx, `
+UPDATE attempts
+SET phase = ?, worker_identity = ?, lease_id = ?, close_reason = ?, revision = ?, updated_at_ns = ?
+WHERE attempt_id = ? AND revision = ?`,
+		string(assigned.Phase),
+		assigned.WorkerIdentity,
+		assigned.LeaseID.String(),
+		string(assigned.CloseReason),
+		int64(assigned.Revision),
+		assigned.UpdatedAt.UnixNano(),
+		assigned.ID.String(),
+		int64(attempt.Revision),
+	)
+	if err != nil {
+		return statestore.LeaseReservationResult{}, fmt.Errorf("assign attempt %s to lease %s: %w", assigned.ID, lease.ID, err)
+	}
+	updated, err := attemptResult.RowsAffected()
+	if err != nil {
+		return statestore.LeaseReservationResult{}, fmt.Errorf("read attempt assignment result %s: %w", assigned.ID, err)
+	}
+	if updated != 1 {
+		return statestore.LeaseReservationResult{}, fmt.Errorf(
+			"%w: attempt %s changed concurrently",
+			statestore.ErrConflict,
+			assigned.ID,
+		)
+	}
+
 	if err := tx.Commit(); err != nil {
 		return statestore.LeaseReservationResult{}, fmt.Errorf("commit lease %s: %w", lease.ID, err)
 	}
 	return statestore.LeaseReservationResult{Lease: lease}, nil
+}
+
+func attemptCanReplayLease(attempt attemptstate.AttemptRecord, lease leasestate.LeaseRecord) bool {
+	if attempt.TaskID != lease.TaskID ||
+		attempt.TaskIRDigest != lease.TaskIRDigest ||
+		attempt.WorkerIdentity != lease.WorkerIdentity ||
+		attempt.LeaseID != lease.ID {
+		return false
+	}
+	switch attempt.Phase {
+	case attemptstate.AttemptPhaseAssigned,
+		attemptstate.AttemptPhaseDispatched,
+		attemptstate.AttemptPhaseClaimed,
+		attemptstate.AttemptPhaseVerifying:
+		return true
+	default:
+		return false
+	}
+}
+
+func laterAttemptTime(a, b time.Time) time.Time {
+	a, b = a.UTC(), b.UTC()
+	if b.After(a) {
+		return b
+	}
+	return a
 }
 
 func (s *Store) LoadLease(ctx context.Context, id ids.LeaseID) (leasestate.LeaseRecord, error) {
