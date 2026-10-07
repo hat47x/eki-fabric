@@ -25,8 +25,7 @@ func (s *Store) ReserveLease(ctx context.Context, reservation statestore.LeaseRe
 	if !ok {
 		return statestore.LeaseReservationResult{}, fmt.Errorf("%w: task %s", statestore.ErrNotFound, reservation.TaskID)
 	}
-	if task.Revision != reservation.ExpectedTaskRevision ||
-		task.TaskIRDigest != reservation.TaskIRDigest ||
+	if task.TaskIRDigest != reservation.TaskIRDigest ||
 		task.CancellationRequested ||
 		(task.Phase != taskstate.TaskPhaseReady && task.Phase != taskstate.TaskPhaseActive) {
 		return statestore.LeaseReservationResult{}, fmt.Errorf("%w: task %s changed before lease reservation", statestore.ErrConflict, reservation.TaskID)
@@ -43,6 +42,9 @@ func (s *Store) ReserveLease(ctx context.Context, reservation statestore.LeaseRe
 			)
 		}
 		return statestore.LeaseReservationResult{Lease: existing, Replayed: true}, nil
+	}
+	if task.Revision != reservation.ExpectedTaskRevision {
+		return statestore.LeaseReservationResult{}, fmt.Errorf("%w: task %s changed before new lease reservation", statestore.ErrConflict, reservation.TaskID)
 	}
 	if _, exists := s.leases[reservation.LeaseID]; exists {
 		return statestore.LeaseReservationResult{}, fmt.Errorf("%w: lease %s", statestore.ErrAlreadyExists, reservation.LeaseID)
