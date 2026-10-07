@@ -17,8 +17,9 @@ type idempotencyScope struct {
 }
 
 type placementScope struct {
-	principal  string
-	decisionID string
+	trustDomain string
+	principal   string
+	decisionID  string
 }
 
 type Store struct {
