@@ -274,8 +274,17 @@ func TestVerifyAcceptsAValidSignedApproval(t *testing.T) {
 	if got.IsZero() {
 		t.Fatal("Verify() returned the zero Verified without an error")
 	}
-	if got.KeyID() != keyID || got.TrustBundleRevision() != 3 || !got.VerifiedAt().Equal(now) {
-		t.Fatalf("unexpected Verified: key=%s bundle=%d at=%s", got.KeyID(), got.TrustBundleRevision(), got.VerifiedAt())
+	if got.KeyID() != keyID ||
+		got.TrustDomain() != trustDomain ||
+		got.TrustBundleRevision() != 3 ||
+		!got.VerifiedAt().Equal(now) {
+		t.Fatalf(
+			"unexpected Verified: key=%s domain=%q bundle=%d at=%s",
+			got.KeyID(),
+			got.TrustDomain(),
+			got.TrustBundleRevision(),
+			got.VerifiedAt(),
+		)
 	}
 	if got.Approval().TaskID().String() != taskID || got.Approval().WorkerIdentity() != workerID {
 		t.Fatalf("approval did not carry the signed subject: %#v", got.Approval())
