@@ -82,7 +82,13 @@ func (r LeaseReservation) Validate() error {
 }
 
 type LeaseReservationResult struct {
-	Lease    leasestate.LeaseRecord
+	// Lease is durable reservation state only. It is not a signed Worker
+	// authority and must still pass the later LSE-1 issuance boundary.
+	Lease leasestate.LeaseRecord
+	// Replayed means ReserveLease recovered the reservation already stored for
+	// the same scoped Placement Decision instead of allocating a new fence.
+	// It does not re-authorize the current Attempt or Worker, and callers must
+	// not use it to skip current-state revalidation before signing a Lease.
 	Replayed bool
 }
 
