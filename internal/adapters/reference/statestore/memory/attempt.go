@@ -6,6 +6,7 @@ import (
 
 	"github.com/hat47x/eki-fabric/internal/core/attemptstate"
 	"github.com/hat47x/eki-fabric/internal/core/ids"
+	"github.com/hat47x/eki-fabric/internal/core/taskstate"
 	"github.com/hat47x/eki-fabric/internal/spi/statestore"
 )
 
@@ -13,7 +14,7 @@ func (s *Store) CreateAttempt(ctx context.Context, record attemptstate.AttemptRe
 	if err := ctx.Err(); err != nil {
 		return err
 	}
-	if err := record.Validate(); err != nil {
+	if err := record.ValidateInitial(); err != nil {
 		return err
 	}
 
@@ -26,6 +27,10 @@ func (s *Store) CreateAttempt(ctx context.Context, record attemptstate.AttemptRe
 	}
 	if task.TaskIRDigest != record.TaskIRDigest {
 		return fmt.Errorf("%w: attempt %s TaskIR differs from parent Task", statestore.ErrConflict, record.ID)
+	}
+	if task.CancellationRequested ||
+		(task.Phase != taskstate.TaskPhaseReady && task.Phase != taskstate.TaskPhaseActive) {
+		return fmt.Errorf("%w: task %s cannot create a new Attempt", statestore.ErrConflict, record.TaskID)
 	}
 	if _, exists := s.attempts[record.ID]; exists {
 		return fmt.Errorf("%w: attempt %s", statestore.ErrAlreadyExists, record.ID)
