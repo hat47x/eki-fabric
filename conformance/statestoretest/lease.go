@@ -5,9 +5,11 @@ import (
 	"errors"
 	"path/filepath"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
+	"github.com/hat47x/eki-fabric/internal/core/attemptstate"
 	"github.com/hat47x/eki-fabric/internal/core/contract"
 	"github.com/hat47x/eki-fabric/internal/core/ids"
 	"github.com/hat47x/eki-fabric/internal/core/leasestate"
@@ -17,6 +19,7 @@ import (
 
 type TaskLeaseStore interface {
 	statestore.TaskStore
+	statestore.AttemptStore
 	statestore.LeaseStore
 }
 
@@ -32,7 +35,7 @@ func RunLeaseStoreContract(t *testing.T, newStore LeaseFactory) {
 	t.Run("reserve-load-replay", func(t *testing.T) {
 		store := newStore(t)
 		task := readyTask(t, store, "lease-replay")
-		reservation := leaseReservation(t, task, "placement-1", leaseNow, leaseNow.Add(time.Minute))
+		reservation := leaseReservation(t, store, task, "placement-1", leaseNow, leaseNow.Add(time.Minute))
 
 		first, err := store.ReserveLease(context.Background(), reservation)
 		if err != nil {
@@ -40,6 +43,15 @@ func RunLeaseStoreContract(t *testing.T, newStore LeaseFactory) {
 		}
 		if first.Replayed || first.Lease.FenceEpoch != 1 || first.Lease.RenewalSequence != 0 {
 			t.Fatalf("first reservation = %#v", first)
+		}
+		assigned, err := store.LoadAttempt(context.Background(), reservation.AttemptID)
+		if err != nil {
+			t.Fatalf("LoadAttempt() after reservation error = %v", err)
+		}
+		if assigned.Phase != attemptstate.AttemptPhaseAssigned ||
+			assigned.LeaseID != first.Lease.ID ||
+			assigned.WorkerIdentity != first.Lease.WorkerIdentity {
+			t.Fatalf("Attempt was not assigned atomically with Lease: %#v", assigned)
 		}
 		loaded, err := store.LoadLease(context.Background(), first.Lease.ID)
 		if err != nil {
@@ -61,7 +73,7 @@ func RunLeaseStoreContract(t *testing.T, newStore LeaseFactory) {
 	t.Run("exact-replay-survives-benign-task-revision", func(t *testing.T) {
 		store := newStore(t)
 		task := readyTask(t, store, "replay-revision")
-		reservation := leaseReservation(t, task, "placement-1", leaseNow, leaseNow.Add(time.Minute))
+		reservation := leaseReservation(t, store, task, "placement-1", leaseNow, leaseNow.Add(time.Minute))
 		first, err := store.ReserveLease(context.Background(), reservation)
 		if err != nil {
 			t.Fatal(err)
@@ -89,7 +101,7 @@ func RunLeaseStoreContract(t *testing.T, newStore LeaseFactory) {
 	t.Run("replay-after-cancellation-fails-closed", func(t *testing.T) {
 		store := newStore(t)
 		task := readyTask(t, store, "replay-cancel")
-		reservation := leaseReservation(t, task, "placement-1", leaseNow, leaseNow.Add(time.Minute))
+		reservation := leaseReservation(t, store, task, "placement-1", leaseNow, leaseNow.Add(time.Minute))
 		if _, err := store.ReserveLease(context.Background(), reservation); err != nil {
 			t.Fatal(err)
 		}
@@ -113,7 +125,7 @@ func RunLeaseStoreContract(t *testing.T, newStore LeaseFactory) {
 	t.Run("replay-after-unschedulable-phase-fails-closed", func(t *testing.T) {
 		store := newStore(t)
 		task := readyTask(t, store, "replay-held")
-		reservation := leaseReservation(t, task, "placement-1", leaseNow, leaseNow.Add(time.Minute))
+		reservation := leaseReservation(t, store, task, "placement-1", leaseNow, leaseNow.Add(time.Minute))
 		if _, err := store.ReserveLease(context.Background(), reservation); err != nil {
 			t.Fatal(err)
 		}
@@ -137,7 +149,7 @@ func RunLeaseStoreContract(t *testing.T, newStore LeaseFactory) {
 	t.Run("replay-cannot-change-placement-subject", func(t *testing.T) {
 		store := newStore(t)
 		task := readyTask(t, store, "replay-subject")
-		first := leaseReservation(t, task, "placement-1", leaseNow, leaseNow.Add(time.Minute))
+		first := leaseReservation(t, store, task, "placement-1", leaseNow, leaseNow.Add(time.Minute))
 		if _, err := store.ReserveLease(context.Background(), first); err != nil {
 			t.Fatal(err)
 		}
@@ -169,13 +181,13 @@ func RunLeaseStoreContract(t *testing.T, newStore LeaseFactory) {
 	t.Run("same-decision-and-principal-from-different-trust-domain-is-distinct", func(t *testing.T) {
 		store := newStore(t)
 		task := readyTask(t, store, "domain-scope")
-		first := leaseReservation(t, task, "placement-1", leaseNow, leaseNow.Add(time.Minute))
+		first := leaseReservation(t, store, task, "placement-1", leaseNow, leaseNow.Add(time.Minute))
 		if _, err := store.ReserveLease(context.Background(), first); err != nil {
 			t.Fatal(err)
 		}
 
 		secondNow := first.ExpiresAt.Add(time.Nanosecond)
-		second := leaseReservation(t, task, "placement-1", secondNow, secondNow.Add(time.Minute))
+		second := leaseReservation(t, store, task, "placement-1", secondNow, secondNow.Add(time.Minute))
 		second.PlacementTrustDomain = "federated.example"
 		second.PlacementPayloadDigest = contract.SHA256([]byte("federated payload"))
 		got, err := store.ReserveLease(context.Background(), second)
@@ -190,13 +202,13 @@ func RunLeaseStoreContract(t *testing.T, newStore LeaseFactory) {
 	t.Run("same-decision-id-from-different-plc-principal-is-distinct", func(t *testing.T) {
 		store := newStore(t)
 		task := readyTask(t, store, "principal-scope")
-		first := leaseReservation(t, task, "placement-1", leaseNow, leaseNow.Add(time.Minute))
+		first := leaseReservation(t, store, task, "placement-1", leaseNow, leaseNow.Add(time.Minute))
 		if _, err := store.ReserveLease(context.Background(), first); err != nil {
 			t.Fatal(err)
 		}
 
 		secondNow := first.ExpiresAt.Add(time.Nanosecond)
-		second := leaseReservation(t, task, "placement-1", secondNow, secondNow.Add(time.Minute))
+		second := leaseReservation(t, store, task, "placement-1", secondNow, secondNow.Add(time.Minute))
 		second.PlacementAuthorityPrincipal = "control-plane/plc-2"
 		second.PlacementPayloadDigest = contract.SHA256([]byte("plc-2 payload"))
 		got, err := store.ReserveLease(context.Background(), second)
@@ -211,7 +223,7 @@ func RunLeaseStoreContract(t *testing.T, newStore LeaseFactory) {
 	t.Run("decision-id-cannot-be-rebound", func(t *testing.T) {
 		store := newStore(t)
 		task := readyTask(t, store, "decision-rebind")
-		first := leaseReservation(t, task, "placement-1", leaseNow, leaseNow.Add(time.Minute))
+		first := leaseReservation(t, store, task, "placement-1", leaseNow, leaseNow.Add(time.Minute))
 		if _, err := store.ReserveLease(context.Background(), first); err != nil {
 			t.Fatal(err)
 		}
@@ -227,12 +239,12 @@ func RunLeaseStoreContract(t *testing.T, newStore LeaseFactory) {
 	t.Run("active-lease-blocks-second-placement", func(t *testing.T) {
 		store := newStore(t)
 		task := readyTask(t, store, "active-block")
-		first := leaseReservation(t, task, "placement-1", leaseNow, leaseNow.Add(time.Minute))
+		first := leaseReservation(t, store, task, "placement-1", leaseNow, leaseNow.Add(time.Minute))
 		if _, err := store.ReserveLease(context.Background(), first); err != nil {
 			t.Fatal(err)
 		}
 
-		second := leaseReservation(t, task, "placement-2", leaseNow.Add(10*time.Second), leaseNow.Add(70*time.Second))
+		second := leaseReservation(t, store, task, "placement-2", leaseNow.Add(10*time.Second), leaseNow.Add(70*time.Second))
 		if _, err := store.ReserveLease(context.Background(), second); !errors.Is(err, statestore.ErrLeaseActive) {
 			t.Fatalf("ReserveLease() error = %v, want ErrLeaseActive", err)
 		}
@@ -241,7 +253,7 @@ func RunLeaseStoreContract(t *testing.T, newStore LeaseFactory) {
 	t.Run("expired-placement-replay-does-not-mint-a-new-fence", func(t *testing.T) {
 		store := newStore(t)
 		task := readyTask(t, store, "expired-replay")
-		firstReq := leaseReservation(t, task, "placement-1", leaseNow, leaseNow.Add(time.Minute))
+		firstReq := leaseReservation(t, store, task, "placement-1", leaseNow, leaseNow.Add(time.Minute))
 		first, err := store.ReserveLease(context.Background(), firstReq)
 		if err != nil {
 			t.Fatal(err)
@@ -266,12 +278,12 @@ func RunLeaseStoreContract(t *testing.T, newStore LeaseFactory) {
 	t.Run("future-issued-lease-still-reserves-the-fence", func(t *testing.T) {
 		store := newStore(t)
 		task := readyTask(t, store, "future-fence")
-		future := leaseReservation(t, task, "placement-future", leaseNow.Add(30*time.Second), leaseNow.Add(90*time.Second))
+		future := leaseReservation(t, store, task, "placement-future", leaseNow.Add(30*time.Second), leaseNow.Add(90*time.Second))
 		if _, err := store.ReserveLease(context.Background(), future); err != nil {
 			t.Fatal(err)
 		}
 
-		second := leaseReservation(t, task, "placement-now", leaseNow, leaseNow.Add(time.Minute))
+		second := leaseReservation(t, store, task, "placement-now", leaseNow, leaseNow.Add(time.Minute))
 		if _, err := store.ReserveLease(context.Background(), second); !errors.Is(err, statestore.ErrLeaseActive) {
 			t.Fatalf("ReserveLease() error = %v, want ErrLeaseActive", err)
 		}
@@ -280,14 +292,14 @@ func RunLeaseStoreContract(t *testing.T, newStore LeaseFactory) {
 	t.Run("expired-lease-allows-next-monotonic-fence", func(t *testing.T) {
 		store := newStore(t)
 		task := readyTask(t, store, "fence")
-		first := leaseReservation(t, task, "placement-1", leaseNow, leaseNow.Add(time.Minute))
+		first := leaseReservation(t, store, task, "placement-1", leaseNow, leaseNow.Add(time.Minute))
 		a, err := store.ReserveLease(context.Background(), first)
 		if err != nil {
 			t.Fatal(err)
 		}
 
 		secondNow := first.ExpiresAt.Add(time.Nanosecond)
-		second := leaseReservation(t, task, "placement-2", secondNow, secondNow.Add(time.Minute))
+		second := leaseReservation(t, store, task, "placement-2", secondNow, secondNow.Add(time.Minute))
 		b, err := store.ReserveLease(context.Background(), second)
 		if err != nil {
 			t.Fatalf("second ReserveLease() error = %v", err)
@@ -303,7 +315,7 @@ func RunLeaseStoreContract(t *testing.T, newStore LeaseFactory) {
 	t.Run("task-revision-drift-fails-closed", func(t *testing.T) {
 		store := newStore(t)
 		task := readyTask(t, store, "revision-drift")
-		reservation := leaseReservation(t, task, "placement-1", leaseNow, leaseNow.Add(time.Minute))
+		reservation := leaseReservation(t, store, task, "placement-1", leaseNow, leaseNow.Add(time.Minute))
 
 		next := task
 		next.Revision++
@@ -319,7 +331,7 @@ func RunLeaseStoreContract(t *testing.T, newStore LeaseFactory) {
 	t.Run("cancellation-fails-closed", func(t *testing.T) {
 		store := newStore(t)
 		task := readyTask(t, store, "cancel")
-		reservation := leaseReservation(t, task, "placement-1", leaseNow, leaseNow.Add(time.Minute))
+		reservation := leaseReservation(t, store, task, "placement-1", leaseNow, leaseNow.Add(time.Minute))
 
 		cancelled := task
 		cancelled.CancellationRequested = true
@@ -344,7 +356,7 @@ func RunLeaseStoreContract(t *testing.T, newStore LeaseFactory) {
 		if err := store.CompareAndSwapTask(context.Background(), task.ID, task.Revision, held); err != nil {
 			t.Fatal(err)
 		}
-		reservation := leaseReservation(t, held, "placement-1", leaseNow, leaseNow.Add(time.Minute))
+		reservation := leaseReservation(t, store, held, "placement-1", leaseNow, leaseNow.Add(time.Minute))
 		if _, err := store.ReserveLease(context.Background(), reservation); !errors.Is(err, statestore.ErrConflict) {
 			t.Fatalf("ReserveLease() error = %v, want ErrConflict", err)
 		}
@@ -353,8 +365,8 @@ func RunLeaseStoreContract(t *testing.T, newStore LeaseFactory) {
 	t.Run("concurrent-placements-have-one-winner", func(t *testing.T) {
 		store := newStore(t)
 		task := readyTask(t, store, "concurrent-lease")
-		a := leaseReservation(t, task, "placement-a", leaseNow, leaseNow.Add(time.Minute))
-		b := leaseReservation(t, task, "placement-b", leaseNow, leaseNow.Add(time.Minute))
+		a := leaseReservation(t, store, task, "placement-a", leaseNow, leaseNow.Add(time.Minute))
+		b := leaseReservation(t, store, task, "placement-b", leaseNow, leaseNow.Add(time.Minute))
 
 		start := make(chan struct{})
 		results := make(chan error, 2)
@@ -392,7 +404,7 @@ func RunLeaseStoreContract(t *testing.T, newStore LeaseFactory) {
 	t.Run("lease-cannot-outlive-placement-approval", func(t *testing.T) {
 		store := newStore(t)
 		task := readyTask(t, store, "placement-expiry")
-		reservation := leaseReservation(t, task, "placement-1", leaseNow, leaseNow.Add(time.Minute))
+		reservation := leaseReservation(t, store, task, "placement-1", leaseNow, leaseNow.Add(time.Minute))
 		reservation.PlacementExpiresAt = leaseNow.Add(30 * time.Second)
 		if _, err := store.ReserveLease(context.Background(), reservation); err == nil {
 			t.Fatal("ReserveLease() accepted a Lease that outlives Placement Approval")
@@ -410,7 +422,7 @@ func RunLeaseStoreContract(t *testing.T, newStore LeaseFactory) {
 			CreatedAt:    leaseNow,
 			UpdatedAt:    leaseNow,
 		}
-		reservation := leaseReservation(t, task, "placement-missing", leaseNow, leaseNow.Add(time.Minute))
+		reservation := leaseReservation(t, store, task, "placement-missing", leaseNow, leaseNow.Add(time.Minute))
 		if _, err := store.ReserveLease(context.Background(), reservation); !errors.Is(err, statestore.ErrNotFound) {
 			t.Fatalf("missing Task error = %v, want ErrNotFound", err)
 		}
@@ -435,7 +447,7 @@ func RunLeaseDurabilityContract(t *testing.T, factory DurableLeaseFactory) {
 		location := filepath.Join(t.TempDir(), "state.db")
 		store, closeStore := factory.Open(t, location)
 		task := readyTask(t, store, "lease-durable")
-		firstReq := leaseReservation(t, task, "placement-1", leaseNow, leaseNow.Add(time.Minute))
+		firstReq := leaseReservation(t, store, task, "placement-1", leaseNow, leaseNow.Add(time.Minute))
 		first, err := store.ReserveLease(context.Background(), firstReq)
 		if err != nil {
 			t.Fatal(err)
@@ -453,7 +465,7 @@ func RunLeaseDurabilityContract(t *testing.T, factory DurableLeaseFactory) {
 		assertLeaseEqual(t, got, first.Lease)
 
 		secondNow := first.Lease.ExpiresAt.Add(time.Nanosecond)
-		secondReq := leaseReservation(t, task, "placement-2", secondNow, secondNow.Add(time.Minute))
+		secondReq := leaseReservation(t, reopened, task, "placement-2", secondNow, secondNow.Add(time.Minute))
 		second, err := reopened.ReserveLease(context.Background(), secondReq)
 		if err != nil {
 			t.Fatalf("ReserveLease() after restart error = %v", err)
@@ -486,23 +498,49 @@ func readyTask(t testing.TB, store statestore.TaskStore, seed string) taskstate.
 	return ready
 }
 
-func leaseReservation(t testing.TB, task taskstate.TaskRecord, decisionID string, issued, expires time.Time) statestore.LeaseReservation {
+var leaseAttemptSequence atomic.Uint64
+
+func leaseReservation(t testing.TB, store TaskLeaseStore, task taskstate.TaskRecord, decisionID string, issued, expires time.Time) statestore.LeaseReservation {
 	t.Helper()
+
+	attempt, err := attemptstate.New(
+		mustAttemptID(t),
+		task.ID,
+		task.TaskIRDigest,
+		leaseAttemptSequence.Add(1),
+		task.UpdatedAt,
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := store.CreateAttempt(context.Background(), attempt); err != nil {
+		t.Fatal(err)
+	}
+	placing := attempt
+	placing.Phase = attemptstate.AttemptPhasePlacing
+	placing.WorkerIdentity = "worker-a"
+	placing.Revision++
+	placing.UpdatedAt = attempt.UpdatedAt.Add(time.Nanosecond)
+	if err := store.CompareAndSwapAttempt(context.Background(), attempt.ID, attempt.Revision, placing); err != nil {
+		t.Fatal(err)
+	}
+
 	return statestore.LeaseReservation{
-		LeaseID:                mustLeaseID(t),
-		TaskID:                 task.ID,
-		TaskIRDigest:           task.TaskIRDigest,
-		ExpectedTaskRevision:   task.Revision,
-		AttemptID:              mustAttemptID(t),
-		WorkerIdentity:         "worker-a",
+		LeaseID:                     mustLeaseID(t),
+		TaskID:                      task.ID,
+		TaskIRDigest:                task.TaskIRDigest,
+		ExpectedTaskRevision:        task.Revision,
+		AttemptID:                   placing.ID,
+		ExpectedAttemptRevision:     placing.Revision,
+		WorkerIdentity:              placing.WorkerIdentity,
 		PlacementTrustDomain:        "local.example",
 		PlacementAuthorityPrincipal: "control-plane/plc-1",
-		PlacementDecisionID:           decisionID,
-		PlacementPayloadDigest:        contract.SHA256([]byte("payload:" + decisionID)),
-		PlacementExpiresAt:            expires.Add(time.Minute),
-		PolicyRevision:                "policy-42",
-		IssuedAt:                      issued,
-		ExpiresAt:                     expires,
+		PlacementDecisionID:         decisionID,
+		PlacementPayloadDigest:      contract.SHA256([]byte("payload:" + decisionID)),
+		PlacementExpiresAt:          expires.Add(time.Minute),
+		PolicyRevision:              "policy-42",
+		IssuedAt:                    issued,
+		ExpiresAt:                   expires,
 	}
 }
 
