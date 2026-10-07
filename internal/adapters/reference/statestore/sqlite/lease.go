@@ -38,8 +38,7 @@ FROM tasks WHERE task_id = ?`, reservation.TaskID.String()))
 	if err != nil {
 		return statestore.LeaseReservationResult{}, err
 	}
-	if task.Revision != reservation.ExpectedTaskRevision ||
-		task.TaskIRDigest != reservation.TaskIRDigest ||
+	if task.TaskIRDigest != reservation.TaskIRDigest ||
 		task.CancellationRequested ||
 		(task.Phase != taskstate.TaskPhaseReady && task.Phase != taskstate.TaskPhaseActive) {
 		return statestore.LeaseReservationResult{}, fmt.Errorf(
@@ -70,6 +69,14 @@ FROM leases WHERE placement_authority_principal = ? AND placement_decision_id = 
 	case errors.Is(err, sql.ErrNoRows):
 	default:
 		return statestore.LeaseReservationResult{}, err
+	}
+
+	if task.Revision != reservation.ExpectedTaskRevision {
+		return statestore.LeaseReservationResult{}, fmt.Errorf(
+			"%w: task %s changed before new lease reservation",
+			statestore.ErrConflict,
+			reservation.TaskID,
+		)
 	}
 
 	var activeID string
