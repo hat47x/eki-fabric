@@ -243,42 +243,6 @@ INSERT INTO leases (
 		return statestore.LeaseReservationResult{}, fmt.Errorf("insert lease %s: %w", lease.ID, err)
 	}
 
-	assigned := attempt
-	assigned.Phase = attemptstate.AttemptPhaseAssigned
-	assigned.LeaseID = lease.ID
-	assigned.Revision++
-	assigned.UpdatedAt = laterAttemptTime(attempt.UpdatedAt, lease.IssuedAt)
-	if err := attemptstate.ValidateTransition(attempt, assigned); err != nil {
-		return statestore.LeaseReservationResult{}, err
-	}
-	attemptResult, err := tx.ExecContext(ctx, `
-UPDATE attempts
-SET phase = ?, worker_identity = ?, lease_id = ?, close_reason = ?, revision = ?, updated_at_ns = ?
-WHERE attempt_id = ? AND revision = ?`,
-		string(assigned.Phase),
-		assigned.WorkerIdentity,
-		assigned.LeaseID.String(),
-		string(assigned.CloseReason),
-		int64(assigned.Revision),
-		assigned.UpdatedAt.UnixNano(),
-		assigned.ID.String(),
-		int64(attempt.Revision),
-	)
-	if err != nil {
-		return statestore.LeaseReservationResult{}, fmt.Errorf("assign attempt %s to lease %s: %w", assigned.ID, lease.ID, err)
-	}
-	updated, err := attemptResult.RowsAffected()
-	if err != nil {
-		return statestore.LeaseReservationResult{}, fmt.Errorf("read attempt assignment result %s: %w", assigned.ID, err)
-	}
-	if updated != 1 {
-		return statestore.LeaseReservationResult{}, fmt.Errorf(
-			"%w: attempt %s changed concurrently",
-			statestore.ErrConflict,
-			assigned.ID,
-		)
-	}
-
 	if err := tx.Commit(); err != nil {
 		return statestore.LeaseReservationResult{}, fmt.Errorf("commit lease %s: %w", lease.ID, err)
 	}
