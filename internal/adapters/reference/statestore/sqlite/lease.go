@@ -50,9 +50,10 @@ FROM tasks WHERE task_id = ?`, reservation.TaskID.String()))
 
 	existing, err := scanLease(tx.QueryRowContext(ctx, `
 SELECT lease_id, task_id, task_ir_digest, attempt_id, worker_identity,
-       placement_authority_principal, placement_decision_id, placement_payload_digest, placement_expires_at_ns, policy_revision,
+       placement_trust_domain, placement_authority_principal, placement_decision_id, placement_payload_digest, placement_expires_at_ns, policy_revision,
        fence_epoch, renewal_sequence, issued_at_ns, expires_at_ns
-FROM leases WHERE placement_authority_principal = ? AND placement_decision_id = ?`,
+FROM leases WHERE placement_trust_domain = ? AND placement_authority_principal = ? AND placement_decision_id = ?`,
+		reservation.PlacementTrustDomain,
 		reservation.PlacementAuthorityPrincipal,
 		reservation.PlacementDecisionID,
 	))
@@ -122,6 +123,7 @@ SELECT last_fence_epoch FROM lease_fences WHERE task_id = ?`,
 		TaskIRDigest:           reservation.TaskIRDigest,
 		AttemptID:              reservation.AttemptID,
 		WorkerIdentity:         reservation.WorkerIdentity,
+		PlacementTrustDomain:        reservation.PlacementTrustDomain,
 		PlacementAuthorityPrincipal: reservation.PlacementAuthorityPrincipal,
 		PlacementDecisionID:           reservation.PlacementDecisionID,
 		PlacementPayloadDigest:        reservation.PlacementPayloadDigest,
@@ -163,14 +165,15 @@ WHERE lease_fences.last_fence_epoch = ?`,
 	_, err = tx.ExecContext(ctx, `
 INSERT INTO leases (
 	lease_id, task_id, task_ir_digest, attempt_id, worker_identity,
-	placement_authority_principal, placement_decision_id, placement_payload_digest, placement_expires_at_ns, policy_revision,
+	placement_trust_domain, placement_authority_principal, placement_decision_id, placement_payload_digest, placement_expires_at_ns, policy_revision,
 	fence_epoch, renewal_sequence, issued_at_ns, expires_at_ns
-) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		lease.ID.String(),
 		lease.TaskID.String(),
 		lease.TaskIRDigest.Hex(),
 		lease.AttemptID.String(),
 		lease.WorkerIdentity,
+		lease.PlacementTrustDomain,
 		lease.PlacementAuthorityPrincipal,
 		lease.PlacementDecisionID,
 		lease.PlacementPayloadDigest.Hex(),
@@ -196,7 +199,7 @@ func (s *Store) LoadLease(ctx context.Context, id ids.LeaseID) (leasestate.Lease
 	}
 	lease, err := scanLease(s.db.QueryRowContext(ctx, `
 SELECT lease_id, task_id, task_ir_digest, attempt_id, worker_identity,
-       placement_authority_principal, placement_decision_id, placement_payload_digest, placement_expires_at_ns, policy_revision,
+       placement_trust_domain, placement_authority_principal, placement_decision_id, placement_payload_digest, placement_expires_at_ns, policy_revision,
        fence_epoch, renewal_sequence, issued_at_ns, expires_at_ns
 FROM leases WHERE lease_id = ?`, id.String()))
 	if errors.Is(err, sql.ErrNoRows) {
@@ -213,6 +216,7 @@ func scanLease(row rowScanner) (leasestate.LeaseRecord, error) {
 		&c.taskIRDigest,
 		&c.attemptID,
 		&c.workerIdentity,
+		&c.placementTrustDomain,
 		&c.placementAuthorityPrincipal,
 		&c.placementDecisionID,
 		&c.placementPayloadDigest,
@@ -234,6 +238,7 @@ type leaseColumns struct {
 	taskIRDigest           string
 	attemptID              string
 	workerIdentity              string
+	placementTrustDomain        string
 	placementAuthorityPrincipal string
 	placementDecisionID         string
 	placementPayloadDigest string
@@ -275,6 +280,7 @@ func (c leaseColumns) record() (leasestate.LeaseRecord, error) {
 		TaskIRDigest:           taskIR,
 		AttemptID:              attemptID,
 		WorkerIdentity:         c.workerIdentity,
+		PlacementTrustDomain:        c.placementTrustDomain,
 		PlacementAuthorityPrincipal: c.placementAuthorityPrincipal,
 		PlacementDecisionID:           c.placementDecisionID,
 		PlacementPayloadDigest:        placementDigest,
