@@ -30,7 +30,7 @@ func RunAttemptStoreContract(t *testing.T, newStore AttemptFactory) {
 
 	t.Run("create-load", func(t *testing.T) {
 		store := newStore(t)
-		task := newTask(t, "attempt-create-load")
+		task := attemptParentTask(t, "attempt-create-load")
 		if err := store.CreateTask(context.Background(), task); err != nil {
 			t.Fatal(err)
 		}
@@ -54,7 +54,7 @@ func RunAttemptStoreContract(t *testing.T, newStore AttemptFactory) {
 
 	t.Run("parent-task-required", func(t *testing.T) {
 		store := newStore(t)
-		task := newTask(t, "missing-attempt-parent")
+		task := attemptParentTask(t, "missing-attempt-parent")
 		attempt := newAttempt(t, task, 1)
 		if err := store.CreateAttempt(context.Background(), attempt); !errors.Is(err, statestore.ErrNotFound) {
 			t.Fatalf("CreateAttempt() error = %v, want ErrNotFound", err)
@@ -63,7 +63,7 @@ func RunAttemptStoreContract(t *testing.T, newStore AttemptFactory) {
 
 	t.Run("task-ir-must-match-parent", func(t *testing.T) {
 		store := newStore(t)
-		task := newTask(t, "attempt-parent-digest")
+		task := attemptParentTask(t, "attempt-parent-digest")
 		if err := store.CreateTask(context.Background(), task); err != nil {
 			t.Fatal(err)
 		}
@@ -74,9 +74,54 @@ func RunAttemptStoreContract(t *testing.T, newStore AttemptFactory) {
 		}
 	})
 
+	t.Run("initial-state-is-required", func(t *testing.T) {
+		store := newStore(t)
+		task := attemptParentTask(t, "attempt-initial-state")
+		if err := store.CreateTask(context.Background(), task); err != nil {
+			t.Fatal(err)
+		}
+		attempt := newAttempt(t, task, 1)
+		attempt.Phase = attemptstate.AttemptPhasePlacing
+		attempt.WorkerIdentity = "worker-a"
+		if err := store.CreateAttempt(context.Background(), attempt); !errors.Is(err, attemptstate.ErrInvalidAttemptRecord) {
+			t.Fatalf("CreateAttempt() error = %v, want ErrInvalidAttemptRecord", err)
+		}
+	})
+
+	t.Run("parent-task-must-be-progressable", func(t *testing.T) {
+		for _, phase := range []taskstate.TaskPhase{taskstate.TaskPhaseAdmitted, taskstate.TaskPhaseHeld, taskstate.TaskPhaseTerminal} {
+			t.Run(string(phase), func(t *testing.T) {
+				store := newStore(t)
+				task := attemptParentTask(t, "attempt-parent-"+string(phase))
+				task.Phase = phase
+				if phase == taskstate.TaskPhaseTerminal {
+					task.TerminalOutcome = taskstate.TerminalOutcomeCancelled
+				}
+				if err := store.CreateTask(context.Background(), task); err != nil {
+					t.Fatal(err)
+				}
+				attempt := newAttempt(t, task, 1)
+				if err := store.CreateAttempt(context.Background(), attempt); !errors.Is(err, statestore.ErrConflict) {
+					t.Fatalf("CreateAttempt() error = %v, want ErrConflict", err)
+				}
+			})
+		}
+
+		store := newStore(t)
+		task := attemptParentTask(t, "attempt-parent-cancelled")
+		task.CancellationRequested = true
+		if err := store.CreateTask(context.Background(), task); err != nil {
+			t.Fatal(err)
+		}
+		attempt := newAttempt(t, task, 1)
+		if err := store.CreateAttempt(context.Background(), attempt); !errors.Is(err, statestore.ErrConflict) {
+			t.Fatalf("CreateAttempt() on cancelled Task error = %v, want ErrConflict", err)
+		}
+	})
+
 	t.Run("duplicate-id", func(t *testing.T) {
 		store := newStore(t)
-		task := newTask(t, "attempt-duplicate-id")
+		task := attemptParentTask(t, "attempt-duplicate-id")
 		if err := store.CreateTask(context.Background(), task); err != nil {
 			t.Fatal(err)
 		}
@@ -91,7 +136,7 @@ func RunAttemptStoreContract(t *testing.T, newStore AttemptFactory) {
 
 	t.Run("attempt-number-is-unique-per-task", func(t *testing.T) {
 		store := newStore(t)
-		task := newTask(t, "attempt-number")
+		task := attemptParentTask(t, "attempt-number")
 		if err := store.CreateTask(context.Background(), task); err != nil {
 			t.Fatal(err)
 		}
@@ -107,7 +152,7 @@ func RunAttemptStoreContract(t *testing.T, newStore AttemptFactory) {
 
 	t.Run("compare-and-swap", func(t *testing.T) {
 		store := newStore(t)
-		task := newTask(t, "attempt-cas")
+		task := attemptParentTask(t, "attempt-cas")
 		if err := store.CreateTask(context.Background(), task); err != nil {
 			t.Fatal(err)
 		}
@@ -128,7 +173,7 @@ func RunAttemptStoreContract(t *testing.T, newStore AttemptFactory) {
 
 	t.Run("stale-revision", func(t *testing.T) {
 		store := newStore(t)
-		task := newTask(t, "attempt-stale")
+		task := attemptParentTask(t, "attempt-stale")
 		if err := store.CreateTask(context.Background(), task); err != nil {
 			t.Fatal(err)
 		}
@@ -148,7 +193,7 @@ func RunAttemptStoreContract(t *testing.T, newStore AttemptFactory) {
 
 	t.Run("closed-attempt-cannot-reopen", func(t *testing.T) {
 		store := newStore(t)
-		task := newTask(t, "attempt-closed")
+		task := attemptParentTask(t, "attempt-closed")
 		if err := store.CreateTask(context.Background(), task); err != nil {
 			t.Fatal(err)
 		}
@@ -178,7 +223,7 @@ func RunAttemptStoreContract(t *testing.T, newStore AttemptFactory) {
 
 	t.Run("concurrent-cas-has-single-winner", func(t *testing.T) {
 		store := newStore(t)
-		task := newTask(t, "attempt-concurrent")
+		task := attemptParentTask(t, "attempt-concurrent")
 		if err := store.CreateTask(context.Background(), task); err != nil {
 			t.Fatal(err)
 		}
@@ -223,7 +268,7 @@ func RunAttemptStoreContract(t *testing.T, newStore AttemptFactory) {
 
 	t.Run("cancelled-context", func(t *testing.T) {
 		store := newStore(t)
-		task := newTask(t, "attempt-cancelled-context")
+		task := attemptParentTask(t, "attempt-cancelled-context")
 		if err := store.CreateTask(context.Background(), task); err != nil {
 			t.Fatal(err)
 		}
@@ -246,7 +291,7 @@ func RunAttemptDurabilityContract(t *testing.T, factory DurableAttemptFactory) {
 	t.Helper()
 	location := filepath.Join(t.TempDir(), "state.db")
 	store, closeStore := factory.Open(t, location)
-	task := newTask(t, "attempt-durable")
+	task := attemptParentTask(t, "attempt-durable")
 	if err := store.CreateTask(context.Background(), task); err != nil {
 		t.Fatal(err)
 	}
@@ -269,6 +314,13 @@ func RunAttemptDurabilityContract(t *testing.T, factory DurableAttemptFactory) {
 		t.Fatalf("LoadAttempt() after restart error = %v", err)
 	}
 	assertAttemptEqual(t, got, placing)
+}
+
+func attemptParentTask(t testing.TB, seed string) taskstate.TaskRecord {
+	t.Helper()
+	task := newTask(t, seed)
+	task.Phase = taskstate.TaskPhaseReady
+	return task
 }
 
 func newAttempt(t testing.TB, task taskstate.TaskRecord, number uint64) attemptstate.AttemptRecord {
