@@ -336,36 +336,6 @@ PLC-1 ApprovalDraft
 
 このReference adapterは外部CBOR libraryへ依存するため、依存moduleを実取得してfocused testを実行できるまで採用済みとは扱いません。依存取得不能な環境でGo API shapeだけを確認した結果を、Security Evidenceへ読み替えません。
 
-### LSE-1 durable Lease reservation / fencing state
-
-Placement Approvalの署名検証に成功しても、その結果をそのままWorker Authorityへ渡しません。signed Leaseを外へ出す前に、LSE-1が利用するfencing stateをdurable State Storeへcommitします。
-
-最初のreservation contractは次を守ります。
-
-```text
-verified Placement Approval
-  -> current Task / Attempt / Worker / policy revalidation
-  -> durable Lease reservation
-       - exact Task / TaskIR / Attempt / Worker
-       - Placement Decision ID / payload digest
-       - Lease ID
-       - monotonic FenceEpoch
-       - expiry
-  -> canonical P2 Lease payload
-  -> LSE-1 signing
-  -> Worker-side verification
-```
-
-State Storeは、Task revision・TaskIR・cancellation・schedulable phaseの確認、同一Taskに残る未失効Leaseの排他、FenceEpochの採番、Lease insertを一つのatomic boundaryとして扱います。これにより、検査後にTaskがCancelされたraceや、二つのPlacementが同時にLeaseへ昇格するraceを保存境界でもfail closedにします。
-
-同じPlacement Decision ID / payload digestの再送は、通信timeoutやprocess retryで二重Leaseを作らないよう、元のLeaseへ収束します。同じDecision IDを別payloadへ結び直すことは拒否します。元のLeaseが既に期限切れでも、同じPlacement Decisionの再送から新しいFenceEpochをmintしません。再配置には新しいPlacement Decisionが必要です。
-
-FenceEpochはTask単位で単調増加させます。Attemptが変わっても古いLeaseより大きいepochを要求することで、前Attemptのlate heartbeat / late resultが新AttemptのAuthorityを復活させないための土台にします。
-
-Reference State Storeでは`LeaseStore`をAdmission用`Store`とは別interfaceとして維持します。SQLiteという同じ物理databaseを利用しても、ADM-2へLSE-1のwrite surfaceを型上渡さないためです。
-
-この段階の`leasestate.LeaseRecord`は**内部のdurable reservation state**であり、Workerが信頼するP2 `eki.lease/v1` Decisionではありません。署名、Lease payloadのcanonical encode、Worker verification、renew/revoke、durable Attempt stateとのatomic連携は後続work unitです。
-
 ## 3.6 WorkOrder
 
 初回WorkOrderは少なくとも:
