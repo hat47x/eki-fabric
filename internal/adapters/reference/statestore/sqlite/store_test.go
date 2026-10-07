@@ -49,6 +49,28 @@ func TestDurabilityContract(t *testing.T) {
 	})
 }
 
+func TestAttemptStoreContract(t *testing.T) {
+	statestoretest.RunAttemptStoreContract(t, func(t testing.TB) statestoretest.TaskAttemptStore {
+		t.Helper()
+		store := openStore(t, filepath.Join(t.TempDir(), "state.db"))
+		t.Cleanup(func() {
+			if err := store.Close(); err != nil {
+				t.Errorf("Close() error = %v", err)
+			}
+		})
+		return store
+	})
+}
+
+func TestAttemptDurabilityContract(t *testing.T) {
+	statestoretest.RunAttemptDurabilityContract(t, statestoretest.DurableAttemptFactory{
+		Open: func(t testing.TB, location string) (statestoretest.TaskAttemptStore, func() error) {
+			store := openStore(t, location)
+			return store, store.Close
+		},
+	})
+}
+
 func TestLeaseStoreContract(t *testing.T) {
 	statestoretest.RunLeaseStoreContract(t, func(t testing.TB) statestoretest.TaskLeaseStore {
 		t.Helper()
