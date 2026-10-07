@@ -75,6 +75,18 @@ func New(id ids.AttemptID, taskID ids.TaskID, taskIRDigest contract.Digest, numb
 	return record, nil
 }
 
+// ValidateInitial checks the only state from which a durable Attempt may be
+// created. Later phases must be reached through ValidateTransition.
+func (r AttemptRecord) ValidateInitial() error {
+	if err := r.Validate(); err != nil {
+		return err
+	}
+	if r.Phase != AttemptPhaseCreated || r.Revision != 1 {
+		return fmt.Errorf("%w: new Attempt must start at created revision 1", ErrInvalidAttemptRecord)
+	}
+	return nil
+}
+
 func (r AttemptRecord) Validate() error {
 	if _, err := ids.ParseAttemptID(r.ID.String()); err != nil {
 		return fmt.Errorf("%w: attempt ID: %v", ErrInvalidAttemptRecord, err)
