@@ -171,24 +171,36 @@ func TestVersion3DatabaseUpgradesToAttemptSchemaWithoutLosingLease(t *testing.T)
 		t.Fatal(err)
 	}
 	now := time.Date(2026, 10, 7, 12, 0, 0, 0, time.UTC)
-	reserved, err := old.ReserveLease(context.Background(), statestore.LeaseReservation{
-		LeaseID:                     leaseID,
-		TaskID:                      task.ID,
-		TaskIRDigest:                task.TaskIRDigest,
-		ExpectedTaskRevision:        task.Revision,
-		AttemptID:                   attemptID,
-		WorkerIdentity:              "worker-a",
-		PlacementTrustDomain:        "local.example",
-		PlacementAuthorityPrincipal: "control-plane/plc-1",
-		PlacementDecisionID:         "placement-v3-upgrade",
-		PlacementPayloadDigest:      contract.SHA256([]byte("placement-v3-upgrade")),
-		PlacementExpiresAt:          now.Add(2 * time.Minute),
-		PolicyRevision:              "policy-42",
-		IssuedAt:                    now,
-		ExpiresAt:                   now.Add(time.Minute),
-	})
-	if err != nil {
-		t.Fatal(err)
+	placementDigest := contract.SHA256([]byte("placement-v3-upgrade"))
+	if _, err := old.db.Exec(`
+INSERT INTO lease_fences (task_id, last_fence_epoch) VALUES (?, ?)`,
+		task.ID.String(), 1); err != nil {
+		t.Fatalf("seed v3 fence: %v", err)
+	}
+	if _, err := old.db.Exec(`
+INSERT INTO leases (
+	lease_id, task_id, task_ir_digest, attempt_id, worker_identity,
+	placement_trust_domain, placement_authority_principal, placement_decision_id,
+	placement_payload_digest, placement_expires_at_ns, policy_revision,
+	fence_epoch, renewal_sequence, issued_at_ns, expires_at_ns
+) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		leaseID.String(),
+		task.ID.String(),
+		task.TaskIRDigest.Hex(),
+		attemptID.String(),
+		"worker-a",
+		"local.example",
+		"control-plane/plc-1",
+		"placement-v3-upgrade",
+		placementDigest.Hex(),
+		now.Add(2*time.Minute).UnixNano(),
+		"policy-42",
+		1,
+		0,
+		now.UnixNano(),
+		now.Add(time.Minute).UnixNano(),
+	); err != nil {
+		t.Fatalf("seed v3 lease: %v", err)
 	}
 	if err := old.Close(); err != nil {
 		t.Fatal(err)
@@ -197,15 +209,17 @@ func TestVersion3DatabaseUpgradesToAttemptSchemaWithoutLosingLease(t *testing.T)
 	upgraded := openStore(t, path)
 	defer upgraded.Close()
 
-	gotLease, err := upgraded.LoadLease(context.Background(), reserved.Lease.ID)
+	gotLease, err := upgraded.LoadLease(context.Background(), leaseID)
 	if err != nil {
 		t.Fatalf("LoadLease() after v4 migration error = %v", err)
 	}
-	if gotLease.ID != reserved.Lease.ID || gotLease.FenceEpoch != reserved.Lease.FenceEpoch {
-		t.Fatalf("Lease changed across v3 -> v4 migration: got=%#v want=%#v", gotLease, reserved.Lease)
+	if gotLease.ID != leaseID || gotLease.FenceEpoch != 1 ||
+		gotLease.AttemptID != attemptID || gotLease.PlacementPayloadDigest != placementDigest {
+		t.Fatalf("Lease changed across v3 -> v4 migration: %#v", gotLease)
 	}
 
-	attempt, err := attemptstate.New(attemptID, task.ID, task.TaskIRDigest, 1, now)
+	newAttemptID := mustAttemptIDForSQLite(t)
+	attempt, err := attemptstate.New(newAttemptID, task.ID, task.TaskIRDigest, 1, now)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -276,6 +290,32 @@ func mustAttemptIDForSQLite(t testing.TB) ids.AttemptID {
 	return id
 }
 
+func createPlacingAttemptForSQLite(t testing.TB, store *Store, task taskstate.TaskRecord, number uint64, worker string) attemptstate.AttemptRecord {
+	t.Helper()
+	attempt, err := attemptstate.New(
+		mustAttemptIDForSQLite(t),
+		task.ID,
+		task.TaskIRDigest,
+		number,
+		task.UpdatedAt.Add(time.Duration(number)*time.Nanosecond),
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := store.CreateAttempt(context.Background(), attempt); err != nil {
+		t.Fatal(err)
+	}
+	placing := attempt
+	placing.Phase = attemptstate.AttemptPhasePlacing
+	placing.WorkerIdentity = worker
+	placing.Revision++
+	placing.UpdatedAt = attempt.UpdatedAt.Add(time.Nanosecond)
+	if err := store.CompareAndSwapAttempt(context.Background(), attempt.ID, attempt.Revision, placing); err != nil {
+		t.Fatal(err)
+	}
+	return placing
+}
+
 func TestFenceEpochSurvivesLeaseHistoryGarbageCollection(t *testing.T) {
 	store := openStore(t, filepath.Join(t.TempDir(), "state.db"))
 	defer store.Close()
@@ -285,10 +325,7 @@ func TestFenceEpochSurvivesLeaseHistoryGarbageCollection(t *testing.T) {
 	if err := store.CreateTask(context.Background(), task); err != nil {
 		t.Fatalf("CreateTask() error = %v", err)
 	}
-	attempt1, err := ids.NewAttemptID()
-	if err != nil {
-		t.Fatal(err)
-	}
+	attempt1 := createPlacingAttemptForSQLite(t, store, task, 1, "worker-a")
 	lease1, err := ids.NewLeaseID()
 	if err != nil {
 		t.Fatal(err)
@@ -299,8 +336,9 @@ func TestFenceEpochSurvivesLeaseHistoryGarbageCollection(t *testing.T) {
 		TaskID:                      task.ID,
 		TaskIRDigest:                task.TaskIRDigest,
 		ExpectedTaskRevision:        task.Revision,
-		AttemptID:                   attempt1,
-		WorkerIdentity:              "worker-a",
+		AttemptID:                   attempt1.ID,
+		ExpectedAttemptRevision:     attempt1.Revision,
+		WorkerIdentity:              attempt1.WorkerIdentity,
 		PlacementTrustDomain:        "local.example",
 		PlacementAuthorityPrincipal: "control-plane/plc-1",
 		PlacementDecisionID:         "placement-gc-1",
@@ -323,10 +361,7 @@ func TestFenceEpochSurvivesLeaseHistoryGarbageCollection(t *testing.T) {
 		t.Fatalf("delete expired Lease history: %v", err)
 	}
 
-	attempt2, err := ids.NewAttemptID()
-	if err != nil {
-		t.Fatal(err)
-	}
+	attempt2 := createPlacingAttemptForSQLite(t, store, task, 2, "worker-b")
 	lease2, err := ids.NewLeaseID()
 	if err != nil {
 		t.Fatal(err)
@@ -337,8 +372,9 @@ func TestFenceEpochSurvivesLeaseHistoryGarbageCollection(t *testing.T) {
 		TaskID:                      task.ID,
 		TaskIRDigest:                task.TaskIRDigest,
 		ExpectedTaskRevision:        task.Revision,
-		AttemptID:                   attempt2,
-		WorkerIdentity:              "worker-b",
+		AttemptID:                   attempt2.ID,
+		ExpectedAttemptRevision:     attempt2.Revision,
+		WorkerIdentity:              attempt2.WorkerIdentity,
 		PlacementTrustDomain:        "local.example",
 		PlacementAuthorityPrincipal: "control-plane/plc-1",
 		PlacementDecisionID:         "placement-gc-2",
