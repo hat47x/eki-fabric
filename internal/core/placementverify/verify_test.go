@@ -474,8 +474,10 @@ func TestNewRequiresEveryDependency(t *testing.T) {
 	for name, mutate := range map[string]func(*placementverify.Config){
 		"codec":        func(c *placementverify.Config) { c.Codec = nil },
 		"payload":      func(c *placementverify.Config) { c.Payload = nil },
-		"boundary":     func(c *placementverify.Config) { c.Boundary = nil },
-		"trust domain": func(c *placementverify.Config) { c.TrustDomain = "" },
+		"boundary":             func(c *placementverify.Config) { c.Boundary = nil },
+		"empty trust domain":   func(c *placementverify.Config) { c.TrustDomain = "" },
+		"long trust domain":    func(c *placementverify.Config) { c.TrustDomain = string(bytes.Repeat([]byte("x"), 257)) },
+		"invalid trust domain": func(c *placementverify.Config) { c.TrustDomain = string([]byte{0xff}) },
 	} {
 		cfg := full
 		mutate(&cfg)
