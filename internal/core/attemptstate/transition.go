@@ -62,11 +62,14 @@ func ValidateTransition(current, next AttemptRecord) error {
 		return fmt.Errorf("%w: current phase %q is unknown", ErrInvalidAttemptTransition, current.Phase)
 	}
 
-	// The Scheduler may replace the current candidate while an Attempt is
-	// still PLACING. Once a Lease has been assigned, Worker and Lease identity
-	// are immutable for that Attempt.
-	if current.Phase != AttemptPhasePlacing && current.WorkerIdentity != "" && next.WorkerIdentity != current.WorkerIdentity {
-		return fmt.Errorf("%w: Worker binding changed after placement", ErrInvalidAttemptTransition)
+	// The Scheduler may set the first candidate on CREATED -> PLACING and may
+	// replace that candidate only while remaining in PLACING. The Worker must
+	// already be fixed before PLACING -> ASSIGNED binds a Lease.
+	workerChanged := current.WorkerIdentity != next.WorkerIdentity
+	workerChangeAllowed := (current.Phase == AttemptPhaseCreated && next.Phase == AttemptPhasePlacing) ||
+		(current.Phase == AttemptPhasePlacing && next.Phase == AttemptPhasePlacing)
+	if workerChanged && !workerChangeAllowed {
+		return fmt.Errorf("%w: Worker binding changed outside placement replanning", ErrInvalidAttemptTransition)
 	}
 	if current.LeaseID != "" && next.LeaseID != current.LeaseID {
 		return fmt.Errorf("%w: Lease binding changed", ErrInvalidAttemptTransition)
