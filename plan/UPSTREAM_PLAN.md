@@ -478,3 +478,14 @@ current main `9e990e7c89924fb4005264e7556b41e0e3fb62b1` を計画と再照合し
 - 文書の自然な日本語と背景説明を重視し、専門知識がないことを読者側の責任にしない。
 - 説明を厚くしても、Requirement、Threat、ADRの正本を複製しない。
 - 作業ブランチは目的単位で作成し、完了した変更は元の`main`へPR経由で収束させる。後続作業を未マージbranchから派生させて履歴を断片化しない。
+
+### 2026-10-06 product value ADRs
+
+製品価値（`product/value.md`、`product/principles.md`）を設計と評価の判断へつなげるため、次のADRをProposedとして追加した。技術ADR（0001〜0006）の優先順位は変えない。これらのADRを、M0 blockerを解消する作業の代わりの進捗として扱わない。
+
+- `plan/adr/0007-workload-suitability-gate-before-placement.md`: 「EKIへ載せない」判断を、Schedulerより前のGateで行う（RQ-014、#58）。
+- `plan/adr/0008-product-value-evidence-metrics.md`: 成功指標を、Worker数やFLOPSではなく、守られた人と検証済みの成果で測る（#65、#66）。
+- `plan/adr/0009-managed-resources-as-providers.md`: 管理クラスタを置き換えず、Resource Providerとして接続する。管理されていることを理由に検証を省かない（#67）。
+- `plan/adr/0010-contribution-record-is-not-currency.md`: Contribution Recordに残高、移転、価格を持たせない（RQ-038、#68）。
+
+隣接Product（SUI、SEI、TEI）に依存していないことの機械的な検査は、#69で扱う。
