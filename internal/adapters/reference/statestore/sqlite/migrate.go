@@ -96,6 +96,33 @@ WHEN OLD.task_id <> NEW.task_id
   OR OLD.created_at_ns <> NEW.created_at_ns
 BEGIN
 	SELECT RAISE(ABORT, 'attempt identity fields are immutable');
+END;
+CREATE TRIGGER attempts_transition_guard
+BEFORE UPDATE OF phase, worker_identity, lease_id, close_reason, revision, updated_at_ns ON attempts
+WHEN NEW.revision <> OLD.revision + 1
+  OR NEW.updated_at_ns < OLD.updated_at_ns
+  OR NOT (
+	(OLD.phase = 'created' AND NEW.phase IN ('placing','closed'))
+	OR (OLD.phase = 'placing' AND NEW.phase IN ('placing','assigned','closed'))
+	OR (OLD.phase = 'assigned' AND NEW.phase IN ('dispatched','closed'))
+	OR (OLD.phase = 'dispatched' AND NEW.phase IN ('claimed','closed'))
+	OR (OLD.phase = 'claimed' AND NEW.phase IN ('verifying','closed'))
+	OR (OLD.phase = 'verifying' AND NEW.phase = 'closed')
+  )
+  OR (
+	OLD.worker_identity <> NEW.worker_identity
+	AND NOT (
+		(OLD.phase = 'created' AND NEW.phase = 'placing')
+		OR (OLD.phase = 'placing' AND NEW.phase = 'placing')
+	)
+  )
+  OR (OLD.lease_id IS NOT NULL AND NEW.lease_id IS NOT OLD.lease_id)
+  OR (
+	OLD.lease_id IS NULL AND NEW.lease_id IS NOT NULL
+	AND NOT (OLD.phase = 'placing' AND NEW.phase = 'assigned')
+  )
+BEGIN
+	SELECT RAISE(ABORT, 'invalid attempt transition');
 END`,
 }
 
