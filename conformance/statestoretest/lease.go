@@ -121,6 +121,7 @@ func RunLeaseStoreContract(t *testing.T, newStore LeaseFactory) {
 		tests := map[string]func(*statestore.LeaseReservation){
 			"attempt": func(r *statestore.LeaseReservation) { r.AttemptID = mustAttemptID(t) },
 			"worker": func(r *statestore.LeaseReservation) { r.WorkerIdentity = "worker-b" },
+			"trust-domain": func(r *statestore.LeaseReservation) { r.PlacementTrustDomain = "other.example" },
 			"policy": func(r *statestore.LeaseReservation) { r.PolicyRevision = "policy-43" },
 			"placement-expiry": func(r *statestore.LeaseReservation) { r.PlacementExpiresAt = r.PlacementExpiresAt.Add(time.Second) },
 		}
@@ -133,6 +134,27 @@ func RunLeaseStoreContract(t *testing.T, newStore LeaseFactory) {
 					t.Fatalf("ReserveLease() error = %v, want ErrPlacementDecisionConflict", err)
 				}
 			})
+		}
+	})
+
+	t.Run("same-decision-and-principal-from-different-trust-domain-is-distinct", func(t *testing.T) {
+		store := newStore(t)
+		task := readyTask(t, store, "domain-scope")
+		first := leaseReservation(t, task, "placement-1", leaseNow, leaseNow.Add(time.Minute))
+		if _, err := store.ReserveLease(context.Background(), first); err != nil {
+			t.Fatal(err)
+		}
+
+		secondNow := first.ExpiresAt.Add(time.Nanosecond)
+		second := leaseReservation(t, task, "placement-1", secondNow, secondNow.Add(time.Minute))
+		second.PlacementTrustDomain = "federated.example"
+		second.PlacementPayloadDigest = contract.SHA256([]byte("federated payload"))
+		got, err := store.ReserveLease(context.Background(), second)
+		if err != nil {
+			t.Fatalf("different trust domain collided on Decision identity: %v", err)
+		}
+		if got.Replayed || got.Lease.FenceEpoch != 2 {
+			t.Fatalf("different trust domain was treated as replay: %#v", got)
 		}
 	})
 
@@ -444,6 +466,7 @@ func leaseReservation(t testing.TB, task taskstate.TaskRecord, decisionID string
 		ExpectedTaskRevision:   task.Revision,
 		AttemptID:              mustAttemptID(t),
 		WorkerIdentity:         "worker-a",
+		PlacementTrustDomain:        "local.example",
 		PlacementAuthorityPrincipal: "control-plane/plc-1",
 		PlacementDecisionID:           decisionID,
 		PlacementPayloadDigest:        contract.SHA256([]byte("payload:" + decisionID)),
@@ -479,6 +502,7 @@ func assertLeaseEqual(t testing.TB, got, want leasestate.LeaseRecord) {
 		got.TaskIRDigest != want.TaskIRDigest ||
 		got.AttemptID != want.AttemptID ||
 		got.WorkerIdentity != want.WorkerIdentity ||
+		got.PlacementTrustDomain != want.PlacementTrustDomain ||
 		got.PlacementAuthorityPrincipal != want.PlacementAuthorityPrincipal ||
 		got.PlacementDecisionID != want.PlacementDecisionID ||
 		got.PlacementPayloadDigest != want.PlacementPayloadDigest ||
