@@ -1,33 +1,33 @@
-# ADR-0003 M0のReference State StoreにSQLiteを採用する
+# ADR-0003 M0の参照State StoreにSQLiteを採用する
 
 - Status: **Accepted for M0 Reference Adapter**
 - Date: 2026-09-21
 
-## 1. Context
+## 1. 背景
 
-M0では、Control Planeのprocessを再起動しても、Taskの識別子、revision、AttemptやLeaseなどのAuthorityの状態を失わない、永続的なState Storeが必要です。
+M0では、Control Planeのプロセスを再起動しても、Taskの識別子、リビジョン、AttemptやLeaseなどのAuthorityの状態を失わない、永続的なState Storeが必要です。
 
-一方、DP-1 Small Managed Organizationでは、10〜50台程度のEndpointを想定しています。初期導入から外部のDatabase serverや分散合意のclusterを必須にすると、Deployment Proportionality（導入規模に見合った運用負担）に反します。
+一方、DP-1 Small Managed Organizationでは、10〜50台程度のEndpointを想定しています。初期導入から外部のデータベースサーバや分散合意のクラスタを必須にすると、Deployment Proportionality（導入規模に見合った運用負担）に反します。
 
 State Store SPIは次の性質を要求しています。
 
 - 永続的な書き込み
 - 一意性制約
 - 条件付き更新（compare-and-swap）
-- transaction、またはそれと同等の原子性
-- 単調に増えるrevision
+- トランザクション、またはそれと同等の原子性
+- 単調に増えるリビジョン
 - 再起動後の回復
 - outboxのような、配送意図の永続的な記録
 
-このADRで決めるのは、M0のReference Adapterに何を使うかだけです。State Store SPIそのものをSQLite専用にはしません。
+このADRで決めるのは、M0の参照アダプタに何を使うかだけです。State Store SPIそのものをSQLite専用にはしません。
 
-## 2. Decision
+## 2. 決定
 
-**M0とDP-1のReferenceの永続State Storeとして、SQLiteを採用します。**
+**M0とDP-1の参照の永続State Storeとして、SQLiteを採用します。**
 
-Goのdriverは、**`modernc.org/sqlite`**を第一候補として採用します。
+Goのドライバは、**`modernc.org/sqlite`**を第一候補として採用します。
 
-実装では標準の`database/sql`を境界にし、Coreのpackageからdriverを直接参照しません。
+実装では標準の`database/sql`を境界にし、Coreのパッケージからドライバを直接参照しません。
 
 置き場所は、概念上は次のとおりです。
 
@@ -41,57 +41,57 @@ internal/adapters/reference/statestore/sqlite
 
 ## 3. 適用範囲
 
-SQLiteのReference Adapterは、次のProfileを対象にします。
+SQLiteの参照アダプタは、次のProfileを対象にします。
 
 - DP-0 Development / Test
 - DP-1 Small Managed Organization
-- Control Planeのhostが一つ
-- local filesystem上のdatabase file
+- Control Planeのホストが一つ
+- ローカルファイルシステム上のデータベースファイル
 
-次のことは、このReference Adapterでは保証しません。
+次のことは、この参照アダプタでは保証しません。
 
-- 複数のhostから同じSQLite fileへ同時にaccessすること
-- DP-2 Enterpriseで複数instanceによる高可用性を実現すること
-- 複数regionにまたがる合意
-- network filesystem上でWALのdatabaseを共有すること
+- 複数のホストから同じSQLiteファイルへ同時にアクセスすること
+- DP-2 Enterpriseで複数インスタンスによる高可用性を実現すること
+- 複数リージョンにまたがる合意
+- ネットワークファイルシステム上でWALのデータベースを共有すること
 
-DP-2では、同じState Store SPIに、PostgreSQLなどの別のAdapterを追加できることを前提にします。
+DP-2では、同じState Store SPIに、PostgreSQLなどの別のアダプタを追加できることを前提にします。
 
 ## 4. SQLiteを選ぶ理由
 
-### 4.1 専用のDatabase serverを要求しない
+### 4.1 専用のデータベースサーバを要求しない
 
-Small Managed Profileでは、`eki-control`と同じhostにlocalのdatabase fileを置くだけで、永続性を得られます。
+Small Managed Profileでは、`eki-control`と同じホストにローカルのデータベースファイルを置くだけで、永続性を得られます。
 
 これは、QA-12 Deployment Proportionalityと一致します。QA-12は、大規模構成で必要になる運用部品を、10台程度のEndpointの集まりへ無条件に求めないという品質特性です。
 
-### 4.2 transactionの意味を自作しない
+### 4.2 トランザクションの意味を自作しない
 
-Task、Attempt、Leaseの状態では、複数のFieldを一つのDecisionとしてcommitすることが重要です。processがcrashした後に、中途半端な更新を残してはいけません。
+Task、Attempt、Leaseの状態では、複数のフィールドを一つのDecisionとしてコミットすることが重要です。プロセスがクラッシュした後に、中途半端な更新を残してはいけません。
 
-M0のためだけに独自のJSON fileやappend logを実装すると、次のものを自分で作り直すことになります。
+M0のためだけに独自のJSONファイルや追記型のログを実装すると、次のものを自分で作り直すことになります。
 
-- crashの途中の書き込み
+- クラッシュの途中の書き込み
 - fsync
 - 原子的なrename
-- lock
-- schemaのmigration
-- 並行するreaderとwriter
+- ロック
+- スキーマのマイグレーション
+- 並行する読み込み側と書き込み側
 - 回復
 
-SQLiteはtransactionを持つdatabaseとして設計されています。programのcrash、OSのcrash、電源断の場合も含めて、transactionの原子性と永続性を提供します。
+SQLiteはトランザクションを持つデータベースとして設計されています。プログラムのクラッシュ、OSのクラッシュ、電源断の場合も含めて、トランザクションの原子性と永続性を提供します。
 
-### 4.3 GoのReference binaryの配布を複雑にしにくい
+### 4.3 Goの参照バイナリの配布を複雑にしにくい
 
 `modernc.org/sqlite`は、cgoを必要としないGoの実装で、`database/sql`から使えます。
 
-2026-09-15に公開されたv1.59.0は、v1系列のtag付きversionです。M0を始める時点で、固定するversionの有力な候補です。
+2026-09-15に公開されたv1.59.0は、v1系列のタグ付きバージョンです。M0を始める時点で、固定するバージョンの有力な候補です。
 
-具体的にどのversionに固定するかと、推移的な依存関係は、実装branchでGo toolchainを使って`go.mod`と`go.sum`へ解決します。その状態でtestを通してからcommitします。
+具体的にどのバージョンに固定するかと、推移的な依存関係は、実装ブランチでGoツールチェーンを使って`go.mod`と`go.sum`へ解決します。その状態でテストを通してからコミットします。
 
-**実装結果（2026-10-06）**: 実装branchで、Go 1.27.0（Linux）の`go get`により`modernc.org/sqlite`の**v1.60.1**（2026-09-29公開）に固定しました。`go mod tidy`と`go mod verify`で整合も確認しています。採用時点の候補はv1.59.0でしたが、実装時点で新しいpatchが出ていたため、v1.60.1を選びました。
+**実装結果（2026-10-06）**: 実装ブランチで、Go 1.27.0（Linux）の`go get`により`modernc.org/sqlite`の**v1.60.1**（2026-09-29公開）に固定しました。`go mod tidy`と`go mod verify`で整合も確認しています。採用時点の候補はv1.59.0でしたが、実装時点で新しいパッチが出ていたため、v1.60.1を選びました。
 
-## 5. Driverの比較
+## 5. ドライバの比較
 
 ### `modernc.org/sqlite`（採用）
 
@@ -100,117 +100,117 @@ SQLiteはtransactionを持つdatabaseとして設計されています。program
 - cgoが不要
 - `database/sql`に対応
 - v1系列
-- 複数platform向けのGo Reference binaryと相性がよい
+- 複数プラットフォーム向けのGo参照バイナリと相性がよい
 - 利用実績が比較的多い
 
 注意点は次のとおりです。
 
-- SQLiteのC sourceをGoへ変換した実装なので、依存関係のtreeは小さくない。
-- driverと推移的な依存関係は、Goのtoolで整合するversionに固定する必要がある。
+- SQLiteのCのソースコードをGoへ変換した実装なので、依存関係のツリーは小さくない。
+- ドライバと推移的な依存関係は、Goのツールで整合するバージョンに固定する必要がある。
 
-### `github.com/mattn/go-sqlite3`（M0のReferenceでは不採用）
+### `github.com/mattn/go-sqlite3`（M0の参照では不採用）
 
-非常に成熟しており、利用実績も多いdriverです。ただし、cgoを使います。
+非常に成熟しており、利用実績も多いドライバです。ただし、cgoを使います。
 
-M0の時点からEKIのAgentとControlの複数platform向けbuildを単純に保つため、Reference AdapterでC toolchainを必須にしない方を優先しました。
+M0の時点からEKIのAgentとControlの複数プラットフォーム向けビルドを単純に保つため、参照アダプタでCのツールチェーンを必須にしない方を優先しました。
 
-cgoの利用が問題にならないDeployment向けのAdapterとして、将来採用することは妨げません。
+cgoの利用が問題にならない導入環境向けのアダプタとして、将来採用することは妨げません。
 
 ### `github.com/ncruces/go-sqlite3`（保留）
 
 cgoが不要で、`database/sql`にも対応している点は有力です。
 
-ただ、M0を始める時点ではv0系列でした。Referenceの基盤としては、v1系列で利用実績の多い`modernc.org/sqlite`を先に選びます。
+ただ、M0を始める時点ではv0系列でした。参照の基盤としては、v1系列で利用実績の多い`modernc.org/sqlite`を先に選びます。
 
 将来の比較候補として残します。
 
 ### PostgreSQL（DP-2の候補。M0の標準としては不採用）
 
-複数のprocessや複数のhostでControl Planeを動かす場合には有力です。しかし、M0やDP-1からserverの運用を必須にすると、導入の負担が大きくなります。
+複数のプロセスや複数のホストでControl Planeを動かす場合には有力です。しかし、M0やDP-1からサーバの運用を必須にすると、導入の負担が大きくなります。
 
 State Store SPIを通じて、後から追加します。
 
-### 独自のfile store（不採用）
+### 独自のファイルストア（不採用）
 
-M0の目的は、Storage engineを発明することではありません。
+M0の目的は、ストレージエンジンを発明することではありません。
 
-transaction、lock、crashからの回復を自作するより、十分に検証された既存のdatabaseを使います。
+トランザクション、ロック、クラッシュからの回復を自作するより、十分に検証された既存のデータベースを使います。
 
-## 6. Journal mode
+## 6. ジャーナルモード
 
-M0のReference Adapterでは、**WAL modeを既定の有力な候補**とします。確定するのは、実装branchで再起動と並行性のtestを行ってからです。
+M0の参照アダプタでは、**WALモードを既定の有力な候補**とします。確定するのは、実装ブランチで再起動と並行性のテストを行ってからです。
 
-WALには、readerとwriterを並行させやすい利点があります。
+WALには、読み込み側と書き込み側を並行させやすい利点があります。
 
-ただし、SQLiteの公式仕様では、WALを使うprocessはすべて同じhost上にある必要があり、network filesystemでは使えません。
+ただし、SQLiteの公式仕様では、WALを使うプロセスはすべて同じホスト上にある必要があり、ネットワークファイルシステムでは使えません。
 
 そのため、次のことを明示します。
 
-- database fileはlocal filesystemへ置く。
-- NFSやSMBのような共有network filesystemを、M0のReference構成にしない。
-- 複数hostのControl Planeへ広げるときは、別のState Store Adapterへ移る。
+- データベースファイルはローカルファイルシステムへ置く。
+- NFSやSMBのような共有ネットワークファイルシステムを、M0の参照構成にしない。
+- 複数ホストのControl Planeへ広げるときは、別のState Storeアダプタへ移る。
 
-## 7. Schemaの所有
+## 7. スキーマの所有
 
-SQLiteのtable schemaは、State Store Adapterの永続化用のschemaです。
+SQLiteのテーブルスキーマは、State Storeアダプタの永続化用のスキーマです。
 
 次のものの正本にはしません。
 
 - External API
-- Task Contract
-- Worker Protocol
+- Task契約
+- Workerプロトコル
 - Coreの状態の意味
 
-DBの行を、そのままJSONのresponseへserializeしません。
+DBの行を、そのままJSONのレスポンスへシリアライズしません。
 
-Coreの`taskstate` modelと永続化の表現との対応付けは、Adapterが受け持ちます。
+Coreの`taskstate`モデルと永続化の表現との対応付けは、アダプタが受け持ちます。
 
-## 8. Migration
+## 8. マイグレーション
 
-Schemaのversionを明示し、migrationはAdapterの下で管理します。
+スキーマのバージョンを明示し、マイグレーションはアダプタの下で管理します。
 
 最初から次の点を考慮します。
 
-- migrationのversion
+- マイグレーションのバージョン
 - 起動時に何度実行しても同じ結果になる確認
-- 自分より新しいschemaの拒否
-- migrationが途中で失敗したときの安全なrollback
+- 自分より新しいスキーマの拒否
+- マイグレーションが途中で失敗したときの安全なロールバック
 
-M0では依存関係を増やさず、必要最小限のSQL migration runnerから始めてかまいません。
+M0では依存関係を増やさず、必要最小限のSQLマイグレーションの実行ツールから始めてかまいません。
 
-## 9. 接続とlockの方針
+## 9. 接続とロックの方針
 
-Small Profileでは、`eki-control`のprocessを一つにするのを標準とします。
+Small Profileでは、`eki-control`のプロセスを一つにするのを標準とします。
 
-`database/sql`のconnection poolは、SQLiteのwriterの特性と合うように、Reference Adapterの中で制御します。
+`database/sql`の接続プールは、SQLiteの書き込み側の特性と合うように、参照アダプタの中で制御します。
 
 State Store SPIを使う側から、SQLiteの接続数やPRAGMAを直接操作しません。
 
 ## 10. 永続性の境界
 
-TaskをClientへacceptedとして返す前に、必要な永続化の書き込みがcommit済みであることを求めます。
+TaskをClientへ受理済み（accepted）として返す前に、必要な永続化の書き込みがコミット済みであることを求めます。
 
-同じように、WorkOrderの配送を始める前に、Attempt、Lease、配送意図などの正本を永続的にcommitします。これを`commit before dispatch`の原則として守ります。
+同じように、WorkOrderの配送を始める前に、Attempt、Lease、配送意図などの正本を永続的にコミットします。これを`commit before dispatch`の原則として守ります。
 
-SQLiteを使うだけで、この順序が自動的に保証されるわけではありません。CoreやApplication serviceの側で、transactionの境界として実装します。
+SQLiteを使うだけで、この順序が自動的に保証されるわけではありません。Coreやアプリケーションサービスの側で、トランザクションの境界として実装します。
 
-## 11. Security
+## 11. セキュリティ
 
-Database fileには、Task、Principal、内部のDecisionのmetadataが含まれ得ます。
+データベースファイルには、Task、Principal、内部のDecisionのメタデータが含まれ得ます。
 
-M0のReference Adapterでも、次のことを求めます。
+M0の参照アダプタでも、次のことを求めます。
 
-- fileの権限を最小にする。
-- 生のsecretを保存しない。
-- ArtifactのbytesをState DBへ埋め込まない。
-- SQLのparameter bindingを使う。
-- Clientから渡されたtable名、column名、SQLの断片を受け取らない。
+- ファイルの権限を最小にする。
+- 生の秘密情報を保存しない。
+- ArtifactのバイトをState DBへ埋め込まない。
+- SQLのパラメータ結び付けを使う。
+- Clientから渡されたテーブル名、列名、SQLの断片を受け取らない。
 
-保存時のDatabaseの暗号化は、M0では必須にしません。必要なDeploymentでは、OSのdisk暗号化や、将来のAdapterやVFSなどを比較します。
+保存時のデータベースの暗号化は、M0では必須にしません。必要な導入環境では、OSのディスク暗号化や、将来のアダプタやVFSなどを比較します。
 
-## 12. 実装を検証するGate
+## 12. 実装を検証するゲート
 
-driverへの依存を実装へ入れるPRでは、少なくとも次を実行します。
+ドライバへの依存を実装へ入れるPRでは、少なくとも次を実行します。
 
 ~~~text
 go mod tidy
@@ -218,59 +218,59 @@ go test ./...
 go vet ./...
 ~~~
 
-さらに、State Store固有のtestとして、次のことを確認します。
+さらに、State Store固有のテストとして、次のことを確認します。
 
-1. 作成し、processまたは接続を閉じ、開き直して読み込む
+1. 作成し、プロセスまたは接続を閉じ、開き直して読み込む
 2. CASの成功
-3. 古いrevisionの拒否
+3. 古いリビジョンの拒否
 4. 重複したTaskの拒否
-5. transactionのrollback
-6. schemaのmigration
-7. 対応していないschema versionの拒否
-8. readerとwriterを並行させた簡易確認
+5. トランザクションのロールバック
+6. スキーマのマイグレーション
+7. 対応していないスキーマバージョンの拒否
+8. 読み込み側と書き込み側を並行させた簡易確認
 
-このADRだけでは、driverを`go.mod`へ追加しません。
+このADRだけでは、ドライバを`go.mod`へ追加しません。
 
-依存関係のlockを生成も検証もできない環境から、推測で作った`go.sum`をcommitしないためです。
+依存関係のロックを生成も検証もできない環境から、推測で作った`go.sum`をコミットしないためです。
 
-## 13. Consequences
+## 13. 影響
 
-### Positive
+### 良い点
 
-- DP-1で、専用のDB serverなしに再起動後の永続性を実現できる。
-- CoreのState Storeの意味を、既存のtransaction engineに任せられる。
-- cgoを、M0のReference buildの必須条件にしない。
-- 将来PostgreSQLなどへ替えても、Coreのcontractを変えずに済む。
+- DP-1で、専用のDBサーバなしに再起動後の永続性を実現できる。
+- CoreのState Storeの意味を、既存のトランザクションエンジンに任せられる。
+- cgoを、M0の参照ビルドの必須条件にしない。
+- 将来PostgreSQLなどへ替えても、Coreの契約を変えずに済む。
 
-### Limitations
+### 制約
 
-- SQLite単体では、複数hostによるControl Planeの高可用性を実現できない。
-- WALのdatabaseを、network filesystemで共有できない。
-- 書き込みの並行性が高く求められるようになれば、別のAdapterが必要になる。
+- SQLite単体では、複数ホストによるControl Planeの高可用性を実現できない。
+- WALのデータベースを、ネットワークファイルシステムで共有できない。
+- 書き込みの並行性が高く求められるようになれば、別のアダプタが必要になる。
 
-SQLiteをあらゆる用途に使おうとはしません。これらの制約は、Deployment Profileごとに適切なAdapterを選ぶことで扱います。
+SQLiteをあらゆる用途に使おうとはしません。これらの制約は、Deployment Profileごとに適切なアダプタを選ぶことで扱います。
 
-## 14. Implementation record（2026-10-06）
+## 14. 実装記録（2026-10-06）
 
-Reference Adapterは`internal/adapters/reference/statestore/sqlite`に実装しました。§6、§8、§9、§12で「実装時に確定する」とした点は、次のとおりに決めました。
+参照アダプタは`internal/adapters/reference/statestore/sqlite`に実装しました。§6、§8、§9、§12で「実装時に確定する」とした点は、次のとおりに決めました。
 
 | 項目 | 確定内容 |
 |---|---|
-| Journal mode | WALとし、`synchronous=FULL`を併用する。WALで`NORMAL`にすると、電源断で直近のtransactionを失うことがある。そのため、commit before dispatch（§10）を満たす方を選んだ |
-| Connection | `database/sql`の接続数を1に固定する。SQLiteのwriterは一つなので、こうすると自前のgoroutine同士の`SQLITE_BUSY`を避けられ、transactionの境界も単純になる。外部processのlockに備えて、`busy_timeout`は5秒にする |
-| Schema version | `PRAGMA user_version`を使う。migrationは追記だけで行い、各stepを別々のtransactionで適用する。自分より新しいversionのDBは`ErrUnsupportedSchema`で拒否する |
-| Schema | `STRICT` tableを使う。phase、終了時の結果、revision、時刻の順序、終了状態と結果の対応を`CHECK`でも守り、Adapterを経由しない書き込みも拒否する |
-| Duplicate / CAS | `INSERT ... ON CONFLICT DO NOTHING`と`UPDATE ... WHERE revision = ?`の影響行数で判定する。driver固有のerror codeには依存しない |
-| File permission | driverが開く前に、0600でfileを作る。Windowsではmode bitは意味を持たない |
+| ジャーナルモード | WALとし、`synchronous=FULL`を併用する。WALで`NORMAL`にすると、電源断で直近のトランザクションを失うことがある。そのため、commit before dispatch（§10）を満たす方を選んだ |
+| 接続 | `database/sql`の接続数を1に固定する。SQLiteの書き込み側は一つなので、こうすると自前のgoroutine同士の`SQLITE_BUSY`を避けられ、トランザクションの境界も単純になる。外部プロセスのロックに備えて、`busy_timeout`は5秒にする |
+| スキーマのバージョン | `PRAGMA user_version`を使う。マイグレーションは追記だけで行い、各手順を別々のトランザクションで適用する。自分より新しいバージョンのDBは`ErrUnsupportedSchema`で拒否する |
+| スキーマ | `STRICT`テーブルを使う。段階、終了時の結果、リビジョン、時刻の順序、終了状態と結果の対応を`CHECK`でも守り、アダプタを経由しない書き込みも拒否する |
+| 重複とCAS | `INSERT ... ON CONFLICT DO NOTHING`と`UPDATE ... WHERE revision = ?`の影響行数で判定する。ドライバ固有のエラーコードには依存しない |
+| ファイルの権限 | ドライバが開く前に、0600でファイルを作る。Windowsではモードビットは意味を持たない |
 | 時刻 | UTCのUnixNano（int64）で保存する |
 
-確認したのは、共通のState Store契約とDurability契約に加えて、§12の次の項目です。閉じて開き直した後の保持、CASの成功、古いrevisionの拒否、重複の拒否、migrationのrollback、対応していないschemaの拒否、readerとwriterを並行させた簡易確認。あわせて、Adapterを経由しない不正な行をSchemaが拒否すること、SQLの断片を含むIDがデータとして扱われること、予約文字を含むpathを扱えることも確認しています。
+確認したのは、共通のState Store契約とDurability契約に加えて、§12の次の項目です。閉じて開き直した後の保持、CASの成功、古いリビジョンの拒否、重複の拒否、マイグレーションのロールバック、対応していないスキーマの拒否、読み込み側と書き込み側を並行させた簡易確認。あわせて、アダプタを経由しない不正な行をスキーマが拒否すること、SQLの断片を含むIDがデータとして扱われること、予約文字を含むパスを扱えることも確認しています。
 
-`go test ./...`、`go vet ./...`、State Storeのpackageに対する`-race`、`go mod verify`は、Go 1.27.0（WSL2、Linux）で通りました。Windows上でのbuildとtestは、まだ確認していません。
+`go test ./...`、`go vet ./...`、State Storeのパッケージに対する`-race`、`go mod verify`は、Go 1.27.0（WSL2、Linux）で通りました。Windows上でのビルドとテストは、まだ確認していません。
 
-保存しているのはTaskの記録だけです。AttemptやLease、配送意図（outbox）などのtableは、それぞれの作業単位で追加します。
+保存しているのはTaskの記録だけです。AttemptやLease、配送意図（outbox）などのテーブルは、それぞれの作業単位で追加します。
 
-## 15. Sources
+## 15. 出典
 
 - SQLite, Transactional: https://www.sqlite.org/transactional.html
 - SQLite, Write-Ahead Logging: https://www.sqlite.org/wal.html
@@ -279,8 +279,8 @@ Reference Adapterは`internal/adapters/reference/statestore/sqlite`に実装し�
 - mattn/go-sqlite3: https://pkg.go.dev/github.com/mattn/go-sqlite3
 - ncruces/go-sqlite3: https://pkg.go.dev/github.com/ncruces/go-sqlite3
 
-## 16. Follow-up
+## 16. 今後の作業
 
-このADRを`main`へmergeした後、永続化するSQLite Adapterの実装は別のbranchで行います。
+このADRを`main`へマージした後、永続化するSQLiteアダプタの実装は別のブランチで行います。
 
-実装環境でGoのtoolを使って依存関係を取得し、`go.mod`と`go.sum`を生成します。そのうえで、上記の再起動、CAS、migrationのtestを通した状態だけをmergeの対象にします。
+実装環境でGoのツールを使って依存関係を取得し、`go.mod`と`go.sum`を生成します。そのうえで、上記の再起動、CAS、マイグレーションのテストを通した状態だけをマージの対象にします。

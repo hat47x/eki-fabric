@@ -1,46 +1,46 @@
-# ADR-0002 Reference ImplementationにGoを採用する
+# ADR-0002 参照実装にGoを採用する
 
 - Status: **Accepted for MVP**
 - Date: 2026-09-21
 
-## Context
+## 背景
 
-EKI FabricのMVPでは、Control PlaneとEndpoint Worker Agentを実際に動かす必要があります。そのうえで、Task、Attempt、Lease、Local Governor、Artifactの転送、Resultの検証を、一つのvertical sliceとして確かめます。
+EKI FabricのMVPでは、Control PlaneとEndpoint Worker Agentを実際に動かす必要があります。そのうえで、Task、Attempt、Lease、Local Governor、Artifactの転送、Resultの検証を、一つの縦断スライスとして確かめます。
 
-一方でRQ-002により、External ContractをReference実装の言語専用にしてはいけません。
+一方でRQ-002により、External契約を参照実装の言語専用にしてはいけません。
 
 したがって、次の二つは別の判断です。
 
-1. EKIのReference Implementationを何語で書くか
-2. EKIのProtocolとContractを、何語から利用できるか
+1. EKIの参照実装を何語で書くか
+2. EKIのプロトコルと契約を、何語から利用できるか
 
-## Decision
+## 決定
 
-**Reference ImplementationにはGoを採用します。**
+**参照実装にはGoを採用します。**
 
-ただし、外部Contractの正本は次のとおりとし、Goのstructやinterfaceを外部Contractの正本にはしません。
+ただし、外部契約の正本は次のとおりとし、Goのstructやインターフェースを外部契約の正本にはしません。
 
-- External Client Contractの正本は`spec/external/openapi.json`とする。
-- WorkerとAdapterのContractは、後で作る言語非依存のIDLとする。
+- External Client契約の正本は`spec/external/openapi.json`とする。
+- Workerとアダプタの契約は、後で作る言語非依存のIDLとする。
 - 署名付きのAuthority Decisionは、CDDLとCOSEで定める。
 
-Goの実装packageは、原則として`internal/`の下に置きます。
+Goの実装パッケージは、原則として`internal/`の下に置きます。
 
-将来のGo SDKは、Core実装のpackageを直接公開しません。External Contract向けの独立した`sdk/go`として扱います。
+将来のGo SDKは、Core実装のパッケージを直接公開しません。External契約向けの独立した`sdk/go`として扱います。
 
 ## 主な理由
 
 ### Endpoint Agentを軽く配布しやすい
 
-Agentは業務端末や個人端末で常駐する可能性があります。そのため、単一のbinaryにしやすいこと、OSごとの配布が比較的単純なこと、標準libraryだけでもHTTP、TLS、process、filesystemなどの基盤を作りやすいことを重視しました。
+Agentは業務端末や個人端末で常駐する可能性があります。そのため、単一のバイナリにしやすいこと、OSごとの配布が比較的単純なこと、標準ライブラリだけでもHTTP、TLS、プロセス、ファイルシステムなどの基盤を作りやすいことを重視しました。
 
 ### Control PlaneとAgentで共通の実装を持てる
 
-Task ID、Leaseの検証、Digest、上限付きのI/O、構造化されたerrorなどの共通の処理を、同じmoduleで使い回せます。
+Task ID、Leaseの検証、Digest、上限付きのI/O、構造化されたエラーなどの共通の処理を、同じモジュールで使い回せます。
 
 ### 実装に参加する敷居を上げすぎない
 
-EKIは、分散system、security、Workerのruntimeなどを同時に扱います。言語にまで高い習熟を求めないことで、Architecture上の難しい部分へ集中しやすくします。
+EKIは、分散システム、セキュリティ、Workerのランタイムなどを同時に扱います。言語にまで高い習熟を求めないことで、Architecture上の難しい部分へ集中しやすくします。
 
 ### 既存のSpikeを活かせる
 
@@ -50,41 +50,41 @@ EKIは、分散system、security、Workerのruntimeなどを同時に扱いま�
 
 - External Clientが使う言語
 - Executorの実装言語
-- out-of-processのAdapterの実装言語
-- Browser Workerの実装
+- out-of-processのアダプタの実装言語
+- ブラウザWorkerの実装
 - ProofやAttestationを検証する部品の実装言語
-- Application側の言語
+- アプリケーション側の言語
 
-WASMや外部serviceのAdapterなどを通じて、ほかの言語も第一級に扱える構造を保ちます。
+WASMや外部サービスのアダプタなどを通じて、ほかの言語も第一級に扱える構造を保ちます。
 
-## RustをCoreのReferenceにしない理由
+## RustをCoreの参照にしない理由
 
-Rustは、memory安全性や低水準の制御の点で有力です。
+Rustは、メモリ安全性や低水準の制御の点で有力です。
 
-しかし、MVPの中心課題は、unsafeなcodeを大量に書くことではありません。権限の分離、永続化された状態、protocolの検証、端末の統治、障害からの回復の意味を、正しく実装することです。
+しかし、MVPの中心課題は、unsafeなコードを大量に書くことではありません。権限の分離、永続化された状態、プロトコルの検証、端末の統治、障害からの回復の意味を、正しく実装することです。
 
-初期のReferenceをすべてRustへ寄せることはしません。Goで実装参加の負担を抑え、nativeのsandbox backendのように必要な箇所だけを別の実装で接続できるSPIを保つ方を選びます。
+初期の参照をすべてRustへ寄せることはしません。Goで実装参加の負担を抑え、ネイティブのサンドボックスのバックエンドのように必要な箇所だけを別の実装で接続できるSPIを保つ方を選びます。
 
-RustのAdapterやRuntimeを排除する判断ではありません。
+Rustのアダプタやランタイムを排除する判断ではありません。
 
-## Consequences
+## 影響
 
-### Positive
+### 良い点
 
 - M0を小さく始められる。
 - ControlとAgentの共通実装を作りやすい。
-- 複数platform向けのbinaryを作りやすい。
+- 複数プラットフォーム向けのバイナリを作りやすい。
 - 既存のSpikeで得た知見を移しやすい。
-- 初めて読む開発者がRepositoryを追いやすい。
+- 初めて読む開発者がリポジトリを追いやすい。
 
-### Cost / Risk
+### コストとリスク
 
-- GoのruntimeやGCが、一部の厳しいruntimeの用途に向かない場合がある。
-- OS固有のsandboxやGPUのruntimeでは、別の言語やnativeの部品が必要になり得る。
-- Goのinterfaceを、外部のSPIだと誤解しやすい。
+- GoのランタイムやGCが、一部の厳しいランタイムの用途に向かない場合がある。
+- OS固有のサンドボックスやGPUのランタイムでは、別の言語やネイティブの部品が必要になり得る。
+- Goのインターフェースを、外部のSPIだと誤解しやすい。
 
-最後の誤解を防ぐため、Goのpackageは`internal/`を基本にし、機械可読なspecを正本にします。
+最後の誤解を防ぐため、Goのパッケージは`internal/`を基本にし、機械可読な仕様を正本にします。
 
-## Follow-up
+## 今後の作業
 
-Repository Layoutは、`cmd/eki-control`、`cmd/eki-agent`、`internal/core`、`internal/control`、`internal/agent`、`internal/spi`、`internal/adapters`、`spec/`、`conformance/`を基礎にします。
+リポジトリの構成は、`cmd/eki-control`、`cmd/eki-agent`、`internal/core`、`internal/control`、`internal/agent`、`internal/spi`、`internal/adapters`、`spec/`、`conformance/`を基礎にします。
