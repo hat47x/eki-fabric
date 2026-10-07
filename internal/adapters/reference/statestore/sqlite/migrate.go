@@ -60,6 +60,43 @@ CREATE TABLE leases (
 	UNIQUE (task_id, fence_epoch)
 ) STRICT;
 CREATE INDEX leases_by_task_expiry ON leases (task_id, expires_at_ns)`,
+	// 4: durable Attempt lifecycle state
+	`CREATE TABLE attempts (
+	attempt_id       TEXT    NOT NULL PRIMARY KEY,
+	task_id          TEXT    NOT NULL REFERENCES tasks (task_id),
+	task_ir_digest   TEXT    NOT NULL CHECK (length(task_ir_digest) = 64),
+	attempt_number   INTEGER NOT NULL CHECK (attempt_number >= 1),
+	phase            TEXT    NOT NULL CHECK (phase IN ('created','placing','assigned','dispatched','claimed','verifying','closed')),
+	worker_identity  TEXT    NOT NULL CHECK (length(worker_identity) <= 256),
+	lease_id         TEXT    REFERENCES leases (lease_id),
+	close_reason     TEXT    NOT NULL CHECK (close_reason IN ('','result_accepted','result_rejected','execution_failure_confirmed','worker_lost','lease_expired','reclaimed','cancelled','superseded','deadline','budget_exhausted','unknown_external_effect','policy_revoked','stale_attempt')),
+	revision         INTEGER NOT NULL CHECK (revision >= 1),
+	created_at_ns    INTEGER NOT NULL,
+	updated_at_ns    INTEGER NOT NULL CHECK (updated_at_ns >= created_at_ns),
+	UNIQUE (task_id, attempt_number),
+	CHECK (phase <> 'created' OR (worker_identity = '' AND lease_id IS NULL)),
+	CHECK (phase <> 'placing' OR (worker_identity <> '' AND lease_id IS NULL)),
+	CHECK (phase NOT IN ('assigned','dispatched','claimed','verifying') OR (worker_identity <> '' AND lease_id IS NOT NULL)),
+	CHECK (phase <> 'closed' OR close_reason <> ''),
+	CHECK (phase = 'closed' OR close_reason = ''),
+	CHECK (lease_id IS NULL OR worker_identity <> '')
+) STRICT;
+CREATE INDEX attempts_by_task_phase ON attempts (task_id, phase);
+CREATE TRIGGER attempts_task_ir_insert
+BEFORE INSERT ON attempts
+WHEN NEW.task_ir_digest <> (SELECT task_ir_digest FROM tasks WHERE task_id = NEW.task_id)
+BEGIN
+	SELECT RAISE(ABORT, 'attempt TaskIR digest differs from parent Task');
+END;
+CREATE TRIGGER attempts_identity_immutable
+BEFORE UPDATE OF task_id, task_ir_digest, attempt_number, created_at_ns ON attempts
+WHEN OLD.task_id <> NEW.task_id
+  OR OLD.task_ir_digest <> NEW.task_ir_digest
+  OR OLD.attempt_number <> NEW.attempt_number
+  OR OLD.created_at_ns <> NEW.created_at_ns
+BEGIN
+	SELECT RAISE(ABORT, 'attempt identity fields are immutable');
+END`,
 }
 
 // migrate brings the database to the latest version. It is idempotent, rejects
