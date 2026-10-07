@@ -27,6 +27,7 @@ type LeaseReservation struct {
 	TaskIRDigest               contract.Digest
 	ExpectedTaskRevision       uint64
 	AttemptID                  ids.AttemptID
+	ExpectedAttemptRevision    uint64
 	WorkerIdentity             string
 	PlacementTrustDomain        string
 	PlacementAuthorityPrincipal string
@@ -53,6 +54,9 @@ func (r LeaseReservation) Validate() error {
 	}
 	if _, err := ids.ParseAttemptID(r.AttemptID.String()); err != nil {
 		return fmt.Errorf("lease reservation: attempt ID: %w", err)
+	}
+	if r.ExpectedAttemptRevision == 0 {
+		return errors.New("lease reservation: expected Attempt revision must be positive")
 	}
 	if r.WorkerIdentity == "" || len(r.WorkerIdentity) > 256 || !utf8.ValidString(r.WorkerIdentity) {
 		return errors.New("lease reservation: invalid Worker identity")
