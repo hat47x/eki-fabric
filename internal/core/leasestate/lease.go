@@ -26,7 +26,8 @@ type Config struct {
 	PlacementAuthorityPrincipal string
 	PlacementDecisionID           string
 	PlacementPayloadDigest        contract.Digest
-	PolicyRevision         string
+	PlacementExpiresAt            time.Time
+	PolicyRevision                string
 	FenceEpoch             uint64
 	RenewalSequence        uint64
 	IssuedAt               time.Time
@@ -42,7 +43,8 @@ type LeaseRecord struct {
 	PlacementAuthorityPrincipal string
 	PlacementDecisionID         string
 	PlacementPayloadDigest      contract.Digest
-	PolicyRevision         string
+	PlacementExpiresAt          time.Time
+	PolicyRevision              string
 	FenceEpoch             uint64
 	RenewalSequence        uint64
 	IssuedAt               time.Time
@@ -74,6 +76,9 @@ func New(cfg Config) (LeaseRecord, error) {
 	if cfg.PlacementPayloadDigest.IsZero() {
 		return LeaseRecord{}, fmt.Errorf("%w: placement payload digest is required", ErrInvalidLeaseRecord)
 	}
+	if cfg.PlacementExpiresAt.IsZero() || cfg.ExpiresAt.After(cfg.PlacementExpiresAt) {
+		return LeaseRecord{}, fmt.Errorf("%w: lease expiry exceeds placement approval expiry", ErrInvalidLeaseRecord)
+	}
 	if err := validateText("policy revision", cfg.PolicyRevision, 128); err != nil {
 		return LeaseRecord{}, err
 	}
@@ -92,7 +97,8 @@ func New(cfg Config) (LeaseRecord, error) {
 		PlacementAuthorityPrincipal: cfg.PlacementAuthorityPrincipal,
 		PlacementDecisionID:           cfg.PlacementDecisionID,
 		PlacementPayloadDigest:        cfg.PlacementPayloadDigest,
-		PolicyRevision:         cfg.PolicyRevision,
+		PlacementExpiresAt:            cfg.PlacementExpiresAt.UTC(),
+		PolicyRevision:                cfg.PolicyRevision,
 		FenceEpoch:             cfg.FenceEpoch,
 		RenewalSequence:        cfg.RenewalSequence,
 		IssuedAt:               cfg.IssuedAt.UTC(),
@@ -110,7 +116,8 @@ func (r LeaseRecord) Validate() error {
 		PlacementAuthorityPrincipal: r.PlacementAuthorityPrincipal,
 		PlacementDecisionID:           r.PlacementDecisionID,
 		PlacementPayloadDigest:        r.PlacementPayloadDigest,
-		PolicyRevision:         r.PolicyRevision,
+		PlacementExpiresAt:            r.PlacementExpiresAt,
+		PolicyRevision:                r.PolicyRevision,
 		FenceEpoch:             r.FenceEpoch,
 		RenewalSequence:        r.RenewalSequence,
 		IssuedAt:               r.IssuedAt,
