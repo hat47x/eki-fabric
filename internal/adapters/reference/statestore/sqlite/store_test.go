@@ -236,6 +236,7 @@ func TestAttemptSchemaRejectsBypassedInvalidTransitions(t *testing.T) {
 	defer store.Close()
 
 	task := newTaskRecord(t, "attempt-schema-guard")
+	task.Phase = taskstate.TaskPhaseReady
 	if err := store.CreateTask(context.Background(), task); err != nil {
 		t.Fatal(err)
 	}
@@ -245,6 +246,21 @@ func TestAttemptSchemaRejectsBypassedInvalidTransitions(t *testing.T) {
 	}
 	if err := store.CreateAttempt(context.Background(), attempt); err != nil {
 		t.Fatal(err)
+	}
+
+	if _, err := store.db.Exec(`
+INSERT INTO attempts (
+	attempt_id, task_id, task_ir_digest, attempt_number, phase,
+	worker_identity, lease_id, close_reason, revision, created_at_ns, updated_at_ns
+) VALUES (?, ?, ?, ?, 'placing', 'worker-x', NULL, '', 1, ?, ?)`,
+		mustAttemptIDForSQLite(t).String(),
+		task.ID.String(),
+		task.TaskIRDigest.Hex(),
+		99,
+		task.CreatedAt.Add(3*time.Second).UnixNano(),
+		task.CreatedAt.Add(3*time.Second).UnixNano(),
+	); err == nil {
+		t.Fatal("non-initial Attempt inserted through direct SQL")
 	}
 
 	closedAt := attempt.UpdatedAt.Add(time.Second).UnixNano()
