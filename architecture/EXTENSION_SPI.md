@@ -4,9 +4,9 @@ Status: **Baseline 0.1 — 2026-09-21**
 
 ## 1. この文書の目的
 
-EKI Fabricは、現在存在するSEI / SUI / TEIだけでなく、将来の未知のソフトウェアや異なるInfrastructureへ接続できる用途非依存のdistributed compute fabricを目指します。
+EKI Fabricは、現在存在するSEI、SUI、TEIだけでなく、将来現れる未知のソフトウェアや、異なるInfrastructureにも接続できる、用途に依存しないdistributed compute fabricを、めざします。
 
-そのため、
+そのため、次のものを、差し替えられるようにします。
 
 - Queue
 - State Store
@@ -20,21 +20,17 @@ EKI Fabricは、現在存在するSEI / SUI / TEIだけでなく、将来の未�
 - Contribution Measurement
 - Telemetry
 
-等を差し替え可能にします。
+一方で、ExtensionがCoreのsemanticsを変更できるようにすると、次のような、Authorityの崩壊が起きます。
 
-一方で、ExtensionがCore semanticsを変更できるようにすると、
+- Scheduler pluginが、Authorizationを作る。
+- Queue adapterが、勝手にAttemptを増やす。
+- Storage adapterが、ArtifactGrantを迂回する。
+- Verification pluginが、Resultを直接Acceptedにする。
+- Worker Runtimeが、Capabilityを自己拡張する。
 
-- Scheduler pluginがAuthorizationを作る
-- Queue adapterが勝手にAttemptを増やす
-- Storage adapterがArtifactGrantを迂回する
-- Verification pluginがResultを直接Acceptedにする
-- Worker RuntimeがCapabilityを自己拡張する
+この文書では、何を差し替えてよく、何をCoreの不変条件として固定するかを、定義します。
 
-といったAuthority崩壊が起きます。
-
-この文書では、何を差し替えてよく、何をCoreの不変条件として固定するかを定義します。
-
-関連は次のとおりです。
+関連する文書は、次のとおりです。
 
 - AUTHORITY_BOUNDARIES.md
 - CONTRACT_BOUNDARIES.md
@@ -48,9 +44,9 @@ EKI Fabricは、現在存在するSEI / SUI / TEIだけでなく、将来の未�
 
 最も重要な原則です。
 
-未知のApplicationやOSSがEKIを使うために、Control Plane pluginを作る必要はありません。
+未知のApplicationやOSSが、EKIを使うために、Control Plane pluginを作る必要はありません。
 
-通常は、
+通常は、次の形で接続します。
 
 ~~~text
 Application
@@ -63,31 +59,29 @@ Application
        EKI Fabric
 ~~~
 
-で接続します。
+Extension SPIを使うのは、
 
-Extension SPIは、
+> FabricのInfrastructureの能力そのものを、差し替える
 
-> FabricのInfrastructure能力そのものを差し替える
+場合です。
 
-場合に使います。
+たとえば、次のものがあります。
 
-例は次のとおりです。
-
-- S3-compatible Artifact Store
-- enterprise OIDC
+- S3互換のArtifact Store
+- 企業のOIDC
 - WASM Runtime
 - TEE Verifier
-- custom Result Validator
-- NATS / database-backed delivery
+- 独自のResult Validator
+- NATSやdatabaseを使った配送
 - Cloud Meter adapter
 
-Application semanticsをSPIへ持ち込まないことを優先します。
+Application semanticsを、SPIに持ち込まないことを、優先します。
 
 ---
 
 # 3. Core KernelとAdapter
 
-Logical構造:
+論理的な構造は、次のとおりです。
 
 ~~~text
 EKI Core Kernel
@@ -110,68 +104,68 @@ Adapters
   ...
 ~~~
 
-AdapterはCore Kernelから呼ばれます。
+Adapterは、Core Kernelから呼ばれます。
 
-AdapterがCore State Machineを所有しません。
+AdapterがCore State Machineを所有することは、ありません。
 
 ---
 
 # 4. SPIが変更できないもの
 
-Extension実装が変わっても、次を変更してはいけません。
+Extensionの実装が変わっても、次のものを変更してはいけません。
 
-1. TaskとAttemptのIdentity分離。
-2. Retryが新Attemptを作ること。
-3. Lease fencing。
+1. TaskとAttemptのIdentityの分離。
+2. Retryが、新しいAttemptを作ること。
+3. Leaseのfencing。
 4. Client RequestとWorkOrderの分離。
 5. Scheduler ProposalとPlacement Approvalの分離。
-6. Task submission authorityとData authorityの分離。
+6. Task submissionのauthorityと、Data authorityの分離。
 7. ResultClaimとAcceptedResultの分離。
-8. External Effect UNKNOWN。
-9. ArtifactGrant scope。
+8. External EffectのUNKNOWN。
+9. ArtifactGrantのscope。
 10. Content DigestとAuthorizationの分離。
-11. Local Governor veto。
-12. Federation namespace binding。
-13. Security classification downgrade禁止。
-14. Retry / fan-out / transfer budget。
-15. Worker self-reportを高保証事実へ自動昇格しないこと。
-16. Contribution Recordと外部価値の分離。
+11. Local Governorの拒否権。
+12. Federation namespaceのbinding。
+13. Security classificationを下げることの禁止。
+14. Retry、fan-out、転送のbudget。
+15. Workerの自己申告を、高い保証の事実に自動的に昇格しないこと。
+16. Contribution Recordと、外部の価値の分離。
 
-Adapterがこれらを変更する場合、それはSPI実装ではなくArchitecture変更です。
+Adapterがこれらを変更する場合、それはSPIの実装ではなく、Architectureの変更です。
 
 ---
 
 # 5. Extension Privilege Class
 
-Extensionを一つのplugin categoryとして扱いません。
+Extensionを、一つのplugin categoryとして扱いません。
 
-保持するCredentialや処理するDataによってPrivilegeが異なります。
+保持するCredentialや、処理するDataによって、Privilegeが異なります。
 
 ## EP-0 — Observation / Optimization
 
-例は次のとおりです。
+たとえば、次のものです。
 
 - Telemetry Exporter
 - learned scheduling estimator
 - locality estimator
 
-原則としてSecurity Authorityを持ちません。
+原則として、Security Authorityを持ちません。
 
 ## EP-1 — Evidence Processing
 
-例は次のとおりです。
+たとえば、次のものです。
 
 - Result Validator
 - Attestation Verifier Adapter
-- Artifact Provenance parser
+- Artifact Provenanceのparser
 
-hostile evidenceを処理するため、parser / compute isolationが重要です。
+悪意のあるevidenceを処理するため、parserとcomputeの隔離が重要です。
 
-Evidenceをnormalized Resultへ変換しますが、最終Authorizationを単独では作りません。
+Evidenceを、正規化したResultに変換します。ただし、最終的なAuthorizationを単独では作りません。
 
 ## EP-2 — Resource Access / Enforcement
 
-例は次のとおりです。
+たとえば、次のものです。
 
 - Artifact Store Adapter
 - Executor Runtime
@@ -179,59 +173,57 @@ Evidenceをnormalized Resultへ変換しますが、最終Authorizationを単独
 - Secret Provider
 - External Effect Adapter
 
-Data / host resourceへ触れるためblast radiusが大きくなります。
+DataやhostのResourceに触れるため、blast radiusが大きくなります。
 
-scopeされたCredentialとCapabilityを要求します。
+範囲を限ったCredentialとCapabilityを要求します。
 
 ## EP-3 — Authority Support
 
-例は次のとおりです。
+たとえば、次のものです。
 
-- KMS / Signer Adapter
+- KMSとSigner Adapter
 - Policy Evaluator
-- State Store for authoritative transition
+- authoritativeな遷移のためのState Store
 - Federation Trust Store
 
 Authorityそのもの、またはAuthorityの根に近い機能です。
 
-最も厳しいconfiguration / provenance / auditを要求します。
+最も厳しい、configuration、provenance、auditを要求します。
 
-Privilege ClassはWorker AssuranceのTrust Levelではありません。
+Privilege Classは、Worker AssuranceのTrust Levelではありません。
 
-Control Plane extensionの危険度分類です。
+Control Plane extensionの、危険度の分類です。
 
 ---
 
-# 6. Extension RegistrationはAdministrative Plane
+# 6. Extensionの登録は、Administrative Planeで行う
 
 TaskRequestが、
 
 > このpluginをdownloadして使ってください
 
-と指定できる構造にしません。
+と指定できる構造にはしません。
 
-ExtensionはAdministrative Planeで、
+Extensionは、Administrative Planeで、次のものを登録します。
 
 - Extension ID
 - kind
-- implementation version
-- package / image / binary Digest
+- 実装のversion
+- package、image、binaryのDigest
 - provenance
 - API version
 - privilege class
-- allowed configuration scope
-- network requirement
-- credential requirement
+- 許可するconfigurationのscope
+- networkの要件
+- credentialの要件
 
-を登録します。
-
-Clientはregistered extensionのlogical capabilityを利用することはできますが、実装packageを変更できません。
+Clientは、登録済みのextensionの論理的なcapabilityを、利用することはできます。ただし、実装のpackageを変更することはできません。
 
 ---
 
 # 7. Extension Descriptor
 
-Logical Descriptor例:
+論理的なDescriptorの例は、次のとおりです。
 
 ~~~text
 Extension ID
@@ -250,19 +242,19 @@ Activation state
 Policy Revision
 ~~~
 
-実際のwire schemaは後続実装で決めます。
+実際のwire schemaは、後続の実装で決めます。
 
 ---
 
 # 8. SPI API VersionとImplementation Version
 
-二つを分けます。
+この2つを分けます。
 
 ## SPI API Version
 
-CoreとAdapter間のContract versionです。
+CoreとAdapterの間の、Contractのversionです。
 
-例は次のとおりです。
+たとえば、次のものです。
 
 ~~~text
 eki.spi.artifact-store/v1
@@ -272,23 +264,23 @@ eki.spi.artifact-store/v1
 
 Adapter製品のversionです。
 
-例は次のとおりです。
+たとえば、次のものです。
 
 ~~~text
 example-s3-adapter 2.4.1
 ~~~
 
-Implementationをupgradeしても同じSPI APIを保てます。
+Implementationをupgradeしても、同じSPI APIを保てます。
 
-SPI API breaking changeは明示的version migrationを必要とします。
+SPI APIの破壊的な変更には、明示的なversionの移行が必要です。
 
 ---
 
 # 9. Capability Negotiation
 
-Extensionはsupportするoptional capabilityを宣言できます。
+Extensionは、対応する任意のcapabilityを宣言できます。
 
-例は次のとおりです。
+たとえば、次のとおりです。
 
 Artifact Store:
 
@@ -306,23 +298,23 @@ Executor Runtime:
 - checkpoint
 - network-isolation
 
-Capability declarationは、
+Capabilityの宣言は、
 
-> 現在この実装が機能を提供できる
+> 現在、この実装が、その機能を提供できる
 
 という情報です。
 
-Security-sensitive capabilityを利用する場合、実測 / managed policy / Evidence等のAssurance basisを別に持てる構造にします。
+Security上、重要なcapabilityを利用する場合は、実測、管理されたpolicy、Evidenceなどの、Assuranceの根拠を、別に持てる構造にします。
 
-自己申告だけでHARD enforcementへ昇格しません。
+自己申告だけで、HARDなenforcementに昇格しません。
 
 ---
 
 # 10. Critical Capability
 
-CoreがTaskのSecurity Requirementを満たすため必要なCapabilityがExtensionにない場合、fallbackでRequirementを弱めません。
+CoreがTaskのSecurity Requirementを満たすために必要なCapabilityが、Extensionにない場合、fallbackでRequirementを弱めません。
 
-例は次のとおりです。
+たとえば、次のとおりです。
 
 ~~~text
 Task requires hard memory isolation
@@ -330,71 +322,69 @@ Runtime only supports best-effort
   -> placement / execution reject
 ~~~
 
-unknown capabilityを自動的にsupportedとして扱いません。
+未知のcapabilityを、自動的にsupportedとして扱いません。
 
 ---
 
 # 11. Execution Mode
 
-Extensionは複数の実行形態を許容します。
+Extensionは、複数の実行の形態を認めます。
 
 ## In-process
 
-利点は次のとおりです。
+利点は、次のとおりです。
 
-- low latency
-- small deploymentで簡単
-- type-safe reference implementationを作りやすい
+- latencyが低い
+- 小規模なdeploymentで簡単
+- 型安全な参照実装を作りやすい
 
-欠点は次のとおりです。
+欠点は、次のとおりです。
 
-- crash / memory corruption blast radius
-- language制約
-- dependency conflict
+- crashやmemoryの破損のblast radius
+- languageの制約
+- dependencyの衝突
 
 ## Local out-of-process
 
-例は次のとおりです。
+たとえば、次のものです。
 
 - sidecar
 - child process
 - local IPC
 
-利点は次のとおりです。
+利点は、次のとおりです。
 
-- process isolation
-- polyglot
-- restartしやすい
+- processの隔離
+- 多言語に対応できる
+- 再起動しやすい
 
-高Privilege / hostile input parserでは有力です。
+特権の高いものや、悪意のある入力を扱うparserでは、有力です。
 
 ## Remote service
 
-例は次のとおりです。
+たとえば、次のものです。
 
-- enterprise IdP
-- cloud object store
-- managed KMS
-- external verifier
+- 企業のIdP
+- cloudのobject store
+- 管理されたKMS
+- 外部のverifier
 
-Network failure / credential / latencyを明示的に扱います。
+Networkの障害、credential、latencyを、明示的に扱います。
 
-Extension Kindごとに許容Execution Modeを決められます。
+Extension Kindごとに、許容するExecution Modeを決められます。
 
 ---
 
-# 12. In-processを無条件に信頼しない
+# 12. In-processを、無条件に信頼しない
 
-AdminがinstallしたExtensionでもbug / compromiseはあり得ます。
+管理者がinstallしたExtensionでも、bugや侵害はあり得ます。
 
-In-process Adapterへ、
+In-processのAdapterに、次のものを自動的に付与しません。
 
-- all signing keys
-- all tenant data
-- unrestricted database handle
-- unrestricted network
-
-を自動付与しません。
+- すべてのsigning key
+- すべてのtenantのdata
+- 制限のないdatabase handle
+- 制限のないnetwork
 
 必要最小限のHost Interfaceを渡します。
 
@@ -402,51 +392,49 @@ In-process Adapterへ、
 
 # 13. Host Services
 
-AdapterがCore内部へ自由にaccessするのではなく、scopeされたHost Serviceを通します。
+AdapterがCore内部に自由にaccessするのではなく、範囲を限ったHost Serviceを通します。
 
-例は次のとおりです。
+たとえば、次のものです。
 
-- structured logger
+- 構造化されたlogger
 - telemetry emitter
 - clock
 - configuration reader
-- secret reference resolver
-- scoped artifact access
+- secret referenceのresolver
+- 範囲を限ったartifact access
 - cancellation context
 
-AdapterへTask State database connectionそのものを渡すことを避けます。
+AdapterにTask State databaseのconnectionそのものを渡すことを、避けます。
 
 ---
 
 # 14. Configuration
 
-Extension configurationはAdministrative Planeでversion管理します。
+Extension configurationは、Administrative Planeで、versionを管理します。
 
-Task Clientがarbitrary configurationを直接注入しません。
+Task Clientが、任意のconfigurationを直接注入することはありません。
 
-Executor-specific Task Parameterは別Contractです。
+Executor固有のTask Parameterは、別のContractです。
 
-Infrastructure Adapter configurationとは分けます。
+Infrastructure Adapterのconfigurationとは、分けます。
 
 ## 14.1 Secret
 
-Configuration fileへraw secretを埋め込むより、
+Configuration fileに、生のsecretを埋め込むよりも、次のものを利用できる構造を、優先します。
 
 - secret reference
 - KMS key reference
 - workload identity
 
-を利用できる構造を優先します。
-
 ## 14.2 Configuration Revision
 
-Security-sensitive Adapterは、どのConfig RevisionでDecision / Evidenceが生成されたか追跡できる余地を持ちます。
+Security上、重要なAdapterは、どのConfig Revisionで、DecisionやEvidenceが生成されたかを、追跡できる余地を持ちます。
 
 ---
 
 # 15. Activation
 
-Extensionは概念上:
+Extensionは、概念上、次の状態を持てます。
 
 - registered
 - validated
@@ -455,19 +443,17 @@ Extensionは概念上:
 - disabled
 - revoked
 
-を持てます。
+Packageが存在するだけでは、activeにしません。
 
-Packageが存在するだけでactiveにしません。
-
-ActivationはAdmin operationです。
+Activationは、Adminの操作です。
 
 ---
 
 # 16. Upgrade
 
-Extension upgradeで、進行中Taskのsemanticsを突然変えません。
+Extensionをupgradeしても、進行中のTaskのsemanticsを、突然変えません。
 
-方法例は次のとおりです。
+方法の例は、次のとおりです。
 
 ~~~text
 v1 active
@@ -478,25 +464,25 @@ old work -> v1 drain
 v1 disable
 ~~~
 
-Security emergencyではdrainせずrevokeできます。
+Securityの緊急時は、drainせずにrevokeできます。
 
 ---
 
 # 17. Rollback
 
-Rollback時もold vulnerable versionを無条件に再activateしません。
+Rollbackするときも、古い脆弱なversionを、無条件に再度activateしません。
 
-Allowed version / revocation / policy revisionを確認します。
+許可されたversion、revocation、policy revisionを確認します。
 
-Versionが古いことと安全であることは別です。
+Versionが古いことと、安全であることとは、別です。
 
 ---
 
-# 18. No silent weaker fallback
+# 18. 弱い実装への、silentなfallbackをしない
 
-Extension failure時に、より弱い実装へ暗黙fallbackしません。
+Extensionが失敗したときに、より弱い実装に、暗黙にfallbackしません。
 
-例は次のとおりです。
+たとえば、次のとおりです。
 
 ~~~text
 TEE verifier unavailable
@@ -509,32 +495,32 @@ private store unavailable
   != upload to public bucket
 ~~~
 
-Fallbackを許す場合はPolicyで明示し、同等以上のRequirementを満たす必要があります。
+Fallbackを許す場合は、Policyで明示します。そして、同等以上のRequirementを満たす必要があります。
 
 ---
 
-# 19. Timeout / Resource Budget
+# 19. TimeoutとResource Budget
 
-Adapter呼出し自体をboundedにします。
+Adapterの呼び出し自体に、上限を設けます。
+
+Kindに応じて、次のものを制限します。
 
 - wall time
 - memory
-- request size
-- response size
+- requestのsize
+- responseのsize
 - concurrency
 - retry
 
-をKindに応じて制限します。
-
-hostile Artifact / Evidence parserがControl Plane threadを無期限占有しないようにします。
+悪意のあるArtifactやEvidenceのparserが、Control Planeのthreadを、無期限に占有しないようにします。
 
 ---
 
 # 20. Error Contract
 
-Adapter errorはtyped categoryへnormalizationします。
+Adapterのerrorは、型付きのcategoryに正規化します。
 
-概念例は次のとおりです。
+概念上の例は、次のとおりです。
 
 - INVALID_INPUT
 - UNSUPPORTED
@@ -546,37 +532,37 @@ Adapter errorはtyped categoryへnormalizationします。
 - UNAVAILABLE
 - INTERNAL
 
-Coreはerror categoryとTask semanticsからretry等を判断します。
+Coreが、error categoryとTask semanticsから、retryなどを判断します。
 
-Adapterがretry policyを勝手に決めません。
+Adapterが、retry policyを勝手に決めることはありません。
 
 ---
 
 # 21. Health
 
-Extensionはhealth / readinessを報告できます。
+Extensionは、healthとreadinessを報告できます。
 
-Health=trueはSecurity Assuranceではありません。
+Health=trueは、Security Assuranceではありません。
 
 単に、
 
-> serviceとしてrequestを受けられる
+> serviceとして、requestを受けられる
 
-というOperational Observationです。
+という、Operational Observationです。
 
 ---
 
 # 22. Circuit Breaker
 
-Remote Adapterが大量failureを起こす場合、Core側でbounded retry / circuit breakerを利用できます。
+Remote Adapterが大量の失敗を起こす場合、Core側で、上限を設けたretryやcircuit breakerを利用できます。
 
-Circuit breaker openを、
+Circuit breakerがopenになったことを、
 
 > Taskが失敗した
 
-へ直接変換しません。
+に直接変換しません。
 
-別Adapterやlater retryがPolicy上可能か評価します。
+別のAdapterや、あとからのretryが、Policyの上で可能かを評価します。
 
 ---
 
@@ -584,40 +570,40 @@ Circuit breaker openを、
 
 ## 役割
 
-durable stateで確定したdelivery intentをWorker Gateway等へ配送します。
+永続的なstateで確定した、delivery intentを、Worker Gatewayなどに配送します。
 
-候補は次のとおりです。
+候補は、次のとおりです。
 
-- embedded queue
-- database-backed queue
-- NATS / JetStream
+- 組み込みのqueue
+- databaseを使ったqueue
+- NATSとJetStream
 - Kafka
 - Redis系
-- cloud queue
+- cloudのqueue
 
 ## Queue SPIがしてはいけないこと
 
-- Task ID発行
-- Attempt作成
-- Lease作成
-- retry authority生成
-- security classification変更
-- Worker選択
+- Task IDの発行
+- Attemptの作成
+- Leaseの作成
+- retry authorityの生成
+- security classificationの変更
+- Workerの選択
 
-Queue messageはAuthorityではありません。
+Queueのmessageは、Authorityではありません。
 
-## Required semantics
+## 必要なsemantics
 
-- at-least-once deliveryを扱える
-- stable message ID
-- ack / retry
-- bounded visibility / lease相当
-- orderingを必要以上に仮定しない
-- duplicate deliveryを許容
-- dead-letter / poison handling
+- at-least-onceの配送を扱える
+- 安定したmessage ID
+- ackとretry
+- 上限のあるvisibilityやlease相当
+- orderingを、必要以上に仮定しない
+- 重複した配送を許容する
+- dead-letterとpoisonの扱い
 - backpressure
 
-Exactly-once queueをCore correctness前提にしません。
+Exactly-onceのqueueを、Coreの正しさの前提にしません。
 
 ---
 
@@ -625,36 +611,34 @@ Exactly-once queueをCore correctness前提にしません。
 
 ## 役割
 
-Task / Attempt / Lease / Budget / Decisionのdurable stateを保存します。
+Task、Attempt、Lease、Budget、Decisionの、永続的なstateを保存します。
 
-## Required properties
+## 必要なproperty
 
-少なくともは次のとおりです。
+少なくとも、次のものが必要です。
 
-- durable write
-- unique identity constraint
-- conditional update / compare-and-swap
-- transactionまたは同等のatomicity
-- monotonic state revision
-- read current state
-- recovery scan
-- idempotent decision record
-
-が必要です。
+- 永続的な書き込み
+- 一意なidentityの制約
+- 条件付きの更新とcompare-and-swap
+- transactionまたは同等の原子性
+- 単調に増えるstate revision
+- 現在のstateの読み取り
+- 回復のためのscan
+- 冪等なdecision record
 
 ## State Storeがしてはいけないこと
 
-DB TTLでLease rowが消えたから、
+DBのTTLでLeaseのrowが消えたからといって、
 
-> Task failed
+> Taskが失敗した
 
-と決めることはできません。
+と決めることは、できません。
 
-State semanticsはCoreが持ちます。
+Stateのsemanticsは、Coreが持ちます。
 
-## Transactional delivery
+## 配送とtransaction
 
-State updateとOutbox recordを同一transactionへ含められるか、同等のdurable patternを提供できることが望ましいです。
+State updateとOutbox recordを、同じtransactionに含められるか、同等の永続的なpatternを提供できることが、望ましいです。
 
 ---
 
@@ -662,56 +646,54 @@ State updateとOutbox recordを同一transactionへ含められるか、同等�
 
 ## 役割
 
-Artifact byte storage / transferを提供します。
+Artifactのbyteの保存と転送を提供します。
 
-## Required properties
+## 必要なproperty
 
-- immutable content access
+- 変更できないcontentへのaccess
 - size
-- digest verification evidence
-- scoped read / write
-- upload finalization
-- error classification
-- locality metadata
-- deletion / retention hook
+- digestの検証のevidence
+- 範囲を限ったreadとwrite
+- uploadの確定
+- errorの分類
+- localityのmetadata
+- deletionとretentionのhook
 
-## Optional
+## 任意
 
 - range read
 - multipart
 - resumable
-- trusted server checksum
+- 信頼できるserverのchecksum
 - encryption
 - replication
-- site locality
+- siteのlocality
 
 ## 禁止
 
 Artifact Store Adapter自体が、
 
-> このWorkerはこのDataを読んでよい
+> このWorkerは、このDataを読んでよい
 
-というPolicyを独自に決めません。
+というPolicyを、独自に決めてはいけません。
 
-ArtifactGrant / Data Authorityからscopeを受けます。
+ArtifactGrantとData Authorityから、scopeを受け取ります。
 
 ---
 
 # 26. Data Access Transport SPI
 
-ArtifactGrantを、
+ArtifactGrantを、次のようなものに変換します。
 
-- signed URL
-- signed request
-- mTLS object request
+- 署名付きURL
+- 署名付きrequest
+- mTLSのobject request
 - local file descriptor
 - proxy session
 
-等へ変換します。
+Transport固有のcredentialのscopeとTTLが、Grantを越えないことを要求します。
 
-Transport-specific credentialのscope / TTLがGrantを越えないことを要求します。
-
-Storage admin credentialをWorkerへ返しません。
+Storageのadmin credentialを、Workerに返しません。
 
 ---
 
@@ -719,35 +701,33 @@ Storage admin credentialをWorkerへ返しません。
 
 ## 役割
 
-Credentialを検証し、normalized Principal Contextを作ります。
+Credentialを検証して、正規化したPrincipal Contextを作ります。
 
-候補は次のとおりです。
+候補は、次のとおりです。
 
 - OIDC
-- X.509 / enterprise PKI
+- X.509と企業のPKI
 - SPIFFE
-- cloud workload identity
-- managed enrollment
+- cloudのworkload identity
+- 管理されたenrollment
 
 ## Output
 
 - Principal ID
-- issuer / Trust Domain
-- authentication method
-- credential freshness
-- relevant authenticated attributes
-- Evidence refs
+- issuerとTrust Domain
+- 認証の方法
+- credentialの新しさ
+- 関連する、認証済みの属性
+- Evidenceの参照
 
 ## 禁止
 
-Identity Adapterが、
+Identity Adapterが、次のものを、自動的に確定してはいけません。
 
-- Task authorization
-- Artifact authorization
-- Result correctness
+- Taskのauthorization
+- Artifactのauthorization
+- Resultが正しいこと
 - Worker assurance
-
-を自動確定しません。
 
 Authentication != Authorizationです。
 
@@ -755,31 +735,31 @@ Authentication != Authorizationです。
 
 # 28. Federation Trust SPI
 
-複数Trust DomainのBundle / issuer validationを扱います。
+複数のTrust Domainの、Bundleとissuerの検証を扱います。
 
-Required:
+必要なもの:
 
-- Trust Domain namespace binding
-- explicit peer configuration
-- version / rotation
-- rollback prevention
-- non-transitive default
+- Trust Domainのnamespaceのbinding
+- 明示的なpeerの設定
+- versionとrotation
+- rollbackの防止
+- 既定では推移的にしない
 
-foreign identityをlocal admin roleへ自動mapしません。
+外部のidentityを、ローカルのadmin roleに、自動的にmapしません。
 
 ---
 
 # 29. Policy Evaluator SPI
 
-OPA / Cedar等のPolicy Engineを将来接続できるようにします。
+OPAやCedarなどのPolicy Engineを、将来接続できるようにします。
 
-## Role
+## 役割
 
-Core Authorityが作ったcanonical inputに対してPolicy評価結果を返します。
+Core Authorityが作ったcanonicalな入力に対して、Policyの評価結果を返します。
 
-## Important
+## 重要な点
 
-Policy Evaluatorがsigning keyを持つ必要はありません。
+Policy Evaluatorは、signing keyを持つ必要がありません。
 
 ~~~text
 Policy Engine
@@ -791,17 +771,17 @@ Authority
   signs decision
 ~~~
 
-と分けられます。
+このように分けられます。
 
 ## Output
 
-- allow / deny
+- allowまたはdeny
 - reason category
-- effective constraints
+- 有効な制約
 - policy revision
-- optional trace reference
+- 任意の、traceの参照
 
-Client supplied policyをそのまま評価してAuthorityにしません。
+Clientが指定したpolicyを、そのまま評価して、Authorityにすることはしません。
 
 ---
 
@@ -809,26 +789,26 @@ Client supplied policyをそのまま評価してAuthorityにしません。
 
 ## 役割
 
-Authority keyを安全に使ってDecisionへcryptographic authenticityを付与します。
+Authority keyを安全に使って、Decisionに暗号学的なauthenticityを付与します。
 
-候補は次のとおりです。
+候補は、次のとおりです。
 
 - OS keystore
 - local protected key
 - cloud KMS
 - HSM
 
-## Confused Deputy対策
+## Confused Deputyへの対策
 
-generic:
+汎用の、
 
 ~~~text
 sign(arbitrary bytes)
 ~~~
 
-だけをControl Plane全Componentへ公開しません。
+だけを、Control Planeのすべてのcomponentに公開しません。
 
-可能な範囲で、
+可能な範囲で、次のものに範囲を限ります。
 
 - Authority ID
 - Decision Kind
@@ -836,9 +816,7 @@ sign(arbitrary bytes)
 - key handle
 - canonical digest
 
-へscopeします。
-
-SchedulerがWorkOrder keyを使って任意bytesへ署名できる構造を避けます。
+SchedulerがWorkOrder keyを使って、任意のbytesに署名できる構造を、避けます。
 
 ---
 
@@ -846,70 +824,68 @@ SchedulerがWorkOrder keyを使って任意bytesへ署名できる構造を避�
 
 ## 役割
 
-approved Executor ArtifactをSandbox / Runtime上で実行します。
+承認済みのExecutor Artifactを、Sandboxやruntimeの上で実行します。
 
-候補は次のとおりです。
+候補は、次のとおりです。
 
-- approved native
+- 承認済みのnative
 - WASM
 - container
 - browser
-- external managed service adapter
+- 外部の管理されたserviceのadapter
 
 ## Input
 
-- exact Executor Digest
+- 正確なExecutor Digest
 - WorkOrder
-- Artifact handles
-- Resource limits
+- Artifactのhandle
+- Resource limit
 - Capability set
-- cancellation / lease context
+- cancellationとleaseのcontext
 
 ## Output
 
-- execution exit observation
-- Result Artifact refs
-- resource telemetry
-- checkpoint refs
+- 実行の終了のobservation
+- Result Artifactの参照
+- resourceのtelemetry
+- checkpointの参照
 - error
 
 ## Runtimeがしてはいけないこと
 
-- arbitrary Artifact fetch
-- Capability自己追加
-- WorkOrder security field変更
+- 任意のArtifactのfetch
+- Capabilityの自己追加
+- WorkOrderのsecurity fieldの変更
 - Result Acceptance
-- Contribution Record発行
+- Contribution Recordの発行
 
-## Enforcement capability
+## Enforcementのcapability
 
-Runtimeは、
+Runtimeは、次のようなenforcementのassuranceを表現できる余地を持ちます。
 
 - HARD
 - BEST_EFFORT
 - OBSERVE_ONLY
 - UNAVAILABLE
 
-等のenforcement assuranceを表現できる余地を持ちます。
-
-Task requirementと合わないRuntimeへPlacementしません。
+Taskの要件に合わないRuntimeには、Placementしません。
 
 ---
 
 # 32. Sandbox Backend SPI
 
-Executor RuntimeとOS-specific enforcementを分離する場合に利用します。
+Executor Runtimeと、OS固有のenforcementを分離する場合に利用します。
 
-候補は次のとおりです。
+候補は、次のとおりです。
 
-- Linux cgroup / namespace
-- Windows Job Object
-- WASM sandbox
-- container runtime
+- Linuxのcgroupとnamespace
+- WindowsのJob Object
+- WASMのsandbox
+- containerのruntime
 
-Resource / Capability limitを適用します。
+ResourceとCapabilityのlimitを適用します。
 
-Sandbox Adapter failureでunbounded native executionへfallbackしません。
+Sandbox Adapterが失敗しても、制限のないnative executionにはfallbackしません。
 
 ---
 
@@ -917,44 +893,44 @@ Sandbox Adapter failureでunbounded native executionへfallbackしません。
 
 ## 役割
 
-already eligible candidate間でPlacement Proposalを生成します。
+すでに適格な候補の間で、Placement Proposalを生成します。
 
-入力例は次のとおりです。
+入力の例は、次のとおりです。
 
-- Task resource need
-- candidate resource summary
+- Taskのresourceの必要量
+- 候補のresourceの要約
 - locality
-- transfer cost
-- predicted duration
-- provider availability
-- priority / deadline
+- 転送のcost
+- 予測される所要時間
+- providerのavailability
+- priorityとdeadline
 
 ## 出力
 
-- ranked candidate
-- score / cost
+- 順位を付けた候補
+- scoreとcost
 - reason
-- model / algorithm version
+- modelやalgorithmのversion
 
-## Authority boundary
+## Authorityの境界
 
-Scheduler SPIは、
+Scheduler SPIは、次のことをしません。
 
 - Data Classを変更しない
 - Worker Assuranceを生成しない
 - ArtifactGrantを発行しない
 - Leaseを発行しない
-- WorkOrderへ署名しない
+- WorkOrderに署名しない
 
-Learned modelもこのSPI内のoptimizationです。
+Learned modelも、このSPIの中のoptimizationです。
 
 ---
 
 # 34. Learned Estimator SPI
 
-Schedulerと分けてshadow evaluationできるよう、Prediction Adapterを置くこともできます。
+Schedulerとは分けて、shadowで評価できるように、Prediction Adapterを置くこともできます。
 
-候補prediction:
+predictionの候補は、次のとおりです。
 
 - duration
 - completion probability
@@ -962,11 +938,11 @@ Schedulerと分けてshadow evaluationできるよう、Prediction Adapterを置
 - transfer cost
 - cache reuse
 
-OutputはPredictionです。
+Outputは、Predictionです。
 
 Permissionではありません。
 
-Issue #19の研究はこの境界へ接続できます。
+Issue #19の研究は、この境界に接続できます。
 
 ---
 
@@ -974,116 +950,116 @@ Issue #19の研究はこの境界へ接続できます。
 
 ## 役割
 
-ResultClaimについて特定methodでEvidenceを評価し、normalized VerificationResultを返します。
+ResultClaimについて、特定のmethodでEvidenceを評価し、正規化したVerificationResultを返します。
 
-候補は次のとおりです。
+候補は、次のとおりです。
 
-- deterministic equality
+- 決定的な処理での、完全な一致
 - application validator
-- replication comparison
-- managed anchor
+- replicationの比較
+- 管理下のanchor
 - proof verifier
 
 ## 禁止
 
-Verification AdapterがAcceptedResultを直接生成しません。
+Verification Adapterが、AcceptedResultを直接生成してはいけません。
 
-Result Acceptance AuthorityがTask requirementへ照合します。
+Result Acceptance Authorityが、Task requirementに照らして確定します。
 
 ---
 
 # 36. Application Validator SPI
 
-Application-specific semantic validationを提供できます。
+アプリケーション固有の、意味の検証を提供できます。
 
-例は次のとおりです。
+たとえば、次のものです。
 
-- image output schema validation
-- scientific result tolerance
-- business rule validator
+- imageのoutput schemaの検証
+- 科学的なresultの許容誤差
+- business ruleのvalidator
 
-Coreが業務意味を理解する必要はありません。
+Coreが、業務の意味を理解する必要はありません。
 
-ValidatorのIdentity / version / provenanceをVerificationResultへ残します。
+Validatorの、Identity、version、provenanceを、VerificationResultに残します。
 
 ---
 
 # 37. Cryptographic Proof Verifier SPI
 
-zkVM等のProof Artifactをnative verifierで検証し、normalized VerificationResultへ変換します。
+zkVMなどのProof Artifactを、nativeのverifierで検証し、正規化したVerificationResultに変換します。
 
-CoreはProof System固有wire formatへ依存しません。
+Coreは、Proof Systemに固有のwire formatに依存しません。
 
-Program / Input / Output / Attempt bindingを失わないことを要求します。
+Program、Input、Output、Attemptのbindingを、失わないことを要求します。
 
-Issue #23のbenchmark結果で利用範囲を後から評価します。
+Issue #23のbenchmarkの結果で、利用できる範囲を、あとから評価します。
 
 ---
 
 # 38. Attestation Verifier SPI
 
-Vendor固有Evidenceを評価し、normalized AttestationResultへ変換します。
+Vendor固有のEvidenceを評価して、正規化したAttestationResultに変換します。
 
-Adapterが扱うもの。
+Adapterが扱うものは、次のとおりです。
 
-- Evidence parse
-- signature / endorsement
-- nonce / freshness
-- reference values
-- environment claim
+- Evidenceのparse
+- 署名とendorsement
+- nonceとfreshness
+- reference value
+- environmentのclaim
 
-Relying PartyがPlacement / Data accessを別に判断します。
+Relying Partyが、PlacementとData accessを、別に判断します。
 
-Attestation Adapter unavailable時にself-reportへfallbackしません。
+Attestation Adapterが利用できないときに、自己申告にfallbackしません。
 
 ---
 
 # 39. External Effect Reconciliation SPI
 
-外部Systemのoperation status / receiptを確認します。
+外部のSystemの、operation statusやreceiptを確認します。
 
 Input:
 
 - Operation ID
 - Request Intent Digest
 - effect adapter profile
-- Task / Attempt context
+- TaskとAttemptのcontext
 
 Output:
 
-- confirmed applied
-- confirmed not applied
-- still unknown
-- authoritative receipt
-- transient error
+- 適用済みと確認された
+- 適用されていないと確認された
+- まだ不明
+- 権威のあるreceipt
+- 一時的なerror
 
-AdapterがTask retryを直接起動しません。
+Adapterが、Task retryを直接起動することはありません。
 
-Task State AuthorityがUNKNOWN / retry semanticsを評価します。
+Task State Authorityが、UNKNOWNとretryのsemanticsを評価します。
 
 ---
 
 # 40. External Effect Execution Adapter
 
-Workerへarbitrary network accessを与えず、registered external effectを実行するAdapterを利用できます。
+Workerに、任意のnetwork accessを与えずに、登録済みのexternal effectを実行するAdapterを利用できます。
 
-例は次のとおりです。
+たとえば、次のものです。
 
-- message send
-- issue creation
-- managed API call
+- messageの送信
+- issueの作成
+- 管理されたAPIの呼び出し
 
-必要は次のとおりです。
+必要な条件は、次のとおりです。
 
-- destination fixed by admin config
-- request schema
-- credential isolation
-- idempotency semantics
-- receipt support
+- destinationを、adminの設定で固定する
+- requestのschema
+- credentialの隔離
+- idempotencyのsemantics
+- receiptへの対応
 - rate limit
 - audit
 
-Task ClientがAdapter endpointを自由に差し替えません。
+Task Clientが、Adapterのendpointを自由に差し替えることはできません。
 
 ---
 
@@ -1091,14 +1067,14 @@ Task ClientがAdapter endpointを自由に差し替えません。
 
 Resource Measurement Evidenceを作ります。
 
-候補は次のとおりです。
+候補は、次のとおりです。
 
-- worker self-report
-- Control Plane lease observation
-- OS counter
-- GPU meter
-- cloud provider meter
-- attested meter
+- workerの自己申告
+- Control Planeによるleaseの観測
+- OSのcounter
+- GPUのmeter
+- cloud providerのmeter
+- attestされたmeter
 
 Output:
 
@@ -1110,98 +1086,98 @@ Output:
 - Work Context
 - Evidence
 
-Contribution RecordやCreditを直接生成しません。
+Contribution RecordやCreditを、直接生成しません。
 
-Contribution AuthorityがPolicyを適用します。
+Contribution Authorityが、Policyを適用します。
 
 ---
 
 # 42. Secret Provider SPI
 
-Task / Attempt / ExecutorへscopeされたSecretをmaterializeします。
+Task、Attempt、Executorに範囲を限ったSecretを、materializeします。
 
-候補は次のとおりです。
+候補は、次のとおりです。
 
-- cloud secret manager
-- enterprise vault
-- local OS store
+- cloudのsecret manager
+- 企業のvault
+- localのOS store
 
-Required:
+必要なもの:
 
-- narrow scope
-- short lifetime
-- no Scheduler exposure
-- no worker persistent cache
-- redacted logs
-- revoke / rotation
+- 狭いscope
+- 短い有効期間
+- Schedulerに露出しない
+- Workerに永続的なcacheを持たない
+- 伏せ字にしたlog
+- revokeとrotation
 
-SecretはArtifact locality optimization対象にしません。
+Secretを、Artifact localityのoptimizationの対象にはしません。
 
 ---
 
 # 43. Telemetry Exporter SPI
 
-Core semantic event / metricを外部観測基盤へ送ります。
+Coreのsemanticなeventとmetricを、外部の観測基盤に送ります。
 
-候補は次のとおりです。
+候補は、次のとおりです。
 
 - OTLP
 - local log
-- enterprise SIEM
+- 企業のSIEM
 - metrics backend
 
-Telemetry failureでTask retryを起こしません。
+Telemetryが失敗しても、Task retryを起こしません。
 
-Telemetry Exporterへraw secretやunnecessary personal dataを渡さないredaction boundaryをCore側に置きます。
+Telemetry Exporterに、生のsecretや不要な個人データを渡さない、redactionの境界を、Core側に置きます。
 
 ---
 
 # 44. Audit Store SPI
 
-Security-sensitive Eventをdurable保存します。
+Security上、重要なEventを、永続的に保存します。
 
-Required:
+必要なもの:
 
-- append / durable record
-- query by Task / Attempt / Decision
+- 追記と永続的なrecord
+- Task、Attempt、Decisionでのquery
 - retention policy
 - access control
 
-Optional:
+任意のもの:
 
-- tamper-evident chaining
+- 改ざんを検出できるchaining
 - WORM
-- external SIEM export
+- 外部のSIEMへのexport
 
-Audit Store failure時のTask admission policyはDeployment / risk profileで決めます。
+Audit Storeが失敗したときの、Task admissionのpolicyは、Deploymentとriskのprofileで決めます。
 
-High-assurance operationではfail closedを選べます。
+高い保証が必要な操作では、fail closedを選べます。
 
 ---
 
 # 45. Safe Processing SPI
 
-Artifact parser / converter / inspectorをboundedに実行します。
+Artifactのparser、converter、inspectorを、上限を設けて実行します。
 
-Inputはhostile Artifactです。
+Inputは、悪意のあるArtifactです。
 
 Output:
 
-- format observation
-- extracted normalized artifact
-- safe-processing result
-- resource usage
+- formatのobservation
+- 抽出して正規化したartifact
+- safe-processingの結果
+- resourceの使用量
 - error
 
-ParserがControl Plane global filesystem / networkへ自由にaccessしないようにします。
+ParserがControl Planeのglobalなfilesystemやnetworkに、自由にaccessしないようにします。
 
 ---
 
-# 46. Extension Dependency
+# 46. Extensionの依存関係
 
-Extension同士を自由にrecursive callさせるとAuthority graphが見えなくなります。
+Extension同士を、自由に再帰的に呼ばせると、Authorityのgraphが見えなくなります。
 
-BaselineではCore orchestrationを中心にします。
+Baselineでは、Core orchestrationを中心にします。
 
 ~~~text
 Core
@@ -1211,68 +1187,66 @@ Core
   -> Verification
 ~~~
 
-Adapter AがAdapter Bのadmin credentialを直接持つ構造を避けます。
+Adapter Aが、Adapter Bのadmin credentialを直接持つ構造を、避けます。
 
-必要なcompositionはCore Host Serviceを通します。
-
----
-
-# 47. Extension Network Access
-
-ExtensionのNetwork accessもleast privilegeにします。
-
-例は次のとおりです。
-
-- OIDC Adapter -> configured IdP
-- Artifact Store Adapter -> configured store
-- KMS Adapter -> configured KMS
-- Effect Adapter -> configured external API
-- Scheduler -> 原則no arbitrary Internet
-
-Task inputからdestinationを追加できません。
+必要な組み合わせは、Core Host Serviceを通します。
 
 ---
 
-# 48. Extension Filesystem Access
+# 47. ExtensionのNetwork access
 
-In-process / local Extensionへglobal filesystem accessが必要とは仮定しません。
+Extensionのnetwork accessも、最小権限にします。
 
-Configuration、temporary directory、specific socket等へscopeできます。
+たとえば、次のとおりです。
 
-hostile parserはsandbox内へ隔離します。
+- OIDC Adapter -> 設定されたIdP
+- Artifact Store Adapter -> 設定されたstore
+- KMS Adapter -> 設定されたKMS
+- Effect Adapter -> 設定された外部API
+- Scheduler -> 原則として、任意のInternetにはaccessしない
+
+Taskのinputから、destinationを追加することはできません。
 
 ---
 
-# 49. Extension Credential
+# 48. ExtensionのFilesystem access
 
-CredentialはExtension Kind / instance単位で分けられる構造を優先します。
+In-processやlocalのExtensionに、globalなfilesystem accessが必要だとは、仮定しません。
 
-同じcloud account keyを、
+Configuration、temporary directory、特定のsocketなどに範囲を限れます。
+
+悪意のあるparserは、sandboxの中に隔離します。
+
+---
+
+# 49. ExtensionのCredential
+
+Credentialは、Extension Kindやinstanceの単位で分けられる構造を、優先します。
+
+同じcloud accountのkeyを、次のもので共有しない方向を、標準にします。
 
 - Artifact Store
 - KMS
 - Federation
 - Telemetry
 
-で共有しない方向を標準にします。
-
 ---
 
 # 50. Multi-tenant
 
-Adapterがmulti-tenant backendへ接続する場合も、Tenant contextを明示します。
+Adapterがmulti-tenantのbackendに接続する場合も、Tenantのcontextを明示します。
 
-Tenant AのArtifactGrantでTenant B prefixへaccessできないことをAdapter conformanceでTestします。
+Tenant AのArtifactGrantで、Tenant Bのprefixにaccessできないことを、Adapter conformanceでTestします。
 
-Adapter cacheでもTenant / Data Class boundaryを維持します。
+Adapterのcacheでも、TenantとData Classの境界を維持します。
 
 ---
 
 # 51. Adapter instance
 
-同じKindのAdapterを複数登録できます。
+同じKindのAdapterを、複数登録できます。
 
-例は次のとおりです。
+たとえば、次のとおりです。
 
 ~~~text
 artifact-store:
@@ -1285,53 +1259,51 @@ identity:
   partner-spiffe
 ~~~
 
-Core Policyがどのinstanceを使うか決めます。
+Core Policyが、どのinstanceを使うかを決めます。
 
-Clientがarbitrary instance nameでPolicyを迂回しません。
+Clientが、任意のinstance名を使って、Policyを迂回することはできません。
 
 ---
 
-# 52. Scheme resolution
+# 52. Schemeの解決
 
-Artifact / Identity等にscheme-like logical selectorを使う場合も、registered mappingへ限定します。
+ArtifactやIdentityなどに、scheme（`artifact://`のような接頭辞）に似た論理的なselectorを使う場合も、登録済みのmappingに限定します。
 
-例は次のとおりです。
+たとえば、次のものです。
 
 ~~~text
 artifact://...
 secret://...
 ~~~
 
-をOS path / arbitrary URLへ直結しません。
+これらを、OSのpathや任意のURLに、直結しません。
 
 ---
 
-# 53. Extension selection
+# 53. Extensionの選択
 
-Selectionは、
+選択は、次のものから、Coreが行います。
 
 - Task Policy
 - Data Class
 - Deployment Profile
-- Extension health
-- required capability
-- configured priority
-
-からCoreが行います。
+- Extensionのhealth
+- 必要なcapability
+- 設定されたpriority
 
 Extension自身が、
 
-> 次は自分ではなくこのuntrusted endpointを使ってください
+> 次は、自分ではなく、このuntrustedなendpointを使ってください
 
-とAuthorityを委譲しません。
+と、Authorityを委譲することはありません。
 
 ---
 
-# 54. Fallback policy
+# 54. Fallbackのpolicy
 
-Multiple Adapterがある場合のfallbackはexplicitです。
+複数のAdapterがある場合の、fallbackは、明示的です。
 
-例は次のとおりです。
+たとえば、次のとおりです。
 
 ~~~text
 primary object store unavailable
@@ -1342,307 +1314,301 @@ attestation verifier unavailable
   -> task held
 ~~~
 
-Security Requirementを下げるfallbackは禁止します。
+Security Requirementを下げるfallbackは、禁止します。
 
 ---
 
-# 55. Retry of Adapter calls
+# 55. Adapter呼び出しのretry
 
-Coreはoperation semanticsに基づいてAdapter callをretryします。
+Coreは、operationのsemanticsにもとづいて、Adapterの呼び出しをretryします。
 
-Read-only / idempotent operationはretryしやすい。
+読み取り専用の操作や、冪等な操作は、retryしやすいです。
 
-External effect等はSide-effect Contractを使います。
+External effectなどは、Side-effect Contractを使います。
 
-Adapter timeoutだけでnon-idempotent operationを再送しません。
+Adapterがtimeoutしただけで、冪等でないoperationを再送しません。
 
 ---
 
 # 56. Idempotency key
 
-Adapter operationにもstable identityを渡せる余地を持ちます。
+Adapterのoperationにも、安定したidentityを渡せる余地を持ちます。
 
-例は次のとおりです。
+たとえば、次のものです。
 
 - upload session
 - state write
 - external effect
-- contribution record issue
+- contribution recordの発行
 
-重複Callで二重side effectを避けます。
+重複した呼び出しで、二重のside effectを避けます。
 
 ---
 
 # 57. Backpressure
 
-Adapterはoverloadを明示できます。
+Adapterは、過負荷を明示できます。
 
-CoreはUNAVAILABLE / BACKPRESSUREを、
+Coreは、UNAVAILABLEやBACKPRESSUREを、次のものに変換します。
 
-- queue wait
-- alternate adapter
-- bounded retry
-- task hold
+- queueでの待ち
+- 別のadapter
+- 上限を設けたretry
+- taskのhold
 
-へ変換します。
-
-無限concurrencyで押し込みません。
+無制限のconcurrencyで押し込みません。
 
 ---
 
 # 58. Cancellation
 
-CoreからAdapterへcancellation / deadline contextを渡せます。
+Coreから、Adapterに、cancellationとdeadlineのcontextを渡せます。
 
-AdapterがCancellationを無視して永遠に処理を続ける場合、process isolation / timeoutで停止できる構造を選べます。
+AdapterがCancellationを無視して、永遠に処理を続ける場合は、process isolationやtimeoutで、停止できる構造を選べます。
 
-Cancellationはexternal effect rollbackを意味しません。
+Cancellationは、external effectのrollbackを意味しません。
 
 ---
 
-# 59. Determinism
+# 59. 決定性
 
-Scheduler estimator、parser、validator等のdeterminism requirementをKindごとに定義できます。
+Scheduler estimator、parser、validatorなどの決定性の要件を、Kindごとに定義できます。
 
-Security Decisionでnon-deterministic outputを使う場合、Audit可能なinput / version / seed等を残します。
+Security Decisionで、非決定的なoutputを使う場合は、Auditできるように、input、version、seedなどを残します。
 
 ---
 
 # 60. Supply-chain
 
-Control Plane Extensionは高Privilegeになり得ます。
+Control Plane Extensionは、特権が高くなり得ます。
 
-そのためpackageについて:
+そのため、packageについて、次のものを持てる構造を要求します。
 
-- immutable Digest
-- publisher / build provenance
-- approved version
-- vulnerability / revocation policy
-- rollback restriction
+- 変更できないDigest
+- publisherとbuildのprovenance
+- 承認されたversion
+- 脆弱性とrevocationのpolicy
+- rollbackの制限
 
-を持てる構造を要求します。
-
-Task Executor Admissionの知見を利用しますが、Extension installationはAdministrative Planeです。
+Task Executor Admissionの知見を利用します。ただし、Extensionのinstallationは、Administrative Planeです。
 
 ---
 
-# 61. Self-update禁止
+# 61. 自己更新の禁止
 
-Extensionが自分でInternetから新binaryをdownloadし、Admin Approvalなしにreplaceすることを標準にしません。
+Extensionが、自分でInternetから新しいbinaryをdownloadして、Adminの承認なしに置き換えることを、標準にはしません。
 
-Upgradeはversioned Administrative operationです。
+Upgradeは、versionを持つAdministrativeな操作です。
 
 ---
 
 # 62. Reference Adapter
 
-EKIは最低限のReference Adapterを提供できます。
+EKIは、最低限のReference Adapterを提供できます。
 
-目的は、
+目的は、次のとおりです。
 
 - Core contractの実証
 - conformance test
-- small deployment
+- 小規模なdeployment
 
-です。
-
-Reference Adapterが唯一の正解とはしません。
+Reference Adapterが、唯一の正解だとはしません。
 
 ---
 
 # 63. Queue Conformance
 
-最低限のTest例:
+最低限のTestの例は、次のとおりです。
 
-- duplicate delivery
-- delayed delivery
-- out-of-order
-- consumer restart
-- ack loss
+- 重複した配送
+- 遅れた配送
+- 順序の入れ替わり
+- consumerの再起動
+- ackの喪失
 - poison message
 - backpressure
 
-Queue failureでAttemptが勝手に増えないことを確認します。
+Queueが失敗しても、Attemptが勝手に増えないことを確認します。
 
 ---
 
 # 64. State Store Conformance
 
-- conditional update conflict
-- stale revision reject
-- unique Task / Attempt
-- Lease fencing
-- crash after state commit
-- restart recovery
-- idempotent transition
-- outbox durability
+次のことを確認します。
 
-を確認します。
+- 条件付きの更新の競合
+- 古いrevisionのreject
+- 一意なTaskとAttempt
+- Leaseのfencing
+- state commitの後のcrash
+- 再起動後の回復
+- 冪等な遷移
+- outboxの永続性
 
 ---
 
 # 65. Artifact Store Conformance
 
-- wrong digest
-- truncated object
-- range behavior
-- scoped read / write
-- upload size limit
-- interrupted multipart
-- tenant boundary
-- expired access
-- immutable content
+次のことを確認します。
 
-を確認します。
+- 誤ったdigest
+- 途中で切れたobject
+- rangeの挙動
+- 範囲を限ったreadとwrite
+- uploadのsizeの上限
+- 中断されたmultipart
+- tenantの境界
+- 期限切れのaccess
+- 変更できないcontent
 
 ---
 
 # 66. Identity Conformance
 
-- issuer / Trust Domain mismatch
-- expired credential
-- wrong audience
-- role credential non-transitive
-- namespace collision
-- rotation / revocation
+次のことを確認します。
 
-を確認します。
+- issuerとTrust Domainの不一致
+- 期限切れのcredential
+- 誤ったaudience
+- role credentialが推移しないこと
+- namespaceの衝突
+- rotationとrevocation
 
 ---
 
 # 67. Policy Evaluator Conformance
 
-- missing policy
-- stale revision
-- unknown field
-- deny reason
-- deterministic canonical input
-- security-critical unknown fail closed
+次のことを確認します。
 
-を確認します。
+- policyがない
+- 古いrevision
+- 未知のfield
+- denyの理由
+- 決定的なcanonicalな入力
+- security-criticalなunknownをfail closedにすること
 
 ---
 
 # 68. Signer Conformance
 
-- wrong Authority ID
-- wrong Decision Kind
-- revoked key
-- key rotation
-- signature context mismatch
-- arbitrary bytes signing attempt
+次のことを確認します。
 
-を確認します。
+- 誤ったAuthority ID
+- 誤ったDecision Kind
+- revokeされたkey
+- key rotation
+- 署名のcontextの不一致
+- 任意のbytesに署名しようとする試み
 
 ---
 
 # 69. Executor Runtime Conformance
 
-- wrong Executor Digest
-- capability widening
-- filesystem deny
-- network deny
+次のことを確認します。
+
+- 誤ったExecutor Digest
+- capabilityの拡大
+- filesystemのdeny
+- networkのdeny
 - resource limit
 - cancellation
-- output limit
-- WorkOrder expiry
-- local governor reclaim
-
-を確認します。
+- outputの上限
+- WorkOrderのexpiry
+- local governorのreclaim
 
 ---
 
 # 70. Verification Conformance
 
-- wrong Task / Attempt
-- modified output
-- fake verifier identity
-- stale policy
-- unsupported method
-- conflicting evidence
-- duplicate result
+次のことを確認します。
 
-を確認します。
+- 誤ったTaskやAttempt
+- 改変されたoutput
+- 偽のverifier identity
+- 古いpolicy
+- 未対応のmethod
+- 矛盾するevidence
+- 重複したresult
 
 ---
 
 # 71. Attestation Conformance
 
-- nonce replay
-- stale evidence
-- wrong Worker
-- wrong Trust Domain
-- old policy revision
-- expired result
-- unsupported environment claim
+次のことを確認します。
 
-を確認します。
+- nonceのreplay
+- 古いevidence
+- 誤ったWorker
+- 誤ったTrust Domain
+- 古いpolicy revision
+- 期限切れのresult
+- 未対応のenvironment claim
 
 ---
 
 # 72. Effect Reconciliation Conformance
 
-- operation ID mismatch
-- request digest mismatch
-- unknown outcome
-- duplicate request
-- authoritative receipt
-- timeout
-- cancellation after dispatch
+次のことを確認します。
 
-を確認します。
+- operation IDの不一致
+- request digestの不一致
+- outcomeが不明
+- 重複したrequest
+- 権威のあるreceipt
+- timeout
+- dispatchの後のcancellation
 
 ---
 
 # 73. Contribution Measurement Conformance
 
-- self-report under strong policy
-- fake Observer
-- assurance ceiling
-- duplicate measurement
-- conflicting quantity
-- Task / Attempt mismatch
-- unit / metric policy
+次のことを確認します。
 
-を確認します。
+- 強いpolicyの下での、自己申告
+- 偽のObserver
+- assuranceの上限
+- 重複した測定
+- 矛盾する量
+- TaskとAttemptの不一致
+- unitとmetricのpolicy
 
 ---
 
 # 74. Telemetry Conformance
 
-- secret redaction
-- high-cardinality bound
-- exporter outage
-- queue backpressure
-- privacy field filtering
+次のことを確認します。
 
-を確認します。
+- secretの伏せ字
+- 高いcardinalityの上限
+- exporterの停止
+- queueのbackpressure
+- privacy fieldのfiltering
 
 ---
 
-# 75. Cross-Adapter Conformance
+# 75. Adapterをまたぐ適合性テスト
 
-個別Adapterが正しくても組み合わせで破綻する可能性があります。
+個別のAdapterが正しくても、組み合わせると破綻する可能性があります。
 
-例は次のとおりです。
+たとえば、次の組み合わせです。
 
 - Identity namespace + Artifact tenant scope
 - Placement + Data Grant
-- Lease + WorkOrder delivery
+- Lease + WorkOrderの配送
 - Runtime + Artifact Digest
 - Verification + Result Acceptance
 - Effect Receipt + Task State
 - Contribution + AcceptedResult
 
-についてIntegration Testを持ちます。
+これらについて、Integration Testを持ちます。
 
 ---
 
 # 76. Conformance Level
 
-Adapterを単純なpass/failだけでなく、support capabilityを明示できます。
+Adapterを、単純なpassかfailかだけでなく、対応するcapabilityを明示できるようにします。
 
-例は次のとおりです。
+たとえば、次のとおりです。
 
 ~~~text
 artifact store
@@ -1655,72 +1621,70 @@ runtime
   gpu hard limit: BEST_EFFORT
 ~~~
 
-Capability不足を隠しません。
+Capabilityが足りないことを、隠しません。
 
 ---
 
-# 77. Extension Isolation Recommendation
+# 77. Extensionの隔離の推奨
 
-Privilegeに応じた推奨:
+Privilegeに応じた推奨は、次のとおりです。
 
 ## EP-0
 
-in-process可。
+in-processでよい。
 
 ## EP-1
 
-hostile parserならout-of-process推奨。
+悪意のあるparserであれば、out-of-processを推奨する。
 
 ## EP-2
 
-credential / resource scopeを強く分離。Runtimeはsandbox必須。
+credentialとresourceのscopeを、強く分離する。Runtimeは、sandboxが必須である。
 
 ## EP-3
 
-KMS / separate process / restricted management path等を優先。
+KMS、別のprocess、制限された管理の経路などを、優先する。
 
-必須Process数として固定はしません。
+必須のProcess数としては、固定しません。
 
 ---
 
 # 78. Browser Extension
 
-Browser WorkerにControl Plane SPIをdownloadしません。
+Browser Workerに、Control PlaneのSPIをdownloadしません。
 
-Browser側はWorker Protocolとapproved Browser Executorだけを実装します。
+Browser側は、Worker Protocolと、承認済みのBrowser Executorだけを実装します。
 
-Infrastructure ExtensionはServer / managed runtime側です。
+Infrastructure Extensionは、Serverや管理されたruntime側です。
 
 ---
 
 # 79. Federation Extension
 
-Partner-specific business logicをFederation Trust SPIへ入れすぎません。
+Partner固有のbusiness logicを、Federation Trust SPIに入れすぎません。
 
-Federation AdapterはIdentity / Trust Material validationを担当し、Resource Grant / Data ExportはCore Policyへ残します。
+Federation Adapterは、IdentityとTrust Materialの検証を担当します。Resource GrantとData Exportは、Core Policyに残します。
 
 ---
 
 # 80. Cloud Provider Adapter
 
-Cloud-specific:
+Cloud固有の、次のものを、Adapterで実装できます。
 
 - workload identity
 - object storage
 - KMS
 - resource meter
 
-をAdapterで実装できます。
-
-Cloud ProviderのIAM modelをCore Contractそのものにしません。
+Cloud ProviderのIAM modelを、Core Contractそのものにはしません。
 
 ---
 
-# 81. OCI / WASM等の位置付け
+# 81. OCIやWASMなどの位置付け
 
-OCI、WASM Component Model等は有力Adapter / packaging candidateです。
+OCI、WASM Component Modelなどは、有力なAdapterやpackagingの候補です。
 
-しかしは次のとおりです。
+しかし、次の関係を維持します。
 
 ~~~text
 EKI Artifact != OCI Artifact
@@ -1728,17 +1692,15 @@ EKI Executor != WASM only
 EKI Runtime != Container only
 ~~~
 
-を維持します。
-
-PropertyをCoreへ置き、formatはAdapterへ置きます。
+PropertyはCoreに置き、formatはAdapterに置きます。
 
 ---
 
-# 82. Go reference implementation
+# 82. Goによる参照実装
 
-EKIがGoでReference実装されても、SPI概念自体をGo interfaceだけに閉じません。
+EKIをGoで参照実装しても、SPIの概念自体を、Goのinterfaceだけに閉じません。
 
-二層を許容します。
+2つの層を、認めます。
 
 ~~~text
 Logical SPI Contract
@@ -1746,15 +1708,15 @@ Logical SPI Contract
    └ out-of-process language-neutral adapter protocol
 ~~~
 
-Small DeploymentではGo Adapterを使いやすくし、Vendor / polyglot integrationではout-of-process protocolを使えます。
+Small Deploymentでは、Goのadapterを使いやすくします。Vendorの統合や、多言語での統合では、out-of-processのprotocolを使えます。
 
-具体protocolは後続設計です。
+具体的なprotocolは、後続の設計です。
 
 ---
 
 # 83. Out-of-process Adapter Protocol
 
-最低限は次のとおりです。
+最低限、次のものを持てる必要があります。
 
 - adapter identity
 - SPI API version
@@ -1762,32 +1724,30 @@ Small DeploymentではGo Adapterを使いやすくし、Vendor / polyglot integr
 - request ID
 - deadline
 - cancellation
-- typed error
+- 型付きのerror
 - health
-- telemetry correlation
+- telemetryのcorrelation
 
-を持てる必要があります。
-
-Control Plane private structsをwireへそのままserializeしません。
+Control Planeの内部のstructを、そのままwireにserializeしません。
 
 ---
 
-# 84. Extension Discovery
+# 84. Extensionの発見
 
-Filesystem scanningで見つかったbinaryを自動実行することを標準にしません。
+Filesystemをscanして見つかったbinaryを、自動的に実行することは、標準にしません。
 
-Adminが登録・承認したExtensionだけをDiscovery対象にします。
+Adminが登録し、承認したExtensionだけを、発見の対象にします。
 
-Dynamic discoveryが必要でもallowlist / registryを通します。
+動的な発見が必要な場合も、allowlistやregistryを通します。
 
 ---
 
 # 85. Extension Registry
 
-Control Plane内部に、
+Control Planeの内部に、次のものを管理するRegistryを持てる構造にします。
 
 - Extension ID
-- approved Digest
+- 承認済みのDigest
 - active version
 - config revision
 - privilege
@@ -1795,68 +1755,62 @@ Control Plane内部に、
 - health
 - revocation
 
-を管理するRegistryを持てる構造にします。
-
-Client APIへfull Registryを公開しません。
+Client APIには、Registry全体を公開しません。
 
 ---
 
 # 86. Revocation
 
-Extension vulnerabilityが見つかった場合。
+Extensionの脆弱性が見つかった場合は、次のことを行います。
 
-- new use停止
-- active Task impact評価
-- revoke version
-- rotate credential
-- drain / kill
-- alternate adapterへmigration
+- 新しい利用を止める
+- 有効なTaskへの影響を評価する
+- versionをrevokeする
+- credentialをrotateする
+- drainまたはkillする
+- 別のadapterに移行する
 
-を行います。
-
-Security-critical Adapterではimmediate stopを選べます。
+Security-criticalなAdapterでは、すぐに止めることを選べます。
 
 ---
 
-# 87. Adapter State
+# 87. Adapterのstate
 
-Adapter固有StateとCore authoritative stateを分けます。
+Adapter固有のStateと、Coreの権威あるstateを、分けます。
 
-例は次のとおりです。
+たとえば、次のものは、Adapter Stateです。
 
-- upload multipart session
-- model cache index
-- external provider token cache
+- upload multipartのsession
+- model cacheのindex
+- 外部providerのtoken cache
 
-はAdapter Stateです。
-
-Task / Attempt / Lease正本をAdapter独自DBだけに置きません。
+Task、Attempt、Leaseの正本を、Adapter独自のDBだけに置きません。
 
 ---
 
-# 88. Adapter Cache
+# 88. Adapterのcache
 
-Adapter cacheはOptimizationです。
+Adapterのcacheは、Optimizationです。
 
-Cache lossでCore correctnessが失われない構造を優先します。
+Cacheを失っても、Coreの正しさが失われない構造を、優先します。
 
-必要なdurable stateならState Store Contractへ昇格させます。
-
----
-
-# 89. Schema ownership
-
-Core Contract schemaはEKI Coreが所有します。
-
-Extension-specific schemaはExtension namespaceが所有できます。
-
-Extension schemaでCore Security fieldを上書きしません。
+永続的な状態が必要であれば、State Store Contractに昇格させます。
 
 ---
 
-# 90. Namespaced metadata
+# 89. Schemaの所有
 
-Extension metadata例:
+Core Contractのschemaは、EKI Coreが所有します。
+
+Extension固有のschemaは、Extensionのnamespaceが所有できます。
+
+Extensionのschemaで、CoreのSecurity fieldを上書きしません。
+
+---
+
+# 90. 名前空間付きのmetadata
+
+Extensionのmetadataの例は、次のとおりです。
 
 ~~~text
 extensions:
@@ -1864,50 +1818,48 @@ extensions:
     ...
 ~~~
 
-Coreが理解しないoptional metadataはAuthority Decisionに利用しません。
+Coreが理解しない任意のmetadataを、Authority Decisionに利用しません。
 
-critical extensionは理解できなければrejectします。
-
----
-
-# 91. Security review trigger
-
-次のExtension変更は再Review対象です。
-
-- Privilege Class上昇
-- new network access
-- new secret access
-- new signer key
-- new filesystem scope
-- security-critical capability追加
-- schema major version
-- cross-tenant behavior変更
-- fallback behavior変更
-
-通常bugfixより強いreviewを要求できます。
+criticalなextensionは、理解できなければ、rejectします。
 
 ---
 
-# 92. Operational explainability
+# 91. Securityレビューの契機
 
-Operatorは、
+次のExtensionの変更は、再度Reviewの対象です。
+
+- Privilege Classの上昇
+- 新しいnetwork access
+- 新しいsecret access
+- 新しいsigner key
+- 新しいfilesystem scope
+- security-criticalなcapabilityの追加
+- schemaのmajor version
+- tenantをまたぐ挙動の変更
+- fallbackの挙動の変更
+
+通常のbugfixより強いreviewを、要求できます。
+
+---
+
+# 92. 運用での説明可能性
+
+Operatorは、次のものを、TaskやDecisionと関連付けて確認できる必要があります。
 
 - どのAdapterが選ばれたか
 - version
 - capability
 - config revision
-- fallback有無
-- failure reason
+- fallbackの有無
+- 失敗の理由
 
-をTask / Decisionと関連付けて確認できる必要があります。
-
-内部secretは表示しません。
+内部のsecretは、表示しません。
 
 ---
 
 # 93. Audit
 
-Extension関連Event:
+Extension関連のEventは、Admin IdentityとPolicy Revisionに結び付けます。
 
 - register
 - activate
@@ -1920,108 +1872,100 @@ Extension関連Event:
 - fallback selection
 - security failure
 
-をAdmin Identity / Policy Revisionへbindingします。
-
 ---
 
-# 94. Performance isolation
+# 94. 性能の隔離
 
-Slow ExtensionがControl Plane全体を詰まらせないよう、
+遅いExtensionが、Control Plane全体を詰まらせないように、Kindに応じて、次のものを利用できます。
 
-- bounded worker pool
+- 上限のあるworker pool
 - timeout
 - circuit breaker
 - queue
-- separate process
+- 別のprocess
 
-をKindに応じて利用できます。
-
-Scheduler estimator failureでAdmission threadを永久blockしません。
+Scheduler estimatorが失敗しても、Admissionのthreadを、永久にblockしません。
 
 ---
 
-# 95. Resource accounting
+# 95. Resourceのaccounting
 
-Extension自身が大量CPU / Memory / Networkを使う場合もOperational Budget対象です。
+Extension自身が、大量のCPU、Memory、Networkを使う場合も、Operational Budgetの対象です。
 
-特には次のとおりです。
+特に、次のものを、無制限のcontrol overheadにしません。
 
-- Proof verification
-- Artifact parsing
-- model inference scheduler
+- Proofの検証
+- Artifactのparse
+- model inferenceを使うscheduler
 - malware scan
 
-等をunbounded control overheadにしません。
-
 ---
 
-# 96. Data minimization
+# 96. Dataの最小化
 
-Adapterへ渡すInputを最小化します。
+Adapterに渡すInputを、最小化します。
+
+基本は、次のとおりです。
 
 Scheduler:
 
-- no raw Artifact body
-- no Client secret
+- 生のArtifactの本体を渡さない
+- Clientのsecretを渡さない
 
 Telemetry:
 
-- redacted identifiers
+- 伏せ字にしたidentifier
 
 Attestation:
 
-- Raw Evidence only to verifier
+- Raw Evidenceは、verifierにだけ渡す
 
 Contribution:
 
-- necessary measurement / work context only
+- 必要な測定とwork contextだけ
 
 Storage:
 
-- Data content but not unrelated Task metadata
-
-を基本にします。
+- Dataのcontentは渡すが、無関係なTaskのmetadataは渡さない
 
 ---
 
-# 97. Untrusted external service
+# 97. Untrustedな外部のservice
 
-Remote SaaS Adapterを使う場合、そのServiceをEKI Control Plane内部と同等には信頼しません。
+Remote SaaSのAdapterを使う場合、そのServiceを、EKI Control Planeの内部と同等には信頼しません。
 
-Data Class / export policyを適用し、必要最小情報だけ送ります。
+Data Classとexport policyを適用して、必要最小限の情報だけを送ります。
 
-Remote verification serviceへconfidential raw inputを送る場合は明示的Data Grantが必要です。
-
----
-
-# 98. Plugin marketplaceは非目標
-
-初期EKI Coreは、
-
-- public plugin marketplace
-- arbitrary third-party auto-install
-- client-selected plugin package
-- revenue sharing marketplace
-
-を提供しません。
-
-Extension distributionはAdmin-managedです。
-
-将来ecosystemができてもSecurity modelを別途設計します。
+Remote verification serviceに、confidentialな生のinputを送る場合は、明示的なData Grantが必要です。
 
 ---
 
-# 99. Extension non-goals
+# 98. Plugin marketplaceは、非目標
 
-SPIは次の抜け道ではありません。
+最初のEKI Coreは、次のものを提供しません。
 
-- Requirement回避
-- Security downgrade
-- arbitrary code execution
-- dynamic Worker P2P
-- unrestricted network
-- generic exactly-once
-- universal Trust Score
+- 公開のplugin marketplace
+- 任意の第三者のpluginの自動インストール
+- Clientが選んだplugin package
+- 収益を分配するmarketplace
+
+Extensionの配布は、Adminが管理します。
+
+将来、ecosystemができても、Security modelは別に設計します。
+
+---
+
+# 99. Extensionの非目標
+
+SPIは、次のものの抜け道ではありません。
+
+- Requirementの回避
+- Securityのdowngrade
+- 任意のcodeの実行
+- 動的なWorkerのP2P
+- 制限のないnetwork
+- 汎用のexactly-once
+- 万能のTrust Score
 - Core Currency
 - Application business logicの集中
 
@@ -2029,72 +1973,72 @@ SPIは次の抜け道ではありません。
 
 # 100. Architecture Invariants
 
-1. Unknown Applicationは原則Client API / Executorで統合し、Control Plane pluginを要求しない。
-2. ExtensionはAdministrative Planeで登録・承認する。
-3. Task ClientがExtension implementationを指定・uploadできない。
-4. AdapterはCore State Machineを所有しない。
-5. Queue AdapterはAttempt / retry authorityを作らない。
-6. State Store Adapterはstate semanticsを決めない。
-7. Scheduler AdapterはAuthorizationを作らない。
-8. Artifact Store AdapterはData Policyを独自拡張しない。
-9. Identity AdapterはAuthorizationを作らない。
-10. Runtime AdapterはCapabilityを自己拡張しない。
-11. Verification AdapterはAcceptedResultを直接作らない。
-12. Attestation AdapterはPlacementを直接許可しない。
-13. Effect Adapterはretryを直接起動しない。
-14. Measurement AdapterはContribution価値を決めない。
-15. Telemetry Adapter failureはTask retryを起こさない。
-16. Security-critical Adapter failureで弱い実装へsilent fallbackしない。
-17. Extension configはClient inputから変更できない。
-18. Extension upgrade / rollbackをversioned Admin operationとして扱う。
-19. Extension packageをimmutable Digest / provenanceへbindingできる。
-20. High-privilege Adapterへunrestricted Core DB / key / networkを渡さない。
-21. Adapter selectionはCore Policyが決める。
-22. Unknown critical SPI capabilityはfail closedする。
-23. In-processであってもAuthority boundaryを消さない。
-24. Go reference implementationをlanguage-neutral logical SPIの正本にしない。
-25. Adapter変更後もTask / Attempt / Lease / ArtifactGrant / Result semanticsを維持する。
+1. 未知のApplicationは、原則としてClient APIとExecutorで統合し、Control Planeのpluginを要求しない。
+2. Extensionは、Administrative Planeで登録して承認する。
+3. Task Clientは、Extensionの実装を指定したりuploadしたりできない。
+4. Adapterは、Core State Machineを所有しない。
+5. Queue Adapterは、Attemptやretryのauthorityを作らない。
+6. State Store Adapterは、stateのsemanticsを決めない。
+7. Scheduler Adapterは、Authorizationを作らない。
+8. Artifact Store Adapterは、Data Policyを独自に拡張しない。
+9. Identity Adapterは、Authorizationを作らない。
+10. Runtime Adapterは、Capabilityを自己拡張しない。
+11. Verification Adapterは、AcceptedResultを直接作らない。
+12. Attestation Adapterは、Placementを直接許可しない。
+13. Effect Adapterは、retryを直接起動しない。
+14. Measurement Adapterは、Contributionの価値を決めない。
+15. Telemetry Adapterの失敗で、Task retryを起こさない。
+16. Security-criticalなAdapterが失敗しても、弱い実装にsilentにfallbackしない。
+17. Extensionのconfigは、Clientの入力から変更できない。
+18. Extensionのupgradeとrollbackを、versionを持つAdminの操作として扱う。
+19. Extensionのpackageを、変更できないDigestとprovenanceに結び付けられる。
+20. 特権の高いAdapterに、制限のないCoreのDB、key、networkを渡さない。
+21. Adapterの選択は、Core Policyが決める。
+22. 未知のcriticalなSPIのcapabilityは、fail closedにする。
+23. In-processであっても、Authorityの境界を消さない。
+24. Goの参照実装を、言語に中立な論理的なSPIの正本にしない。
+25. Adapterが変わった後も、Task、Attempt、Lease、ArtifactGrant、Resultのsemanticsを維持する。
 
 ---
 
-# 101. 初期Reference Adapter候補
+# 101. 最初のReference Adapterの候補
 
-ArchitectureからImplementationへ進む際、最小Reference Adapter候補は次です。
+ArchitectureからImplementationに進む際の、最小のReference Adapterの候補は、次のとおりです。
 
-## Required MVP
+## MVPで必須
 
 - State Store
 - Delivery Queue
 - Artifact Store
 - Identity
-- Native or Command Executor Runtime
+- NativeまたはCommandのExecutor Runtime
 - Scheduler baseline
 - Result Verification baseline
 - Telemetry
 
-## Early optional
+## 早い段階での任意
 
 - WASM Runtime
 - Browser Runtime
-- OIDC / enterprise identity
-- S3-compatible store
-- Attestation mock / adapter
+- OIDCと企業のidentity
+- S3互換のstore
+- Attestationのmockとadapter
 - Contribution measurement
 
-## Research optional
+## 研究としての任意
 
-- real TEE verifier
+- 実際のTEE verifier
 - zkVM verifier
-- learned scheduler estimator
-- attested GPU meter
+- learned schedulerのestimator
+- attestされたGPU meter
 
-MVPで高度Optional Extensionを必須にしません。
+MVPで、高度な任意のExtensionを、必須にしません。
 
 ---
 
-# 102. Logical repository shapeへの示唆
+# 102. 論理的なrepositoryの形への示唆
 
-実装構成は後続計画で確定しますが、論理的には次の分離が自然です。
+実装の構成は、後続の計画で確定します。論理的には、次の分離が自然です。
 
 ~~~text
 core/
@@ -2128,24 +2072,22 @@ protocol/
   adapter
 ~~~
 
-Directory名自体はまだ固定しません。
+Directoryの名前自体は、まだ固定しません。
 
 ---
 
-# 103. Architecture baseline completionへの入力
+# 103. Architecture baselineの完成への入力
 
-Authority、Contract、Control/Data Plane、Deployment Profile、State Model、Extension SPIが揃ったため、次はArchitecture Baseline全体を横断レビューできます。
+Authority、Contract、Control/Data Plane、Deployment Profile、State Model、Extension SPIがそろったため、次は、Architecture Baseline全体を、横断してレビューできます。
 
-次段階では少なくともは次のとおりです。
+次の段階では、少なくとも、次のことを行います。
 
-1. 文書間の矛盾確認
-2. MVP component cut
-3. Protocol / schemaの最小固定
-4. Reference Adapter選定
-5. Security conformance suite計画
-6. ADR化が必要な長期判断の抽出
-7. Implementation milestone / repository layout
+1. 文書の間の矛盾の確認
+2. MVPのcomponentの切り出し
+3. Protocolとschemaの最小の固定
+4. Reference Adapterの選定
+5. Security conformance suiteの計画
+6. ADRにする必要がある、長期的な判断の抽出
+7. Implementationのmilestoneとrepository layout
 
-を行います。
-
-Issue #19 / #23等のResidual Researchは並行継続しますが、未解決部分をMVP必須へ先取りしません。
+Issue #19と#23などの、残っている研究は、並行して継続します。ただし、未解決の部分を、MVPの必須に先取りしません。
