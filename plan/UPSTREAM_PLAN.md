@@ -215,7 +215,6 @@ Architecture採用前に、Requirement上のリスクが高く、文書検討だ
 Spikeは採用Architectureを既成事実化しません。確認したいRequirement上の仮説、実験条件、観測結果、一般化してよい範囲を残します。
 
 状態: **主要高リスクSpike成立 / 実測研究継続**
-状態: **着手済み — 高リスクSpikeを順次実証中**
 
 最初のSpikeとして `spikes/local-governor/README.md` を作成しました。Windows Job Object / EcoQoS、Linux cgroup v2、ローカルopt-outの停止境界を調査し、Resourceごとに `HARD / BEST_EFFORT / OBSERVE_ONLY / UNAVAILABLE` の保証種別を区別する必要性を確認しています。
 
