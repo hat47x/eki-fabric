@@ -422,7 +422,7 @@ func RunLeaseStoreContract(t *testing.T, newStore LeaseFactory) {
 			CreatedAt:    leaseNow,
 			UpdatedAt:    leaseNow,
 		}
-		reservation := leaseReservation(t, store, task, "placement-missing", leaseNow, leaseNow.Add(time.Minute))
+		reservation := unbackedLeaseReservation(t, task, "placement-missing", leaseNow, leaseNow.Add(time.Minute))
 		if _, err := store.ReserveLease(context.Background(), reservation); !errors.Is(err, statestore.ErrNotFound) {
 			t.Fatalf("missing Task error = %v, want ErrNotFound", err)
 		}
@@ -503,8 +503,9 @@ var leaseAttemptSequence atomic.Uint64
 func leaseReservation(t testing.TB, store TaskLeaseStore, task taskstate.TaskRecord, decisionID string, issued, expires time.Time) statestore.LeaseReservation {
 	t.Helper()
 
+	reservation := unbackedLeaseReservation(t, task, decisionID, issued, expires)
 	attempt, err := attemptstate.New(
-		mustAttemptID(t),
+		reservation.AttemptID,
 		task.ID,
 		task.TaskIRDigest,
 		leaseAttemptSequence.Add(1),
@@ -518,21 +519,26 @@ func leaseReservation(t testing.TB, store TaskLeaseStore, task taskstate.TaskRec
 	}
 	placing := attempt
 	placing.Phase = attemptstate.AttemptPhasePlacing
-	placing.WorkerIdentity = "worker-a"
+	placing.WorkerIdentity = reservation.WorkerIdentity
 	placing.Revision++
 	placing.UpdatedAt = attempt.UpdatedAt.Add(time.Nanosecond)
 	if err := store.CompareAndSwapAttempt(context.Background(), attempt.ID, attempt.Revision, placing); err != nil {
 		t.Fatal(err)
 	}
+	reservation.ExpectedAttemptRevision = placing.Revision
+	return reservation
+}
 
+func unbackedLeaseReservation(t testing.TB, task taskstate.TaskRecord, decisionID string, issued, expires time.Time) statestore.LeaseReservation {
+	t.Helper()
 	return statestore.LeaseReservation{
 		LeaseID:                     mustLeaseID(t),
 		TaskID:                      task.ID,
 		TaskIRDigest:                task.TaskIRDigest,
 		ExpectedTaskRevision:        task.Revision,
-		AttemptID:                   placing.ID,
-		ExpectedAttemptRevision:     placing.Revision,
-		WorkerIdentity:              placing.WorkerIdentity,
+		AttemptID:                   mustAttemptID(t),
+		ExpectedAttemptRevision:     1,
+		WorkerIdentity:              "worker-a",
 		PlacementTrustDomain:        "local.example",
 		PlacementAuthorityPrincipal: "control-plane/plc-1",
 		PlacementDecisionID:         decisionID,
