@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/hat47x/eki-fabric/conformance/statestoretest"
+	"github.com/hat47x/eki-fabric/internal/core/attemptstate"
 	"github.com/hat47x/eki-fabric/internal/core/contract"
 	"github.com/hat47x/eki-fabric/internal/core/ids"
 	"github.com/hat47x/eki-fabric/internal/core/taskstate"
@@ -147,6 +148,132 @@ func TestVersion2DatabaseUpgradesToLeaseSchemaWithoutLosingTask(t *testing.T) {
 	if got.ID != record.ID || got.TaskIRDigest != record.TaskIRDigest || got.Phase != record.Phase {
 		t.Fatalf("Task changed across v2 -> v3 migration: got=%#v want=%#v", got, record)
 	}
+}
+
+func TestVersion3DatabaseUpgradesToAttemptSchemaWithoutLosingLease(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "state.db")
+	old, err := openWithMigrations(context.Background(), path, migrations[:3])
+	if err != nil {
+		t.Fatalf("open v3 store: %v", err)
+	}
+
+	task := newTaskRecord(t, "v3-upgrade")
+	task.Phase = taskstate.TaskPhaseReady
+	if err := old.CreateTask(context.Background(), task); err != nil {
+		t.Fatal(err)
+	}
+	attemptID, err := ids.NewAttemptID()
+	if err != nil {
+		t.Fatal(err)
+	}
+	leaseID, err := ids.NewLeaseID()
+	if err != nil {
+		t.Fatal(err)
+	}
+	now := time.Date(2026, 10, 7, 12, 0, 0, 0, time.UTC)
+	reserved, err := old.ReserveLease(context.Background(), statestore.LeaseReservation{
+		LeaseID:                     leaseID,
+		TaskID:                      task.ID,
+		TaskIRDigest:                task.TaskIRDigest,
+		ExpectedTaskRevision:        task.Revision,
+		AttemptID:                   attemptID,
+		WorkerIdentity:              "worker-a",
+		PlacementTrustDomain:        "local.example",
+		PlacementAuthorityPrincipal: "control-plane/plc-1",
+		PlacementDecisionID:         "placement-v3-upgrade",
+		PlacementPayloadDigest:      contract.SHA256([]byte("placement-v3-upgrade")),
+		PlacementExpiresAt:          now.Add(2 * time.Minute),
+		PolicyRevision:              "policy-42",
+		IssuedAt:                    now,
+		ExpiresAt:                   now.Add(time.Minute),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := old.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	upgraded := openStore(t, path)
+	defer upgraded.Close()
+
+	gotLease, err := upgraded.LoadLease(context.Background(), reserved.Lease.ID)
+	if err != nil {
+		t.Fatalf("LoadLease() after v4 migration error = %v", err)
+	}
+	if gotLease.ID != reserved.Lease.ID || gotLease.FenceEpoch != reserved.Lease.FenceEpoch {
+		t.Fatalf("Lease changed across v3 -> v4 migration: got=%#v want=%#v", gotLease, reserved.Lease)
+	}
+
+	attempt, err := attemptstate.New(attemptID, task.ID, task.TaskIRDigest, 1, now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := upgraded.CreateAttempt(context.Background(), attempt); err != nil {
+		t.Fatalf("CreateAttempt() after v4 migration error = %v", err)
+	}
+	if _, err := upgraded.LoadAttempt(context.Background(), attempt.ID); err != nil {
+		t.Fatalf("LoadAttempt() after v4 migration error = %v", err)
+	}
+}
+
+func TestAttemptSchemaRejectsBypassedInvalidTransitions(t *testing.T) {
+	store := openStore(t, filepath.Join(t.TempDir(), "state.db"))
+	defer store.Close()
+
+	task := newTaskRecord(t, "attempt-schema-guard")
+	if err := store.CreateTask(context.Background(), task); err != nil {
+		t.Fatal(err)
+	}
+	attempt, err := attemptstate.New(mustAttemptIDForSQLite(t), task.ID, task.TaskIRDigest, 1, task.CreatedAt.Add(time.Second))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := store.CreateAttempt(context.Background(), attempt); err != nil {
+		t.Fatal(err)
+	}
+
+	closedAt := attempt.UpdatedAt.Add(time.Second).UnixNano()
+	if _, err := store.db.Exec(`
+UPDATE attempts
+SET phase = 'closed', close_reason = 'cancelled', revision = 2, updated_at_ns = ?
+WHERE attempt_id = ?`, closedAt, attempt.ID.String()); err != nil {
+		t.Fatalf("valid created -> closed bypass transition failed: %v", err)
+	}
+
+	if _, err := store.db.Exec(`
+UPDATE attempts
+SET phase = 'placing', worker_identity = 'worker-a', close_reason = '', revision = 3, updated_at_ns = ?
+WHERE attempt_id = ?`, closedAt+1, attempt.ID.String()); err == nil {
+		t.Fatal("closed Attempt reopened through direct SQL")
+	}
+
+	second, err := attemptstate.New(mustAttemptIDForSQLite(t), task.ID, task.TaskIRDigest, 2, task.CreatedAt.Add(2*time.Second))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := store.CreateAttempt(context.Background(), second); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := store.db.Exec(`
+UPDATE attempts
+SET phase = 'placing', worker_identity = 'worker-b', revision = 3, updated_at_ns = ?
+WHERE attempt_id = ?`, second.UpdatedAt.Add(time.Second).UnixNano(), second.ID.String()); err == nil {
+		t.Fatal("Attempt revision jumped through direct SQL")
+	}
+	if _, err := store.db.Exec(`
+UPDATE attempts SET attempt_number = 99 WHERE attempt_id = ?`, second.ID.String()); err == nil {
+		t.Fatal("Attempt immutable identity changed through direct SQL")
+	}
+}
+
+func mustAttemptIDForSQLite(t testing.TB) ids.AttemptID {
+	t.Helper()
+	id, err := ids.NewAttemptID()
+	if err != nil {
+		t.Fatal(err)
+	}
+	return id
 }
 
 func TestFenceEpochSurvivesLeaseHistoryGarbageCollection(t *testing.T) {
