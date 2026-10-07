@@ -51,7 +51,7 @@ FROM tasks WHERE task_id = ?`, reservation.TaskID.String()))
 
 	existing, err := scanLease(tx.QueryRowContext(ctx, `
 SELECT lease_id, task_id, task_ir_digest, attempt_id, worker_identity,
-       placement_authority_principal, placement_decision_id, placement_payload_digest, policy_revision,
+       placement_authority_principal, placement_decision_id, placement_payload_digest, placement_expires_at_ns, policy_revision,
        fence_epoch, renewal_sequence, issued_at_ns, expires_at_ns
 FROM leases WHERE placement_authority_principal = ? AND placement_decision_id = ?`,
 		reservation.PlacementAuthorityPrincipal,
@@ -59,7 +59,7 @@ FROM leases WHERE placement_authority_principal = ? AND placement_decision_id = 
 	))
 	switch {
 	case err == nil:
-		if existing.PlacementPayloadDigest != reservation.PlacementPayloadDigest {
+		if !reservation.MatchesReservedPlacement(existing) {
 			return statestore.LeaseReservationResult{}, fmt.Errorf(
 				"%w: decision %q",
 				statestore.ErrPlacementDecisionConflict,
@@ -118,7 +118,8 @@ SELECT last_fence_epoch FROM lease_fences WHERE task_id = ?`,
 		PlacementAuthorityPrincipal: reservation.PlacementAuthorityPrincipal,
 		PlacementDecisionID:           reservation.PlacementDecisionID,
 		PlacementPayloadDigest:        reservation.PlacementPayloadDigest,
-		PolicyRevision:         reservation.PolicyRevision,
+		PlacementExpiresAt:            reservation.PlacementExpiresAt,
+		PolicyRevision:                reservation.PolicyRevision,
 		FenceEpoch:             fence,
 		RenewalSequence:        0,
 		IssuedAt:               reservation.IssuedAt,
@@ -155,9 +156,9 @@ WHERE lease_fences.last_fence_epoch = ?`,
 	_, err = tx.ExecContext(ctx, `
 INSERT INTO leases (
 	lease_id, task_id, task_ir_digest, attempt_id, worker_identity,
-	placement_authority_principal, placement_decision_id, placement_payload_digest, policy_revision,
+	placement_authority_principal, placement_decision_id, placement_payload_digest, placement_expires_at_ns, policy_revision,
 	fence_epoch, renewal_sequence, issued_at_ns, expires_at_ns
-) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		lease.ID.String(),
 		lease.TaskID.String(),
 		lease.TaskIRDigest.Hex(),
@@ -166,6 +167,7 @@ INSERT INTO leases (
 		lease.PlacementAuthorityPrincipal,
 		lease.PlacementDecisionID,
 		lease.PlacementPayloadDigest.Hex(),
+		lease.PlacementExpiresAt.UnixNano(),
 		lease.PolicyRevision,
 		int64(lease.FenceEpoch),
 		int64(lease.RenewalSequence),
@@ -207,6 +209,7 @@ func scanLease(row rowScanner) (leasestate.LeaseRecord, error) {
 		&c.placementAuthorityPrincipal,
 		&c.placementDecisionID,
 		&c.placementPayloadDigest,
+		&c.placementExpiresNS,
 		&c.policyRevision,
 		&c.fenceEpoch,
 		&c.renewalSequence,
@@ -227,6 +230,7 @@ type leaseColumns struct {
 	placementAuthorityPrincipal string
 	placementDecisionID         string
 	placementPayloadDigest string
+	placementExpiresNS     int64
 	policyRevision         string
 	fenceEpoch             int64
 	renewalSequence        int64
@@ -267,7 +271,8 @@ func (c leaseColumns) record() (leasestate.LeaseRecord, error) {
 		PlacementAuthorityPrincipal: c.placementAuthorityPrincipal,
 		PlacementDecisionID:           c.placementDecisionID,
 		PlacementPayloadDigest:        placementDigest,
-		PolicyRevision:         c.policyRevision,
+		PlacementExpiresAt:            time.Unix(0, c.placementExpiresNS).UTC(),
+		PolicyRevision:                c.policyRevision,
 		FenceEpoch:             uint64(c.fenceEpoch),
 		RenewalSequence:        uint64(c.renewalSequence),
 		IssuedAt:               time.Unix(0, c.issuedNS).UTC(),
