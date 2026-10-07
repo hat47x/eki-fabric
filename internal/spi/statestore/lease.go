@@ -27,6 +27,7 @@ type LeaseReservation struct {
 	ExpectedTaskRevision       uint64
 	AttemptID                  ids.AttemptID
 	WorkerIdentity             string
+	PlacementTrustDomain        string
 	PlacementAuthorityPrincipal string
 	PlacementDecisionID         string
 	PlacementPayloadDigest      contract.Digest
@@ -54,6 +55,9 @@ func (r LeaseReservation) Validate() error {
 	}
 	if r.WorkerIdentity == "" || len(r.WorkerIdentity) > 256 || !utf8.ValidString(r.WorkerIdentity) {
 		return errors.New("lease reservation: invalid Worker identity")
+	}
+	if r.PlacementTrustDomain == "" || len(r.PlacementTrustDomain) > 256 || !utf8.ValidString(r.PlacementTrustDomain) {
+		return errors.New("lease reservation: invalid Placement trust domain")
 	}
 	if r.PlacementAuthorityPrincipal == "" || len(r.PlacementAuthorityPrincipal) > 256 || !utf8.ValidString(r.PlacementAuthorityPrincipal) {
 		return errors.New("lease reservation: invalid Placement authority principal")
@@ -90,6 +94,7 @@ func (r LeaseReservation) MatchesReservedPlacement(existing leasestate.LeaseReco
 		existing.TaskIRDigest == r.TaskIRDigest &&
 		existing.AttemptID == r.AttemptID &&
 		existing.WorkerIdentity == r.WorkerIdentity &&
+		existing.PlacementTrustDomain == r.PlacementTrustDomain &&
 		existing.PlacementAuthorityPrincipal == r.PlacementAuthorityPrincipal &&
 		existing.PlacementDecisionID == r.PlacementDecisionID &&
 		existing.PlacementPayloadDigest == r.PlacementPayloadDigest &&
