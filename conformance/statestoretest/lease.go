@@ -58,6 +58,32 @@ func RunLeaseStoreContract(t *testing.T, newStore LeaseFactory) {
 		}
 	})
 
+	t.Run("replay-cannot-change-placement-subject", func(t *testing.T) {
+		store := newStore(t)
+		task := readyTask(t, store, "replay-subject")
+		first := leaseReservation(t, task, "placement-1", leaseNow, leaseNow.Add(time.Minute))
+		if _, err := store.ReserveLease(context.Background(), first); err != nil {
+			t.Fatal(err)
+		}
+
+		tests := map[string]func(*statestore.LeaseReservation){
+			"attempt": func(r *statestore.LeaseReservation) { r.AttemptID = mustAttemptID(t) },
+			"worker": func(r *statestore.LeaseReservation) { r.WorkerIdentity = "worker-b" },
+			"policy": func(r *statestore.LeaseReservation) { r.PolicyRevision = "policy-43" },
+			"placement-expiry": func(r *statestore.LeaseReservation) { r.PlacementExpiresAt = r.PlacementExpiresAt.Add(time.Second) },
+		}
+		for name, mutate := range tests {
+			t.Run(name, func(t *testing.T) {
+				replay := first
+				replay.LeaseID = mustLeaseID(t)
+				mutate(&replay)
+				if _, err := store.ReserveLease(context.Background(), replay); !errors.Is(err, statestore.ErrPlacementDecisionConflict) {
+					t.Fatalf("ReserveLease() error = %v, want ErrPlacementDecisionConflict", err)
+				}
+			})
+		}
+	})
+
 	t.Run("same-decision-id-from-different-plc-principal-is-distinct", func(t *testing.T) {
 		store := newStore(t)
 		task := readyTask(t, store, "principal-scope")
@@ -404,6 +430,7 @@ func assertLeaseEqual(t testing.TB, got, want leasestate.LeaseRecord) {
 		got.PlacementAuthorityPrincipal != want.PlacementAuthorityPrincipal ||
 		got.PlacementDecisionID != want.PlacementDecisionID ||
 		got.PlacementPayloadDigest != want.PlacementPayloadDigest ||
+		!got.PlacementExpiresAt.Equal(want.PlacementExpiresAt) ||
 		got.PolicyRevision != want.PolicyRevision ||
 		got.FenceEpoch != want.FenceEpoch ||
 		got.RenewalSequence != want.RenewalSequence ||
