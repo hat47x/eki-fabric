@@ -58,6 +58,58 @@ func RunLeaseStoreContract(t *testing.T, newStore LeaseFactory) {
 		}
 	})
 
+	t.Run("exact-replay-survives-benign-task-revision", func(t *testing.T) {
+		store := newStore(t)
+		task := readyTask(t, store, "replay-revision")
+		reservation := leaseReservation(t, task, "placement-1", leaseNow, leaseNow.Add(time.Minute))
+		first, err := store.ReserveLease(context.Background(), reservation)
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		active := task
+		active.Phase = taskstate.TaskPhaseActive
+		active.Revision++
+		active.UpdatedAt = task.UpdatedAt.Add(time.Second)
+		if err := store.CompareAndSwapTask(context.Background(), task.ID, task.Revision, active); err != nil {
+			t.Fatal(err)
+		}
+
+		replay := reservation
+		replay.LeaseID = mustLeaseID(t)
+		again, err := store.ReserveLease(context.Background(), replay)
+		if err != nil {
+			t.Fatalf("exact replay after ready->active revision error = %v", err)
+		}
+		if !again.Replayed || again.Lease.ID != first.Lease.ID || again.Lease.FenceEpoch != first.Lease.FenceEpoch {
+			t.Fatalf("benign Task revision minted or lost Lease: first=%#v replay=%#v", first, again)
+		}
+	})
+
+	t.Run("replay-after-cancellation-fails-closed", func(t *testing.T) {
+		store := newStore(t)
+		task := readyTask(t, store, "replay-cancel")
+		reservation := leaseReservation(t, task, "placement-1", leaseNow, leaseNow.Add(time.Minute))
+		if _, err := store.ReserveLease(context.Background(), reservation); err != nil {
+			t.Fatal(err)
+		}
+
+		cancelled := task
+		cancelled.CancellationRequested = true
+		cancelled.Revision++
+		cancelled.UpdatedAt = task.UpdatedAt.Add(time.Second)
+		if err := store.CompareAndSwapTask(context.Background(), task.ID, task.Revision, cancelled); err != nil {
+			t.Fatal(err)
+		}
+
+		replay := reservation
+		replay.LeaseID = mustLeaseID(t)
+		replay.ExpectedTaskRevision = cancelled.Revision
+		if _, err := store.ReserveLease(context.Background(), replay); !errors.Is(err, statestore.ErrConflict) {
+			t.Fatalf("cancelled replay error = %v, want ErrConflict", err)
+		}
+	})
+
 	t.Run("replay-cannot-change-placement-subject", func(t *testing.T) {
 		store := newStore(t)
 		task := readyTask(t, store, "replay-subject")
