@@ -83,12 +83,14 @@ type Request struct {
 type Verified struct {
 	approval            decisionpayload.PlacementApproval
 	keyID               decisiontrust.KeyID
+	trustDomain         string
 	trustBundleRevision uint64
 	verifiedAt          time.Time
 }
 
 func (v Verified) Approval() decisionpayload.PlacementApproval { return v.approval }
 func (v Verified) KeyID() decisiontrust.KeyID                  { return v.keyID }
+func (v Verified) TrustDomain() string                         { return v.trustDomain }
 func (v Verified) TrustBundleRevision() uint64                 { return v.trustBundleRevision }
 func (v Verified) VerifiedAt() time.Time                       { return v.verifiedAt }
 
@@ -156,6 +158,7 @@ func (v *Verifier) Verify(req Request) (Verified, error) {
 	return Verified{
 		approval:            approval,
 		keyID:               record.ID(),
+		trustDomain:         v.trustDomain,
 		trustBundleRevision: req.TrustBundle.Revision,
 		verifiedAt:          req.Now.UTC(),
 	}, nil
