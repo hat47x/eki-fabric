@@ -23,6 +23,7 @@ type Config struct {
 	TaskIRDigest           contract.Digest
 	AttemptID              ids.AttemptID
 	WorkerIdentity         string
+	PlacementTrustDomain   string
 	PlacementAuthorityPrincipal string
 	PlacementDecisionID           string
 	PlacementPayloadDigest        contract.Digest
@@ -40,6 +41,7 @@ type LeaseRecord struct {
 	TaskIRDigest                contract.Digest
 	AttemptID                   ids.AttemptID
 	WorkerIdentity              string
+	PlacementTrustDomain        string
 	PlacementAuthorityPrincipal string
 	PlacementDecisionID         string
 	PlacementPayloadDigest      contract.Digest
@@ -65,6 +67,9 @@ func New(cfg Config) (LeaseRecord, error) {
 		return LeaseRecord{}, fmt.Errorf("%w: attempt ID: %v", ErrInvalidLeaseRecord, err)
 	}
 	if err := validateText("worker identity", cfg.WorkerIdentity, 256); err != nil {
+		return LeaseRecord{}, err
+	}
+	if err := validateText("placement trust domain", cfg.PlacementTrustDomain, 256); err != nil {
 		return LeaseRecord{}, err
 	}
 	if err := validateText("placement authority principal", cfg.PlacementAuthorityPrincipal, 256); err != nil {
@@ -94,6 +99,7 @@ func New(cfg Config) (LeaseRecord, error) {
 		TaskIRDigest:           cfg.TaskIRDigest,
 		AttemptID:              cfg.AttemptID,
 		WorkerIdentity:         cfg.WorkerIdentity,
+		PlacementTrustDomain:        cfg.PlacementTrustDomain,
 		PlacementAuthorityPrincipal: cfg.PlacementAuthorityPrincipal,
 		PlacementDecisionID:           cfg.PlacementDecisionID,
 		PlacementPayloadDigest:        cfg.PlacementPayloadDigest,
@@ -113,6 +119,7 @@ func (r LeaseRecord) Validate() error {
 		TaskIRDigest:           r.TaskIRDigest,
 		AttemptID:              r.AttemptID,
 		WorkerIdentity:         r.WorkerIdentity,
+		PlacementTrustDomain:        r.PlacementTrustDomain,
 		PlacementAuthorityPrincipal: r.PlacementAuthorityPrincipal,
 		PlacementDecisionID:           r.PlacementDecisionID,
 		PlacementPayloadDigest:        r.PlacementPayloadDigest,
