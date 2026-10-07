@@ -110,6 +110,30 @@ func RunLeaseStoreContract(t *testing.T, newStore LeaseFactory) {
 		}
 	})
 
+	t.Run("replay-after-unschedulable-phase-fails-closed", func(t *testing.T) {
+		store := newStore(t)
+		task := readyTask(t, store, "replay-held")
+		reservation := leaseReservation(t, task, "placement-1", leaseNow, leaseNow.Add(time.Minute))
+		if _, err := store.ReserveLease(context.Background(), reservation); err != nil {
+			t.Fatal(err)
+		}
+
+		held := task
+		held.Phase = taskstate.TaskPhaseHeld
+		held.Revision++
+		held.UpdatedAt = task.UpdatedAt.Add(time.Second)
+		if err := store.CompareAndSwapTask(context.Background(), task.ID, task.Revision, held); err != nil {
+			t.Fatal(err)
+		}
+
+		replay := reservation
+		replay.LeaseID = mustLeaseID(t)
+		replay.ExpectedTaskRevision = held.Revision
+		if _, err := store.ReserveLease(context.Background(), replay); !errors.Is(err, statestore.ErrConflict) {
+			t.Fatalf("held replay error = %v, want ErrConflict", err)
+		}
+	})
+
 	t.Run("replay-cannot-change-placement-subject", func(t *testing.T) {
 		store := newStore(t)
 		task := readyTask(t, store, "replay-subject")
@@ -117,11 +141,16 @@ func RunLeaseStoreContract(t *testing.T, newStore LeaseFactory) {
 		if _, err := store.ReserveLease(context.Background(), first); err != nil {
 			t.Fatal(err)
 		}
+		otherTask := readyTask(t, store, "replay-subject-other-task")
 
 		tests := map[string]func(*statestore.LeaseReservation){
+			"task": func(r *statestore.LeaseReservation) {
+				r.TaskID = otherTask.ID
+				r.TaskIRDigest = otherTask.TaskIRDigest
+				r.ExpectedTaskRevision = otherTask.Revision
+			},
 			"attempt": func(r *statestore.LeaseReservation) { r.AttemptID = mustAttemptID(t) },
 			"worker": func(r *statestore.LeaseReservation) { r.WorkerIdentity = "worker-b" },
-			"trust-domain": func(r *statestore.LeaseReservation) { r.PlacementTrustDomain = "other.example" },
 			"policy": func(r *statestore.LeaseReservation) { r.PolicyRevision = "policy-43" },
 			"placement-expiry": func(r *statestore.LeaseReservation) { r.PlacementExpiresAt = r.PlacementExpiresAt.Add(time.Second) },
 		}

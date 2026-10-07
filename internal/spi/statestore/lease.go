@@ -15,9 +15,10 @@ import (
 var (
 	// ErrLeaseActive means another unexpired lease already owns the Task fence.
 	ErrLeaseActive = errors.New("an active lease already exists")
-	// ErrPlacementDecisionConflict means a decision ID was reused with different
-	// signed payload bytes. Decision IDs cannot be rebound to new meaning.
-	ErrPlacementDecisionConflict = errors.New("placement decision ID reused with different payload")
+	// ErrPlacementDecisionConflict means a scoped Placement Decision ID was
+	// reused with a different durable authority or subject binding. A decision
+	// cannot be rebound inside the same trust-domain/principal scope.
+	ErrPlacementDecisionConflict = errors.New("placement decision ID reused with a different binding")
 )
 
 type LeaseReservation struct {
