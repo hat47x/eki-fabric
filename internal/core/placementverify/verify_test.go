@@ -267,7 +267,8 @@ func wantReason(t *testing.T, err error, want decisiontrust.VerificationReason) 
 
 func TestVerifyAcceptsAValidSignedApproval(t *testing.T) {
 	f := newFixture(t)
-	got, err := f.verifier().Verify(f.request(f.sign(f.payloadBytes(payloadOptions{}))))
+	payload := f.payloadBytes(payloadOptions{})
+	got, err := f.verifier().Verify(f.request(f.sign(payload)))
 	if err != nil {
 		t.Fatalf("Verify() error = %v", err)
 	}
@@ -284,6 +285,15 @@ func TestVerifyAcceptsAValidSignedApproval(t *testing.T) {
 			got.TrustDomain(),
 			got.TrustBundleRevision(),
 			got.VerifiedAt(),
+		)
+	}
+	if got.PayloadDigest() != contract.SHA256(payload) ||
+		got.PayloadDigest() != got.Approval().PayloadDigest() {
+		t.Fatalf(
+			"verified payload digest = %s approval digest = %s want %s",
+			got.PayloadDigest(),
+			got.Approval().PayloadDigest(),
+			contract.SHA256(payload),
 		)
 	}
 	if got.Approval().TaskID().String() != taskID || got.Approval().WorkerIdentity() != workerID {
@@ -583,6 +593,9 @@ func TestZeroVerifiedCannotBeRevalidated(t *testing.T) {
 	var zero placementverify.Verified
 	if !zero.IsZero() {
 		t.Fatal("zero Verified reports it is not zero")
+	}
+	if !zero.PayloadDigest().IsZero() {
+		t.Fatalf("zero Verified exposed a payload digest: %s", zero.PayloadDigest())
 	}
 	wantReason(t, zero.Revalidate(currentState(t)), decisiontrust.ReasonSchemaUnsupported)
 }
