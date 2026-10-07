@@ -2,6 +2,7 @@ package attemptstate
 
 import (
 	"errors"
+	"math"
 	"testing"
 	"time"
 
@@ -76,6 +77,36 @@ func TestAttemptRejectsImpossibleBindings(t *testing.T) {
 				t.Fatalf("Validate() error = %v, want ErrInvalidAttemptRecord", err)
 			}
 		})
+	}
+}
+
+func TestAttemptCountersMustFitDurableIntegerRange(t *testing.T) {
+	base := validAttempt(t)
+
+	number := base
+	number.Number = uint64(math.MaxInt64) + 1
+	if err := number.Validate(); !errors.Is(err, ErrInvalidAttemptRecord) {
+		t.Fatalf("oversized Number error = %v, want ErrInvalidAttemptRecord", err)
+	}
+
+	revision := base
+	revision.Revision = uint64(math.MaxInt64) + 1
+	if err := revision.Validate(); !errors.Is(err, ErrInvalidAttemptRecord) {
+		t.Fatalf("oversized Revision error = %v, want ErrInvalidAttemptRecord", err)
+	}
+}
+
+func TestAttemptInitialStateIsExplicit(t *testing.T) {
+	base := validAttempt(t)
+	if err := base.ValidateInitial(); err != nil {
+		t.Fatalf("ValidateInitial() error = %v", err)
+	}
+
+	placing := base
+	placing.Phase = AttemptPhasePlacing
+	placing.WorkerIdentity = "worker-a"
+	if err := placing.ValidateInitial(); !errors.Is(err, ErrInvalidAttemptRecord) {
+		t.Fatalf("placing ValidateInitial() error = %v, want ErrInvalidAttemptRecord", err)
 	}
 }
 
