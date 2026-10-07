@@ -4,6 +4,7 @@ package attemptstate
 import (
 	"errors"
 	"fmt"
+	"math"
 	"time"
 	"unicode/utf8"
 
@@ -97,8 +98,8 @@ func (r AttemptRecord) Validate() error {
 	if r.TaskIRDigest.IsZero() {
 		return fmt.Errorf("%w: TaskIR digest is required", ErrInvalidAttemptRecord)
 	}
-	if r.Number == 0 {
-		return fmt.Errorf("%w: attempt number must be positive", ErrInvalidAttemptRecord)
+	if r.Number == 0 || r.Number > math.MaxInt64 {
+		return fmt.Errorf("%w: attempt number must fit positive int64", ErrInvalidAttemptRecord)
 	}
 	if !validPhase(r.Phase) {
 		return fmt.Errorf("%w: unknown phase %q", ErrInvalidAttemptRecord, r.Phase)
@@ -114,8 +115,8 @@ func (r AttemptRecord) Validate() error {
 			return fmt.Errorf("%w: Lease binding requires Worker identity", ErrInvalidAttemptRecord)
 		}
 	}
-	if r.Revision == 0 {
-		return fmt.Errorf("%w: revision must be positive", ErrInvalidAttemptRecord)
+	if r.Revision == 0 || r.Revision > math.MaxInt64 {
+		return fmt.Errorf("%w: revision must fit positive int64", ErrInvalidAttemptRecord)
 	}
 	if r.CreatedAt.IsZero() || r.UpdatedAt.IsZero() || r.UpdatedAt.Before(r.CreatedAt) {
 		return fmt.Errorf("%w: invalid timestamps", ErrInvalidAttemptRecord)
