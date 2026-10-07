@@ -2,56 +2,56 @@
 
 ## 役割
 
-この文書は、RequirementやArchitecture判断を評価するときの長期的な原則を定義します。
+この文書は、RequirementやArchitectureの判断を評価するときに使う、長期的な原則を定めます。
 
 ## 原則
 
-### 1. Trust no participant by role name
+### 1. 役割名だけで主体を信頼しない（Trust no participant by role name）
 
-Client、Worker、Provider、Beneficiaryという役割名は信頼性を意味しません。認証、所属、過去の実績があっても、security propertyを主体の善意へ依存させません。
+Client、Worker、Provider、Beneficiaryといった役割名は、信頼できることを意味しません。認証されていても、所属が確かでも、過去の実績があっても、セキュリティ上の性質を主体の善意に頼って成り立たせません。
 
-### 2. Participation may be easy; authority must remain narrow
+### 2. 参加は簡単でも、権限は狭くとどめる（Participation may be easy; authority must remain narrow）
 
-アドホック参加を受け入れますが、参加しただけで機密データ、任意コード実行、他主体の情報、内部トポロジ、無制限の計算予算へのauthorityは得られません。
+アドホックな参加は受け入れます。ただし、参加しただけでは、機密データ、任意のコード実行、他の主体の情報、内部のトポロジ、無制限の計算予算に対する権限は得られません。
 
-### 3. Claims are not facts until verified
+### 3. 検証されるまで、申告は事実ではない（Claims are not facts until verified）
 
-Workerが返す実行結果、資源量、実行時間、キャッシュ状態、削除完了等はClaimです。安全性や価値配分に使う情報ほど、独立した検証または明示的な信頼根拠を必要とします。
+Workerが返す実行結果、資源量、実行時間、キャッシュの状態、削除の完了などは、すべて申告（Claim）です。安全性や価値の配分に使う情報ほど、独立した検証か、明示した信頼の根拠が必要です。
 
-### 4. Human use outranks background compute
+### 4. 人の利用は、バックグラウンドの計算に優先する（Human use outranks background compute）
 
-業務端末では、ユーザー復帰、ネットワーク逼迫、温度、電源、ローカルポリシー、明示的opt-outを中央Schedulerより優先します。
+業務端末では、利用者の復帰、ネットワークの逼迫、温度、電源、ローカルのポリシー、明示的なopt-outを、中央のSchedulerの判断より優先します。
 
-### 5. Move computation before moving large data
+### 5. 大きなデータを動かす前に、計算を動かす（Move computation before moving large data）
 
-分散化による転送負荷を避けます。既存データやモデルの局所性を配置判断に含め、計算能力の高さだけでWorkerを選びません。
+分散によって転送の負荷が増えるのを避けます。すでにあるデータやモデルの局所性を配置の判断に含め、計算能力が高いというだけでWorkerを選びません。
 
-### 6. Reliability belongs to the workload contract
+### 6. 信頼性はワークロード契約の一部とする（Reliability belongs to the workload contract）
 
-すべてのTaskへ同じ可用性を要求しません。retryable、preemptible、checkpointable、deadline、結果検証方式等をTaskの性質として扱い、必要以上の安全コストを買いません。
+すべてのTaskに同じ可用性は求めません。リトライできるか、中断されてよいか、チェックポイントを取れるか、期限、結果の検証方式などは、Taskの性質として扱います。必要以上の安全のためにコストを払いません。
 
-### 7. Core knows compute semantics, not application semantics
+### 7. 中核が知るのは計算の意味であり、アプリケーションの意味ではない（Core knows compute semantics, not application semantics）
 
-EKI CoreはTask、Resource、Artifact、Policy、Result、Contribution等を扱います。SUI Sensemakingの関係・仮説・統合、SEI CognitionのObservation・Decision、TEIのCanonical business meaning、個別LLMや認知手法の意味論は利用側の責務とします。
+EKI Coreが扱うのは、Task、Resource、Artifact、Policy、Result、Contributionなどです。SUI Sensemakingの関係・仮説・統合、SEI CognitionのObservationとDecision、TEIのCanonical business meaning、個々のLLMや認知手法の意味は、利用する側の責務とします。
 
-利用側の意味をEKIへそのまま複製するのではなく、必要な情報だけをresource requirement、data locality、trust / isolation requirement、deadline、preemption、result verification等のcompute semanticsへ投影します。
+利用する側の意味をそのままEKIへ複製することはしません。必要な情報だけを、資源要件、データの局所性、信頼と分離の要件、期限、中断の可否、結果の検証方式といった、計算の意味に置き換えて受け取ります。
 
-### 8. Open protocol, replaceable implementation
+### 8. プロトコルは開き、実装は交換できるようにする（Open protocol, replaceable implementation）
 
-基準実装がGoであっても、外部契約をGo APIへ閉じません。Queue、Identity、Artifact Store、Sandbox等の候補製品は交換可能性を保ち、Requirementより先にCoreへ焼き込みません。
+基準となる実装がGoであっても、外部との契約をGoのAPIに閉じ込めません。Queue、Identity、Artifact Store、Sandboxなどの候補製品は交換できる状態を保ち、Requirementより先にCoreへ組み込むことはしません。
 
-### 9. Security properties must survive modified clients and workers
+### 9. 改変されたClientやWorkerがいても、セキュリティ上の性質を保つ（Security properties must survive modified clients and workers）
 
-正規クライアントやWorker Agentが改変されても、他主体の権限拡張、無制限資源消費、機密情報取得、未検証結果の正本化ができない構造を要求します。
+正規のClientやWorker Agentが改変されても、次のことができない構造を求めます。他の主体の権限を広げること、資源を無制限に使うこと、機密情報を取得すること、検証されていない結果を正式な記録にすること。
 
-### 10. Security and efficiency are separate dimensions
+### 10. セキュリティと効率は別の軸として扱う（Security and efficiency are separate dimensions）
 
-Reputation、過去の成功率、自己申告性能は効率改善に利用できても、単独でsecurity root of trustにはしません。
+評判、過去の成功率、自己申告の性能は、効率を上げるために使えます。ただし、それだけでセキュリティの信頼の根拠（root of trust）にはしません。
 
-### 11. Contribution is measurable; value is external
+### 11. 貢献は測れるが、その価値は外部が決める（Contribution is measurable; value is external）
 
-EKIは計算資源提供を検証可能な記録へできますが、その記録が寄付、相互利用Credit、社内配賦、評価、無償貢献等のどれになるかは外部Policyに委ねます。
+EKIは、計算資源を提供した事実を、検証できる記録として残せます。その記録を寄付、相互利用のクレジット、社内の配賦、評価、無償の貢献のどれとして扱うかは、外部のPolicyが決めます。
 
-### 12. Prefer boring enterprise deployment paths
+### 12. 企業で普通に使える導入経路を選ぶ（Prefer boring enterprise deployment paths）
 
-企業利用の標準形では、一般的な社内システムとして説明しやすい接続、認証、監査、outbound通信、権限制御を優先します。P2Pや特殊なネットワーク構成は、明確な利点と安全性が示せる場合だけ選択肢とします。
+企業で標準的に使う構成では、一般的な社内システムとして説明しやすい接続、認証、監査、外向きの通信、権限の制御を優先します。P2Pや特殊なネットワーク構成を選ぶのは、明確な利点があり、安全性を示せる場合だけです。
