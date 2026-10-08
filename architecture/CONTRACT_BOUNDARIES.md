@@ -4,22 +4,20 @@ Status: **Baseline 0.1 — 2026-09-21**
 
 ## 1. この文書の目的
 
-この文書は、EKI Fabricで情報がどの境界を越えるときに、
+この文書は、EKI Fabricで情報が境界を越えるときに、次のことを定義します。
 
-- 誰がその値を作れるか
-- どの値をuntrusted inputとして扱うか
-- どのAuthorityが意味を確定するか
-- 何へbindingされるか
-- replay / stale / downgradeをどう防ぐか
-- どの情報をClientやWorkerへ見せないか
+- 誰が、その値を作れるか
+- どの値を、untrustedな入力として扱うか
+- どのAuthorityが、意味を確定するか
+- 何に結び付けるか
+- replay、古い情報、downgradeを、どう防ぐか
+- どの情報を、ClientやWorkerに見せないか
 
-を定義します。
+対象は、特定のJSON schema、HTTP endpoint、gRPC service、Goのstructではありません。
 
-対象は特定のJSON schema、HTTP endpoint、gRPC service、Go structではありません。
+Wire formatを決める前に、論理的なContractを確定します。
 
-Wire formatを決める前に、論理Contractを確定します。
-
-関連は次のとおりです。
+関連する文書は、次のとおりです。
 
 - AUTHORITY_BOUNDARIES.md
 - ../requirements/PRODUCT_REQUIREMENTS.md
@@ -31,7 +29,7 @@ Wire formatを決める前に、論理Contractを確定します。
 
 ### 2.1 External ContractとInternal Execution Contractを分ける
 
-Clientから受け取ったTaskRequestを、そのままWorkerへ渡しません。
+Clientから受け取ったTaskRequestを、そのままWorkerに渡しません。
 
 ~~~text
 Untrusted TaskRequest
@@ -47,45 +45,45 @@ signed WorkOrder
 Worker
 ~~~
 
-External Contractは利用者が「何をしたいか」を表します。
+External Contractが表すのは、利用者が「何をしたいか」です。
 
-Internal ContractはEKIが「何を、どの権限で、どこまで実行してよいか」を確定したものです。
+Internal Contractが表すのは、EKIが「何を、どの権限で、どこまで実行してよいか」を確定した内容です。
 
-### 2.2 Client controlled valueとAuthority derived valueを分ける
+### 2.2 Clientが制御する値と、Authorityが導く値を分ける
 
-Clientは要求を送れますが、Security上の事実を確定しません。
+Clientは、要求を送れます。しかし、Security上の事実は確定しません。
 
-Clientが指定できる例:
+Clientが指定できるものの例は、次のとおりです。
 
-- logical Executor requirement
-- input Artifact reference
-- CPU / RAM / GPU等の必要量
+- 論理的なExecutorの要求
+- inputのArtifactの参照
+- CPU、RAM、GPUなどの必要量
 - deadline
 - priority classの要求
-- retry可能性の宣言
-- side-effect semanticsの申告
-- stronger Data Classの要求
+- retryできるという宣言
+- side-effectのsemanticsの申告
+- より強いData Classの要求
 
-Clientが直接確定できない例:
+Clientが直接確定できないものの例は、次のとおりです。
 
-- concrete Worker
-- Worker Trust / Assurance
-- effective Data Classの引下げ
-- Executor Artifact Digest
+- 具体的なWorker
+- WorkerのtrustとAssurance
+- effective Data Classを引き下げること
+- Executor ArtifactのDigest
 - Artifact Capability
 - Trust Root
 - Policy Revision
-- WorkOrder signer
-- internal retry budgetの上限超過
-- network destinationの自由指定
+- WorkOrderの署名者
+- 内部のretry budgetの上限を超えること
+- network destinationの自由な指定
 - Result Acceptance
-- Contribution quantity
+- Contributionの量
 
-### 2.3 Worker inputもuntrustedである
+### 2.3 Workerからの入力もuntrustedである
 
-Workerはauthenticatedであっても、Resource Advertisement、ResultClaim、Telemetry等の内容を自己申告できます。
+Workerは、認証されていても、Resource Advertisement、ResultClaim、Telemetryなどの内容を自己申告できます。
 
-したがって、
+したがって、次のようになります。
 
 ~~~text
 Worker says GPU=24GB
@@ -98,30 +96,26 @@ Worker says 60s GPU used
   != Contribution quantity
 ~~~
 
-です。
+自己申告は、Evidenceの一種として保持できます。ただし、保証の水準を別に記録します。
 
-Self-reportはEvidenceの一種として保持できますが、保証水準を別に記録します。
+### 2.4 署名済みのobjectは、その場で書き換えない
 
-### 2.4 Signed objectはin-placeで書き換えない
+Admission Decision、Placement Approval、Lease、WorkOrderなどは、発行した後にFieldを書き換えて、意味を変えることはしません。
 
-Admission Decision、Placement Approval、Lease、WorkOrder等は、発行後にFieldを書き換えて意味を変更しません。
-
-変更が必要な場合は、
+変更が必要な場合は、次のものとして表現します。
 
 - 新しいrevision
 - 新しいAttempt
-- revoke / supersede
+- revokeとsupersede
 - expiry
 
-として表現します。
+Auditの上で、
 
-Audit上、
+> 当時、何が許可されていたか
 
-> 当時何が許可されていたか
+を、あとから復元できることを重視します。
 
-を後から復元できることを重視します。
-
-### 2.5 Retryは新しいAttempt
+### 2.5 Retryは、新しいAttemptである
 
 Task自体は同じでも、再実行は新しいAttemptです。
 
@@ -135,27 +129,27 @@ Task T1
     WorkOrder W2
 ~~~
 
-A1のWorkOrderを書き換えてA2に再利用しません。
+A1のWorkOrderを書き換えて、A2に再利用することはしません。
 
-ただしidempotent external effectでは、外部Operation IDを同じIntentへbindingしたまま再利用する場合があります。
+ただし、冪等な外部のeffectでは、外部のOperation IDを同じIntentに結び付けたまま、再利用する場合があります。
 
-Task Attempt IdentityとExternal Operation Identityは別概念です。
+Task Attempt Identityと、External Operation Identityは、別の概念です。
 
 ---
 
-# 3. Contract層
+# 3. Contractの層
 
 EKIのRuntime Contractを、次の層に分けます。
 
 ## 3.1 External Client Plane
 
 - TaskRequest
-- Task status query
-- Cancellation request
-- Artifact ingest request
-- Result retrieval request
+- Task statusの問い合わせ
+- Cancellationの要求
+- Artifactのingestの要求
+- Resultの取得の要求
 
-Clientから見えるSurfaceです。
+Clientから見える面です。
 
 ## 3.2 Internal Control Contracts
 
@@ -168,18 +162,18 @@ Clientから見えるSurfaceです。
 - ArtifactGrant
 - WorkOrder
 
-Clientから直接生成できません。
+Clientは、これらを直接生成できません。
 
 ## 3.3 Worker Plane
 
 - ResourceAdvertisement
-- WorkOrder delivery / acceptance
-- Lease renewal
-- Checkpoint / progress claim
+- WorkOrderの配送と受け入れ
+- Leaseのrenewal
+- CheckpointとProgressのClaim
 - ResultClaim
-- Worker telemetry
+- Workerのtelemetry
 
-Workerはこれらを送信できますが、Security上の意味はAuthorityが評価します。
+Workerは、これらを送信できます。ただし、Security上の意味は、Authorityが評価します。
 
 ## 3.4 Verification / Outcome Contracts
 
@@ -189,88 +183,86 @@ Workerはこれらを送信できますが、Security上の意味はAuthorityが
 - ExternalEffectReceipt
 - ContributionRecord
 
-Claimとaccepted factを分けます。
+Claimと、受理された事実とを、分けます。
 
 ## 3.5 Administrative Contracts
 
 - Federation configuration
 - Executor admission configuration
-- Authority trust / policy configuration
+- Authorityのtrustとpolicyの設定
 
-通常Task requestから触れない別Surfaceです。
+通常のTask requestからは触れない、別の面です。
 
 ---
 
-# 4. 共通Identifier
+# 4. 共通のIdentifier
 
 ## 4.1 Principal ID
 
-Identity Providerが検証した主体のnamespace付き識別子です。
+Identity Providerが検証した主体の、namespace付きの識別子です。
 
-Local user nameだけで一意性を仮定しません。
+ローカルのuser nameだけで、一意であるとは仮定しません。
 
-少なくともTrust DomainまたはIssuerとのbindingを維持します。
+少なくとも、Trust DomainまたはIssuerとのbindingを維持します。
 
 ## 4.2 Task ID
 
-Admission成功後にEKIが発行するFabric内のTask identityです。
+Admissionに成功した後に、EKIが発行する、Fabric内のTask identityです。
 
-Clientが自由にTask IDを選び、他Taskへ衝突させる構造にはしません。
+Clientが自由にTask IDを選んで、他のTaskと衝突させられる構造にはしません。
 
 ## 4.3 Client Request ID / Idempotency Key
 
-Clientがretry-safeなsubmitを行うために利用できる、Principal scopeのidempotency identityです。
+Clientが、retryしても安全なsubmitを行うために使える、Principalの範囲のidempotency identityです。
 
-同じIdempotency Keyについて、
+同じIdempotency Keyについて、次のようにします。
 
 ~~~text
 same request digest
-  → same admission result / Task IDへ収束可能
+  → same admission result / Task IDに収束できる
 
 different request digest
   → conflictとして拒否
 ~~~
 
-します。
-
-Keyだけを再利用してTask intentをすり替えられないようにします。
+Keyだけを再利用して、Taskのintentをすり替えられないようにします。
 
 ## 4.4 Attempt ID
 
-Task State Authorityが、各実行Attemptごとに発行します。
+Task State Authorityが、各実行のAttemptごとに発行します。
 
-Retry / migration / reclaimで新しいAttempt IDになります。
+Retry、migration、reclaimのたびに、新しいAttempt IDになります。
 
 ## 4.5 Decision ID
 
-Admission、Placement、Lease、Grant、Verification等のDecisionを一意に識別します。
+Admission、Placement、Lease、Grant、VerificationなどのDecisionを、一意に識別します。
 
-Auditやrevoke / supersedeの参照に使います。
+Auditや、revokeとsupersedeの参照に使います。
 
 ## 4.6 Digest
 
-Immutable contentやnormalized Contractを識別する場合はDigestを利用します。
+変更できないcontentや、正規化したContractを識別する場合は、Digestを使います。
 
-例は次のとおりです。
+たとえば、次のものです。
 
 - Executor Artifact
-- Artifact input
-- TaskIR canonical digest
-- Result bytes
+- inputのArtifact
+- TaskIRのcanonical digest
+- Resultのbytes
 - Proof Artifact
 - Evidence
 
-表示名やtagをContent Identityとして扱いません。
+表示名やtagを、Content Identityとして扱いません。
 
 ---
 
 # 5. Versioning
 
-## 5.1 Core schema version
+## 5.1 Core schemaのversion
 
-各Contractにはschema / kindのversion identityを持たせます。
+各Contractには、schemaとkindのversion identityを持たせます。
 
-概念例は次のとおりです。
+概念上の例は、次のとおりです。
 
 ~~~text
 eki.task-request/v1
@@ -279,79 +271,75 @@ eki.work-order/v1
 eki.result-claim/v1
 ~~~
 
-実際のwire表現は後続設計で決めます。
+実際のwire表現は、後続の設計で決めます。
 
 ## 5.2 Silent downgradeをしない
 
-受信側が未知のsecurity-critical versionを受け取った場合、
+受信側が、未知のsecurity-criticalなversionを受け取った場合に、
 
-> 分かるFieldだけ読んでv1として扱う
+> 分かるFieldだけを読んで、v1として扱う
 
-といったsilent downgradeを行いません。
+といった、Silent downgradeを行いません。
 
-未知Versionはrejectするか、明示的なtranslatorを通します。
+未知のversionは、rejectするか、明示的なtranslatorを通します。
 
-## 5.3 Translation boundary
+## 5.3 変換の境界
 
-External TaskRequestのversion変換が必要な場合、Ingress / Admission boundaryでnormalizationします。
+External TaskRequestのversionを変換する必要がある場合は、IngressまたはAdmissionの境界で正規化します。
 
-Workerへ複数世代のExternal request semanticsを直接解釈させません。
+Workerに、複数の世代のExternal requestのsemanticsを、直接解釈させません。
 
-## 5.4 Internal versionも明示する
+## 5.4 Internalのversionも明示する
 
-Internalだから安全という理由でschema versionを省略しません。
+Internalだから安全だという理由で、schema versionを省略しません。
 
-長期間queueされたWorkOrderやfederated componentが、異なるversionを扱う可能性があります。
+長い間queueに入っているWorkOrderや、federatedなcomponentが、異なるversionを扱う可能性があります。
 
 ---
 
 # 6. Extension model
 
-未知の将来OSSがCore変更なしに利用できるよう、Extensionを許容します。
+まだ知られていない将来のOSSが、Coreを変更せずに使えるよう、Extensionを認めます。
 
-ただしExtensionでSecurity Coreを迂回できてはいけません。
+ただし、Extensionによって、Security Coreを迂回できてはいけません。
 
-## 6.1 Namespaced extension
+## 6.1 名前空間付きのextension
 
-Extensionはnamespace付き識別子を持ちます。
+Extensionは、namespace付きの識別子を持ちます。
 
-例は次のとおりです。
+たとえば、次のとおりです。
 
 ~~~text
 org.example.video-transcode/v1
 dev.sui.similarity/v2
 ~~~
 
-## 6.2 Critical / optional
+## 6.2 CriticalとOptional
 
-Extensionには少なくとも概念的に、
+Extensionには、少なくとも概念上、次の区別を持たせます。
 
-- critical: 理解できなければreject
-- optional: 理解できなければ無視可能
+- critical: 理解できなければ、rejectする。
+- optional: 理解できなければ、無視してよい。
 
-の区別を持たせます。
-
-ただしoptional extensionは、
+ただし、optionalなextensionは、次のものを弱める意味を持てません。
 
 - Authorization
 - Data Class
 - Sandbox Capability
-- Artifact access
+- Artifactへのaccess
 - Worker Assurance
-- retry safety
-- side-effect semantics
+- retryの安全性
+- side-effectのsemantics
 
-を弱める意味を持てません。
+Security-criticalなsemanticsは、可能な限り、Core Contractに置きます。
 
-Security-critical semanticsは可能な限りCore Contractへ置きます。
+## 6.3 未知のextensionの保存
 
-## 6.3 Unknown extension preservation
+Gatewayが理解しないoptionalなextensionを、中継する必要がある場合には、canonical bytesやdigestを保つ余地を持ちます。
 
-Gatewayが理解しないoptional extensionを中継する必要がある場合、canonical bytes / digestを保つ余地を持ちます。
+ただし、中身が分からないdataを、自動的にWorkerのexecutorに渡すことはしません。
 
-ただしopaque dataをWorker executorへ自動的に渡すことはしません。
-
-Executor-specific parameterはAdmission済みExecutor schemaで別途検証します。
+Executor固有のparameterは、Admission済みのExecutor schemaで、別に検証します。
 
 ---
 
@@ -359,13 +347,13 @@ Executor-specific parameterはAdmission済みExecutor schemaで別途検証し�
 
 ## 7.1 性質
 
-TaskRequestは**hostile input**です。
+TaskRequestは、**hostile input**です。
 
-認証済みClientから来ても、構造・値・意味を信用しません。
+認証済みのClientから来ても、構造、値、意味を信用しません。
 
 ## 7.2 Clientが表現できるもの
 
-概念的には次を表現できます。
+概念上、次のものを表現できます。
 
 ~~~text
 client request identity
@@ -383,34 +371,34 @@ optional extension
 
 ## 7.3 Clientが指定できないもの
 
-TaskRequestに次を直接持たせない、または持っていてもhintとしてしか扱いません。
+TaskRequestには、次のものを直接持たせません。持っていても、hintとしてしか扱いません。
 
 - Worker ID
-- hostname / IP
-- internal queue
-- WorkOrder signer
+- hostnameとIP
+- 内部のqueue
+- WorkOrderの署名者
 - Artifact Grant
-- Executor Artifact path / arbitrary binary path
-- arbitrary container registry URL
-- arbitrary local filesystem path
-- raw secret value
-- internal Policy Revision
+- Executor Artifactのpathや、任意のbinaryのpath
+- 任意のcontainer registryのURL
+- 任意のローカルfilesystemのpath
+- 生のsecretの値
+- 内部のPolicy Revision
 - trust root
-- verification authority public key
+- verification authorityの公開鍵
 
-## 7.4 Executor requirement
+## 7.4 Executorの要求
 
-Clientはlogical Executor ID / version range等を要求できます。
+Clientは、論理的なExecutor IDやversionの範囲などを要求できます。
 
-例は次のとおりです。
+たとえば、次のとおりです。
 
 ~~~text
 dev.example.transform@1
 ~~~
 
-Admissionはその要求を登録済みExecutorへresolveします。
+Admissionは、その要求を、登録済みのExecutorに解決します。
 
-Workerへ渡るWorkOrderでは、実Artifact DigestとRuntime Classが固定されます。
+Workerに渡るWorkOrderでは、実際のArtifact DigestとRuntime Classが固定されます。
 
 Clientが、
 
@@ -419,54 +407,52 @@ Clientが、
 https://attacker/image:latest
 ~~~
 
-のような任意code locationを標準Task APIから指定することはできません。
+のような、任意のcodeの場所を、標準のTask APIから指定することはできません。
 
 ## 7.5 Input Artifact
 
-Inputはauthorized logical Artifact referenceとして表現します。
+Inputは、認可された論理的なArtifactの参照として表現します。
 
-Artifactが未登録なら、先にArtifact Ingest Surfaceを通します。
+Artifactが未登録の場合は、先にArtifact Ingest Surfaceを通します。
 
-TaskRequestからWorkerへ任意URLを直接渡しません。
+TaskRequestから、Workerに任意のURLを直接渡すことはしません。
 
 ## 7.6 Resources
 
-Clientは必要Resourceを宣言できます。
+Clientは、必要なResourceを宣言できます。
 
-例は次のとおりです。
+たとえば、次のものです。
 
-- CPU cores
+- CPUのcore数
 - memory
-- GPU requirement
+- GPUの要求
 - VRAM
 - temporary disk
-- maximum expected output
+- 想定する最大のoutput
 
-AdmissionはOrganization PolicyとQuotaへ照合し、内部Budget / Limitを確定します。
+Admissionは、Organization PolicyとQuotaに照らして、内部のBudgetとLimitを確定します。
 
-Client要求は上限を突破するAuthorityではありません。
+Clientの要求は、上限を突破するAuthorityではありません。
 
 ## 7.7 Network
 
-TaskRequestが外部接続を必要とする場合、raw destinationをCapabilityとして直接許可しません。
+TaskRequestが外部への接続を必要とする場合に、生のdestinationを、Capabilityとして直接許可しません。
 
-基本形は、
+基本の形は、次のいずれかです。
 
 - no network
-- registered network profile
-- registered external adapter
+- 登録済みのnetwork profile
+- 登録済みのexternal adapter
 
-のいずれかです。
-
-具体endpoint allowlistはPolicy / Executor profileからInternal WorkOrderへ解決します。
+具体的なendpointのallowlistは、PolicyとExecutor profileから、Internal WorkOrderに解決します。
 
 ## 7.8 Secret
 
-Secretが必要なTaskでは、Secret bytesをTaskRequestへ埋め込むことを標準にしません。
+Secretが必要なTaskでは、Secretのbytesを、TaskRequestに埋め込むことを標準にしません。
 
-Logical Secret Referenceまたはregistered capabilityを要求し、後段AuthorityがTask / Attempt / Worker / ExecutorへscopeしたGrantへ解決します。
+論理的なSecret Referenceや、登録済みのcapabilityを要求します。そして、後段のAuthorityが、Task、Attempt、Worker、Executorに範囲を限ったGrantに解決します。
 
-Secret Contractの詳細はData Plane設計で決めます。
+Secret Contractの詳細は、Data Planeの設計で決めます。
 
 ---
 
@@ -474,13 +460,13 @@ Secret Contractの詳細はData Plane設計で決めます。
 
 ## 8.1 役割
 
-TaskRequestを、Fabric内部で扱ってよい意味へnormalizationしたContractです。
+TaskRequestを、Fabric内部で扱ってよい意味に正規化したContractです。
 
-Clientが生成できません。
+Clientは、これを生成できません。
 
 ## 8.2 主な内容
 
-概念上、少なくとも次を保持します。
+概念上、少なくとも次のものを保持します。
 
 ~~~text
 Task ID
@@ -500,16 +486,14 @@ Admission Policy Revision
 issued time / decision identity
 ~~~
 
-## 8.3 Client inputとderived fieldを区別する
+## 8.3 Clientの入力と、導いたfieldを区別する
 
-TaskIRには、
+TaskIRには、必要に応じて、次の2つを区別して残します。
 
-- client requested value
-- effective / derived value
+- Clientが要求した値
+- 有効な値、または導いた値
 
-を必要に応じて区別して残します。
-
-例は次のとおりです。
+たとえば、次のとおりです。
 
 ~~~text
 requested priority = high
@@ -519,32 +503,30 @@ requested data class = public
 effective data class = internal
 ~~~
 
-後から、
+あとから、
 
-> Clientがpublicと言ったのでpublicだった
+> Clientがpublicと言ったので、publicだった
 
 という誤解を防ぎます。
 
-## 8.4 Classification monotonicity
+## 8.4 Classificationの単調性
 
-Admission以降のContractは、正当なreclassification processなしにeffective security classificationを弱められません。
+Admission以降のContractは、正当なreclassificationのprocessなしに、effective security classificationを弱められません。
 
-Artifact intrinsic classificationの方が高い場合は、Data Authority側でも再確認します。
+Artifact固有のclassificationのほうが高い場合は、Data Authority側でも再確認します。
 
 ## 8.5 Digest
 
-TaskIRのcanonical representationにDigestを持てる設計を採ります。
+TaskIRのcanonical representationに、Digestを持てる設計を採ります。
 
-後続Decisionは、
+後続のDecisionは、次のものに結び付けます。
 
 ~~~text
 TaskID
 TaskIRDigest
 ~~~
 
-へbindingします。
-
-これによりTask IDを同じまま意味だけ差し替えることを防ぎます。
+これによって、Task IDを同じままにして、意味だけをすり替えることを防ぎます。
 
 ---
 
@@ -552,7 +534,7 @@ TaskIRDigest
 
 ## 9.1 役割
 
-Taskの一回の実行試行を表します。
+Taskの、一回の実行の試行を表します。
 
 ## 9.2 主な内容
 
@@ -571,15 +553,15 @@ side-effect operation identity if applicable
 
 ## 9.3 Retry
 
-RetryはAttemptContextを新規発行します。
+Retryでは、AttemptContextを新しく発行します。
 
-既存AttemptのLeaseやWorkOrderを延命して別Workerへ移し替えません。
+既存のAttemptのLeaseやWorkOrderを延命して、別のWorkerに移し替えることはしません。
 
 ## 9.4 External operation identity
 
-idempotent external effectでは、Attemptが変わっても同じOperation IDを維持する場合があります。
+冪等な外部のeffectでは、Attemptが変わっても、同じOperation IDを維持する場合があります。
 
-その場合もRequest Intent Digestを固定します。
+その場合も、Request Intent Digestを固定します。
 
 ~~~text
 Attempt A1
@@ -588,13 +570,13 @@ Attempt A2
   External Operation O1
 ~~~
 
-はあり得ますが、
+これはあり得ます。しかし、
 
 ~~~text
 O1 + different intent
 ~~~
 
-は禁止します。
+は、禁止します。
 
 ---
 
@@ -602,13 +584,13 @@ O1 + different intent
 
 ## 10.1 性質
 
-Workerから来るResourceAdvertisementはauthenticated self-reportです。
+Workerから来るResourceAdvertisementは、認証された自己申告です。
 
-そのままSecurity Evidenceにはしません。
+そのまま、Security Evidenceにはしません。
 
 ## 10.2 内容
 
-概念例は次のとおりです。
+概念上の例は、次のとおりです。
 
 ~~~text
 Worker ID
@@ -625,29 +607,29 @@ local willingness
 timestamp
 ~~~
 
-## 10.3 Performance claimとSecurity claimを分ける
+## 10.3 性能のclaimと、Securityのclaimを分ける
 
 ~~~text
 GPU memory = 24 GiB
 ~~~
 
-という性能Claimと、
+という性能のClaimと、
 
 ~~~text
 confidential GPU execution available
 ~~~
 
-というSecurity Claimは別です。
+というSecurityのClaimは、別です。
 
-後者を利用する場合はAttestation / managed policy等のEvidenceが必要です。
+後者を利用する場合は、Attestationや管理されたpolicyなどのEvidenceが必要です。
 
-## 10.4 Staleness
+## 10.4 古さ
 
-ResourceAdvertisementは短命なObservationです。
+ResourceAdvertisementは、短い寿命のObservationです。
 
-古い値を永続Capabilityとして扱いません。
+古い値を、永続的なCapabilityとして扱いません。
 
-Schedulerがstale informationを使った場合は主にperformance degradationへ閉じるようにし、Security AuthorizationはPlacement Authorityが最新Evidenceで再評価します。
+Schedulerが古い情報を使った場合の影響は、主に性能の劣化にとどめます。Security Authorizationは、Placement Authorityが最新のEvidenceで再評価します。
 
 ---
 
@@ -655,7 +637,7 @@ Schedulerがstale informationを使った場合は主にperformance degradation�
 
 ## 11.1 性質
 
-PlacementProposalはOptimization outputです。
+PlacementProposalは、Optimizationの出力です。
 
 Security tokenではありません。
 
@@ -672,21 +654,19 @@ optional ranking reason
 scheduler version / model version
 ~~~
 
-## 11.3 learned estimator
+## 11.3 Learned estimator
 
-将来Issue #19のmodelを使う場合は、
+将来、Issue #19のmodelを使う場合は、次のものを、Audit用に残せます。
 
 - model ID
 - model version
 - feature schema
 - prediction
-- uncertainty / calibration metadata
+- uncertaintyとcalibrationのmetadata
 
-等をAudit用に残せます。
+ただし、Proposalの意味は変わりません。
 
-ただしProposalの意味は変わりません。
-
-Policy hard filterを越えるAuthorityにはなりません。
+Policyの厳しいfilterを越える、Authorityにはなりません。
 
 ---
 
@@ -694,7 +674,7 @@ Policy hard filterを越えるAuthorityにはなりません。
 
 ## 12.1 役割
 
-Task AttemptとWorkerの組合せがSecurity / Grant / Assurance条件を満たすことを確定します。
+Task AttemptとWorkerの組み合わせが、Security、Grant、Assuranceの条件を満たすことを、確定します。
 
 ## 12.2 Binding
 
@@ -710,15 +690,15 @@ issued / expiry
 Decision ID
 ~~~
 
-## 12.3 具体Resource limitとは分ける
+## 12.3 具体的なResource limitとは分ける
 
 PlacementApprovalは、
 
-> このWorkerへ置いてよい
+> このWorkerに置いてよい
 
 という判断です。
 
-最終CPU / Memory / Network / Sandbox limitはAdmission Budget、Worker capacity、Local Governor等からWorkOrder compilation時にさらに狭められます。
+最終的なCPU、Memory、Network、Sandboxのlimitは、Admission Budget、Workerのcapacity、Local Governorなどから、WorkOrderをcompileするときに、さらに狭められます。
 
 ---
 
@@ -726,7 +706,7 @@ PlacementApprovalは、
 
 ## 13.1 役割
 
-Task AttemptとWorkerの時間制限付き割当を表します。
+Task AttemptとWorkerに対する、時間制限付きの割り当てを表します。
 
 ## 13.2 Binding
 
@@ -740,17 +720,17 @@ expires
 renewal sequence
 ~~~
 
-## 13.3 Lease expiry
+## 13.3 Leaseのexpiry
 
-Lease失効は、
+Leaseが失効したことが示すのは、
 
 > WorkerがTaskを完了していない可能性が高い
 
-ことを示します。
+ということです。
 
 External side-effectが失敗した証明ではありません。
 
-したがってLease expiryから直接non-idempotent Taskをretryしません。
+そのため、Leaseのexpiryから、冪等でないTaskを、直接retryしません。
 
 ---
 
@@ -758,7 +738,7 @@ External side-effectが失敗した証明ではありません。
 
 ## 14.1 役割
 
-実行可能なExecutor Artifactを確定します。
+実行できるExecutor Artifactを確定します。
 
 ## 14.2 主な内容
 
@@ -775,9 +755,9 @@ issued / expiry / revocation state
 
 ## 14.3 Taskへのbinding
 
-TaskRequestではlogical Executor requirementを使えますが、WorkOrderでは具体Digestへ固定します。
+TaskRequestでは、論理的なExecutorの要求を使えます。WorkOrderでは、具体的なDigestに固定します。
 
-Mutable tagをWorkerが実行時に解決しません。
+変更できるtagを、Workerが実行時に解決することはしません。
 
 ---
 
@@ -785,7 +765,7 @@ Mutable tagをWorkerが実行時に解決しません。
 
 ## 15.1 役割
 
-特定Artifact / Dataへ、特定Task Attempt / Workerが限定操作できるCapabilityを表します。
+特定のArtifactやDataに対して、特定のTask AttemptとWorkerが、限定された操作を行えるCapabilityを表します。
 
 ## 15.2 Binding
 
@@ -805,21 +785,19 @@ policy revision
 
 ## 15.3 Grantの最小化
 
-Grantは必要なInputだけに限定します。
+Grantは、必要なInputだけに限定します。
 
-Workerが同じTenantの他Artifactを列挙できるCapabilityを標準にはしません。
+同じTenantの他のArtifactを、Workerが列挙できるCapabilityは、標準にはしません。
 
 ## 15.4 Output
 
-Output先も、arbitrary URLではなくAuthorized Output Bindingとして扱います。
+Outputの宛先も、任意のURLではなく、認可されたOutput Bindingとして扱います。
 
-WorkOrderは、
+WorkOrderは、次のような、解決済みのtargetを持てます。
 
-- result return to Control Plane
-- authorized Artifact Store output
-- application-owned registered sink
-
-等の解決済みtargetを持てます。
+- Control Planeへの、Resultの返却
+- 認可されたArtifact Storeへのoutput
+- アプリケーションが所有する、登録済みのsink
 
 ---
 
@@ -827,13 +805,13 @@ WorkOrderは、
 
 ## 16.1 性質
 
-WorkOrderはWorkerが実行できる唯一の標準Internal Execution Contractです。
+WorkOrderは、Workerが実行できる、唯一の標準のInternal Execution Contractです。
 
 ClientRequestそのものではありません。
 
-## 16.2 Immutable envelope
+## 16.2 変更できないenvelope
 
-WorkOrderには必要に応じて次を含めます。
+WorkOrderには、必要に応じて、次のものを含めます。
 
 ~~~text
 WorkOrder ID
@@ -858,11 +836,11 @@ nonce
 WorkOrder Authority identity
 ~~~
 
-## 16.3 Limitは安全側に合成する
+## 16.3 Limitは、安全な側に合成する
 
 WorkOrderのResource Limitは、複数の上限の最小値です。
 
-概念上は次のとおりです。
+概念上は、次のとおりです。
 
 ~~~text
 effective execution limit
@@ -876,29 +854,27 @@ effective execution limit
     )
 ~~~
 
-Local GovernorはWorkOrder受領後でもさらに狭められます。
+Local Governorは、WorkOrderを受け取った後でも、さらに狭められます。
 
-## 16.4 Capabilityはdefault deny
+## 16.4 Capabilityは、default denyである
 
-WorkOrderにないCapabilityは使えないことを標準にします。
+WorkOrderにないCapabilityは、使えないことを標準にします。
 
-特に、
+特に、次のものを、暗黙には許可しません。
 
 - filesystem
 - network
 - secret
-- device / GPU
+- deviceとGPU
 - child process
 - temp storage
 - external effect adapter
 
-を暗黙許可しません。
+## 16.5 WorkOrderのexpiry
 
-## 16.5 WorkOrder expiry
+WorkOrderの有効期限は、依存する前提のDecisionより長くできない方向を、基本とします。
 
-WorkOrderの有効期限は、依存する前提Decisionより長くできない方向を基本とします。
-
-概念上は次のとおりです。
+概念上は、次のとおりです。
 
 ~~~text
 workorder expiry
@@ -910,59 +886,55 @@ workorder expiry
      )
 ~~~
 
-例外が必要ならContract上で明示し、暗黙延長しません。
+例外が必要な場合は、Contractの上で明示します。暗黙に延長することはしません。
 
 ---
 
-# 17. Worker WorkOrder Acceptance
+# 17. WorkerによるWorkOrderの受け入れ
 
-WorkerはWorkOrderを受信したら、すぐ実行開始するのではなくlocal verificationを行います。
+Workerは、WorkOrderを受信しても、すぐには実行を開始しません。先に、ローカルでverificationを行います。
 
-少なくともは次のとおりです。
+少なくとも、次のものを確認します。
 
 1. WorkOrder Authority
-2. WorkOrder schema version
+2. WorkOrderのschema version
 3. Worker ID
-4. Task / Attempt binding
+4. TaskとAttemptのbinding
 5. Lease
 6. Placement Approval
 7. Executor Approval
-8. actual Executor Digest
+8. 実際のExecutor Digest
 9. Artifact Grant
-10. Resource / Sandbox / Network limit
-11. expiry / revocation
+10. Resource、Sandbox、Networkのlimit
+11. expiryとrevocation
 12. Local Governor
 
-を確認します。
+一致しない場合は、fail closedします。
 
-不一致時はfail closedします。
-
-Workerが一部のDecisionを理解できないVersionなら、分かる範囲だけで実行しません。
+Workerが、一部のDecisionを理解できないversionの場合は、分かる範囲だけで実行しません。
 
 ---
 
 # 18. Progress / Checkpoint Claim
 
-ProgressやCheckpointはWorker由来のClaimです。
+ProgressやCheckpointは、Worker由来のClaimです。
 
 ~~~text
 Attempt X is 80% complete
 Checkpoint digest Y exists
 ~~~
 
-というWorker申告を、Control Planeはそのまま事実にしません。
+というWorkerの申告を、Control Planeは、そのまま事実にしません。
 
-Checkpoint Artifactを再利用する場合は、
+Checkpoint Artifactを再利用する場合は、次のものを確認します。
 
 - Artifact Digest
-- Executor compatibility
-- Attempt / Task binding
-- safe ingest
+- Executorの互換性
+- AttemptとTaskのbinding
+- 安全なingest
 - authorization
 
-を確認します。
-
-Progress percentageはScheduling hintには使えてもSecurity Authorityにはしません。
+Progressのpercentageは、Schedulingのhintには使えます。しかし、Security Authorityにはしません。
 
 ---
 
@@ -970,13 +942,13 @@ Progress percentageはScheduling hintには使えてもSecurity Authorityには�
 
 ## 19.1 性質
 
-Workerが
+Workerが、
 
-> このAttemptの結果はこれです
+> このAttemptの結果は、これです
 
 と主張するContractです。
 
-まだAccepted Resultではありません。
+まだ、Accepted Resultではありません。
 
 ## 19.2 主な内容
 
@@ -993,9 +965,9 @@ completed time
 Worker signature / authenticated channel provenance
 ~~~
 
-## 19.3 Worker signatureの意味
+## 19.3 Worker署名の意味
 
-Worker Identityにbindingできることは重要ですが、
+Worker Identityに結び付けられることは、重要です。しかし、
 
 ~~~text
 signed by Worker
@@ -1004,15 +976,15 @@ signed by Worker
 
 です。
 
-Worker署名はResult provenanceであり、Result Assuranceそのものではありません。
+Workerの署名は、Resultのprovenanceです。Result Assuranceそのものではありません。
 
 ---
 
 # 20. AttestationResult
 
-AttestationResultはRaw EvidenceをVerifierが評価したnormalized Contractです。
+AttestationResultは、Raw EvidenceをVerifierが評価した、正規化したContractです。
 
-主な内容は次のとおりです。
+主な内容は、次のとおりです。
 
 ~~~text
 Worker / Attester ID
@@ -1025,9 +997,9 @@ verified time
 expiry
 ~~~
 
-PlacementやData Authorityは、このResultをTask固有条件へ再評価します。
+PlacementとData Authorityは、このResultを、Task固有の条件に照らして、再評価します。
 
-ClientへRaw Evidenceを返すことを標準にはしません。
+ClientにRaw Evidenceを返すことは、標準にはしません。
 
 ---
 
@@ -1035,7 +1007,7 @@ ClientへRaw Evidenceを返すことを標準にはしません。
 
 ## 21.1 役割
 
-ResultClaimに対して、特定Verification Methodが何を確認したかを表します。
+ResultClaimに対して、特定のVerification Methodが、何を確認したかを表します。
 
 ## 21.2 主な内容
 
@@ -1053,11 +1025,11 @@ verified time
 expiry if applicable
 ~~~
 
-## 21.3 Method-specific data
+## 21.3 Methodに固有のdata
 
-Proof SystemやApplication Validator固有情報はnamespaced extensionまたはEvidence referenceへ置けます。
+Proof SystemやApplication Validatorに固有の情報は、namespace付きのextensionや、Evidenceの参照に置けます。
 
-Relying Partyが必要とする共通FieldはCoreに残します。
+Relying Partyが必要とする共通のFieldは、Coreに残します。
 
 ---
 
@@ -1065,7 +1037,7 @@ Relying Partyが必要とする共通FieldはCoreに残します。
 
 ## 22.1 役割
 
-Result Acceptance AuthorityがTask固有Result Assurance Policyを満たしたと判断した最終Contractです。
+Result Acceptance Authorityが、Task固有のResult Assurance Policyを満たしたと判断した、最終的なContractです。
 
 ## 22.2 主な内容
 
@@ -1080,23 +1052,21 @@ Acceptance Decision ID
 optional supersedes / correction
 ~~~
 
-## 22.3 複数Attempt
+## 22.3 複数のAttempt
 
-複数Worker Resultを比較した場合、AcceptedResultは一つのAttemptだけに依存しないことがあります。
+複数のWorkerのResultを比較した場合、AcceptedResultが、一つのAttemptだけに依存しないことがあります。
 
-その場合、根拠Attempt / Verification Resultを列挙します。
+その場合は、根拠となったAttemptとVerification Resultを列挙します。
 
-## 22.4 Durable factとcorrection
+## 22.4 永続的な事実と、訂正
 
-AcceptedResultを後からin-placeで書き換えません。
+AcceptedResultを、あとからその場で書き換えることはしません。
 
-誤受理が判明した場合は、
+誤って受理したことが判明した場合は、次のものとして、履歴を残します。
 
 - revoke
 - supersede
-- corrected AcceptedResult
-
-として履歴を残します。
+- 訂正したAcceptedResult
 
 ---
 
@@ -1104,7 +1074,7 @@ AcceptedResultを後からin-placeで書き換えません。
 
 ## 23.1 役割
 
-External Effect Authorityが、外部副作用の成立を確認したContractです。
+External Effect Authorityが、外部への副作用が成立したことを確認した、Contractです。
 
 ## 23.2 Binding
 
@@ -1120,15 +1090,15 @@ optional expiry
 
 ## 23.3 Worker Resultとは分ける
 
-ResultClaimに
+ResultClaimに、
 
 ~~~text
 email sent = true
 ~~~
 
-と書いてあってもReceiptの代わりになりません。
+と書いてあっても、Receiptの代わりにはなりません。
 
-Side-effect RecoveryではReceiptの有無をTask Stateが評価します。
+Side-effectのRecoveryでは、Receiptがあるかどうかを、Task Stateが評価します。
 
 ---
 
@@ -1136,7 +1106,7 @@ Side-effect RecoveryではReceiptの有無をTask Stateが評価します。
 
 ## 24.1 役割
 
-検証可能なResource MeasurementとWork Contextを、価値換算前の記録として残します。
+検証できるResource MeasurementとWork Contextを、価値に換算する前の記録として残します。
 
 ## 24.2 主な内容
 
@@ -1158,202 +1128,196 @@ issued time
 
 ## 24.3 非目標
 
-Contractに共通の
+Contractに、次のような共通のものを追加しません。
 
 - EKI points
-- 円換算
+- 円への換算
 - market price
 - social score
 
-を追加しません。
-
-外部制度が独自Policyで利用します。
+外部の制度が、独自のPolicyで利用します。
 
 ---
 
 # 25. Cancellation
 
-## 25.1 Cancel requestとCancel decisionを分ける
+## 25.1 Cancelの要求と、Cancelの判断を分ける
 
-ClientはCancelを要求できます。
+Clientは、Cancelを要求できます。
 
-Task State Authorityが、Principal authorizationとTask stateを確認してCancel Decisionを作ります。
+Task State Authorityが、Principalのauthorizationと、Taskのstateを確認して、Cancel Decisionを作ります。
 
 ## 25.2 Cancelで消えないもの
 
-Cancellationは過去の事実を消しません。
+Cancellationは、過去の事実を消しません。
+
+次のものを、削除したことにはなりません。
 
 - すでにAcceptedされたResult
 - すでに成立したExternal Effect
 - すでに発行されたContribution Evidence
-- Audit history
+- Auditの履歴
 
-を削除したことにはなりません。
+## 25.3 Cancelの後
 
-## 25.3 Cancel後
+将来の実行を止めるために、次のことを行います。
 
-将来実行を止めるため、
+- 新しいAttemptの作成を止める
+- Leaseをrevokeし、renewしない
+- Artifact Grantをrevokeするか、期限切れにする
+- Workerに、best-effortの停止の信号を送る
+- Local Governorやruntimeでkillする
 
-- new Attempt creation停止
-- Lease revoke / no renewal
-- Artifact Grant revoke / expiry
-- Workerへbest-effort stop signal
-- Local Governor / runtime kill
-
-等を行います。
-
-ただしdispatch済みnon-idempotent effectのoutcomeが不明ならUNKNOWNを維持します。
+ただし、dispatch済みの冪等でないeffectのoutcomeが不明であれば、UNKNOWNを維持します。
 
 ---
 
-# 26. Replay / Stale / Downgrade防止
+# 26. Replay / 古い情報 / Downgradeの防止
 
-Security-sensitive Contractは、次の観点を組み合わせます。
+Security上、重要なContractでは、次の観点を組み合わせます。
 
 ## 26.1 Identity binding
 
-別Principal / Workerへ流用できない。
+別のPrincipalやWorkerに、流用できない。
 
 ## 26.2 Subject binding
 
-別Task / Attempt / Artifact / Executorへ流用できない。
+別のTask、Attempt、Artifact、Executorに、流用できない。
 
 ## 26.3 Time binding
 
-expiry / issued time / lease duration。
+expiry、issued time、lease duration。
 
-## 26.4 Sequence / nonce
+## 26.4 Sequenceとnonce
 
-Lease renewal、Attestation challenge等、必要なContractでreplayを検出。
+Leaseのrenewal、Attestationのchallengeなど、必要なContractで、replayを検出する。
 
 ## 26.5 Policy revision
 
-古いPolicyで発行されたApprovalを、現在Policyが拒否できる。
+古いPolicyで発行されたApprovalを、現在のPolicyが拒否できる。
 
 ## 26.6 Content digest
 
-Mutable aliasやbyte substitutionを検出。
+変更できるaliasや、byteのすり替えを検出する。
 
 ## 26.7 Revocation
 
-緊急停止が必要なExecutor、Grant、Credential等を失効可能にする。
+緊急に止める必要があるExecutor、Grant、Credentialなどを、失効させられる。
 
 ---
 
 # 27. Canonicalization
 
-署名やDigestを使うContractは、曖昧なserializationを避ける必要があります。
+署名やDigestを使うContractでは、あいまいなserializationを避ける必要があります。
 
-Wire format決定時に、少なくとも次を満たすcanonical representationを選びます。
+Wire formatを決めるときには、少なくとも、次の条件を満たすcanonical representationを選びます。
 
-- duplicate fieldの意味が一意
-- integer rangeが明確
-- string / Unicode normalizationが明確
-- map orderingへ依存しない
-- floating-pointをSecurity-critical fieldへ安易に使わない
-- unknown fieldの署名対象範囲が明確
-- extensionのcanonical bytesを保持可能
+- 重複したfieldの意味が、一意に定まる。
+- integerの範囲が明確である。
+- stringとUnicodeの正規化が明確である。
+- mapの順序に依存しない。
+- floating-pointを、Security-criticalなfieldに安易に使わない。
+- 未知のfieldが、署名の対象かどうかが明確である。
+- extensionのcanonical bytesを保持できる。
 
-JSON、CBOR、Protobuf等の採否は後続比較です。
+JSON、CBOR、Protobufなどを採用するかどうかは、後続で比べます。
 
 ---
 
-# 28. Strict parsing
+# 28. 厳格なparse
 
-External boundaryではparser自体をattack surfaceとして扱います。
+External boundaryでは、parser自体を、攻撃を受ける面として扱います。
 
-少なくともは次のとおりです。
+少なくとも、次のものを制限します。
 
-- body size
-- nesting depth
-- array length
-- string length
-- metadata count
-- integer overflow
-- duplicate field
-- compression
+- bodyのsize
+- 入れ子の深さ
+- 配列の長さ
+- 文字列の長さ
+- metadataの数
+- integerのoverflow
+- 重複したfield
+- 圧縮
 - content type
-- unknown core field
+- 未知のcore field
 
-を制限します。
+巨大なBodyを、すべてMemoryに読み込んでからrejectする構造は、標準にはしません。
 
-巨大Bodyを全量Memoryへ読み込んでからrejectする構造を標準にはしません。
-
-Artifact uploadはstreaming / declared size / digest検証を利用できるようにします。
+Artifactのuploadでは、streaming、宣言されたsize、digestの検証を使えるようにします。
 
 ---
 
-# 29. Information disclosure
+# 29. 情報の開示
 
 ## 29.1 Client Plane
 
-Clientへ原則返さないもの。
+Clientには、原則として、次のものを返しません。
 
-- Worker hostname
-- Worker IP
-- logged-in user
-- installed software inventory
-- cache content list
-- exact internal topology
+- Workerのhostname
+- WorkerのIP
+- ログインしているuser
+- インストールされているsoftwareの一覧
+- cacheの内容の一覧
+- 正確な内部のtopology
 - Raw Attestation Evidence
-- other tenant quota
-- other tenant task
-- internal trust root
+- 他のtenantのquota
+- 他のtenantのtask
+- 内部のtrust root
 
-Task statusは必要な範囲へ縮約します。
+Task statusは、必要な範囲に縮約します。
 
 ## 29.2 Worker Plane
 
-Workerへ原則渡さないもの。
+Workerには、原則として、次のものを渡しません。
 
-- Client credential
-- other Task metadata
-- organization-wide Artifact index
-- other Worker topology
-- unrelated secret
-- Federation admin configuration
+- Clientのcredential
+- 他のTaskのmetadata
+- 組織全体のArtifactのindex
+- 他のWorkerのtopology
+- 無関係なsecret
+- Federationの管理の設定
 
-WorkOrderに必要なscopeだけ渡します。
+WorkOrderに必要な範囲だけを渡します。
 
 ---
 
-# 30. Failure semantics
+# 30. 失敗のsemantics
 
-Contract errorとTask failureを混同しません。
+Contractのerrorと、Taskの失敗を、混同しません。
 
-## 30.1 Admission rejection
+## 30.1 Admissionのrejection
 
-Taskは作成されない、またはRejected stateとして記録されます。
+Taskは、作成されません。または、Rejected stateとして記録されます。
 
-## 30.2 Placement rejection
+## 30.2 Placementのrejection
 
-Task自体は有効ですが、そのWorker candidateが不適切です。
+Task自体は有効です。ただし、そのWorkerの候補が不適切です。
 
-別candidateを試せます。
+別の候補を試せます。
 
-## 30.3 Worker rejection
+## 30.3 Workerのrejection
 
-WorkOrder検証失敗はWorker上で実行しません。
+WorkOrderの検証に失敗した場合は、Worker上で実行しません。
 
-Control Planeへ理由codeを返しますが、secret detailを過剰に返さないようにします。
+Control Planeに、理由のcodeを返します。ただし、secretの詳細を、過剰に返さないようにします。
 
-## 30.4 Execution failure
+## 30.4 実行の失敗
 
-Attempt failureです。
+Attemptの失敗です。
 
-Task retry policyに従います。
+Taskのretry policyに従います。
 
 ## 30.5 UNKNOWN
 
-External side-effect outcome等、成功・失敗を確定できない状態です。
+External side-effectのoutcomeなど、成功か失敗かを確定できない状態です。
 
-failureへ丸めません。
+失敗に丸めません。
 
 ---
 
 # 31. Error Contract
 
-運用者が判断できるErrorを返すため、単なる文字列だけでなく概念的に次を持たせます。
+運用者が判断できるErrorを返すために、単なる文字列だけでなく、概念上、次のものを持たせます。
 
 ~~~text
 error code
@@ -1365,9 +1329,9 @@ correlation / task / attempt ID
 optional policy reason category
 ~~~
 
-Security理由で詳細をClientへ返せない場合でも、Audit側では原因を追跡できるようにします。
+Securityの理由で、詳細をClientに返せない場合でも、Audit側では、原因を追跡できるようにします。
 
-例は次のとおりです。
+たとえば、次のようなものです。
 
 ~~~text
 PLACEMENT_ASSURANCE_UNSATISFIED
@@ -1377,22 +1341,20 @@ EXECUTOR_APPROVAL_REVOKED
 SIDE_EFFECT_OUTCOME_UNKNOWN
 ~~~
 
-具体code一覧は後続Contract schemaで定義します。
+具体的なcodeの一覧は、後続のContract schemaで定義します。
 
 ---
 
 # 32. Client PlaneとWorker Planeを混ぜない
 
-同じHTTP server processを使うことは可能でも、logical API surfaceは分離します。
+同じHTTP serverのprocessを使うことは、可能です。ただし、論理的なAPI surfaceは分離します。
 
-Client tokenがWorker endpointを呼べたり、Worker credentialがTask submission authorityを得たりしないよう、
+Client tokenでWorkerのendpointを呼べたり、Worker credentialがTask submissionのauthorityを得たりしないように、次のものを分けます。
 
 - audience
 - scope
-- route / service identity
+- routeとservice identity
 - policy
-
-を分けます。
 
 ~~~text
 Client credential
@@ -1402,25 +1364,23 @@ Worker credential
   aud = worker-api
 ~~~
 
-のようなsender / audience separationを実現できる構造を選びます。
+このような、senderとaudienceの分離を実現できる構造を選びます。
 
-具体OAuth / mTLS方式は後続比較です。
+具体的なOAuthやmTLSの方式は、後続で比べます。
 
 ---
 
 # 33. Administrative Plane
 
-Executor Admission、Federation Administration、Trust Root更新等を通常Task APIへ含めません。
+Executor Admission、Federation Administration、Trust Rootの更新などを、通常のTask APIに含めません。
 
-Administrative operationは、
+Administrativeな操作は、次のものを適用できる、別のSurfaceにします。
 
-- stronger authentication
-- narrow scope
-- explicit audit
-- versioned configuration
-- optional approval workflow
-
-を適用できる別Surfaceにします。
+- より強い認証
+- 狭いscope
+- 明示的なaudit
+- versionを持つ設定
+- 任意の承認のworkflow
 
 Task Clientが、
 
@@ -1428,13 +1388,13 @@ Task Clientが、
 submit task + trust this new federation root
 ~~~
 
-を一つのrequestで行える構造にしません。
+を、一つのrequestで行える構造にはしません。
 
 ---
 
-# 34. Contract dependency graph
+# 34. Contractの依存関係
 
-主要Contractの依存関係をまとめると次です。
+主要なContractの依存関係をまとめると、次のとおりです。
 
 ~~~text
 TaskRequest
@@ -1466,156 +1426,152 @@ ArtifactGrant ──────────────────────
                               ContributionRecord
 ~~~
 
-AttestationResultはPlacementApproval / ArtifactGrantのEvidenceとして参照されます。
+AttestationResultは、PlacementApprovalとArtifactGrantのEvidenceとして参照されます。
 
-ExternalEffectReceiptはTask State / Recoveryへ戻ります。
+ExternalEffectReceiptは、Task StateとRecoveryに戻ります。
 
 ---
 
-# 35. 何を外部Contractへ露出しないか
+# 35. 外部のContractに公開しないもの
 
-Internal概念を全部Client APIへ公開すると、将来Architectureを変更しにくくなります。
+Internalの概念をすべてClient APIに公開すると、将来、Architectureを変更しにくくなります。
 
-次は原則Internalです。
+次のものは、原則としてInternalです。
 
 - PlacementProposal
-- concrete Worker identity
-- Lease internals
-- ArtifactGrant token
+- 具体的なWorker identity
+- Leaseの内部
+- ArtifactGrantのtoken
 - WorkOrder
-- internal Policy Revision
-- Authority graph
-- raw verification evidence
+- 内部のPolicy Revision
+- Authorityのgraph
+- 生のverification evidence
 
-Clientが必要なのは主に、
+Clientが必要とするのは、主に次のものです。
 
-- Task accepted / rejected
-- current public state
-- Result / Error
+- Taskがacceptedされたか、rejectされたか
+- 現在の公開のstate
+- ResultとError
 - cancellation
-- optionally high-level assurance summary
+- 任意で、高い水準でのassuranceの要約
 
-です。
-
-Internal contractをexternal compatibility burdenにしないことを重視します。
+Internal contractを、外部との互換性の負担にしないことを重視します。
 
 ---
 
-# 36. Language neutrality
+# 36. 言語に中立であること
 
-External ContractはGo固有型へ依存しません。
+External Contractは、Go固有の型に依存しません。
 
-避けるもの。
+避けるものは、次のとおりです。
 
-- Go package pathをtype identityにする
-- time.Durationの内部表現をwire契約にする
-- uintptr / platform int
-- Go interface serialization
-- Go-specific error wrapping
+- Goのpackage pathを、type identityにすること
+- time.Durationの内部の表現を、wireの契約にすること
+- uintptrや、platformに依存するint
+- Goのinterfaceのserialization
+- Go固有のerror wrapping
 
-Contract specから、
+Contractの仕様から、次のものを生成または実装できることを、目標にします。
 
 - Go SDK
 - Rust SDK
 - Python SDK
 - TypeScript SDK
 - CLI
-- direct HTTP / RPC client
-
-を生成・実装できることを目標にします。
+- 直接のHTTPやRPCのclient
 
 ---
 
-# 37. Contract security testの方向
+# 37. Contractのsecurity testの方向
 
-実装段階では、happy pathだけでなくContract境界ごとにnegative testを用意します。
+実装の段階では、happy pathだけでなく、Contractの境界ごとに、negative testを用意します。
 
 ## TaskRequest
 
-- unknown core field
-- oversized metadata
-- duplicate field
+- 未知のcore field
+- 大きすぎるmetadata
+- 重複したfield
 - integer overflow
-- client-selected Worker
-- arbitrary URL
-- quota bypass
-- classification downgrade
+- Clientが選んだWorker
+- 任意のURL
+- quotaの迂回
+- classificationの引き下げ
 
 ## Internal Decision
 
-- wrong issuer
-- wrong Task
-- wrong Attempt
-- wrong Worker
-- stale Policy Revision
-- expired
-- revoked
-- mutated Digest
+- 誤ったissuer
+- 誤ったTask
+- 誤ったAttempt
+- 誤ったWorker
+- 古いPolicy Revision
+- 期限切れ
+- revoke済み
+- 改変されたDigest
 
 ## WorkOrder
 
-- missing prerequisite
-- WorkOrder signer only forged
-- wrong Executor Digest
-- stale Lease
-- wrong ArtifactGrant
-- wrong Worker
-- capability widening
+- 前提が欠けている
+- WorkOrderの署名者だけが偽造された
+- 誤ったExecutor Digest
+- 古いLease
+- 誤ったArtifactGrant
+- 誤ったWorker
+- capabilityの拡大
 
 ## Result
 
-- ResultClaim replay
-- different Attempt
-- modified Output
-- fake Verifier
-- stale Verification Result
-- conflicting Accepted Result
+- ResultClaimのreplay
+- 別のAttempt
+- 改変されたOutput
+- 偽のVerifier
+- 古いVerification Result
+- 競合するAccepted Result
 
 ## Contribution
 
-- worker self-report under stronger policy
-- duplicate record
-- different quantity same Attempt / Metric
-- fake Observer
+- より強いpolicyの下での、Workerの自己申告
+- 重複したrecord
+- 同じAttemptとMetricで、異なる量
+- 偽のObserver
 
-これらをProtocol conformance suiteへ発展させます。
+これらを、Protocol conformance suiteに発展させます。
 
 ---
 
 # 38. 未決事項
 
-このBaselineでは次をまだ固定しません。
+このBaselineでは、次のことを、まだ固定していません。
 
-- HTTP REST / gRPC / Connect / message protocol
-- JSON / CBOR / Protobuf
-- exact Field names
-- field number
+- HTTP RESTか、gRPCか、Connectか、message protocolか
+- JSONか、CBORか、Protobufか
+- 正確なField名
+- field番号
 - pagination
 - streaming protocol
-- OAuth / mTLS / DPoP組合せ
-- canonical signature format
-- error code全集
-- Artifact upload protocol
-- Event / webhook
-- admin API topology
-- SDK generation tooling
+- OAuth、mTLS、DPoPの組み合わせ
+- canonicalな署名のformat
+- error codeの全体の一覧
+- Artifactのupload protocol
+- Eventとwebhook
+- admin APIのtopology
+- SDKの生成のtooling
 
-これらはこのContract Boundaryを壊さない範囲で後続Architecture比較を行います。
+これらは、このContract Boundaryを壊さない範囲で、後続のArchitectureの比較を行います。
 
 ---
 
 # 39. 次のWork Unitへの入力
 
-次のArchitecture Work UnitではControl Plane / Data Planeを具体化します。
+次のArchitecture Work Unitでは、Control PlaneとData Planeを具体化します。
 
-この文書から、特に次を引き継ぎます。
+この文書から、特に次のことを引き継ぎます。
 
-1. Control PlaneはTask / Decision metadataを扱う。
-2. bulk Artifact bytesをControl Planeの中央proxyへ集約することを標準にはしない。
-3. ArtifactGrantでData Plane accessを限定する。
-4. WorkerはWorkOrderからData capabilityを得る。
-5. Result / Checkpointのbulk dataとcontrol metadataを分離する。
-6. Client / Worker / Admin Planeのcredential scopeを分離する。
-7. Cache localityはOptimizationでありData authorityではない。
+1. Control Planeは、TaskとDecisionのmetadataを扱う。
+2. 大きなArtifactのbytesを、Control Planeの中央のproxyに集約することは、標準にはしない。
+3. ArtifactGrantで、Data Planeへのaccessを限定する。
+4. Workerは、WorkOrderからData capabilityを得る。
+5. ResultとCheckpointの大きなdataと、controlのmetadataを分離する。
+6. Client、Worker、Admin Planeのcredential scopeを分離する。
+7. Cache localityは、Optimizationであり、Data authorityではない。
 
-その後、Deployment Profile、State / Lease semantics、Extension SPIへ進みます。
+そのあとで、Deployment Profile、StateとLeaseのsemantics、Extension SPIに進みます。
