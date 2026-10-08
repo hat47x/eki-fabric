@@ -98,10 +98,7 @@ func TestIssueBindsEveryField(t *testing.T) {
 	if g.PolicyRevision() != spec.PolicyRevision {
 		t.Error("PolicyRevision() does not match the spec")
 	}
-	if _, ok := g.Revocation(); ok {
-		t.Error("a new grant reports a revocation")
-	}
-	if !g.ActiveAt(spec.IssuedAt) {
+	if !g.inWindow(spec.IssuedAt) {
 		t.Error("a new grant is not active at its issuance instant")
 	}
 

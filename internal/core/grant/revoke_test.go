@@ -1,7 +1,6 @@
 package grant
 
 import (
-	"slices"
 	"testing"
 	"time"
 )
@@ -9,13 +8,16 @@ import (
 func TestRevokeRecordsReasonAndEffectiveTime(t *testing.T) {
 	g := mustIssue(t, testSpec())
 	effective := testIssuedAt.Add(10 * testDay)
+	var l Ledger
 
-	r, err := g.Revoke(testProvider, ReasonCapacityReclaim, effective)
-	checkErr(t, err, nil)
+	if _, ok := l.revocationOf(g); ok {
+		t.Fatal("an empty ledger reports a revocation")
+	}
+	checkErr(t, l.Revoke(g, testProvider, ReasonCapacityReclaim, effective), nil)
 
-	rev, ok := r.Revocation()
+	rev, ok := l.revocationOf(g)
 	if !ok {
-		t.Fatal("a revoked grant reports no revocation")
+		t.Fatal("a revoked grant has no recorded revocation")
 	}
 	if rev.Reason != ReasonCapacityReclaim {
 		t.Errorf("Reason = %q, want %q", rev.Reason, ReasonCapacityReclaim)
@@ -23,110 +25,109 @@ func TestRevokeRecordsReasonAndEffectiveTime(t *testing.T) {
 	if !rev.EffectiveAt.Equal(effective) {
 		t.Errorf("EffectiveAt = %v, want %v", rev.EffectiveAt, effective)
 	}
-	if _, ok := g.Revocation(); ok {
-		t.Error("Revoke changed the receiver instead of returning a copy")
-	}
 }
 
 func TestRevokeRefusals(t *testing.T) {
 	g := mustIssue(t, testSpec())
 	after := testIssuedAt.Add(2 * time.Hour)
-	revoked, err := g.Revoke(testProvider, ReasonPolicyChange, testIssuedAt.Add(time.Hour))
-	checkErr(t, err, nil)
+	var recorded Ledger
+	checkErr(t, recorded.Revoke(g, testProvider, ReasonPolicyChange, testIssuedAt.Add(time.Hour)), nil)
 
 	cases := []struct {
 		name   string
+		ledger *Ledger
 		g      Grant
 		actor  Identity
 		reason ReasonCategory
 		at     time.Time
 		want   error
 	}{
-		{"nil grant", Grant{}, testProvider, ReasonCapacityReclaim, after, ErrNilGrant},
-		{"beneficiary revokes", g, testBeneficiary, ReasonCapacityReclaim, after, ErrRevokerMismatch},
-		{"empty revoker", g, "", ReasonCapacityReclaim, after, ErrMissingField},
-		{"unknown reason", g, testProvider, "because-we-said-so", after, ErrUnknownReason},
-		{"empty reason", g, testProvider, "", after, ErrUnknownReason},
-		{"zero effective time", g, testProvider, ReasonCapacityReclaim, time.Time{}, ErrMissingField},
-		{"effective before issuance", g, testProvider, ReasonCapacityReclaim, testIssuedAt.Add(-time.Second), ErrRevocationBeforeIssue},
-		{"second revocation", revoked, testProvider, ReasonCapacityReclaim, after, ErrAlreadyRevoked},
+		{"nil ledger", nil, g, testProvider, ReasonCapacityReclaim, after, ErrNilLedger},
+		{"nil grant", &Ledger{}, Grant{}, testProvider, ReasonCapacityReclaim, after, ErrNilGrant},
+		{"beneficiary revokes", &Ledger{}, g, testBeneficiary, ReasonCapacityReclaim, after, ErrRevokerMismatch},
+		{"empty revoker", &Ledger{}, g, "", ReasonCapacityReclaim, after, ErrMissingField},
+		{"unknown reason", &Ledger{}, g, testProvider, "because-we-said-so", after, ErrUnknownReason},
+		{"empty reason", &Ledger{}, g, testProvider, "", after, ErrUnknownReason},
+		{"zero effective time", &Ledger{}, g, testProvider, ReasonCapacityReclaim, time.Time{}, ErrMissingField},
+		{"effective before issuance", &Ledger{}, g, testProvider, ReasonCapacityReclaim, testIssuedAt.Add(-time.Second), ErrRevocationBeforeIssue},
+		{"second revocation", &recorded, g, testProvider, ReasonCapacityReclaim, after, ErrAlreadyRevoked},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			_, err := tc.g.Revoke(tc.actor, tc.reason, tc.at)
-			checkErr(t, err, tc.want)
+			checkErr(t, tc.ledger.Revoke(tc.g, tc.actor, tc.reason, tc.at), tc.want)
 		})
 	}
+}
+
+// TestRevocationIsOneFactForEveryCopy covers the defect where a per-value
+// revocation flag let an unrevoked copy be revoked again at a later time, which
+// moved the stop time or reversed it. The first revocation must stand for every
+// copy and for every value issued from the same fields.
+func TestRevocationIsOneFactForEveryCopy(t *testing.T) {
+	original := mustIssue(t, testSpec())
+	copyOfOriginal := original
+	reissued := mustIssue(t, testSpec())
+	first := testIssuedAt.Add(10 * testDay)
+	var l Ledger
+	checkErr(t, l.Revoke(original, testProvider, ReasonCapacityReclaim, first), nil)
+
+	checkErr(t, l.Revoke(copyOfOriginal, testProvider, ReasonCapacityReclaim, first.Add(19*testDay)), ErrAlreadyRevoked)
+	checkErr(t, l.Revoke(copyOfOriginal, testProvider, ReasonCapacityReclaim, first.Add(-time.Hour)), ErrAlreadyRevoked)
+	checkErr(t, l.Revoke(reissued, testProvider, ReasonPolicyChange, testIssuedAt.Add(time.Hour)), ErrAlreadyRevoked)
+
+	rev, ok := l.revocationOf(copyOfOriginal)
+	if !ok || !rev.EffectiveAt.Equal(first) {
+		t.Fatalf("recorded revocation = %v, %t; want the first one at %v", rev.EffectiveAt, ok, first)
+	}
+
+	req := Request{ResourceClass: "gpu-class-a", Percent: 1}
+	checkErr(t, Admit(original, &l, first.Add(-time.Nanosecond), req), nil)
+	checkErr(t, Admit(copyOfOriginal, &l, testIssuedAt.Add(20*testDay), req), ErrGrantNotActive)
+	checkErr(t, Admit(reissued, &l, testIssuedAt.Add(20*testDay), req), ErrGrantNotActive)
 }
 
 func TestRevocationEffectiveAtIssuanceIsAccepted(t *testing.T) {
 	g := mustIssue(t, testSpec())
-	r, err := g.Revoke(testProvider, ReasonSecurityIncident, testIssuedAt)
-	checkErr(t, err, nil)
-	if r.ActiveAt(testIssuedAt) {
-		t.Error("a grant revoked at issuance is active at issuance")
-	}
+	var l Ledger
+	checkErr(t, l.Revoke(g, testProvider, ReasonSecurityIncident, testIssuedAt), nil)
+	req := Request{ResourceClass: "gpu-class-a", Percent: 1}
+	checkErr(t, Admit(g, &l, testIssuedAt, req), ErrGrantNotActive)
 }
 
-func TestRevocationNeverRewritesHistory(t *testing.T) {
+func TestRevocationKeepsEarlierAnswers(t *testing.T) {
 	g := mustIssue(t, testSpec())
 	effective := testIssuedAt.Add(10 * testDay)
+	var l Ledger
+	checkErr(t, l.Revoke(g, testProvider, ReasonSecurityIncident, effective), nil)
 
-	r, err := g.Revoke(testProvider, ReasonSecurityIncident, effective)
-	checkErr(t, err, nil)
-
-	if r.Digest() != g.Digest() {
-		t.Error("revocation changed the grant digest")
-	}
-	if r.Provider() != g.Provider() || r.Beneficiary() != g.Beneficiary() {
-		t.Error("revocation changed the named parties")
-	}
-	if !slices.Equal(r.Ceilings(), g.Ceilings()) {
-		t.Error("revocation changed the ceilings")
-	}
-	if !r.IssuedAt().Equal(g.IssuedAt()) || !r.ExpiresAt().Equal(g.ExpiresAt()) {
-		t.Error("revocation changed the validity window")
-	}
-	if r.MaxConcurrentLeases() != g.MaxConcurrentLeases() || r.Purpose() != g.Purpose() {
-		t.Error("revocation changed the lease cap or purpose")
-	}
-	if r.PolicyRevision() != g.PolicyRevision() {
-		t.Error("revocation changed the policy revision")
-	}
-
+	req := Request{ResourceClass: "gpu-class-a", Percent: 1}
 	cases := []struct {
 		name string
 		at   time.Time
-		want bool
+		want error
 	}{
-		{"before issuance", testIssuedAt.Add(-time.Nanosecond), false},
-		{"at issuance", testIssuedAt, true},
-		{"one nanosecond before revocation", effective.Add(-time.Nanosecond), true},
-		{"at the revocation's effective time", effective, false},
-		{"after revocation", effective.Add(time.Hour), false},
+		{"before issuance", testIssuedAt.Add(-time.Nanosecond), ErrGrantNotActive},
+		{"at issuance", testIssuedAt, nil},
+		{"one nanosecond before revocation", effective.Add(-time.Nanosecond), nil},
+		{"at the revocation's effective time", effective, ErrGrantNotActive},
+		{"after revocation", effective.Add(time.Hour), ErrGrantNotActive},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			if got := r.ActiveAt(tc.at); got != tc.want {
-				t.Errorf("ActiveAt() = %t, want %t", got, tc.want)
-			}
+			checkErr(t, Admit(g, &l, tc.at, req), tc.want)
 		})
 	}
 
-	if !g.ActiveAt(effective) {
-		t.Error("the unrevoked original stopped being active")
-	}
+	var empty Ledger
+	checkErr(t, Admit(g, &empty, effective, req), nil)
 }
 
 func TestRevocationAfterExpiryChangesNoAnswer(t *testing.T) {
 	g := mustIssue(t, testSpec())
-	r, err := g.Revoke(testProvider, ReasonProviderWithdraw, g.ExpiresAt().Add(time.Hour))
-	checkErr(t, err, nil)
+	var l Ledger
+	checkErr(t, l.Revoke(g, testProvider, ReasonProviderWithdraw, g.ExpiresAt().Add(time.Hour)), nil)
 
-	if !r.ActiveAt(g.ExpiresAt().Add(-time.Nanosecond)) {
-		t.Error("a revocation after expiry removed an answer that was already true")
-	}
-	if r.ActiveAt(g.ExpiresAt()) {
-		t.Error("the grant is active at its exclusive expiry instant")
-	}
+	req := Request{ResourceClass: "gpu-class-a", Percent: 1}
+	checkErr(t, Admit(g, &l, g.ExpiresAt().Add(-time.Nanosecond), req), nil)
+	checkErr(t, Admit(g, &l, g.ExpiresAt(), req), ErrGrantNotActive)
 }

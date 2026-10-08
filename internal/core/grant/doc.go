@@ -15,16 +15,19 @@
 //   - Delegation is not supported. Issue accepts only the provider the grant
 //     names as issuer, so a beneficiary cannot issue a child grant. To narrow a
 //     grant, the provider revokes it and issues a new grant with lower ceilings.
-//   - Revocation is final and does not move. A second revocation is refused. A
+//   - Revocation is recorded in a Ledger keyed by grant digest. Every copy of a
+//     grant shares one revocation. The first revocation stands, and a second is
+//     refused on any copy, so a revocation can neither be moved nor reversed. A
 //     revocation never changes the grant's fields or its digest, and a query for
 //     an earlier time still answers whether the grant was active then.
 //   - A zero MaxConcurrentLeases means that no lease-count cap was set. The
 //     percent ceilings still apply, and each active lease holds at least one
 //     percent, so one class never has more than 100 concurrent leases.
 //   - A zero Grant value is a nil grant and is always refused by Admit and
-//     Revoke.
-//   - Admission uses the caller's counts of active leases. The package keeps no
-//     lease state, so those counts must be current.
+//     Ledger.Revoke. A nil Ledger is refused by Admit and PlanReclaim.
+//   - Admission uses the caller's counts of active leases and the caller's
+//     Ledger of revocations. The package keeps no lease or revocation state, so
+//     both must be current. A nil Ledger is refused.
 //
 // The package checks the shape of identities and the authority of the issuer
 // and revoker against the grant's named provider. It does not check that the

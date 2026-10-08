@@ -19,31 +19,39 @@ type Request struct {
 	ActivePercent int
 }
 
-// Admit decides whether req may start under g at the decision time at. It
-// returns nil only when every check passes. Otherwise it returns an error that
-// wraps one of the package's sentinel errors.
+// Admit decides whether req may start under g at the decision time at, given
+// the revocations recorded in ledger. It returns nil only when every check
+// passes. Otherwise it returns an error that wraps one of the package's
+// sentinel errors.
 //
-// The checks run in this order, and the first failure wins. A nil grant and a
-// zero decision time are refused first, then a malformed request. After that,
-// the grant must be active at at, the resource class must be granted, the
-// active percent plus the requested percent must not exceed the class ceiling,
-// and the active lease count must be below the lease cap, when one is set.
+// The checks run in this order, and the first failure wins. A nil grant, a
+// zero decision time, and a nil ledger are refused first, then a malformed
+// request. After that, the grant must be inside its validity window at at and
+// must not be revoked as of at, the resource class must be granted, the active
+// percent plus the requested percent must not exceed the class ceiling, and
+// the active lease count must be below the lease cap, when one is set.
 //
 // at is the decision time, so the caller must pass the current time. A time
 // before the revocation admits a lease, because the grant really was active
 // then.
-func Admit(g Grant, at time.Time, req Request) error {
+func Admit(g Grant, ledger *Ledger, at time.Time, req Request) error {
 	if !g.issued {
 		return ErrNilGrant
 	}
 	if at.IsZero() {
 		return fmt.Errorf("%w: decision time", ErrMissingField)
 	}
+	if ledger == nil {
+		return ErrNilLedger
+	}
 	if err := checkRequest(req); err != nil {
 		return err
 	}
-	if !g.ActiveAt(at) {
-		return g.inactiveError(at)
+	if !g.inWindow(at) {
+		return g.windowError(at)
+	}
+	if rev, ok := ledger.revocationOf(g); ok && !at.Before(rev.EffectiveAt) {
+		return fmt.Errorf("%w: revoked", ErrGrantNotActive)
 	}
 	ceiling, ok := g.Ceiling(req.ResourceClass)
 	if !ok {
