@@ -128,18 +128,6 @@ func (o Observation) validate() error {
 	return nil
 }
 
-// unknownState is what a stale reading is treated as: nothing is known about
-// the endpoint, so every restriction that depends on it applies.
-func unknownState(at time.Time) Observation {
-	return Observation{
-		At:             at,
-		Power:          PowerUnknown,
-		BatteryPercent: -1,
-		Thermal:        ThermalUnknown,
-		Network:        NetworkUnknown,
-	}
-}
-
 // Interval is a span of absolute time during which local policy allows work.
 // Callers expand recurring schedules into concrete intervals.
 type Interval struct {
@@ -210,6 +198,19 @@ func validateCeilings(c map[Resource]int) error {
 	return nil
 }
 
+// validate checks a grant's validity window and ceilings. A grant needs both
+// bounds set and an issue time before its expiry: a zero issue time would make
+// the grant current from the beginning of time.
+func (g Grant) validate() error {
+	if g.IssuedAt.IsZero() || g.ValidUntil.IsZero() {
+		return errors.New("grant needs both an issue time and an expiry")
+	}
+	if !g.IssuedAt.Before(g.ValidUntil) {
+		return errors.New("grant must be issued before it expires")
+	}
+	return validateCeilings(g.Ceilings)
+}
+
 // Capabilities reports which resources the platform can actually enforce on
 // this endpoint. It is detected at start, not assumed.
 type Capabilities map[Resource]bool
@@ -278,13 +279,26 @@ const (
 // Decide returns what the endpoint may do at now. It never waits and never
 // performs I/O.
 func Decide(now time.Time, obs Observation, pol LocalPolicy, grant *Grant, caps Capabilities) (Decision, error) {
+	// Malformed inputs are reported as errors whatever else is true, so a caller
+	// that checks only the error still learns that its inputs are wrong.
 	if err := pol.validate(); err != nil {
 		return safeDecision(ReasonPolicyInvalid), fmt.Errorf("%w: %v", ErrInvalidPolicy, err)
 	}
+	if grant != nil {
+		if err := grant.validate(); err != nil {
+			return safeDecision(ReasonGrantInvalid), fmt.Errorf("%w: %v", ErrInvalidGrant, err)
+		}
+	}
+	if err := obs.validate(); err != nil {
+		return safeDecision(ReasonObservationInvalid), fmt.Errorf("%w: %v", ErrInvalidObservation, err)
+	}
+	if now.Before(obs.At) {
+		return safeDecision(ReasonObservationInvalid), fmt.Errorf("%w: reading is from the future", ErrInvalidObservation)
+	}
+
 	if pol.OptedOut {
 		return safeDecision(ReasonOptedOut), nil
 	}
-
 	// Without a current grant there is no authority to offer anything.
 	if grant == nil {
 		return safeDecision(ReasonGrantMissing), nil
@@ -292,21 +306,13 @@ func Decide(now time.Time, obs Observation, pol LocalPolicy, grant *Grant, caps 
 	if now.Before(grant.IssuedAt) || !now.Before(grant.ValidUntil) {
 		return safeDecision(ReasonGrantNotCurrent), nil
 	}
-	if err := validateCeilings(grant.Ceilings); err != nil {
-		return safeDecision(ReasonGrantInvalid), fmt.Errorf("%w: %v", ErrInvalidGrant, err)
-	}
 
 	reasons := reasonSet{}
-	state := obs
-	switch {
-	case obs.validate() != nil:
-		return safeDecision(ReasonObservationInvalid), fmt.Errorf("%w: %v", ErrInvalidObservation, obs.validate())
-	case now.Before(obs.At):
-		return safeDecision(ReasonObservationInvalid), fmt.Errorf("%w: reading is from the future", ErrInvalidObservation)
-	case now.Sub(obs.At) > pol.MaxObservationAge:
+	stale := now.Sub(obs.At) > pol.MaxObservationAge
+	if stale {
 		reasons.add(ReasonObservationStale)
-		state = unknownState(obs.At)
 	}
+	state := obs
 
 	stop := false
 	accept := true
@@ -381,16 +387,29 @@ func Decide(now time.Time, obs Observation, pol LocalPolicy, grant *Grant, caps 
 		limit(ResourceNetwork, 0)
 	}
 
+	// A stale reading keeps the restrictions it carries, so a critical reading
+	// still stops work and recent input still counts as presence. It says
+	// nothing about the endpoint now, so the unknown restrictions apply on top.
+	// A stale decision is therefore never less restrictive than a fresh one.
+	if stale {
+		accept = false
+		limitAll(cautiousCeiling)
+		limit(ResourceNetwork, 0)
+	}
+
 	ceilings := make(map[Resource]int, len(Resources))
 	var notEnforceable []Resource
 	for _, r := range Resources {
 		g := grant.Ceilings[r]
 		l := pol.Caps[r]
-		v := min(g, l, stateCap[r])
-		if g > 0 && l < g {
+		s := stateCap[r]
+		v := min(g, l, s)
+		// A limit is reported only when it binds, or ties for binding, on this
+		// resource, so each reason explains the ceiling it names.
+		if l < s && l <= g {
 			reasons.add(ReasonLocalCap)
 		}
-		if l > 0 && g > 0 && g < l {
+		if g < s && g <= l {
 			reasons.add(ReasonGrantCap)
 		}
 		if v > 0 && !caps[r] {

@@ -399,6 +399,16 @@ func TestInvariantsHoldAcrossAllStates(t *testing.T) {
 											d, err := Decide(now, obs, pol, g, c)
 											checked++
 											assertInvariants(t, d, err, obs, pol, g, c, gname+"/"+cname+"/"+sname)
+											// The same reading, when stale, must never be less
+											// restrictive than when fresh.
+											if at.Equal(now.Add(-10 * time.Minute)) {
+												fresh := obs
+												fresh.At = now.Add(-time.Second)
+												fd, ferr := Decide(now, fresh, pol, g, c)
+												if err == nil && ferr == nil {
+													assertNotLessRestrictive(t, d, fd, gname+"/"+cname+"/"+sname)
+												}
+											}
 										}
 									}
 								}
@@ -459,8 +469,122 @@ func assertInvariants(t *testing.T, d Decision, err error, obs Observation, pol 
 	if err != nil && (d.AcceptNewLeases || !d.StopRunning) {
 		fail("an error must come with the safe decision")
 	}
+	if obs.At.IsZero() && err == nil {
+		fail("a reading without a time must be reported as an error")
+	}
 	if !reflect.DeepEqual(d, mustRepeat(obs, pol, g, c)) {
 		fail("the decision is not deterministic")
+	}
+}
+
+// assertNotLessRestrictive checks that a stale decision never permits more than
+// the same reading when fresh.
+func assertNotLessRestrictive(t *testing.T, stale, fresh Decision, label string) {
+	t.Helper()
+	if stale.AcceptNewLeases && !fresh.AcceptNewLeases {
+		t.Fatalf("%s: a stale reading accepts new work that the fresh reading refuses\n  stale: %+v\n  fresh: %+v", label, stale, fresh)
+	}
+	if stale.StopRunning && !fresh.StopRunning {
+		t.Fatalf("%s: a stale reading stops nothing the fresh reading stops\n  stale: %+v\n  fresh: %+v", label, stale, fresh)
+	}
+	for _, r := range Resources {
+		if stale.Ceilings[r] > fresh.Ceilings[r] {
+			t.Fatalf("%s: stale %s ceiling %d exceeds the fresh ceiling %d", label, r, stale.Ceilings[r], fresh.Ceilings[r])
+		}
+	}
+}
+
+// A stale reading still carries the stop conditions it recorded.
+func TestStaleCriticalHeatStillStopsWork(t *testing.T) {
+	obs := fresh()
+	obs.Thermal = ThermalCritical
+	obs.At = now.Add(-10 * time.Minute)
+	d := mustDecide(t, obs, policy(), grantAll(100), allEnforceable())
+	if !d.StopRunning || d.AcceptNewLeases || !hasReason(d, ReasonObservationStale) || !hasReason(d, ReasonThermalCritical) {
+		t.Fatalf("stale critical heat: %+v", d)
+	}
+}
+
+func TestStaleLowBatteryStillStopsWork(t *testing.T) {
+	obs := fresh()
+	obs.Power, obs.BatteryPercent = PowerBattery, 10
+	obs.At = now.Add(-10 * time.Minute)
+	d := mustDecide(t, obs, policy(), grantAll(100), allEnforceable())
+	if !d.StopRunning || !hasReason(d, ReasonBatteryLow) {
+		t.Fatalf("stale low battery: %+v", d)
+	}
+}
+
+// Input time is an absolute fact. A stale reading does not hide it.
+func TestStaleReadingKeepsRecentUserInputAsPresence(t *testing.T) {
+	obs := fresh()
+	obs.LastUserInput = now.Add(-20 * time.Second)
+	obs.At = now.Add(-10 * time.Minute)
+	d := mustDecide(t, obs, policy(), grantAll(100), allEnforceable())
+	if !d.StopRunning || !hasReason(d, ReasonUserPresent) {
+		t.Fatalf("stale reading hid recent user input: %+v", d)
+	}
+}
+
+func TestGrantWithoutAnIssueTimeOrWindowIsRejected(t *testing.T) {
+	noIssue := grantAll(100)
+	noIssue.IssuedAt = time.Time{}
+	noWindow := grantAll(100)
+	noWindow.ValidUntil = noWindow.IssuedAt
+	for name, g := range map[string]*Grant{"no issue time": noIssue, "empty window": noWindow} {
+		d, err := Decide(now, fresh(), policy(), g, allEnforceable())
+		if !errors.Is(err, ErrInvalidGrant) || d.AcceptNewLeases || !d.StopRunning {
+			t.Errorf("%s: err=%v decision=%+v", name, err, d)
+		}
+	}
+}
+
+// A malformed reading is an error even when opt-out or a missing grant would
+// otherwise explain the stop.
+func TestInvalidObservationIsReportedEvenWithoutGrantOrOptOut(t *testing.T) {
+	obs := fresh()
+	obs.At = time.Time{}
+	optedOut := policy()
+	optedOut.OptedOut = true
+	for name, c := range map[string]struct {
+		pol   LocalPolicy
+		grant *Grant
+	}{
+		"opted out":     {optedOut, grantAll(100)},
+		"missing grant": {policy(), nil},
+		"valid grant":   {policy(), grantAll(100)},
+	} {
+		d, err := Decide(now, obs, c.pol, c.grant, allEnforceable())
+		if !errors.Is(err, ErrInvalidObservation) || d.AcceptNewLeases || !d.StopRunning {
+			t.Errorf("%s: err=%v decision=%+v", name, err, d)
+		}
+	}
+}
+
+// A zero central ceiling is explained by the grant, not left silent.
+func TestZeroCentralCeilingIsExplained(t *testing.T) {
+	g := grantAll(80)
+	g.Ceilings[ResourceCPU] = 0
+	d := mustDecide(t, fresh(), policy(), g, allEnforceable())
+	if d.Ceilings[ResourceCPU] != 0 || !hasReason(d, ReasonGrantCap) {
+		t.Fatalf("zero grant for cpu: ceilings=%v reasons=%v", d.Ceilings, d.Reasons)
+	}
+}
+
+// A reason names only a limit that binds on the ceiling it explains.
+func TestReasonsNameOnlyTheLimitThatBinds(t *testing.T) {
+	battery := fresh()
+	battery.Power, battery.BatteryPercent = PowerBattery, 80
+	d := mustDecide(t, battery, policy(), grantAll(100), allEnforceable())
+	if hasReason(d, ReasonLocalCap) || !hasReason(d, ReasonOnBattery) {
+		t.Fatalf("battery binds, not the local cap: reasons=%v", d.Reasons)
+	}
+
+	thermal := fresh()
+	thermal.Thermal = ThermalElevated
+	d = mustDecide(t, thermal, policy(), grantAll(50), allEnforceable())
+	if hasReason(d, ReasonGrantCap) || !hasReason(d, ReasonThermalElevated) {
+		t.Fatalf("thermal binds, not the grant: reasons=%v", d.Reasons)
 	}
 }
 
