@@ -2,39 +2,39 @@
 
 ## 役割
 
-malicious / modified Workerを前提としたResult AssuranceとConfidentiality Assuranceを具体化するための調査メモです。RequirementやArchitectureの正本ではありません。
+悪意のある、または改変されたWorkerを前提にして、Result AssuranceとConfidentiality Assuranceを具体化するための、調査メモです。RequirementやArchitectureの正本ではありません。
 
-## 1. BOINC — replication / validation / adaptive replication
+## 1. BOINC — replication、validation、adaptive replication
 
-BOINCはVolunteer Hostがhardware failureまたはmalicious modificationによって誤Resultを返すことを通常の前提として扱います。Job replicationでは、application特性に応じてreplicationなし、複製、validator等を使い分け、「one size fits allではない」としています。
+BOINCは、Volunteer Hostが、hardwareの障害や悪意のある改変によって、誤ったResultを返すことを、通常の前提として扱います。Jobのreplicationでは、applicationの特性に応じて、replicationなし、複製、validatorなどを使い分け、「one size fits allではない」としています。
 
-2026年時点のAdaptive Replicationでは、host + app versionごとの連続validation成功数を使い、信頼度の高いhostでは複製頻度を減らしてvalidation overheadを抑えます。通常の常時複製は大きな計算コストを持つため、assuranceとcompute efficiencyを分けて最適化する発想が参考になります。
+2026年時点のAdaptive Replicationでは、hostとapp versionごとの、連続したvalidationの成功数を使います。信頼度の高いhostでは、複製の頻度を減らして、validationのoverheadを抑えます。通常の、常時の複製は、大きな計算コストを持ちます。そのため、assuranceとcompute efficiencyを分けて最適化する発想が、参考になります。
 
 ### EKIへの示唆
 
-- Result validationはWorker identityと分離する。
-- Executor/versionごとにreliability historyを分ける。
-- reputation/historyはreplication量最適化には使えるが、root of trustにはしない。
-- Task/applicationごとにvalidator方式を選ぶ。
-- EKIではさらにSybil/collusionを明示し、単純なhost数一致を高保証として一般化しない。
+- Result validationを、Worker identityから分離する。
+- Executorとversionごとに、reliability historyを分ける。
+- reputationとhistoryは、replicationの量を最適化するのには使えるが、root of trustにはしない。
+- Taskとapplicationごとに、validatorの方式を選ぶ。
+- EKIでは、さらにSybilとcollusionを明示する。単純なhostの数の一致を、高い保証として一般化しない。
 
 References:
 - https://github.com/BOINC/boinc/wiki/Job-replication
 - https://github.com/BOINC/boinc/wiki/Adaptive-Replication
 
-## 2. IETF RATS — attestation rolesを分離する
+## 2. IETF RATS — attestationのroleを分離する
 
-RFC 9334はRemote Attestationを特定TEEやwire protocolへ固定せず、次の役割を分離します。
+RFC 9334は、Remote Attestationを、特定のTEEやwire protocolに固定しません。そして、次のroleを分離します。
 
-- Attester — Evidenceを生成
-- Verifier — EvidenceをReference Values / Endorsements / policyで評価しAttestation Resultsを生成
-- Relying Party — Attestation Resultsを自身のpolicyで利用
+- Attester — Evidenceを生成する。
+- Verifier — EvidenceをReference Values、Endorsements、policyで評価して、Attestation Resultsを生成する。
+- Relying Party — Attestation Resultsを、自分のpolicyで利用する。
 
-特に重要なのは、EvidenceそのものをRelying Partyが盲信するのでなく、Verifierによるappraisalと、Relying Party側の利用policyを分離する点です。
+特に重要なのは、EvidenceそのものをRelying Partyが盲信するのではなく、Verifierによるappraisalと、Relying Party側の利用policyを、分離する点です。
 
 ### EKIへの示唆
 
-EKIでWorker Agentが返すattestation blobを直接`trusted=true`へ変換せず、概念的に
+EKIで、Worker Agentが返すattestationのblobを、直接`trusted=true`に変換しません。概念上、次のように分ける候補が、有力です。
 
 ```text
 Worker / Attester
@@ -46,25 +46,23 @@ EKI Placement / Relying Party
 placement / key release
 ```
 
-と分ける候補が有力です。
-
-またRFC 9334はEvidence自体がPIIやsystem-identifying informationを含み得ることを指摘しているため、ad-hoc参加でattestationを強く要求するとPrivacyとParticipation easeが衝突します。
+また、RFC 9334は、Evidence自体が、PIIやsystemを識別する情報を含み得ることを、指摘しています。そのため、アドホックな参加でattestationを強く要求すると、Privacyと、参加のしやすさが、衝突します。
 
 Reference:
 - https://www.rfc-editor.org/rfc/rfc9334.html
 
 ## 3. NVIDIA GPU Attestation / Confidential Computing
 
-2026年のNVIDIA documentationでは、Hopper H100以降の対応GPUについてremote/local attestationが提供され、Blackwellも同様のSDK/API flowを利用します。Remote verifierからJWT/EAT形式等のattestation resultを得る実装例があります。
+2026年のNVIDIAのdocumentationでは、Hopper H100以降に対応するGPUについて、remoteとlocalのattestationが提供されています。Blackwellも、同様のSDKとAPIの流れを利用します。remote verifierから、JWTやEAT形式などのattestation resultを得る、実装の例があります。
 
-一方、Confidential Computingとして使う場合は対応GPUだけでなくConfidential VM、driver、CC mode等の前提があります。したがって「NVIDIA GPUだからCA-2」という扱いはできません。
+一方、Confidential Computingとして使う場合は、対応するGPUだけでなく、Confidential VM、driver、CC modeなどの前提があります。したがって、「NVIDIAのGPUだからCA-2」という扱いはできません。
 
 ### EKIへの示唆
 
-- GPU有無とConfidentiality Capabilityを別軸にする。
-- attestationはVendor-specific Evidence Providerとして差し替え可能にする方向がよい。
-- CPU TEE + GPU + interconnect + I/Oを含むend-to-end confidentialityは、単GPU attestationだけから一般化しない。
-- key releaseの条件にfresh attestation resultを使える余地を持つ。
+- GPUがあることと、Confidentiality Capabilityとを、別の軸にする。
+- attestationは、Vendor固有のEvidence Providerとして、差し替えられる方向がよい。
+- CPUのTEE、GPU、interconnect、I/Oを含む、end-to-endの機密性を、単一のGPUのattestationだけから一般化しない。
+- key releaseの条件に、新しいattestation resultを使える余地を持つ。
 
 References:
 - https://docs.nvidia.com/attestation/quick-start-guide/latest/attestation-examples/hopper_single_gpu.html
@@ -73,28 +71,28 @@ References:
 
 ## 4. zkVM / Verifiable Computation
 
-RISC ZeroのzkVMは、expected guest programのImageIDに対して、untrusted hostで実行された結果がそのprogram executionから生成されたことをReceiptで検証できるmodelを提供します。Resultを返したhost自体を信頼する必要を減らせる点で、EKIのad-hoc Workerと非常に相性がよい考え方です。
+RISC ZeroのzkVMは、期待するguest programのImageIDに対して、untrustedなhostで実行された結果が、そのprogramの実行から生成されたことを、Receiptで検証できるmodelを提供します。Resultを返したhost自体を信頼する必要を減らせます。EKIのアドホックなWorkerと、非常に相性がよい考え方です。
 
-ただしproof generation cost、対応命令/runtime、I/O model、大規模GPU/AI workloadへの適用性はTaskによって大きく異なります。
+ただし、proofを生成するコスト、対応する命令とruntime、I/O model、大規模なGPUやAIのworkloadへの適用の可能性は、Taskによって大きく異なります。
 
 ### EKIへの示唆
 
-- `cryptographic-proof`をResult Verification Providerの一種として扱う価値が高い。
-- proof-capable TaskではWorker identity / reputationへの依存を大きく減らせる。
-- EKI Coreを一つのzkVMへ固定しない。
-- proof生成コストを含めたplacement/economic modelが必要になる可能性がある。
+- `cryptographic-proof`を、Result Verification Providerの一種として扱う価値が高い。
+- proofに対応できるTaskでは、Worker identityやreputationへの依存を、大きく減らせる。
+- EKI Coreを、一つのzkVMに固定しない。
+- proofを生成するコストを含めた、placementと経済のmodelが必要になる可能性がある。
 
 References:
 - https://github.com/risc0/risc0
 - https://docs.rs/risc0-zkvm/latest/risc0_zkvm/struct.Receipt.html
 
-## 5. Attestationとcorrectnessを混同しない
+## 5. Attestationと、正しさを混同しない
 
-Remote Attestationは「期待された測定値・状態を持つenvironmentである」ことのEvidenceを評価する仕組みであり、application inputに対するbusiness-semantic correctnessそのものを自動的に保証するわけではありません。
+Remote Attestationは、「期待された測定値と状態を持つenvironmentである」ことのEvidenceを評価する仕組みです。applicationのinputに対する、業務の意味の上での正しさそのものを、自動的に保証するわけではありません。
 
-例えば正規LLM Runtimeがattested environmentで正しく動いても、LLM出力自体が事実として正しいとは限りません。
+たとえば、正規のLLM Runtimeが、attestされたenvironmentで正しく動いても、LLMの出力自体が、事実として正しいとは限りません。
 
-したがってEKIでは概念上:
+したがって、EKIでは、概念上、次の関係を維持する必要があります。
 
 ```text
 Execution Environment Assurance
@@ -102,33 +100,31 @@ Execution Environment Assurance
 Result Semantic Assurance
 ```
 
-を維持する必要があります。
+## 6. 現時点での比較
 
-## 6. 現時点の比較
-
-| 方式 | Worker identity不要度 | Result correctness | Confidentiality | Overhead | 適用範囲 |
+| 方式 | Worker identityが不要な度合い | Resultが正しいこと | Confidentiality | Overhead | 適用範囲 |
 | --- | --- | --- | --- | --- | --- |
-| Application Validator | 高 | workload依存で高くできる | なし | 低〜中 | validatorを作れるTask |
-| Replication / Quorum | 中 | independence前提 | なし | 高 | 比較可能なTask |
-| Trusted recompute | 中 | anchor trust次第 | anchor次第 | 中〜高 | sample検証可能 |
-| Remote Attestation | 低〜中 | environment中心 | TEE構成なら強化可能 | 中 | 対応hardware/runtime |
-| Cryptographic Proof | 高 | program executionに強い | proof方式次第 | 高〜非常に高 | proof可能なTask |
+| Application Validator | 高 | workloadによっては高くできる | なし | 低〜中 | validatorを作れるTask |
+| Replication / Quorum | 中 | independenceが前提 | なし | 高 | 比較できるTask |
+| Trusted recompute | 中 | anchorのtrust次第 | anchor次第 | 中〜高 | sampleで検証できる |
+| Remote Attestation | 低〜中 | environmentが中心 | TEEの構成なら強化できる | 中 | 対応するhardwareとruntime |
+| Cryptographic Proof | 高 | program executionに強い | proofの方式次第 | 高〜非常に高 | proofを作れるTask |
 
-## 7. EKI要件への反映候補
+## 7. EKIの要件への反映の候補
 
 - Attestation EvidenceとAttestation Resultを区別する。
-- Verifier自体もtrust/policy対象とする。
-- Result Verification ProviderとAttestation Providerを別extension pointとして検討する。
-- assurance requirementをTask側、capability/evidenceをWorker側へ持たせる。
-- assurance不足時に「最も近いWorkerへ落とす」のではなく、fail closed / queue / alternative verificationを選べるようにする。
-- verification overheadをSchedulerのcost modelへ入れる。
+- Verifier自体も、trustとpolicyの対象とする。
+- Result Verification ProviderとAttestation Providerを、別のextension pointとして検討する。
+- assurance requirementをTask側に、capabilityとevidenceをWorker側に、持たせる。
+- assuranceが足りないときに、「最も近いWorkerに落とす」のではなく、fail closed、queue、別のverificationを選べるようにする。
+- verificationのoverheadを、Schedulerのcost modelに入れる。
 
-## 8. 追加調査
+## 8. 追加の調査
 
-- AMD SEV-SNP / Intel TDX等CPU側attestationとの統合
-- TPM-backed managed endpoint assurance
-- confidential GPU data pathの実際のtrust boundary
-- privacy-preserving attestation / anonymous attestation
-- zkVM / SNARK/STARKのGPU・LLM inferenceへの適用現状
-- malicious verifier / reference-value providerへの耐性
-- attestation revocation / freshness / clock trust
+- AMD SEV-SNPやIntel TDXなど、CPU側のattestationとの統合
+- TPMに支えられた、managed endpointのassurance
+- confidentialなGPUのdata pathの、実際のtrust boundary
+- プライバシーを保護するattestationと、匿名のattestation
+- zkVM、SNARK、STARKの、GPUとLLM inferenceへの適用の現状
+- 悪意のあるverifierやreference-valueのproviderへの耐性
+- attestationのrevocation、freshness、clockのtrust

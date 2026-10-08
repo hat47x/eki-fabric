@@ -70,21 +70,27 @@ func TestAdmitDecisions(t *testing.T) {
 				tc.spec(&spec)
 			}
 			g := mustIssue(t, spec)
-			checkErr(t, Admit(g, tc.at, tc.req), tc.want)
+			checkErr(t, Admit(g, &Ledger{}, tc.at, tc.req), tc.want)
 		})
 	}
 }
 
 func TestAdmitRefusesNilGrant(t *testing.T) {
 	req := Request{ResourceClass: "gpu-class-a", Percent: 1}
-	checkErr(t, Admit(Grant{}, testInWindow, req), ErrNilGrant)
+	checkErr(t, Admit(Grant{}, &Ledger{}, testInWindow, req), ErrNilGrant)
+}
+
+func TestAdmitRefusesNilLedger(t *testing.T) {
+	g := mustIssue(t, testSpec())
+	req := Request{ResourceClass: "gpu-class-a", Percent: 1}
+	checkErr(t, Admit(g, nil, testInWindow, req), ErrNilLedger)
 }
 
 func TestAdmitRefusesRevokedAtOrBeforeDecisionTime(t *testing.T) {
 	g := mustIssue(t, testSpec())
 	effective := testIssuedAt.Add(2 * time.Hour)
-	r, err := g.Revoke(testProvider, ReasonCapacityReclaim, effective)
-	checkErr(t, err, nil)
+	var l Ledger
+	checkErr(t, l.Revoke(g, testProvider, ReasonCapacityReclaim, effective), nil)
 	req := Request{ResourceClass: "gpu-class-a", Percent: 1}
 
 	cases := []struct {
@@ -98,7 +104,7 @@ func TestAdmitRefusesRevokedAtOrBeforeDecisionTime(t *testing.T) {
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			checkErr(t, Admit(r, tc.at, req), tc.want)
+			checkErr(t, Admit(g, &l, tc.at, req), tc.want)
 		})
 	}
 }
@@ -124,17 +130,15 @@ func TestAdmitNeverAcceptsRevokedAtOrBeforeDecisionTime(t *testing.T) {
 
 	cases := 0
 	for _, rh := range revocationHours {
-		base := mustIssue(t, testSpec())
-		g := base
+		g := mustIssue(t, testSpec())
+		var l Ledger
 		if rh != noRevocation {
-			var err error
-			g, err = base.Revoke(testProvider, ReasonCapacityReclaim, hour(rh))
-			checkErr(t, err, nil)
+			checkErr(t, l.Revoke(g, testProvider, ReasonCapacityReclaim, hour(rh)), nil)
 		}
 		for _, dh := range decisionHours {
 			for _, req := range requests {
 				cases++
-				err := Admit(g, hour(dh), req)
+				err := Admit(g, &l, hour(dh), req)
 
 				revokedByDecision := rh != noRevocation && rh <= dh
 				if revokedByDecision {

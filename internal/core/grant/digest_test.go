@@ -78,10 +78,14 @@ func TestDigestLengthPrefixPreventsBoundaryCollision(t *testing.T) {
 
 func TestDigestIgnoresRevocation(t *testing.T) {
 	g := mustIssue(t, testSpec())
-	r, err := g.Revoke(testProvider, ReasonCapacityReclaim, testIssuedAt.Add(time.Hour))
-	checkErr(t, err, nil)
-	if r.Digest() != g.Digest() {
-		t.Error("a revoked grant has a different digest from the issued grant")
+	before := g.Digest()
+	var l Ledger
+	checkErr(t, l.Revoke(g, testProvider, ReasonCapacityReclaim, testIssuedAt.Add(time.Hour)), nil)
+	if g.Digest() != before {
+		t.Error("revoking a grant changed its digest")
+	}
+	if mustIssue(t, testSpec()).Digest() != before {
+		t.Error("an identically issued grant has a different digest")
 	}
 }
 

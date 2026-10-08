@@ -4,23 +4,21 @@ Status: **Baseline 0.1 — 2026-09-21**
 
 ## 1. この文書の目的
 
-EKI Fabricでは、Client、Worker、Control Planeのいずれも「同じSystemの一部だから信頼する」とは考えません。
+EKI Fabricでは、Client、Worker、Control Planeのどれについても、「同じSystemの一部だから信頼する」とは考えません。
 
-特にControl Plane内部は、一つの巨大な完全信頼領域として扱うと、SchedulerやParserのような複雑なComponentが侵害されたときに、Artifactの読出し、Executor承認、Federation設定変更、WorkOrder発行まで一度に奪われる危険があります。
+特にControl Plane内部を、一つの巨大な完全信頼領域として扱うと、危険があります。SchedulerやParserのような複雑なComponentが侵害されたときに、Artifactの読み出し、Executorの承認、Federationの設定の変更、WorkOrderの発行まで、一度に奪われてしまうからです。
 
-そこでArchitectureの最初に、Process数や採用製品より先に、
+そこで、Architectureの最初に、Processの数や採用する製品よりも先に、次のことを定義します。
 
 - 誰が事実を検証するか
 - 誰がSecurity上の判断を下すか
 - 誰がCapabilityや実行権限を発行できるか
-- その判断を誰が再検証するか
-- 一つのComponentが侵害されたとき、どこまで影響が届くか
+- その判断を、誰が再検証するか
+- 一つのComponentが侵害されたとき、影響がどこまで届くか
 
-を定義します。
+この文書は、そのための、論理的なAuthorityとTrust BoundaryのBaselineです。
 
-この文書は、その論理的なAuthorityとTrust BoundaryのBaselineです。
-
-関連する正本は次のとおりです。
+関連する正本は、次のとおりです。
 
 - ../requirements/PRODUCT_REQUIREMENTS.md
 - ../requirements/THREAT_MODEL.md
@@ -28,13 +26,13 @@ EKI Fabricでは、Client、Worker、Control Planeのいずれも「同じSystem
 - ../requirements/QUALITY_ATTRIBUTES.md
 - ../plan/ARCHITECTURE_ENTRY_REVIEW_2026-09-21.md
 
-## 2. AuthorityはService数ではない
+## 2. AuthorityはServiceの数ではない
 
-この文書でいうAuthorityとは、Security上意味のある事実を確定したり、権限を発行したり、状態を変更したりできる論理的な役割です。
+この文書でいうAuthorityとは、論理的な役割のことです。Security上、意味のある事実を確定したり、権限を発行したり、状態を変更したりできます。
 
-一つのAuthorityを必ず一つのMicroserviceにする、という意味ではありません。
+一つのAuthorityを、必ず一つのMicroserviceにするという意味ではありません。
 
-小規模構成では、
+小規模な構成では、次のものを一つのBinaryに同居させてもかまいません。
 
 ~~~text
 eki-control
@@ -46,61 +44,57 @@ eki-control
   WorkOrder Assembly
 ~~~
 
-を一つのBinaryへ同居させても構いません。
-
-ただし同居していても、次は分けます。
+ただし、同居していても、次のものは分けます。
 
 - Authority identity
-- signing key / key handle
-- Policy input
-- persistent stateへのwrite authority
+- signing keyやkey handle
+- Policyの入力
+- 永続的な状態への書き込みの権限
 - 呼び出せるInterface
 - Audit event
-- failure / compromiseの影響範囲
+- 障害や侵害の影響の範囲
 
-Production Profileでは、意味の異なるAuthorityが同一の署名Credentialを共有することを標準にはしません。
+Production Profileでは、意味の異なるAuthorityが、同じ署名Credentialを共有することを標準にはしません。
 
-同じProcessに同居する場合も、Scheduler moduleがExecutor Admission keyやArtifact Capability keyを直接利用できる設計にはしません。
+同じProcessに同居させる場合も、Scheduler moduleがExecutor Admissionのkeyや、Artifact Capabilityのkeyを直接使える設計にはしません。
 
 ## 3. 基本原則
 
-### 3.1 AuthenticationはAuthorityを増やさない
+### 3.1 Authenticationは、Authorityを増やさない
 
-認証済みClientも悪意を持ち得ます。
+認証されたClientも、悪意を持ち得ます。
 
-認証は、
+認証が確認するのは、
 
-> このrequestがどのPrincipalから来たか
+> このrequestが、どのPrincipalから来たか
 
-を確認するだけです。
+ということだけです。
 
-それだけで、
+それだけで、次のことを許可しません。
 
-- 任意Executorの実行
-- 任意Artifactの読出し
-- 具体Workerの指定
-- Federation設定変更
-- Resource Budget超過
+- 任意のExecutorの実行
+- 任意のArtifactの読み出し
+- 具体的なWorkerの指定
+- Federationの設定の変更
+- Resource Budgetを超えること
 
-を許可しません。
+### 3.2 Schedulerは、Policy Authorityではない
 
-### 3.2 SchedulerはPolicy Authorityではない
+Schedulerは、性能、locality、deadlineなどを使って、候補の順位を付けます。
 
-Schedulerは性能・locality・deadline等を使って候補を順位付けします。
-
-Schedulerが返すのはPlacement Proposalです。
+Schedulerが返すのは、Placement Proposalです。
 
 Proposalは、
 
 > このWorkerがよさそうだ
 
-という提案であり、
+という提案です。
 
-> このWorkerへ置いてよい
+> このWorkerに置いてよい
 
 というSecurity Authorizationではありません。
 
-Issue #19のlearned estimatorを将来利用する場合も同じです。
+将来、Issue #19のlearned estimatorを利用する場合も、同じです。
 
 ~~~text
 model score
@@ -109,19 +103,17 @@ predicted reliability
   != Worker Assurance
 ~~~
 
-です。
+### 3.3 WorkOrderの署名だけを、万能なTrust Tokenにしない
 
-### 3.3 WorkOrder署名だけを万能なTrust Tokenにしない
+WorkOrder Authorityは、最終的なEnvelopeに署名します。しかし、自分だけでは、Taskのsemantics、Data authority、Executor approval、Placement authorizationを作りません。
 
-WorkOrder Authorityは最終Envelopeへ署名しますが、独力でTask semantics、Data authority、Executor approval、Placement authorizationを作りません。
+Workerは、WorkOrderの署名だけでなく、WorkOrderが参照している前提のDecisionについて、次の項目を再検証します。issuer、subject、digest、policy revision、expiry。
 
-WorkerはWorkOrder署名だけでなく、WorkOrderが参照する前提Decisionのissuer、subject、digest、policy revision、expiryを再検証します。
+そのため、WorkOrderのsigning keyだけが侵害されても、他のAuthorityの権限を自動的に得てしまう構造は避けます。
 
-したがってWorkOrder signing keyの単独侵害が、他Authorityの権限を自動獲得する構造を避けます。
+### 3.4 Authorityの結果は、対象に結び付ける
 
-### 3.4 Authority結果は対象へbindingする
-
-Security上意味のあるDecisionは、少なくとも必要な範囲で次へbindingします。
+Security上、意味のあるDecisionは、少なくとも必要な範囲で、次のものに結び付けます。
 
 - Principal / Trust Domain
 - Task ID
@@ -134,19 +126,19 @@ Security上意味のあるDecisionは、少なくとも必要な範囲で次へb
 - Issued At / Expiry
 - Decision / Nonce / Lease ID
 
-別Taskや別Worker向けの正しい署名を流用できないようにします。
+別のTaskや別のWorker向けの、正しい署名を流用できないようにします。
 
-### 3.5 Trust Rootをcallerに選ばせない
+### 3.5 Trust Rootを、呼び出し側に選ばせない
 
-検証用公開鍵やTrust Rootを通常requestのparameterとして渡し、
+検証に使う公開鍵やTrust Rootを、通常のrequestのparameterとして渡し、
 
-> 今回はこの鍵を信じてください
+> 今回は、この鍵を信じてください
 
-と差し替えられるAPIを作りません。
+と差し替えられるAPIは、作りません。
 
-AuthorityのTrust Rootは、別の管理経路で設定・rotationします。
+AuthorityのTrust Rootは、別の管理の経路で、設定し、rotationします。
 
-### 3.6 Local Governorは中央Authorityに対するVetoを持つ
+### 3.6 Local Governorは、中央のAuthorityに対する拒否権を持つ
 
 Worker側のLocal Governorは、Central Schedulerがcapacityを使いたいと判断しても、より厳しい上限を適用できます。
 
@@ -159,17 +151,17 @@ effective capacity
     )
 ~~~
 
-中央側には、このVetoを無効化する通常実行権限を持たせません。
+中央側には、この拒否権を無効にする、通常の実行権限を持たせません。
 
 ---
 
 # 4. Authorityの分類
 
-EKIのAuthorityを、性質の違いから次の四群に分けます。
+EKIのAuthorityを、性質の違いから、次の4つのグループに分けます。
 
 ## 4.1 Administrative Authorities
 
-頻繁なTask実行経路から分離する高価値な設定Authorityです。
+頻繁に行われるTaskの実行の経路から分離する、価値の高い設定のAuthorityです。
 
 - Trust / Policy Administration
 - Federation Administration
@@ -177,7 +169,7 @@ EKIのAuthorityを、性質の違いから次の四群に分けます。
 
 ## 4.2 Runtime Decision Authorities
 
-通常のTask lifecycleでSecurity上の判断やCapabilityを発行します。
+通常のTask lifecycleで、Security上の判断やCapabilityを発行します。
 
 - Task Admission Authority
 - Task State / Recovery Authority
@@ -188,7 +180,7 @@ EKIのAuthorityを、性質の違いから次の四群に分けます。
 
 ## 4.3 Verification / Acceptance Authorities
 
-Workerや外部主体が出したClaimを、そのまま事実へ昇格させないためのAuthorityです。
+Workerや外部の主体が出したClaimを、そのまま事実に昇格させないためのAuthorityです。
 
 - Attestation Verifier
 - Result Verification Authority
@@ -198,52 +190,52 @@ Workerや外部主体が出したClaimを、そのまま事実へ昇格させな
 
 ## 4.4 Worker-local Enforcement
 
-中央Decisionを受け取った後でも、実行直前・実行中に境界を守ります。
+中央のDecisionを受け取った後でも、実行の直前と実行中に、境界を守ります。
 
 - WorkOrder Verifier
 - Local Governor
 - Sandbox / Capability Enforcer
 
-Scheduler、Learned Estimator、Telemetry Collector、Cache locality estimator等は重要Componentですが、それ自体にはSecurity Authorityを与えないことを標準とします。
+Scheduler、Learned Estimator、Telemetry Collector、Cache locality estimatorなどは、重要なComponentです。しかし、それ自体にはSecurity Authorityを与えないことを、標準とします。
 
 ---
 
-# 5. Authority一覧
+# 5. Authorityの一覧
 
 ## ADM-1 — Trust / Policy Administration
 
 ### 役割
 
-EKI内部Authorityが信頼するissuer、key、policy revision等の管理Rootです。
+EKI内部のAuthorityが信頼する、issuer、key、policy revisionなどを管理する、Rootです。
 
-例は次のとおりです。
+たとえば、次のものがあります。
 
 - Task Admission Authorityのtrust root
 - WorkOrder Authorityのtrust root
 - Verification Authorityのtrust root
-- Organization policy version
-- key rotation / revocation
+- Organization policyのversion
+- keyのrotationとrevocation
 
 ### 持てる権限
 
-- Authority trust configurationの更新
-- key rotation
-- policy activation / rollback
-- emergency revocation
+- Authorityのtrust configurationの更新
+- keyのrotation
+- policyのactivationとrollback
+- 緊急のrevocation
 
 ### 持たせない権限
 
-- ClientとしてTaskをsubmitする
-- Workerを直接選ぶ
-- Artifactを直接読む
-- ResultをAcceptedへする
-- Contribution量を生成する
+- ClientとしてTaskをsubmitすること
+- Workerを直接選ぶこと
+- Artifactを直接読むこと
+- ResultをAcceptedにすること
+- Contributionの量を生成すること
 
 ### 注意
 
-このAuthorityの侵害は影響が大きいため、通常Task execution pathから分離します。
+このAuthorityが侵害されると、影響が大きくなります。そのため、通常のTask executionの経路から分離します。
 
-将来、high-value変更へmulti-party approvalを導入する余地を残しますが、Baseline 0.1では方式を固定しません。
+将来、価値の高い変更にmulti-party approvalを導入する余地は残します。ただし、Baseline 0.1では、方式を固定しません。
 
 ---
 
@@ -251,34 +243,32 @@ EKI内部Authorityが信頼するissuer、key、policy revision等の管理Root�
 
 ### 役割
 
-外部Trust DomainとのIdentity検証関係を明示的に構成します。
+外部のTrust Domainとの、Identityを検証する関係を、明示的に構成します。
 
 ### 入力
 
 - Trust Domain
 - Trust Material / Bundle
-- version / sequence
+- versionとsequence
 - federation policy
-- administrative approval
+- 管理者の承認
 
 ### 出力
 
-- versioned Federation Configuration
+- versionを持つFederation Configuration
 
 ### 持たせない権限
 
-- Federationした外部Principalへ自動的にTask権限を付与する
-- Artifact accessを自動許可する
-- Contribution価値を決める
-- 推移的Trustを自動生成する
+- Federationした外部のPrincipalに、自動的にTaskの権限を付与すること
+- Artifactへのアクセスを、自動的に許可すること
+- Contributionの価値を決めること
+- 推移的なTrustを、自動的に生成すること
 
 ~~~text
 Identity can be verified
   !=
 Resource access is authorized
 ~~~
-
-です。
 
 Federation Trust Binding Spikeの原則を維持します。
 
@@ -288,29 +278,29 @@ Federation Trust Binding Spikeの原則を維持します。
 
 ### 役割
 
-Worker上で実行可能なExecutor Artifactを審査し、実行可能なDigest、Runtime Class、Provenance条件を確定します。
+Worker上で実行できるExecutor Artifactを審査して、実行できるDigest、Runtime Class、Provenanceの条件を確定します。
 
 ### 主なEvidence
 
-- Artifact Digest / Size / Media Type
+- ArtifactのDigest / Size / Media Type
 - Publisher Evidence
 - Build Provenance
-- Source / Commit
-- SBOM / scan等のoptional evidence
+- SourceとCommit
+- SBOMやscanなどの、任意のEvidence
 - Runtime Class
 
 ### 出力
 
-概念上のExecutor Approval。
+概念上の、Executor Approvalです。
 
 ### 持たせない権限
 
-- Taskをsubmitする
-- 具体Workerを選ぶ
-- Artifact input dataを読む権限を与える
-- WorkOrderを単独発行する
+- Taskをsubmitすること
+- 具体的なWorkerを選ぶこと
+- Artifactのinput dataを読む権限を与えること
+- WorkOrderを単独で発行すること
 
-正しく署名されたArtifactやProvenanceも、Executor Admissionそのものではありません。
+正しく署名されたArtifactやProvenanceがあっても、それがそのままExecutor Admissionになるわけではありません。
 
 ---
 
@@ -318,21 +308,21 @@ Worker上で実行可能なExecutor Artifactを審査し、実行可能なDigest
 
 ### 役割
 
-Client / Worker / Workload / Administrative PrincipalのIdentityを検証します。
+Client、Worker、Workload、Administrative PrincipalのIdentityを検証します。
 
-OIDC、enterprise PKI、SPIFFE等はAdapter候補です。
+OIDC、企業のPKI、SPIFFEなどは、Adapterの候補です。
 
 ### 出力
 
-normalized Principal Context。
+正規化したPrincipal Contextです。
 
 ### 重要な境界
 
-Identity VerificationはAuthenticationの根拠です。
+Identity Verificationは、Authenticationの根拠です。
 
-Authorization、Result correctness、Worker Assuranceを自動的には作りません。
+Authorization、Resultが正しいこと、Worker Assuranceを、自動的には作りません。
 
-Client Identity、Worker Identity、Control Plane Workload Identityは別namespace / roleとして扱います。
+Client Identity、Worker Identity、Control Plane Workload Identityは、別のnamespaceやroleとして扱います。
 
 ---
 
@@ -340,33 +330,33 @@ Client Identity、Worker Identity、Control Plane Workload Identityは別namespa
 
 ### 役割
 
-外部から来たuntrusted TaskRequestを、Fabric内部で扱ってよいAdmitted Taskへ変換します。
+外部から来たuntrustedなTaskRequestを、Fabric内部で扱ってよいAdmitted Taskに変換します。
 
 ### 主な入力
 
-- authenticated Principal Context
-- strict external TaskRequest
+- 認証済みのPrincipal Context
+- 厳格に検証した外部のTaskRequest
 - organization policy
-- quota / budget
+- quotaとbudget
 - Artifact metadata
-- Executor logical requirement
-- side-effect semantics
-- requested security / data class
+- Executorの論理的な要求
+- side-effectのsemantics
+- 要求されたsecurityとdata class
 
 ### 主な処理
 
-- schema validation
+- schemaの検証
 - authorization
-- quota / budget reservation
-- effective security classification
-- retry / fan-out budget
-- side-effect contract validation
-- allowed Executor requirementの確定
-- unknown / missing security fieldを安全側へ処理
+- quotaとbudgetの予約
+- 有効なsecurity classification
+- retryとfan-outのbudget
+- side-effect contractの検証
+- 許可するExecutorの要求の確定
+- 未知または欠けているsecurity fieldを、安全な側に処理する
 
-Clientが指定したData Classは下限ではなく、他の根拠と合わせて安全側へ計算します。
+Clientが指定したData Classは、下限ではありません。他の根拠と合わせて、安全な側に計算します。
 
-例は次のとおりです。
+たとえば、次のとおりです。
 
 ~~~text
 effective data class
@@ -376,19 +366,19 @@ effective data class
   >= client requested class
 ~~~
 
-Clientが値を小さくしてSecurityを弱めることはできません。
+Clientが値を小さくして、Securityを弱めることはできません。
 
 ### 出力
 
-概念上のAdmitted Task / TaskIR Approval。
+概念上の、Admitted TaskとTaskIR Approvalです。
 
 ### 持たせない権限
 
-- 具体Workerの選択
-- Executor Artifactの新規承認
+- 具体的なWorkerの選択
+- Executor Artifactの新規の承認
 - Artifact capabilityの発行
-- Federation変更
-- WorkOrder最終署名
+- Federationの変更
+- WorkOrderの最終的な署名
 
 ---
 
@@ -402,27 +392,27 @@ TaskのlifecycleとAttemptを管理します。
 
 - Task state
 - Attempt ID
-- retry count / budget
+- retry countとbudget
 - cancellation
 - deadline
-- UNKNOWN side-effect outcome
-- mass reclaim後のrecovery queue
-- parent / child budget
+- UNKNOWNのside-effect outcome
+- mass reclaimの後のrecovery queue
+- 親と子のbudget
 
 ### 重要な境界
 
-Worker disappearanceだけでretry権限を作りません。
+Workerが消えたことだけで、retryの権限を作りません。
 
-外部副作用がUNKNOWNなら、Task Stateはreconciliationへ送り、自動retryを止めます。
+外部への副作用がUNKNOWNの場合、Task Stateはreconciliationに回し、自動のretryを止めます。
 
-同時に、idempotent Taskでもretry budgetを越えて無限再実行しません。
+同時に、冪等なTaskでも、retry budgetを越えて、無限に再実行しません。
 
 ### 持たせない権限
 
-- Task security classificationの変更
+- Taskのsecurity classificationの変更
 - Artifact data grantの発行
 - Executor Admission
-- Federation変更
+- Federationの変更
 
 ---
 
@@ -434,35 +424,35 @@ Worker disappearanceだけでretry権限を作りません。
 
 ### 役割
 
-Policy上候補になり得るResource情報を使い、Placement Proposalを作ります。
+Policyの上で候補になり得るResourceの情報を使って、Placement Proposalを作ります。
 
 ### 利用できる情報の例
 
 - Worker class
-- declared / verified capability summary
-- current capacity
-- locality / cache hint
-- expected transfer bytes
+- 申告された、または検証されたcapabilityの要約
+- 現在のcapacity
+- localityとcacheのhint
+- 予想される転送のbyte数
 - deadline
-- queue pressure
-- energy / provider availability signal
-- historical operational metrics
+- queueの圧力
+- energyやproviderのavailabilityの信号
+- 過去の運用上の指標
 
 ### 出力
 
-Placement Proposal。
+Placement Proposalです。
 
 ### 禁止する権限
 
-- Data Classを下げる
-- Worker Assuranceを自己生成する
-- Artifact Grantを発行する
-- Executorを承認する
-- WorkOrderを署名する
-- Federation設定を変更する
-- learned modelのscoreをAuthorizationへ変換する
+- Data Classを下げること
+- Worker Assuranceを自己生成すること
+- Artifact Grantを発行すること
+- Executorを承認すること
+- WorkOrderに署名すること
+- Federationの設定を変更すること
+- learned modelのscoreを、Authorizationに変換すること
 
-Scheduler compromiseはavailabilityや効率へ影響し得ますが、他Authorityの署名を偽造しない限り、Security requirementを単独で迂回できない構造を目指します。
+Schedulerが侵害されると、availabilityや効率には影響し得ます。しかし、他のAuthorityの署名を偽造しない限り、Schedulerだけでは、Security requirementを迂回できない構造を、めざします。
 
 ---
 
@@ -470,7 +460,7 @@ Scheduler compromiseはavailabilityや効率へ影響し得ますが、他Author
 
 ### 役割
 
-Scheduler ProposalをSecurity / Safety / Grant上の制約へ照合し、そのTask AttemptをそのWorkerへ置いてよいかを判断します。
+Scheduler Proposalを、Security、Safety、Grantの制約に照らし合わせます。そして、そのTask AttemptをそのWorkerに置いてよいかを判断します。
 
 ### 主な入力
 
@@ -479,33 +469,33 @@ Scheduler ProposalをSecurity / Safety / Grant上の制約へ照合し、そのT
 - Placement Proposal
 - Worker Identity
 - Resource Capability Evidence
-- Assurance / Attestation Result
-- Compute Grant constraints
-- Data locality / network policy
-- Provider state
+- AssuranceとAttestation Result
+- Compute Grantの制約
+- データの局所性とnetwork policy
+- Providerの状態
 
 ### 出力
 
-Placement Approval。
+Placement Approvalです。
 
 ### 重要な境界
 
-Scheduler Proposalは入力の一つにすぎません。
+Scheduler Proposalは、入力の一つにすぎません。
 
-Placement Authorityは、Schedulerが
+Schedulerが
 
 > このWorkerは速い
 
-と提案しても、Data ClassやAssuranceを満たさなければ拒否します。
+と提案しても、Data ClassやAssuranceを満たさなければ、Placement Authorityは拒否します。
 
 ### 持たせない権限
 
-- Artifact Capabilityの直接発行
+- Artifact Capabilityの直接の発行
 - Executor Admission
-- Federation変更
-- WorkOrder最終署名
+- Federationの変更
+- WorkOrderの最終的な署名
 
-Artifact / Data Authorityは、Placement Approvalだけを唯一のSecurity EvidenceとしてDataを解放しません。必要なWorker Identity / Assurance Evidenceを独立に確認できる構造を選びます。
+Artifact / Data Authorityは、Placement Approvalだけを唯一のSecurity Evidenceとして、Dataを解放しません。必要なWorker IdentityとAssurance Evidenceを、独立に確認できる構造を選びます。
 
 ---
 
@@ -513,30 +503,30 @@ Artifact / Data Authorityは、Placement Approvalだけを唯一のSecurity Evid
 
 ### 役割
 
-特定Task Attemptを特定Workerへ一定時間割り当てるLeaseを発行・renew・revokeします。
+特定のTask Attemptを、特定のWorkerに、一定の時間だけ割り当てるLeaseを、発行し、renewし、revokeします。
 
-### Leaseがbindingするもの
+### Leaseが結び付けるもの
 
 - Task ID
 - Attempt ID
 - Worker ID
-- lease ID / nonce
-- issued time
+- lease IDとnonce
+- 発行した時刻
 - expiry
-- renewal constraints
+- renewalの制約
 
 ### 目的
 
-- disconnected Workerの検出
-- stale assignmentの失効
-- retry / reschedule境界
-- replay抑制
+- 切断されたWorkerの検出
+- 古い割り当ての失効
+- retryとrescheduleの境界
+- replayの抑制
 
 ### 非目標
 
-Leaseだけでexactly-onceを保証しません。
+Leaseだけでは、exactly-onceを保証しません。
 
-Side-effect UNKNOWNやidempotencyはTask Contract側の別概念です。
+Side-effectのUNKNOWNやidempotencyは、Task Contract側の、別の概念です。
 
 ---
 
@@ -544,34 +534,34 @@ Side-effect UNKNOWNやidempotencyはTask Contract側の別概念です。
 
 ### 役割
 
-ArtifactやDataを、誰が、どのTask Attemptで、どのWorkerから、どの操作として利用できるかを限定したCapability / Grantとして発行します。
+ArtifactやDataを、誰が、どのTask Attemptで、どのWorkerから、どの操作として利用できるかを限定した、Capability / Grantとして発行します。
 
 ### 主な入力
 
-- Artifact intrinsic classification
-- requesting Principal / Task
+- Artifact固有のclassification
+- 要求しているPrincipalとTask
 - Admitted Task
 - Worker Identity
 - Placement Approval
-- Worker Assurance / Attestation Evidence
+- Worker AssuranceとAttestation Evidence
 - Lease
-- organization data policy
+- organizationのdata policy
 
-### Grantがbindingするもの
+### Grantが結び付けるもの
 
 - Artifact Digest
 - Task ID
 - Attempt ID
 - Worker ID
-- allowed operation
-- optional byte / range / object scope
+- 許可する操作
+- 任意の、byte、range、objectの範囲
 - expiry
 - Data Class
 - policy revision
 
 ### 重要な境界
 
-WorkerはClient supplied URLやpathをData Authorityとして扱いません。
+Workerは、Clientが指定したURLやpathを、Data Authorityとして扱いません。
 
 ~~~text
 https://internal-service/
@@ -579,23 +569,21 @@ file:///etc/passwd
 \\host\share
 ~~~
 
-のような文字列だけではArtifact access authorityが成立しません。
+このような文字列だけでは、Artifactへのアクセスのauthorityは成立しません。
 
-### Compromise containment
+### 侵害されたときの被害の封じ込め
 
-DAT-1が侵害されると、そのAuthorityが管理するData Scopeの漏えいriskは重大です。
+DAT-1が侵害されると、そのAuthorityが管理するData Scopeの漏えいのriskが、重大になります。
 
-そのため、
+そのため、次のものを、Architectureを比べる対象にします。
 
-- Tenant / Data Class scopeの分離
-- short-lived Grant
-- least privilege
+- TenantとData Class scopeの分離
+- 短い有効期間のGrant
+- 最小権限
 - audit
-- key separation
+- keyの分離
 
-をArchitecture比較対象にします。
-
-一方、DAT-1単独ではExecutor AdmissionやWorkOrder署名まで取得しない構造にします。
+一方で、DAT-1だけでは、Executor AdmissionやWorkOrderの署名まで取得できない構造にします。
 
 ---
 
@@ -603,40 +591,40 @@ DAT-1が侵害されると、そのAuthorityが管理するData Scopeの漏え�
 
 ### 役割
 
-すでに独立Authorityで確定されたDecisionを、一つのimmutable execution envelopeへ整合的に束ね、Workerへ渡すWorkOrderへ署名します。
+すでに独立したAuthorityで確定されているDecisionを、一つの変更できないexecution envelopeに、整合的に束ねます。そして、Workerに渡すWorkOrderに署名します。
 
 ### WorkOrderの前提
 
-少なくとも必要に応じて次を参照・内包します。
+少なくとも、必要に応じて、次のものを参照または内包します。
 
-- Admitted Task / TaskIR identity
-- Task / Attempt ID
+- Admitted TaskとTaskIRのidentity
+- TaskとAttemptのID
 - Placement Approval
 - Lease
-- Executor Approval / Executor Digest
-- Artifact / Data Grants
-- Resource limits
+- Executor ApprovalとExecutor Digest
+- ArtifactとData Grant
+- Resourceの上限
 - Sandbox capability
 - network policy
 - side-effect profile
-- policy revisions
-- expiry / nonce
+- policy revision
+- expiryとnonce
 
 ### WOR-1がしてはいけないこと
 
-不足するApprovalを自分で作りません。
+足りないApprovalを、自分で作ってはいけません。
 
-- Data GrantがないからWOR-1がData accessを足す
-- Executor ApprovalがないからWOR-1がDigestを承認する
-- Placement ApprovalがないからWOR-1がWorkerを許可する
+- Data Grantがないから、WOR-1がData accessを足す
+- Executor Approvalがないから、WOR-1がDigestを承認する
+- Placement Approvalがないから、WOR-1がWorkerを許可する
 
-といった挙動を禁止します。
+このような挙動を、禁止します。
 
 ### Worker側の再検証
 
-WorkerはWorkOrder envelope署名だけを確認して実行してはいけません。
+Workerは、WorkOrderのenvelopeの署名だけを確認して、実行してはいけません。
 
-WOR-1 compromise単独のblast radiusを狭めるため、Worker-local WorkOrder Verifierは重要な前提Decisionのissuer / binding / freshnessを再検証します。
+WOR-1だけが侵害された場合のblast radiusを狭めるため、Worker-localのWorkOrder Verifierが、重要な前提のDecisionの、issuer、binding、freshnessを再検証します。
 
 ---
 
@@ -644,29 +632,29 @@ WOR-1 compromise単独のblast radiusを狭めるため、Worker-local WorkOrder
 
 ### 役割
 
-Worker / Execution Environmentから得たRaw Evidenceを、Verifier Policyで評価し、normalized Attestation Resultへ変換します。
+WorkerやExecution Environmentから得たRaw Evidenceを、Verifier Policyで評価して、正規化したAttestation Resultに変換します。
 
 ### 出力
 
-- Attester / Worker binding
+- Attester / Workerのbinding
 - Trust Domain
-- normalized Environment Class
+- 正規化したEnvironment Class
 - Verifier ID
 - Policy Revision
 - expiry
-- Evidence provenance digest
+- Evidenceのprovenance digest
 
 ### 非目標
 
 ATV-1がEvidenceを受理しても、
 
-> このTaskをこのWorkerへ置いてよい
+> このTaskを、このWorkerに置いてよい
 
-とは決まりません。
+ということは、決まりません。
 
-Placement AuthorityがTask固有Policyを再評価します。
+Placement Authorityが、Task固有のPolicyを再評価します。
 
-Raw EvidenceをSchedulerやClientへ広く配布することも標準にはしません。
+Raw Evidenceを、SchedulerやClientに広く配布することも、標準にはしません。
 
 ---
 
@@ -676,26 +664,26 @@ Raw EvidenceをSchedulerやClientへ広く配布することも標準にはし�
 
 Workerが返したResultClaimを検証します。
 
-Task Profileに応じて、Adapterとして次を利用できます。
+Task Profileに応じて、Adapterとして次のものを利用できます。
 
-- deterministic equality
-- application validator
-- independent replication
-- managed anchor recomputation
-- cryptographic proof
-- attested execution evidence
+- 決定的な処理での、完全な一致
+- アプリケーションのvalidator
+- 独立した複製の実行
+- 管理下のanchorによる再計算
+- 暗号学的なproof
+- attested executionのevidence
 
 ### 出力
 
-normalized Verification Result。
+正規化したVerification Resultです。
 
 ### 重要な境界
 
-Worker Identityが正しいだけではResult correctnessを認めません。
+Worker Identityが正しいというだけでは、Resultが正しいとは認めません。
 
-Verifier自身も絶対信頼とはせず、Verifier Identity / Policy Revision / provenanceを追跡します。
+Verifier自身も、絶対に信頼できるものとはせず、Verifier Identity、Policy Revision、provenanceを追跡します。
 
-高保証Taskでは複数Verifierやindependent anchorを要求する余地を残します。
+高い保証が必要なTaskでは、複数のVerifierや、独立したanchorを要求する余地を残します。
 
 ---
 
@@ -703,27 +691,27 @@ Verifier自身も絶対信頼とはせず、Verifier Identity / Policy Revision 
 
 ### 役割
 
-TaskごとのResult Assurance requirementへVerification Resultを照合し、ResultClaimをAccepted Resultへ昇格する最終Relying Partyです。
+Verification Resultを、Taskごとの、Result Assurance requirementに照らし合わせます。そして、ResultClaimをAccepted Resultに昇格させる、最終的なRelying Partyです。
 
 ### 主な入力
 
 - Admitted Task
 - ResultClaim
-- Verification Result群
+- Verification Resultの群
 - Result Assurance requirement
 - policy revision
 
 ### 出力
 
-Accepted Resultまたは明示的な未確定状態。
+Accepted Result、または、明示的な未確定の状態です。
 
-### なぜVerificationと分けるか
+### Verificationと分ける理由
 
 Proof VerifierがProofをvalidと判定しても、TaskがそのProof Systemを許可していない場合があります。
 
-Attestation VerifierがEnvironmentをvalidと判定しても、Application Resultの意味的正しさは別です。
+Attestation VerifierがEnvironmentをvalidと判定しても、Application Resultが意味の上で正しいかどうかは、別のことです。
 
-したがって、
+そのため、
 
 ~~~text
 Verifier accepted evidence
@@ -731,7 +719,7 @@ Verifier accepted evidence
 Task result accepted
 ~~~
 
-をArchitectureで維持します。
+という関係を、Architectureで維持します。
 
 ---
 
@@ -739,27 +727,27 @@ Task result accepted
 
 ### 役割
 
-外部副作用が実際に成立したかを確認できるAuthorityです。
+外部への副作用が、実際に成立したかを確認できるAuthorityです。
 
-これはEKI内部Componentとは限りません。
+これは、EKI内部のComponentとは限りません。
 
-例は次のとおりです。
+たとえば、次のものがあります。
 
-- 外部APIのoperation status / receipt
+- 外部APIのoperation statusとreceipt
 - managed effect adapter
-- database transaction record
-- broker deduplication record
+- databaseのtransaction record
+- brokerのdeduplication record
 
 ### 重要な境界
 
-Workerが
+Workerが、
 
 > 成功した
 > 失敗した
 
-と自己申告しただけで外部世界の事実を確定しません。
+と自己申告しただけで、外部の世界の事実を確定しません。
 
-non-idempotent effectでReceiptを得られない場合、Task StateはUNKNOWNを維持します。
+冪等でないeffectでReceiptを得られない場合、Task StateはUNKNOWNを維持します。
 
 ---
 
@@ -767,18 +755,18 @@ non-idempotent effectでReceiptを得られない場合、Task StateはUNKNOWN�
 
 ### 役割
 
-Resource Measurement Evidence、Work Context、必要に応じたAccepted Resultを照合し、署名済みContribution Recordを発行します。
+Resource Measurement Evidence、Work Context、必要に応じてAccepted Resultを照合して、署名済みのContribution Recordを発行します。
 
 ### 出力
 
-価値換算前のContribution Record。
+価値に換算する前の、Contribution Recordです。
 
 ### 持たせない権限
 
-- EKI Currency発行
-- 法定通貨換算
-- market price形成
-- Local Governor override
+- EKI Currencyの発行
+- 法定通貨への換算
+- market priceの形成
+- Local Governorのoverride
 
 ~~~text
 Contribution Record
@@ -786,79 +774,77 @@ Contribution Record
   != money
 ~~~
 
-です。
-
-価値換算は外部Policyへ残します。
+価値への換算は、外部のPolicyに残します。
 
 ---
 
-# 6. Worker-local Trust Boundary
+# 6. Worker-localのTrust Boundary
 
-中央Control Planeが正しくても、Workerはmalicious / modifiedであり得ます。
+中央のControl Planeが正しくても、Workerはmaliciousであったり、改変されていたりし得ます。
 
-逆に、業務Endpointでは中央Componentが誤動作する可能性もあります。
+逆に、業務のEndpointでは、中央のComponentが誤動作する可能性もあります。
 
-そのためWorker側にも明示的な境界を置きます。
+そのため、Worker側にも、明示的な境界を置きます。
 
 ## WEV-1 — WorkOrder Verifier
 
-### 実行直前に確認するもの
+### 実行の直前に確認するもの
 
-- WorkOrder Authority署名
-- Task / Attempt binding
+- WorkOrder Authorityの署名
+- TaskとAttemptのbinding
 - Placement Approval
-- Lease expiry / Worker binding
-- Executor Approval / actual Executor Digest
-- Artifact Grant / actual Artifact Digest
-- Resource / Capability limits
+- Leaseのexpiryと、Workerとのbinding
+- Executor Approvalと、実際のExecutor Digest
+- Artifact Grantと、実際のArtifact Digest
+- ResourceとCapabilityの上限
 - network policy
-- relevant Policy Revision / expiry
+- 関連するPolicy Revisionとexpiry
 
-未知のAuthority、期限切れDecision、subject mismatchはfail closedします。
+未知のAuthority、期限切れのDecision、subjectの不一致は、fail closedします。
 
 ## GOV-1 — Local Governor
 
 ### 役割
 
-- user opt-out
-- user return
-- CPU / Memory / GPU / Network上限
-- Battery / AC
-- Thermal
-- time window
-- device safety
+次の条件に応じて、中央が許可したcapacityを、さらに狭めます。
 
-に応じて、中央が許可したcapacityをさらに狭めます。
+- user opt-out
+- userの復帰
+- CPU / Memory / GPU / Networkの上限
+- BatteryかACか
+- Thermal
+- 時間帯
+- device safety
 
 ### 権限の方向
 
-Local Governorはcapacityを減らすVetoを持ちます。
+Local Governorが持つのは、capacityを減らす拒否権です。
 
-Organization PolicyやHardware Safetyが許可していないcapacityを増やすAuthorityにはしません。
+Organization PolicyやHardware Safetyが許可していないcapacityを、増やすAuthorityにはしません。
 
 ## SBX-1 — Sandbox / Capability Enforcer
 
-Executorは、Admission済みでもuntrusted processとして扱います。
+Executorは、Admission済みであっても、untrustedなprocessとして扱います。
 
-Default denyを基本に、WorkOrderで必要なCapabilityだけを渡します。
+Default denyを基本にして、WorkOrderで必要なCapabilityだけを渡します。
+
+次のものを分離します。
 
 - filesystem
 - network
-- device / GPU
+- deviceとGPU
 - process
 - temporary storage
 - secret
-- artifact input / output
+- artifactのinputとoutput
 
-を分離します。
-
-Executor Admissionが侵害されても、Sandbox capabilityまで自動的に拡大しない構造を目指します。
+Executor Admissionが侵害されても、Sandbox capabilityまで自動的に拡大しない構造を、めざします。
 
 ---
 
 # 7. Runtime Trust Flow
 
-標準的なTask lifecycleを、Authorityの流れとして表すと次のようになります。
+標準的なTask lifecycleを、Authorityの流れとして表すと、次のようになります。
 
 ~~~text
 Untrusted Client
@@ -908,93 +894,91 @@ LSE-1 Lease                          │
         optional CON-1 Contribution
 ~~~
 
-Remote Attestationを使うTaskでは、ATV-1のAttestation ResultがPLC-1やDAT-1の入力になります。
+Remote Attestationを使うTaskでは、ATV-1のAttestation Resultが、PLC-1やDAT-1の入力になります。
 
-External Side Effectを持つTaskでは、EFF-1のReceiptがTSK-1のRecovery判断へ戻ります。
+External Side Effectを持つTaskでは、EFF-1のReceiptが、TSK-1のRecoveryの判断に戻ります。
 
 ---
 
-# 8. Decision Objectの共通性質
+# 8. Decision Objectに共通する性質
 
-Wire schemaは後続のTask Contractで決めますが、Security-sensitiveなDecisionには共通して次を持たせる方向をBaselineとします。
+Wire schemaは、後続のTask Contractで決めます。ただし、Security上重要なDecisionには、共通して次のものを持たせる方向を、Baselineとします。
 
 - issuer identity
-- decision type / schema version
+- decision typeとschema version
 - decision ID
-- subject IDs / digests
+- subjectのIDとdigest
 - policy revision
 - issued at
-- expiryまたは明示的lifetime
-- optional nonce / sequence
-- cryptographic integrity / authenticity
+- expiry、または明示的なlifetime
+- 任意のnonceやsequence
+- 暗号学的なintegrityとauthenticity
 
-必要なDecisionではrevocationも扱います。
+必要なDecisionでは、revocationも扱います。
 
-「署名が正しい」だけでなく、
+「署名が正しい」ことだけでなく、次のことも検証します。
 
 - 正しいissuerか
 - 正しいsubjectか
 - 現在も有効か
-- 現Policyで受理可能か
-
-を検証します。
+- 現在のPolicyで受理できるか
 
 ---
 
-# 9. Persistent StateへのAuthority
+# 9. 永続的な状態に対するAuthority
 
-すべてのComponentが同じDatabase userで全Tableへread/writeできる構成を標準にはしません。
+すべてのComponentが、同じDatabase userで、すべてのTableを読み書きできる構成は、標準にはしません。
 
-論理的には次のように分けます。
+論理的には、次のように分けます。
 
-| Authority / Component | 主に書けるState | 原則read-onlyまたは不要なState |
+| Authority / Component | 主に書ける状態 | 原則として読み取り専用、または不要な状態 |
 | --- | --- | --- |
 | ADM-2 Task Admission | admitted task, quota reservation | raw artifact bytes, federation admin keys |
-| TSK-1 Task State | task / attempt / recovery | executor trust root変更 |
-| SCH-1 Scheduler | 原則proposal / cacheのみ | artifact secret, signing key |
+| TSK-1 Task State | task / attempt / recovery | executor trust rootの変更 |
+| SCH-1 Scheduler | 原則としてproposalとcacheのみ | artifact secret, signing key |
 | PLC-1 Placement | placement decision | raw artifact bytes |
-| LSE-1 Lease | lease state | executor admission policy変更 |
+| LSE-1 Lease | lease state | executor admission policyの変更 |
 | DAT-1 Data Authority | grants / data access audit | scheduler model state |
-| WOR-1 WorkOrder | workorder envelope / dispatch audit | federation configuration変更 |
+| WOR-1 WorkOrder | workorder envelope / dispatch audit | federation configurationの変更 |
 | EXE-1 Executor Admission | executor approvals / revocation | task scheduling state |
-| RVR-1 Verification | verification result | artifact grant発行 |
+| RVR-1 Verification | verification result | artifact grantの発行 |
 | RAC-1 Acceptance | accepted result state | federation / executor admin |
-| CON-1 Contribution | contribution record | Task security classification変更 |
+| CON-1 Contribution | contribution record | Task security classificationの変更 |
 | FED-1 Federation Admin | federation config | task / result state |
 
-物理Databaseを共有する場合も、Repository / transaction / credential boundaryを分けられる設計を優先します。
+物理的なDatabaseを共有する場合も、Repository、transaction、credentialの境界を分けられる設計を、優先します。
 
 ---
 
 # 10. Compromise Matrix
 
-この表は「侵害されても安全」という意味ではありません。
+この表は、「侵害されても安全」という意味ではありません。
 
-一つのComponent compromiseが、別Authorityまで自動的に獲得しないことを確認するための設計目標です。
+一つのComponentが侵害されても、別のAuthorityまで自動的に獲得できないことを確認するための、設計の目標です。
 
-| 侵害対象 | 攻撃者が起こし得ること | 単独では起こせないようにすること |
+| 侵害の対象 | 攻撃者が起こし得ること | 単独では起こせないようにすること |
 | --- | --- | --- |
-| Client | 自Principal範囲で悪意あるrequest、quota消費を試みる | 任意Worker指定、任意code実行、他Principal Data取得 |
-| Identity Provider / IDV-1 | 対象Trust Domain内のPrincipal impersonation | Worker WorkOrder署名、Artifact Grant、Executor Approval |
-| ADM-2 Admission | 不適切TaskをAdmit、quota判断を壊す | Artifact intrinsic class低下、Executor Approval、WorkOrder単独発行 |
-| TSK-1 Task State | retry/cancel/stateを乱す、availabilityを壊す | Data Grant、Executor Admission、Federation変更 |
-| SCH-1 Scheduler | 悪い候補を提案、性能劣化、starvation | Security requirement低下、Data Grant、WorkOrder署名 |
-| PLC-1 Placement | 不適切Workerを承認し得る | Attestation偽造、Artifact Authority key、Executor Admission |
-| LSE-1 Lease | duplicate / stale lease、availability混乱 | Data read authority、Executor code承認 |
-| DAT-1 Data Authority | 管理Scope内Data漏えい・過剰Grant | Executor Admission、Federation設定、WorkOrder前提Decision偽造 |
-| EXE-1 Executor Admission | 悪意Executorを承認 | Data Grant、Placement、Sandbox capability自動拡張 |
-| WOR-1 WorkOrder | 不正Envelope、replayを試みる | 他Authority署名の有効な前提Decision生成 |
-| ATV-1 Attestation Verifier | 偽Environment Result | Artifact Grant、Task Admission、Result semantic validation |
-| RVR-1 Result Verifier | 偽Verification Result | Program Admission、Data Grant、Contribution価値決定 |
-| RAC-1 Result Acceptance | 不正ResultをAcceptedへ昇格 | Worker実行権限、Data Grant |
-| EFF-1 Effect Authority | 外部effect statusを偽る | EKI Data / Executor / Federation Authority |
-| CON-1 Contribution | 偽Contribution Record | EKI通貨発行、Local Governor override、Task execution |
-| FED-1 Federation Admin | 外部Identity trustを誤設定 | Resource Authorizationの自動付与 |
-| GOV-1 / modified Agent | 自Endpointの制御・計測を偽る | Control Plane署名、他Worker Identity、Accepted Result署名 |
+| Client | 自分のPrincipalの範囲で、悪意のあるrequestやquotaの消費を試みる | 任意のWorkerの指定、任意のcodeの実行、他のPrincipalのDataの取得 |
+| Identity Provider / IDV-1 | 対象のTrust Domain内で、Principalをなりすます | WorkerのWorkOrderの署名、Artifact Grant、Executor Approval |
+| ADM-2 Admission | 不適切なTaskをAdmitする、quotaの判断を壊す | Artifact固有のclassの低下、Executor Approval、WorkOrderの単独の発行 |
+| TSK-1 Task State | retry、cancel、stateを乱す、availabilityを壊す | Data Grant、Executor Admission、Federationの変更 |
+| SCH-1 Scheduler | 悪い候補を提案する、性能を劣化させる、starvationを起こす | Security requirementの低下、Data Grant、WorkOrderの署名 |
+| PLC-1 Placement | 不適切なWorkerを承認し得る | Attestationの偽造、Artifact Authorityのkey、Executor Admission |
+| LSE-1 Lease | 重複した、または古いlease、availabilityの混乱 | Dataを読む権限、Executorのcodeの承認 |
+| DAT-1 Data Authority | 管理するScope内のDataの漏えい、過剰なGrant | Executor Admission、Federationの設定、WorkOrderの前提のDecisionの偽造 |
+| EXE-1 Executor Admission | 悪意のあるExecutorを承認する | Data Grant、Placement、Sandbox capabilityの自動的な拡大 |
+| WOR-1 WorkOrder | 不正なEnvelope、replayを試みる | 他のAuthorityの署名による、有効な前提のDecisionの生成 |
+| ATV-1 Attestation Verifier | 偽のEnvironment Result | Artifact Grant、Task Admission、Resultのsemanticな検証 |
+| RVR-1 Result Verifier | 偽のVerification Result | Program Admission、Data Grant、Contributionの価値の決定 |
+| RAC-1 Result Acceptance | 不正なResultをAcceptedに昇格する | Workerの実行権限、Data Grant |
+| EFF-1 Effect Authority | 外部のeffectのstatusを偽る | EKIのData / Executor / Federation Authority |
+| CON-1 Contribution | 偽のContribution Record | EKI通貨の発行、Local Governorのoverride、Taskの実行 |
+| FED-1 Federation Admin | 外部のIdentityのtrustを誤って設定する | Resource Authorizationの自動的な付与 |
+| GOV-1 / 改変されたAgent | 自分のEndpointの制御と計測を偽る | Control Planeの署名、他のWorker Identity、Accepted Resultの署名 |
 
 ## 10.1 特に影響の大きい侵害
 
-次は大きなblast radiusを持ち得ます。
+次のものは、大きなblast radiusを持ち得ます。
 
 - Trust / Policy Administration
 - Artifact / Data Authority
@@ -1002,103 +986,99 @@ Wire schemaは後続のTask Contractで決めますが、Security-sensitiveなDe
 - Result Acceptance Authority
 - Federation Administration
 
-これらはSchedulerやTelemetryのような複雑・高頻度Componentと同じCredentialを共有しないことを優先します。
+これらは、SchedulerやTelemetryのように、複雑で頻度の高いComponentと、同じCredentialを共有しないことを優先します。
 
-## 10.2 Root compromise
+## 10.2 Rootの侵害
 
-Organizationのroot signing key、host OS / kernel、hardware root、Verifier root等まで全面的に侵害された場合、通常の論理分離だけでは防げない範囲があります。
+Organizationのroot signing key、host OSとkernel、hardwareのroot、Verifierのrootなどまで、全面的に侵害された場合は、通常の論理的な分離だけでは防げない範囲があります。
 
-これを隠して「完全安全」とは表現しません。
+これを隠して、「完全に安全」とは表現しません。
 
-代わりに、
+代わりに、次の手段によって、blast radiusを狭める設計を、比べます。
 
-- key separation
-- short-lived derived authority
-- rotation / revocation
-- offline / HSM等の保護
-- multi-party approval候補
-- independent verification
-
-によってblast radiusを狭める設計を比較します。
+- keyの分離
+- 短い有効期間の、派生したauthority
+- rotationとrevocation
+- offlineやHSMなどによる保護
+- multi-party approvalの候補
+- 独立した検証
 
 ---
 
-# 11. Independent Re-checkの原則
+# 11. 独立した再確認の原則
 
-一つのAuthorityの出力を、後段が無条件で信頼しない箇所を明示します。
+一つのAuthorityの出力を、後段が無条件には信頼しない箇所を、明示します。
 
 ## Data Release
 
-DAT-1はPlacement Approvalだけを見てDataを解放しません。
+DAT-1は、Placement Approvalだけを見て、Dataを解放しません。
 
-少なくともArtifact classification、Task binding、Worker Identity、必要Assurance、Lease等を独立に確認できる情報を持ちます。
+少なくとも、次のものを独立に確認できる情報を持ちます。Artifact classification、Task binding、Worker Identity、必要なAssurance、Lease。
 
 ## WorkOrder
 
-WOR-1は前提Decisionを束ねますが、Worker WEV-1が重要な署名とbindingを再確認します。
+WOR-1は、前提のDecisionを束ねます。そして、Worker側のWEV-1が、重要な署名とbindingを再確認します。
 
 ## Result Acceptance
 
-RAC-1はRVR-1の「valid」だけでなく、そのVerifierがTask Policyで受理可能か、ResultがTask / Attempt / Input / Program等へbindingされているかを確認します。
+RAC-1は、RVR-1が「valid」としたことだけでなく、次のことも確認します。そのVerifierが、Task Policyで受理できるか。Resultが、Task、Attempt、Input、Programなどに結び付けられているか。
 
 ## Contribution
 
-CON-1はAccepted ResultだけからResource quantityを作りません。
+CON-1は、Accepted Resultだけから、Resourceの量を作りません。
 
-Measurement Observer / Assurance / Work Contextを別に確認します。
+Measurement Observer、Assurance、Work Contextを、別に確認します。
 
-この再確認は、すべてのComponentが同じPolicy engineを重複実装するという意味ではありません。
+この再確認は、すべてのComponentが同じPolicy engineを重複して実装する、という意味ではありません。
 
-「一つの侵害された要約値だけが、後段の高価値Authorityを無条件に動かさない」ことが目的です。
+目的は、「侵害された一つの要約値だけで、後段の価値の高いAuthorityを無条件に動かさない」ことです。
 
 ---
 
 # 12. Data Minimization
 
-Authority分離はPrivacyとも関係します。
+Authorityを分離することは、Privacyとも関係します。
 
-各Componentへ必要以上の情報を渡さないことを目指します。
+各Componentに、必要以上の情報を渡さないことを、めざします。
 
 ## Scheduler
 
-原則として、
+原則として、次のものを使います。
 
-- Resource summary
-- capability summary
-- Artifact locality hint
-- transfer size
-- deadline / priority
-- policyで許可されたoperational history
+- Resourceの要約
+- capabilityの要約
+- Artifactのlocality hint
+- 転送のsize
+- deadlineとpriority
+- policyで許可された、運用上の履歴
 
-を使います。
-
-Artifact本文、Client secret、Raw Attestation Evidenceは標準入力にしません。
+Artifactの本文、Clientのsecret、Raw Attestation Evidenceは、標準の入力にしません。
 
 ## Attestation / Verification
 
-Raw Evidenceは必要なVerifier境界に閉じ、Scheduler / Clientにはnormalized resultだけを渡せる設計にします。
+Raw Evidenceは、必要なVerifierの境界の中に閉じます。SchedulerやClientには、正規化した結果だけを渡せる設計にします。
 
 ## Contribution
 
-Contribution Recordへuser activityのraw telemetryを直接埋め込むことを避けます。
+Contribution Recordに、userのactivityのraw telemetryを直接埋め込むことを、避けます。
 
-必要なのはResource Measurementの根拠とWork Contextであり、個人行動の詳細そのものではありません。
+必要なのは、Resource Measurementの根拠とWork Contextです。個人の行動の詳細そのものではありません。
 
 ## Client
 
-ClientへWorker hostname、IP、logged-in user、installed software、cache inventory等を返しません。
+Clientには、Workerのhostname、IP、ログインしているuser、インストールされているsoftware、cacheの一覧などを返しません。
 
-Task statusは必要最小限のqueued / running / completed / failed / unknown等へ縮約します。
+Task statusは、必要最小限の、queued、running、completed、failed、unknownなどに縮約します。
 
 ---
 
 # 13. Deployment Profileへの投影
 
-Authority Mapは全Deploymentで同じ論理構造を保ちますが、物理構成は比例化します。
+Authority Mapは、すべてのDeploymentで同じ論理構造を保ちます。物理的な構成は、規模に見合ったものにします。
 
 ## 13.1 Small Managed Organization
 
-例は次のとおりです。
+たとえば、次の構成でも成り立たせます。
 
 ~~~text
 1 Control Plane binary
@@ -1106,114 +1086,112 @@ Authority Mapは全Deploymentで同じ論理構造を保ちますが、物理構
 several endpoint agents
 ~~~
 
-でも成立させます。
+ただし、Binaryの内部では、Authorityごとのinterfaceとkey handleを分けます。
 
-ただしBinary内部ではAuthority-specific interface / key handleを分けます。
-
-専用のKafka、SPIRE、HSM、複数Microserviceを必須にはしません。
+専用のKafka、SPIRE、HSM、複数のMicroserviceを、必須にはしません。
 
 ## 13.2 Enterprise Mixed Endpoints
 
-- enterprise IdP / PKI integration
-- separate Artifact Store
-- stronger key protection
-- separate high-value admin path
-- proxy / outbound-only worker
-- managed endpoint policy
+次のものを利用できます。
 
-を利用できます。
+- 企業のIdPとPKIとの統合
+- 分離したArtifact Store
+- より強いkeyの保護
+- 価値の高い管理の経路の分離
+- proxyとoutbound-onlyのworker
+- 管理されたendpointのpolicy
 
 ## 13.3 Browser / Ad-hoc Participation
 
-- short-lived identity
-- low-trust / ephemeral Worker profile
-- publicまたは低機密Data
-- restricted Executor
-- aggressive lease expiry
-- no local secret
-- explicit participation
+次のことを基本にします。
 
-を基本にします。
+- 短い有効期間のidentity
+- 信頼の低い、使い捨てのWorker profile
+- 公開または低機密のData
+- 制限されたExecutor
+- 積極的なlease expiry
+- ローカルのsecretを持たない
+- 明示的な参加
 
-Browser Workerが存在するために、managed Worker側のSecurityを弱めません。
+Browser Workerが存在するからといって、managed Worker側のSecurityを弱めません。
 
 ## 13.4 Federation / Public-interest Grant
 
-Federation IdentityとResource Authorizationを分離し、Compute Grantのscope、Beneficiary、Data Class、期間、preemptionを明示します。
+Federation IdentityとResource Authorizationを分離します。そして、Compute Grantの、scope、Beneficiary、Data Class、期間、preemptionを、明示します。
 
-Contribution Recordは必要に応じて外部制度へ渡せますが、EKI Coreは価値制度を持ちません。
+Contribution Recordは、必要に応じて外部の制度に渡せます。ただし、EKI Coreは、価値の制度を持ちません。
 
 ---
 
-# 14. Key / Credential Baseline
+# 14. Key / Credentialの基本
 
-具体KMSやPKI方式は後続比較ですが、論理原則は次です。
+具体的なKMSやPKIの方式は、後続で比較します。論理的な原則は、次のとおりです。
 
 1. Client、Worker、Control Plane AuthorityのCredentialを分ける。
-2. Authorityごとにissuer identityを識別できる。
-3. Productionでは異なる高価値Authorityが同一signing credentialを共有しないことを標準とする。
-4. short-lived decisionは短いexpiryを持てる。
-5. key rotation / revocationを扱える。
-6. Trust Rootを通常requestで差し替えられない。
-7. signing private keyをScheduler / parser / untrusted executorへ渡さない。
-8. Dev / test profileで簡易keyを使っても、Authority identity自体は分離してTestする。
+2. Authorityごとに、issuer identityを識別できる。
+3. Productionでは、異なる価値の高いAuthorityが、同じsigning credentialを共有しないことを、標準とする。
+4. 短い有効期間のdecisionは、短いexpiryを持てる。
+5. keyのrotationとrevocationを扱える。
+6. Trust Rootを、通常のrequestで差し替えられない。
+7. signing private keyを、Scheduler、parser、untrustedなexecutorに渡さない。
+8. Devとtestのprofileで、簡易なkeyを使っても、Authority identity自体は分離してTestする。
 
 ---
 
-# 15. Audit Baseline
+# 15. Auditの基本
 
-Security-sensitiveなAuthority transitionは、少なくとも後から関連付けられる必要があります。
+Security上、重要なAuthorityの遷移は、少なくとも、後から関連付けられる必要があります。
 
-例は次のとおりです。
+たとえば、次のものがあります。
 
 - Task Admission
-- quota / budget reservation
-- Placement Approval / rejection
-- Lease issue / expiry / revoke
-- Artifact Grant issue / deny
-- Executor Approval / revoke
-- WorkOrder issue
+- quotaとbudgetの予約
+- Placement Approvalとrejection
+- Leaseのissue、expiry、revoke
+- Artifact Grantのissueとdeny
+- Executor Approvalとrevoke
+- WorkOrderのissue
 - Result Verification
 - Result Acceptance
-- Federation config change
-- Contribution Record issue
-- Local Governor reclaim reason
+- Federation configの変更
+- Contribution Recordのissue
+- Local Governorがreclaimした理由
 
-Audit eventは、可能な限りTask / Attempt / Decision IDとPolicy Revisionへbindingします。
+Audit eventは、可能な限り、Task、Attempt、DecisionのID、Policy Revisionに結び付けます。
 
-ただしAuditのためにRaw secret、Raw Attestation Evidence、不要なPersonal Dataを集約しません。
+ただし、Auditのために、Raw secret、Raw Attestation Evidence、不要なPersonal Dataを集約しません。
 
-Audit Store自体のtamper resistanceは後続設計項目です。
+Audit Store自体の、改ざんへの耐性は、後続の設計項目です。
 
 ---
 
 # 16. 未決事項
 
-このBaselineでは、次をまだ固定しません。
+このBaselineでは、次のことを、まだ固定していません。
 
-- AuthorityごとのProcess / Service数
-- HTTP / gRPC等の内部transport
-- PKI / KMS / HSM製品
-- OPA / Cedar等のPolicy engine
-- exact decision wire schema
-- Queue / DB
+- Authorityごとの、Processとservice数
+- HTTPやgRPCなどの、内部のtransport
+- PKI、KMS、HSMの製品
+- OPAやCedarなどの、Policy engine
+- decisionの正確なwire schema
+- QueueとDB
 - Artifact Store
 - multi-party approval
-- audit log cryptographic chaining
+- audit logの暗号学的なchaining
 - keyless signature
-- TEE vendor
+- TEEのvendor
 - zkVM
-- multiple verifier quorum
+- 複数のverifierによるquorum
 
-後続Architecture Work Unitで、RequirementとQuality Attributeに照らして比較します。
+後続のArchitecture Work Unitで、RequirementとQuality Attributeに照らして比べます。
 
 ---
 
 # 17. 次のArchitecture Work Unitへの入力
 
-このAuthority Mapを前提に、次はExternal / Internal Contract Boundaryを具体化します。
+このAuthority Mapを前提に、次は、External / Internal Contract Boundaryを具体化します。
 
-優先するConceptは次です。
+優先するConceptは、次のとおりです。
 
 - TaskRequest
 - Admitted Task / TaskIR
@@ -1229,13 +1207,11 @@ Audit Store自体のtamper resistanceは後続設計項目です。
 - AcceptedResult
 - ContributionRecord
 
-次の作業では、これらを単なるGo structの集合として先に固定せず、
+次の作業では、これらを、単なるGoのstructの集合として先に固定することは、しません。Contractごとに、次のことを定義します。
 
 1. 誰が生成できるか
 2. 誰が検証するか
-3. 何へbindingするか
+3. 何に結び付けるか
 4. どのFieldをClientが制御できるか
-5. version / extensionをどう扱うか
-6. replay / stale / downgradeをどう防ぐか
-
-をContractごとに定義します。
+5. versionとextensionをどう扱うか
+6. replay、古い情報、downgradeを、どう防ぐか

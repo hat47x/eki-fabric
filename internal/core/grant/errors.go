@@ -7,6 +7,7 @@ import "errors"
 // identities and policy text do not leak through error strings.
 var (
 	ErrNilGrant               = errors.New("grant: nil grant (value was not issued by Issue)")
+	ErrNilLedger              = errors.New("grant: nil ledger (revocations cannot be recorded or checked)")
 	ErrMissingField           = errors.New("grant: required field is missing")
 	ErrTooLong                = errors.New("grant: field exceeds maximum length")
 	ErrInvalidField           = errors.New("grant: field is malformed")

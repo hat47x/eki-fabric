@@ -69,10 +69,16 @@ type ReclaimAssignment struct {
 // package does not know how many leases each grant holds, so this is a sizing
 // check and not a guarantee about leases at any one instant.
 //
+// Every grant must have a revocation recorded in ledger at effectiveAt. A nil
+// ledger is refused, because it cannot show that the grants were revoked.
+//
 // An empty grant list returns nil with no error.
-func PlanReclaim(revoked []Grant, effectiveAt time.Time, runningLeases int, cfg ReclaimConfig) ([]ReclaimAssignment, error) {
+func PlanReclaim(ledger *Ledger, revoked []Grant, effectiveAt time.Time, runningLeases int, cfg ReclaimConfig) ([]ReclaimAssignment, error) {
 	if err := checkReclaimConfig(cfg); err != nil {
 		return nil, err
+	}
+	if ledger == nil {
+		return nil, ErrNilLedger
 	}
 	if effectiveAt.IsZero() {
 		return nil, fmt.Errorf("%w: reclaim effective time", ErrMissingField)
@@ -97,7 +103,7 @@ func PlanReclaim(revoked []Grant, effectiveAt time.Time, runningLeases int, cfg 
 		if !g.issued {
 			return nil, ErrNilGrant
 		}
-		rev, ok := g.Revocation()
+		rev, ok := ledger.revocationOf(g)
 		if !ok {
 			return nil, ErrGrantNotRevoked
 		}

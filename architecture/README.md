@@ -2,11 +2,11 @@
 
 ## このディレクトリの役割
 
-このディレクトリは、Architecture Entry Gateを通過した後に採用する設計の正本を置く場所です。
+このディレクトリは、Architecture Entry Gateを通過したあとに採用する設計の正本を置く場所です。
 
 Product ValueやProduct Requirementを置き換えるものではありません。
 
-関係は次のように考えます。
+関係は次のとおりです。
 
 ~~~text
 product/
@@ -27,111 +27,107 @@ architecture/
 implementation
 ~~~
 
-RequirementとArchitectureが食い違った場合は、実装を正当化するためにRequirementを読み替えません。
+RequirementとArchitectureが食い違ったとき、実装を正当化するためにRequirementを読み替えることはしません。
 
-Requirementの意図が変わったのであれば先にrequirements/を更新し、設計だけが誤っているのであればarchitecture/を修正します。
+Requirementの意図が変わったのなら、先にrequirements/を更新します。設計だけが誤っているのなら、architecture/を直します。
 
 ## Architecture Entry Gate
 
-2026-09-21のGate Uレビューで、Architecture baseline作成を開始できる状態と判定しました。
+2026-09-21のGate Uレビューで、Architecture baselineの作成を始められる状態だと判定しました。
 
-詳細は次のとおりです。
+詳細は次の文書にあります。
 
 - ../plan/ARCHITECTURE_ENTRY_REVIEW_2026-09-21.md
 - ../plan/UPSTREAM_PLAN.md
 
-判定は条件付きPASSです。
+判定は条件付きのPASSです。
 
-実zkVM benchmark、learned scheduling、anonymous Sybil耐性、multi-component Confidential Computing、非決定的AI Result等の研究は継続します。
+実際のzkVMのbenchmark、learned scheduling、匿名のSybilへの耐性、複数componentにまたがるConfidential Computing、非決定的なAIのResultなどの研究は、続けます。
 
-それらを未解決のまま特定実装へ固定しないことがGate通過の条件です。
+これらが未解決のまま、特定の実装に固定しないことが、Gateを通過する条件です。
 
 ## 最初に固定するもの
 
-Architectureでは、使用製品やProcess数より先に次を固定します。
+Architectureでは、使う製品やプロセスの数よりも先に、次のものを固定します。
 
 1. Authority / Trust Boundary
 2. External / Internal Contract Boundary
 3. Control Plane / Data Plane
 4. Deployment Profile
-5. Task / Attempt / Lease / Recovery state model
+5. Task / Attempt / Lease / Recoveryの状態モデル
 6. Extension SPI
 
-現在のBaseline文書は次です。
+現在のBaseline文書は、次の6つです。
 
-1. `AUTHORITY_BOUNDARIES.md` — 誰が何を確定・許可できるか
-2. `CONTRACT_BOUNDARIES.md` — External / Internal Contractの意味変換とbinding
-3. `CONTROL_DATA_PLANE.md` — Control metadataとbulk Artifact transferの分離、Data access / cache / transfer境界
-4. `DEPLOYMENT_PROFILES.md` — 小規模社内、Enterprise、Browser / Ad-hoc、Federation、Public-interest Grant等の物理構成
-5. `TASK_STATE_MODEL.md` — Task / Attempt / Lease / Result / External Effect / Recoveryの状態機械
-6. `EXTENSION_SPI.md` — Queue / State / Storage / Identity / Runtime / Verification等の差し替え境界
+1. `AUTHORITY_BOUNDARIES.md`: 誰が何を確定し、許可できるか
+2. `CONTRACT_BOUNDARIES.md`: External / Internal Contractの意味の変換と結び付け
+3. `CONTROL_DATA_PLANE.md`: Controlのmetadataと大きなArtifactの転送の分離、Dataのアクセス、cache、転送の境界
+4. `DEPLOYMENT_PROFILES.md`: 小規模な社内、Enterprise、Browserとアドホック、Federation、公益向けGrantなどの物理的な構成
+5. `TASK_STATE_MODEL.md`: Task、Attempt、Lease、Result、外部への副作用、回復の状態機械
+6. `EXTENSION_SPI.md`: Queue、State、Storage、Identity、Runtime、Verificationなどを差し替える境界
 
-Architecture Baseline 0.1の主要6領域を横断レビューし、`BASELINE_REVIEW_2026-09-21.md` で重大な責務矛盾がないことを確認しました。`MVP_IMPLEMENTATION_PLAN.md` では、BaselineのSecurity / State semanticsを維持した最小vertical slice、M0〜M5、Definition of Doneを定義しています。
+Architecture Baseline 0.1の主要な6つの領域を横断してレビューし、`BASELINE_REVIEW_2026-09-21.md`で、重大な責務の矛盾がないことを確認しました。`MVP_IMPLEMENTATION_PLAN.md`には、BaselineのSecurityと状態の意味を保った最小のvertical slice、M0からM5、Definition of Doneを定義しています。
 
-`plan/adr/0001-protocol-surfaces-and-canonical-encoding.md` でProtocol Surfaceを決定しました。External Client PlaneはHTTPS + JSON + OpenAPI、Worker / out-of-process Adapter PlaneはProtobuf IDL + Connect reference transport、signed Authority Decisionはdeterministic CBOR + CDDL + COSE_Sign1をBaselineとします。Protobuf serializationはsignature / generic fingerprintのcanonical bytesには使いません。
+`plan/adr/0001-protocol-surfaces-and-canonical-encoding.md`で、Protocolの面ごとの技術を決めました。External Client PlaneにはHTTPS、JSON、OpenAPIを使います。Worker Planeと、プロセス外のAdapter Planeには、Protobuf IDLとConnectの参照transportを使います。署名付きのAuthority Decisionには、deterministic CBOR、CDDL、COSE_Sign1を使います。Protobufをserializeしたbytesは、署名や汎用のフィンガープリントの正規のbytesには使いません。
 
-P1 Worker Planeは`spec/worker/v1/worker.proto`、P2 signed Authority Decision payloadは`spec/decisions/v1/decisions.cddl`へmachine-readable化しました。Worker Identityは認証contextに置き、HeartbeatとLease renewalを分離し、WorkOrder / Lease / Artifact Grant等の署名対象はP2 deterministic CBORへ固定しています。
+P1のWorker Planeは`spec/worker/v1/worker.proto`に、P2の署名付きAuthority Decisionのpayloadは`spec/decisions/v1/decisions.cddl`に、それぞれ機械可読な形でまとめました。Worker Identityは認証の文脈に置き、HeartbeatとLeaseの更新を分けています。WorkOrder、Lease、Artifact Grantなど、署名の対象になるものは、P2のdeterministic CBORに固定しています。
 
-`plan/adr/0004-signed-decision-cryptographic-profile.md` では、Authority roleごとのkey separation、Ed25519 software reference、ES256 enterprise interoperability、Key Registry / rotation / revocation、COSE protected-header validationを定義しています。valid signatureだけでAuthorizationを成立させず、Authority role / Decision kind / subject / current policyまで再検証します。
+`plan/adr/0004-signed-decision-cryptographic-profile.md`では、次のものを定めています。Authority roleごとに鍵を分けること。Ed25519によるsoftwareの参照実装。ES256による企業との相互運用。Key Registry、鍵の交換、失効。COSEのprotected headerの検証。署名が正しいというだけではAuthorizationが成り立たず、Authority role、Decisionの種類、対象、現在のpolicyまで検証し直します。
 
-Reference Go Coreでは`internal/core/authority` / `internal/core/decisiontrust`へこの境界の最小実装を開始しています。Decision kindを含まないraw key-resolution APIは外へ公開せず、activation/retirement時刻を含むkey lifecycleをverification条件にしています。
+参照するGo Coreでは、`internal/core/authority`と`internal/core/decisiontrust`で、この境界の最小限の実装を始めています。Decisionの種類を含まない生の鍵解決APIは、外へ公開していません。有効化と引退の時刻を含む鍵のlifecycleを、検証の条件にしています。
 
-`spec/external/openapi.json` にP0 External Client Planeのmachine-readable schemaを追加しました。Task submit/status/cancel/resultとArtifact ingest/upload/descriptorだけを固定し、Worker / Lease / WorkOrder / ArtifactGrant token等のInternal概念は露出していません。`spec/external/README.md` とnegative fixtureでhostile-input boundaryも明文化しています。
+`spec/external/openapi.json`に、P0のExternal Client Planeの機械可読なschemaを追加しました。固定したのは、Taskのsubmit、status、cancel、resultと、Artifactのingest、upload、descriptorだけです。Worker、Lease、WorkOrder、ArtifactGrantのtokenなど、内部の概念は露出していません。`spec/external/README.md`と、否定的なfixtureで、悪意ある入力に対する境界も明文化しています。
 
-`plan/adr/0002-reference-implementation-language.md` でGoをReference Implementation Languageとして採用し、`plan/IMPLEMENTATION_REPOSITORY_LAYOUT.md` で `cmd/` / `internal/core` / `internal/control` / `internal/agent` / `internal/spi` / `internal/adapters` / `spec` / `conformance` の責務を定義しました。Go packageは外部Contractの正本にせず、初期Core実装は原則`internal/`へ閉じます。
+`plan/adr/0002-reference-implementation-language.md`で、Reference Implementationの言語にGoを採用しました。`plan/IMPLEMENTATION_REPOSITORY_LAYOUT.md`では、`cmd/`、`internal/core`、`internal/control`、`internal/agent`、`internal/spi`、`internal/adapters`、`spec`、`conformance`のそれぞれの責務を定めました。Goのpackageは外部Contractの正本にしません。最初のCore実装は、原則として`internal/`の中にとどめます。
 
-次はこのRepository Layoutをmainへ収束させた後、M0 executable skeletonへ進みます。
+次は、このRepository Layoutを`main`にまとめたうえで、M0のexecutable skeletonへ進みます。
 
-## Logical AuthorityとProcessを分ける
+## 論理上のAuthorityと、プロセスを分ける
 
-EKIでは、Authorityを「Microserviceの数」と同義にしません。
+EKIでは、Authorityの数とMicroserviceの数を同じものとして扱いません。
 
-小規模構成では複数Authorityを一つのBinaryへ同居させることができます。
+小規模な構成では、複数のAuthorityを一つのバイナリに同居させられます。
 
-それでも、
+それでも、次のことは論理的に分けておきます。
 
 - どの鍵を使えるか
-- どのpersistent stateを書けるか
+- どの永続的な状態を書けるか
 - どのCapabilityを発行できるか
 - どのPolicyを評価できるか
-- どのAuthorityの結果を検証しなければならないか
+- どのAuthorityの結果を、検証しなければならないか
 
-は論理的に分けます。
+一つのプロセスに同居していても、Schedulerのmoduleが、Executor Admissionの鍵やArtifact Grantの鍵を直接使える構造にはしません。
 
-一つのProcessへ同居したからといって、Scheduler moduleがExecutor Admission keyやArtifact Grant keyを直接使える構造にはしません。
-
-大規模DeploymentでProcessを分離する場合も、この論理境界を保ったまま配置を変えられることを目指します。
+大規模なDeploymentでプロセスを分ける場合も、この論理上の境界を保ったまま配置を変えられることをめざします。
 
 ## 設計文書の状態
 
-Architecture文書は、次の状態を明示します。
+Architectureの文書には、次のいずれかの状態を明示します。
 
-- Draft: 比較・検討中
-- Baseline: 現時点の採用設計
-- Superseded: 後続ADR等で置き換えられた
+- Draft: 比較や検討の途中
+- Baseline: 現時点で採用している設計
+- Superseded: 後のADRなどで置き換えられたもの
 
-Baselineは永久固定を意味しません。
+Baselineは、永久に固定されることを意味しません。
 
-Requirement、Evidence、運用知見が変われば、理由と移行経路を残して更新します。
+Requirement、Evidence、運用で得た知見が変われば、理由と移行の経路を残したうえで更新します。
 
-## 未解決研究をArchitectureへ混ぜない
+## 未解決の研究をArchitectureに混ぜない
 
-ArchitectureにはExtension Pointを用意できますが、未実証技術を必須Dependencyとして先取りしません。
+Architectureには、Extension Pointを用意できます。ただし、まだ実証されていない技術を、必須の依存先として先取りすることはしません。
 
-たとえば、
+たとえば、次のものは接続できる設計にしますが、Coreが成り立つための条件にはしません。
 
 - Remote Attestation
 - Verifiable Computation
 - Learned Scheduler
 - Attested Contribution Metering
 
-は接続可能な設計にしますが、Coreの成立条件にはしません。
+標準の構成は、これらがなくても、Requirementが求める最低限の保証を説明できなければなりません。
 
-標準構成は、それらがなくてもRequirement上の最低保証を説明できる必要があります。
+## Branchの運用
 
-## Branch運用
-
-Architecture作業も一つのレビュー可能なWork UnitごとにBranchを切ります。
+Architectureの作業も、レビューできる単位（Work Unit）ごとにBranchを切ります。
 
 ~~~text
 latest main
@@ -145,4 +141,4 @@ architecture/task-contract
 main
 ~~~
 
-未マージBranchから次のArchitecture Branchを派生させません。
+マージされていないBranchから、次のArchitectureのBranchを派生させません。

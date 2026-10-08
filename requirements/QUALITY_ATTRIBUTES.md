@@ -2,19 +2,19 @@
 
 ## この文書の役割
 
-この文書は、EKI FabricのArchitecture候補を比較するときに使う品質特性の上流基線です。
+この文書は、EKI FabricのArchitecture候補を比べるときに使う、品質特性の上流の基線です。
 
-Product Requirementsが「何を満たす必要があるか」を定めるのに対し、この文書では、複数の実現案がRequirement上は成立している場合に、**どの観点でより良い案を選ぶか**を整理します。
+Product Requirementsが定めるのは、「何を満たす必要があるか」です。この文書では、複数の実現案がRequirementの上ではどれも成り立っている場合に、**どの観点でより良い案を選ぶか**を整理します。
 
-ここに記す数値は、まだproduction SLOではありません。現段階では、測れるもの、比較すべきもの、保証を誇張してはいけないものを明らかにすることを目的とします。
+ここに書く数値は、まだ本番のSLOではありません。現段階の目的は、次の3つを明らかにすることです。測れるもの。比べるべきもの。保証を誇張してはいけないもの。
 
 ## なぜQuality Attributeを先に決めるのか
 
-分散計算基盤では、ある一つの性質だけを最大化すると別の価値を壊しやすくなります。
+分散計算の基盤では、一つの性質だけを最大にすると、別の価値を壊しやすくなります。
 
-たとえば、Workerを大量に使えばthroughputは上がるかもしれませんが、Network trafficやResult verification costも増えます。Securityを理由にすべてのWorkerへ強いAttestationを要求すれば、アドホック参加のしやすさを失うかもしれません。
+たとえば、Workerを大量に使えば、throughputは上がるかもしれません。しかし、Network trafficやResult verificationのコストも増えます。セキュリティを理由に、すべてのWorkerに強いAttestationを要求すれば、アドホックに参加しやすいという性質を失うかもしれません。
 
-EKIでは、こうしたTrade-offを「実装してから気付く」のではなく、Architecture比較の段階から明示します。
+EKIでは、こうしたTrade-offを、「実装してから気づく」のではなく、Architectureを比べる段階から明示します。
 
 ---
 
@@ -22,21 +22,21 @@ EKIでは、こうしたTrade-offを「実装してから気付く」のでは�
 
 ### 見たいこと
 
-一つのClient、Worker、Credential、Artifact、Control Plane componentが侵害されたとき、どこまで被害が広がるか。
+一つのClient、Worker、Credential、Artifact、Control Plane componentが侵害されたとき、被害がどこまで広がるか。
 
-### 比較観点
+### 比較する観点
 
-- Roleを越えたauthority escalationを防げるか
-- Data authorityとTask authorityが分離されているか
-- Federation namespaceの取り違えを防げるか
-- untrusted Workerの偽ResultをAccepted Resultへ直接昇格させないか
-- Artifact parser / Executor failureが高権限領域へ波及しないか
-- Control Plane部分侵害時のblast radius
-- Executor supply-chain substitutionが実行前にどの境界で止まるか
-- stale / revoked Executor approvalが再利用されないか
-- Worker自己申告をAttestation Resultとして受理しないか
-- Attestation Resultが別Worker / Trust Domainへ流用されないか
-- stale Evidence / stale Verifier Policy / expired Attestation Resultを拒否できるか
+- Roleを越えた、authority escalationを防げるか。
+- Data authorityとTask authorityが、分離されているか。
+- Federationのnamespaceの取り違えを、防げるか。
+- untrustedなWorkerの偽のResultを、Accepted Resultに直接昇格させないか。
+- Artifact parserやExecutorの障害が、高い権限の領域へ波及しないか。
+- Control Planeの一部が侵害されたときの、blast radius。
+- Executorのsupply-chainでのすり替えが、実行の前に、どの境界で止まるか。
+- 古い、または失効したExecutor approvalが、再利用されないか。
+- Workerの自己申告を、Attestation Resultとして受理しないか。
+- Attestation Resultが、別のWorkerやTrust Domainに流用されないか。
+- 古いEvidence、古いVerifier Policy、期限切れのAttestation Resultを、拒否できるか。
 
 ### 将来の測定候補
 
@@ -61,7 +61,7 @@ EKIでは、こうしたTrade-offを「実装してから気付く」のでは�
 
 ### 注意
 
-「暗号化している」「mTLSである」「Attestationがある」といった技術の有無だけで評価しません。どの攻撃経路が、どの境界で止まるかを確認します。特にSchedulerのような複雑なOptimization Componentへ、Placement提案以外の高価値Authorityをどこまで同居させるかをblast radiusの観点で比較します。
+「暗号化している」「mTLSである」「Attestationがある」といった、技術の有無だけでは評価しません。どの攻撃の経路が、どの境界で止まるのかを確認します。特に、Schedulerのように複雑なOptimization Componentに、Placementの提案以外の、価値の高いAuthorityをどこまで同居させるかを、blast radiusの観点で比べます。
 
 ---
 
@@ -69,24 +69,22 @@ EKIでは、こうしたTrade-offを「実装してから気付く」のでは�
 
 ### 見たいこと
 
-Taskごとに必要なResult Assuranceを提供し、確認できない正しさを確認済みとして扱わないか。
+Taskごとに必要なResult Assuranceを提供できているか。そして、確認できない正しさを、確認済みとして扱っていないか。
 
-### 比較観点
+### 比較する観点
 
-- deterministic Taskの比較・再計算
-- application-specific validation
+- 決定的なTaskの、比較と再計算
+- アプリケーション固有のvalidation
 - replicationのindependence
-- Attestationとsemantic correctnessの分離
-- cryptographic proofの利用可能性
-- 非決定的AI Resultの保証上限
-- Verification cost
-- ProofがProgram / Input / Output / Attemptへbindingされているか
-- valid ProofがExecutor / Program Admissionを迂回しないか
-- Proof System / Verifier / Policy Revisionの違いを追跡できるか
-- Verifiable Computationとprivate-input / zero-knowledgeを混同しないか
-- prover cost / verifier cost / proof transfer cost / peak memoryをnative実行と比較できるか
-
-### 注意
+- Attestationと、意味の上での正しさとの分離
+- 暗号学的なproofを利用できるか
+- 非決定的なAIのResultに対する、保証の上限
+- Verificationのコスト
+- ProofがProgram、Input、Output、Attemptに結び付けられているか
+- 有効なProofが、Executor / Program Admissionを迂回しないか
+- Proof System、Verifier、Policy Revisionの違いを、追跡できるか
+- Verifiable Computationと、private-inputやzero-knowledgeとを、混同していないか
+- proverのコスト、verifierのコスト、proofの転送のコスト、ピーク時のメモリを、native実行と比べられるか
 
 ### 将来の測定候補
 
@@ -102,9 +100,9 @@ Taskごとに必要なResult Assuranceを提供し、確認できない正しさ
 
 ### 注意
 
-高いAssurance Profileを用意できることと、すべてのTaskを高保証にできることは別です。
+高いAssurance Profileを用意できることと、すべてのTaskを高い保証にできることとは、別のことです。
 
-Cryptographic proofの利用可否はproof verificationの成功だけで決めません。Program Admission、Application validation、side-effect confirmation、Contribution measurement等の別保証を必要に応じて組み合わせます。また、proof生成costはTask / Proof System / Hardware / Privacy modeで変わるため、単一の公開benchmark値をEKIの実測値として扱いません。
+暗号学的なproofを使えるかどうかは、proofの検証に成功したかどうかだけでは決めません。Program Admission、アプリケーションのvalidation、副作用の確認、Contributionの測定といった、別の保証を、必要に応じて組み合わせます。また、proofを生成するコストは、Task、Proof System、Hardware、Privacy modeによって変わります。そのため、公開されている単一のbenchmarkの値を、EKIでの実測値として扱いません。
 
 ---
 
@@ -112,22 +110,22 @@ Cryptographic proofの利用可否はproof verificationの成功だけで決め�
 
 ### 見たいこと
 
-Data Classに応じて、Workerへ開示してよい情報を適切に制限できるか。
+Data Classに応じて、Workerに開示してよい情報を、適切に制限できるか。
 
-### 比較観点
+### 比較する観点
 
-- public / managed / confidential executionの分離
-- Dataを渡す前のplacement判断
-- Worker側のSecurity capabilityに根拠があるか
-- Raw Attestation Evidence等の不要な開示を避けられるか
-- Vendor固有のRaw EvidenceをScheduler / Clientへ渡さず、normalized Resultへ縮約できるか
-- Federation先へのData流出範囲
+- public、managed、confidential executionの分離
+- Dataを渡す前の、placementの判断
+- Worker側のSecurity capabilityに、根拠があるか
+- Raw Attestation Evidenceなどの、不要な開示を避けられるか
+- Vendor固有のRaw EvidenceをSchedulerやClientに渡さずに、正規化したResultに縮約できるか
+- Federation先へのDataの流出の範囲
 
 ### 注意
 
-一度untrusted Workerへ渡した平文を、事後削除だけで回収できるとは評価しません。
+一度、untrustedなWorkerに渡した平文を、事後の削除だけで回収できるとは評価しません。
 
-Remote Attestationを使う場合も、Raw Evidenceの量が多いほど高保証とは評価しません。Relying Partyが必要とする判断結果とprovenanceだけを渡し、Vendor固有Evidenceや端末識別情報の露出範囲を比較します。
+Remote Attestationを使う場合も、Raw Evidenceの量が多いほど保証が高いとは評価しません。Relying Partyが必要とする判断の結果とprovenanceだけを渡します。Vendor固有のEvidenceや、端末を識別する情報の、露出の範囲を比べます。
 
 ---
 
@@ -135,16 +133,16 @@ Remote Attestationを使う場合も、Raw Evidenceの量が多いほど高保�
 
 ### 見たいこと
 
-業務端末や個人端末で、EKIの存在を利用者が過度に意識せず本来作業を継続できるか。
+業務端末や個人の端末で、EKIの存在を、利用者が過度に意識することなく、本来の作業を続けられるか。
 
-### 比較観点
+### 比較する観点
 
-- user activity検知後のcapacity縮小速度
-- opt-out反映時間
-- CPU / GPU / Memory pressure
-- UI responsivenessへの影響
-- Fan noise / thermal impact
-- Battery時の振る舞い
+- 利用者のactivityを検知してから、capacityを縮小するまでの速さ
+- opt-outが反映されるまでの時間
+- CPU、GPU、Memoryへの圧迫
+- UIの応答性への影響
+- ファンの騒音と、発熱への影響
+- Batteryで動いているときの振る舞い
 
 ### 将来の測定候補
 
@@ -153,7 +151,7 @@ Remote Attestationを使う場合も、Raw Evidenceの量が多いほど高保�
 - `background_cpu_share`
 - `background_gpu_share`
 
-具体的SLOは実装検証後に決めます。
+具体的なSLOは、実装して検証した後に決めます。
 
 ---
 
@@ -161,16 +159,16 @@ Remote Attestationを使う場合も、Raw Evidenceの量が多いほど高保�
 
 ### 見たいこと
 
-分散することで、元の計算より大きなNetwork costを生まないか。
+分散することで、元の計算よりも大きなNetworkのコストを生まないか。
 
-### 比較観点
+### 比較する観点
 
-- input / output bytes
-- cache hit rate
-- model / dataset locality
-- duplicate transfer
+- inputとoutputのbyte数
+- cacheのhit率
+- modelやdatasetの局所性
+- 重複した転送
 - Artifact prefetchの制御
-- mass retry / reclaim時のtraffic amplification
+- 大量のretryやreclaimのときの、trafficの増幅
 
 ### 将来の測定候補
 
@@ -186,17 +184,17 @@ Remote Attestationを使う場合も、Raw Evidenceの量が多いほど高保�
 
 ### 見たいこと
 
-Workerのsleep、shutdown、Browser close、拠点停止、大規模Grant reclaimを通常状態として吸収できるか。
+Workerのsleep、shutdown、Browserを閉じること、拠点の停止、大規模なGrantのreclaimを、通常の状態として吸収できるか。
 
-### 比較観点
+### 比較する観点
 
-- Lease / retryの回復時間
-- checkpoint利用可能性
-- retry storm抑制
-- side-effect Taskの不明状態の扱い
-- 外部副作用のUNKNOWNを自動retry可能なfailureへ誤分類しないか
-- idempotent retryでOperation IdentityとRequest IntentをAttempt間で維持できるか
-- Control Plane restart後の状態復元
+- Leaseやretryから回復するまでの時間
+- checkpointを利用できるか
+- retry stormを抑えられるか
+- 副作用を持つTaskで、状態が不明になった場合の扱い
+- 外部への副作用のUNKNOWNを、自動でretryできる失敗に、誤って分類しないか
+- 冪等なretryで、Operation IdentityとRequest Intentを、Attemptをまたいで維持できるか
+- Control Planeを再起動した後の、状態の復元
 
 ### 将来の測定候補
 
@@ -211,11 +209,11 @@ Workerのsleep、shutdown、Browser close、拠点停止、大規模Grant reclai
 
 ### 注意
 
-「すぐ再実行する」ことを常に高いRecoverabilityとは評価しません。副作用Taskでは再実行しないことが安全な場合があります。
+「すぐに再実行する」ことを、常に高いRecoverabilityとは評価しません。副作用を持つTaskでは、再実行しないほうが安全な場合があります。
 
-また、backoffで時刻を散らしただけでは、残存capacityやNetwork Budgetを超える再入場を防げるとは限りません。Recovery Queueから実行系へ戻す境界自体のrate / transfer制約も比較対象にします。
+また、backoffによって時刻を散らしただけでは、残っているcapacityやNetwork Budgetを超える再入場を、防げるとは限りません。Recovery Queueから実行系へ戻す境界そのもののrateや転送の制約も、比較の対象にします。
 
-外部副作用を伴うTaskでは、Worker disappearance、timeout、cancelを「副作用が失敗した」という証拠にしません。non-idempotentな操作で結果確認不能となった場合、回復速度より二重副作用を避けることを優先し、UNKNOWN / reconciliationへ退避できる案を高く評価します。
+外部への副作用を伴うTaskでは、Workerが消えたこと、timeout、cancelを、「副作用が失敗した」という証拠にしません。冪等でない操作の結果を確認できなくなった場合は、回復の速さよりも、二重に副作用が起きるのを避けることを優先します。UNKNOWNやreconciliationの状態へ退避できる案を、高く評価します。
 
 ---
 
@@ -223,20 +221,20 @@ Workerのsleep、shutdown、Browser close、拠点停止、大規模Grant reclai
 
 ### 見たいこと
 
-遊休資源を利用するために、過大な管理overheadを支払っていないか。
+遊休資源を利用するために、過大な管理のoverheadを払っていないか。
 
-### 比較観点
+### 比較する観点
 
-- Control Plane overhead
-- Agent idle overhead
-- Verification overhead
-- Artifact transfer cost
-- Proof / Attestation cost
-- Worker discovery / heartbeat cost
+- Control Planeのoverhead
+- Agentがidleのときのoverhead
+- Verificationのoverhead
+- Artifactの転送のコスト
+- ProofやAttestationのコスト
+- Workerの発見とheartbeatのコスト
 
 ### 注意
 
-Cloud cost削減だけで評価しません。Network、電力、Endpoint wear、運用工数もResource costです。
+Cloudのコストの削減だけで評価しません。Network、電力、Endpointの摩耗、運用の工数も、Resourceのコストです。
 
 ---
 
@@ -244,20 +242,20 @@ Cloud cost削減だけで評価しません。Network、電力、Endpoint wear�
 
 ### 見たいこと
 
-遊休computeの利用が、端末保護やProviderのEnergy Policyと矛盾しないか。
+遊休computeを利用することが、端末の保護やProviderのEnergy Policyと、矛盾していないか。
 
-### 比較観点
+### 比較する観点
 
-- Battery / AC条件
+- BatteryかACかという条件
 - thermal throttling
-- Provider energy budget
-- 利用時間帯
-- local Safety Governorの強制力
-- Contribution incentiveとの独立性
+- Providerのenergy budget
+- 利用する時間帯
+- ローカルのSafety Governorが持つ強制力
+- Contributionによるincentiveからの独立性
 
 ### 注意
 
-hardware固有のsensor precisionまで共通仕様にしません。EKIが必要とするのは、ローカルが安全側へcapacityを狭められることです。
+hardware固有のsensorの精度まで、共通の仕様にはしません。EKIが必要とするのは、ローカルが安全な側へcapacityを狭められることです。
 
 ---
 
@@ -265,20 +263,20 @@ hardware固有のsensor precisionまで共通仕様にしません。EKIが必�
 
 ### 見たいこと
 
-EKI開発時に存在しなかったソフトウェアやRuntimeが、Core変更なしに参加できるか。
+EKIを開発した時点では存在しなかったソフトウェアやRuntimeが、Coreを変更せずに参加できるか。
 
-### 比較観点
+### 比較する観点
 
-- external contractの言語中立性
+- external contractが、言語に中立であること
 - version negotiation
-- unknown extensionの扱い
-- Executor Runtime差し替え
-- Identity / Artifact / Queue implementation差し替え
-- Browser / Native / Serverの共存
+- 未知のextensionの扱い
+- Executor Runtimeの差し替え
+- Identity、Artifact、Queueの実装の差し替え
+- Browser、Native、Serverの共存
 
 ### 注意
 
-「SDKが多言語である」だけでは十分ではありません。Protocolそのものが特定SDK内部型へ依存していないことを確認します。
+「SDKが多くの言語に対応している」だけでは、十分ではありません。Protocolそのものが、特定のSDKの内部の型に依存していないことを確認します。
 
 ---
 
@@ -286,20 +284,20 @@ EKI開発時に存在しなかったソフトウェアやRuntimeが、Core変更
 
 ### 見たいこと
 
-中小企業を含む運用者が、何が起きているかを理解し、問題を切り分けられるか。
+中小企業を含む運用者が、何が起きているのかを理解でき、問題を切り分けられるか。
 
-### 比較観点
+### 比較する観点
 
-- Task / Attempt / Result / Verificationの追跡
-- rejected placement理由
-- opt-out / reclaim理由
-- Security eventの可視性
-- Federation / Grantの変更履歴
-- 監査情報が過剰な機密Dataを含まないか
+- Task、Attempt、Result、Verificationの追跡
+- placementをrejectした理由
+- opt-outやreclaimの理由
+- Security eventを見られるか
+- FederationとGrantの変更の履歴
+- 監査の情報に、過剰な機密のDataが含まれていないか
 
-### 文書品質との関係
+### 文書の品質との関係
 
-EKIでは、運用上の概念を理解するために分散システム専門家であることを前提にしません。状態名やErrorは、実装内部語だけでなく、運用者が判断できる説明へつなげられることを重視します。
+EKIでは、運用上の概念を理解するために、分散システムの専門家であることを前提にしません。状態の名前やErrorは、実装の内部の言葉だけでなく、運用者が判断できる説明につなげられることを重視します。
 
 ---
 
@@ -307,21 +305,21 @@ EKIでは、運用上の概念を理解するために分散システム専門�
 
 ### 見たいこと
 
-資源提供の記録を外部制度が利用するとき、測定方法と保証水準を誤解しないか。
+資源を提供した記録を、外部の制度が利用するときに、測定の方法と保証の水準を、誤解しないか。
 
-### 比較観点
+### 比較する観点
 
-- self-reported / control-observed / attested等の測定方法
-- Work provenance
+- self-reported、control-observed、attestedなどの測定方法
+- Workのprovenance
 - Accepted Resultとの関係
-- Resource Class差
-- self-dealing / farmingの検出材料
+- Resource Classによる違い
+- self-dealingやfarmingを検出するための材料
 - Privacyとの両立
-- Observerが主張可能なAssuranceをPolicyで上限化できるか
-- Accepted ResultとResource量の測定を別Evidenceとして扱えるか
-- 同一Attempt / Metricの重複・競合Recordを二重計上しないか
-- MeasurementのMetric / Unitを保証範囲より強い名称へ読み替えないか
-- EKI CoreがUniversal Scoreや金銭価値を暗黙に生成していないか
+- Observerが主張できるAssuranceに、Policyで上限を設けられるか
+- Accepted Resultと、Resourceの量の測定とを、別のEvidenceとして扱えるか
+- 同じAttemptやMetricの、重複または競合するRecordを、二重に計上しないか
+- 測定のMetricやUnitを、保証の範囲より強い名前に読み替えていないか
+- EKI Coreが、Universal Scoreや金銭の価値を、暗黙のうちに生成していないか
 
 ### 将来の測定候補
 
@@ -334,9 +332,9 @@ EKIでは、運用上の概念を理解するために分散システム専門�
 
 ### 注意
 
-Contributionの記録精度と、そのContributionに外部制度が与える価値は別です。
+Contributionの記録の精度と、そのContributionに外部の制度が与える価値とは、別のことです。
 
-Accepted Resultの有無をContribution発行条件として利用する場合でも、それをCPU / GPU時間等の測定値そのものの根拠にはしません。また、高保証なContribution測定を導入しても、Local Safety Governor、user opt-out、thermal / energy制約をContribution incentiveで上書きできるとは評価しません。
+Accepted Resultの有無を、Contributionの発行の条件に使う場合でも、それをCPUやGPUの時間などの測定値そのものの根拠にはしません。また、高い保証のContributionの測定を導入しても、Local Safety Governor、利用者のopt-out、thermalやenergyの制約を、Contributionのincentiveで上書きできるとは評価しません。
 
 ---
 
@@ -344,27 +342,27 @@ Accepted Resultの有無をContribution発行条件として利用する場合�
 
 ### 見たいこと
 
-小規模な社内利用から複数組織のFederationまで、同じSecurity principleを保ちながら、不要な運用負荷を強制しないか。
+小規模な社内の利用から、複数組織にまたがるFederationまで、同じSecurity principleを保てるか。そのうえで、不要な運用の負荷を強いていないか。
 
-### 比較観点
+### 比較する観点
 
-- 小規模構成で必要な常駐component数
-- 専用DB / Queue / PKI等の必須性
-- 企業既存Identity基盤との接続
-- 追加Firewall要件
-- Federation時だけ必要になるcomponentを分離できるか
+- 小規模な構成で必要な、常駐するcomponentの数
+- 専用のDB、Queue、PKIなどが必須かどうか
+- 企業が既に持つIdentity基盤との接続
+- Firewallの追加の要件
+- Federationのときだけ必要になるcomponentを、分離できるか
 
 ### 注意
 
-大規模構成で必要な機能を、10台程度のEndpoint poolにも無条件で要求することは避けます。
+大規模な構成で必要になる機能を、10台程度のEndpoint poolにまで、無条件に要求することは避けます。
 
 ---
 
-# Architecture比較での使い方
+# Architectureの比較での使い方
 
-Architecture候補を比較するときは、単一の総合点だけで優劣を決めません。
+Architecture候補を比べるときは、単一の総合点だけで優劣を決めません。
 
-たとえば次のように、Requirementを満たすかどうかとQuality Attribute上のTrade-offを分けます。
+たとえば次のように、Requirementを満たすかどうかと、Quality Attributeの上でのTrade-offとを、分けて考えます。
 
 ```text
 Candidate A
@@ -378,18 +376,18 @@ Candidate B
   Deployment proportionality: strong
 ```
 
-Requirementを破る案を「性能が高いから」で採用することはしません。一方、すべてのRequirementを満たす案同士では、利用形態ごとにQuality Attributeの重みが変わることを認めます。
+Requirementを破る案を、「性能が高いから」という理由で採用することはしません。一方で、すべてのRequirementを満たす案どうしでは、利用の形態によってQuality Attributeの重みが変わることを認めます。
 
 ## 次に具体化する項目
 
-Architecture Entry Gateまでに、少なくとも次について小さなSpikeまたはReference検証から比較材料を得ます。
+Architecture Entry Gateまでに、少なくとも次の項目について、小さなSpikeやReferenceでの検証から、比較の材料を得ます。
 
-- opt-out後のlocal quiescence
+- opt-outの後のlocal quiescence
 - Browser lifecycleとresource enforcement
-- Artifact locality / transfer cost
-- Result validation / replication overhead
-- malicious Artifact expansionの最大影響
-- mass reclaim後のretry amplification
+- Artifactの局所性と転送のコスト
+- Resultのvalidationとreplicationのoverhead
+- 悪意のあるArtifactの展開が及ぼす、最大の影響
+- mass reclaimの後のretryの増幅
 - Control Plane authority separationの最小構成
 - Federation trust binding
-- Contribution measurementの最低限のassurance
+- Contribution measurementの、最低限のassurance

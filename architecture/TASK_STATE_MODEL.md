@@ -4,25 +4,23 @@ Status: **Baseline 0.1 — 2026-09-21**
 
 ## 1. この文書の目的
 
-EKI Fabricでは、Workerがsleep、shutdown、network loss、Browser discard、user opt-out、Provider reclaim等によって頻繁に消えることを通常状態として扱います。
+EKI Fabricでは、Workerが、sleep、shutdown、network loss、Browserのdiscard、user opt-out、Providerのreclaimなどによって、頻繁に消えることを、通常の状態として扱います。
 
-そのため、
+そのため、次のような事実だけから、
 
 - Workerから応答がない
 - Leaseが切れた
 - Taskがtimeoutした
 
-という事実だけから、
-
 > 実行は失敗した
 > 副作用は起きなかった
-> retryして安全である
+> retryしても安全である
 
-とは判断できません。
+と判断することはできません。
 
-この文書では、Task、Attempt、Lease、Result、External Effect、Recoveryを分離し、at-least-once deliveryやWorker churnの中でもSecurity / Safety / Audit上の意味を失わない状態モデルを定義します。
+この文書では、Task、Attempt、Lease、Result、External Effect、Recoveryを分離します。そして、at-least-onceの配送やWorkerのchurnがあっても、Security、Safety、Auditの上での意味を失わない状態モデルを、定義します。
 
-関連は次のとおりです。
+関連する文書は、次のとおりです。
 
 - AUTHORITY_BOUNDARIES.md
 - CONTRACT_BOUNDARIES.md
@@ -34,13 +32,13 @@ EKI Fabricでは、Workerがsleep、shutdown、network loss、Browser discard、
 
 ---
 
-# 2. 最重要原則
+# 2. 最重要の原則
 
 ## 2.1 TaskとAttemptを分ける
 
-TaskはClient Intentです。
+Taskは、Clientのintentです。
 
-Attemptは、そのTaskを一度実行しようとした試行です。
+Attemptは、そのTaskを一度実行しようとした、試行です。
 
 ~~~text
 Task T1
@@ -49,23 +47,23 @@ Task T1
   Attempt A3
 ~~~
 
-RetryでTask IDを変えません。
+Retryで、Task IDを変えません。
 
-同じAttemptを別Workerへ書き換えて再利用もしません。
+同じAttemptを、別のWorkerに書き換えて再利用することもしません。
 
-## 2.2 Leaseは実行結果ではない
+## 2.2 Leaseは、実行の結果ではない
 
 Leaseは、
 
-> このAttemptをこのWorkerへ、この時間範囲で割り当てた
+> このAttemptを、このWorkerに、この時間の範囲で割り当てた
 
-という一時Authorityです。
+という、一時的なAuthorityです。
 
-Lease expiryは、
+Leaseのexpiryが意味するのは、
 
-> そのWorkerの実行権限が失効した
+> そのWorkerの実行の権限が、失効した
 
-ことを意味します。
+ということです。
 
 ~~~text
 Lease expired
@@ -74,21 +72,19 @@ Lease expired
   != safe to retry
 ~~~
 
-です。
-
-## 2.3 Worker heartbeatはObservation
+## 2.3 Worker heartbeatは、Observationである
 
 heartbeatを受信したことは、
 
-> Worker sessionが最近通信できた
+> Worker sessionが、最近通信できた
 
 というObservationです。
 
-heartbeat message自体がLeaseを延長するのではありません。
+heartbeatのmessage自体が、Leaseを延長するのではありません。
 
-Lease Authorityがrenewalをdurableに記録して初めて有効期限が更新されます。
+Lease Authorityが、renewalを永続的に記録して、はじめて有効期限が更新されます。
 
-## 2.4 Worker状態申告はClaim
+## 2.4 Workerによる状態の申告は、Claimである
 
 Workerが、
 
@@ -97,23 +93,23 @@ Workerが、
 - failed
 - result ready
 
-と報告しても、それをTask Stateの権威ある事実へ直接変換しません。
+と報告しても、それをTask Stateの、権威のある事実に直接変換しません。
 
-必要なAuthority / Evidenceで評価します。
+必要なAuthorityとEvidenceで評価します。
 
 ## 2.5 UNKNOWNを保持する
 
-外部副作用がdispatch済みで、成功・失敗を確認できない場合はUNKNOWNを明示します。
+外部への副作用をdispatch済みで、成功か失敗かを確認できない場合は、UNKNOWNを明示します。
 
-failedへ丸めません。
+failedに丸めません。
 
-cancelledへ丸めません。
+cancelledに丸めません。
 
-retryableへ丸めません。
+retryableに丸めません。
 
 ---
 
-# 3. 一つの巨大State Enumを使わない
+# 3. 一つの巨大なState Enumを使わない
 
 Task全体を、
 
@@ -126,14 +122,14 @@ DONE
 
 だけで表すと、次の状態を表現できません。
 
-- Worker lostだが別Attemptを準備中
-- ResultClaimを検証中
-- 複数Attemptを比較中
-- cancel要求済みだが外部Effect UNKNOWN
-- accepted resultはあるが他Attemptを停止中
-- retry budgetを使い切りoperator intervention待ち
+- Workerが失われたが、別のAttemptを準備している
+- ResultClaimを検証している
+- 複数のAttemptを比較している
+- cancelを要求済みだが、外部EffectがUNKNOWN
+- accepted resultはあるが、他のAttemptを停止している
+- retry budgetを使い切り、operatorの介入を待っている
 
-そのためBaselineでは、少なくとも次の軸を分けます。
+そのため、Baselineでは、少なくとも次の軸を分けます。
 
 ~~~text
 Task Lifecycle
@@ -145,15 +141,15 @@ Cancellation Intent
 Recovery / Budget
 ~~~
 
-Public APIでは簡略statusへ投影できますが、内部正本は分離します。
+Public APIでは、簡略なstatusに投影できます。ただし、内部の正本は分離します。
 
 ---
 
 # 4. TaskRecord
 
-TaskRecordはTask State Authorityが管理するdurableな正本です。
+TaskRecordは、Task State Authorityが管理する、永続的な正本です。
 
-概念的な主要Field:
+概念上の、主要なFieldは、次のとおりです。
 
 ~~~text
 Task ID
@@ -175,99 +171,97 @@ Updated At
 
 ## 4.1 State Revision
 
-TaskRecord更新にはmonotonicなState Revisionを持たせます。
+TaskRecordの更新には、単調に増えるState Revisionを持たせます。
 
-複数Control Plane instanceが古い状態を上書きしないよう、
+複数のControl Plane instanceが、古い状態を上書きしないよう、次のような方法でrevisionを確認できる構造を要求します。
 
 - compare-and-swap
 - transaction
-- consensus-backed state
+- consensusに支えられたstate
 
-等でrevisionを確認できる構造を要求します。
-
-具体DB方式は固定しません。
+具体的なDBの方式は、固定しません。
 
 ---
 
 # 5. Task Lifecycle Phase
 
-Taskの内部Lifecycleを次の大分類で扱います。
+Taskの内部のLifecycleを、次の大きな分類で扱います。
 
 ## T-ADMITTED
 
-Admission済みでTask IDが存在する。
+Admission済みで、Task IDが存在する。
 
-まだAttemptを実行可能状態にしていない場合を含みます。
+まだAttemptを実行できる状態にしていない場合を含みます。
 
 ## T-READY
 
 新しいAttemptを作成できる状態。
 
-Queue待ち、NotBefore待ち、Resource待ちを含めます。
+Queueでの待ち、NotBeforeの待ち、Resourceの待ちを含めます。
 
 ## T-ACTIVE
 
-少なくとも一つのnon-closed Attemptが存在し、実行・検証が進行しています。
+少なくとも一つの、closeされていないAttemptが存在し、実行と検証が進行しています。
 
 ## T-VERIFYING
 
-ResultClaim / VerificationResultを評価し、AcceptedResultを確定しようとしている状態。
+ResultClaimとVerificationResultを評価して、AcceptedResultを確定しようとしている状態。
 
-T-ACTIVEと内部的に重なり得るため、実装ではsubstate / derived stateでも構いません。
+T-ACTIVEと、内部的に重なり得るため、実装では、substateやderived stateでもかまいません。
 
-重要なのはExecutionとVerificationを区別することです。
+重要なのは、ExecutionとVerificationを区別することです。
 
 ## T-RECONCILING
 
-外部副作用等について、成功・失敗をFabricだけでは確定できず、External Effect AuthorityやApplication-specific reconciliationを待っている状態。
+外部への副作用などについて、成功か失敗かを、Fabricだけでは確定できず、External Effect AuthorityやApplication固有のreconciliationを待っている状態。
 
 ## T-HELD
 
-自動Progressを停止し、operator / application decisionを必要とする状態。
+自動的なProgressを止めて、operatorやapplicationの判断を必要とする状態。
 
-例は次のとおりです。
+たとえば、次の場合です。
 
-- retry budget exhausted
-- reconciliation budget exhausted
-- non-idempotent UNKNOWNを自動解消できない
-- conflicting high-assurance results
-- policy changed and no safe migration exists
+- retry budgetを使い切った
+- reconciliation budgetを使い切った
+- 冪等でないUNKNOWNを、自動では解消できない
+- 高い保証のresultが、互いに矛盾している
+- policyが変わり、安全に移行する方法がない
 
 ## T-TERMINAL
 
 Task lifecycleが終了しています。
 
-Terminal Outcomeを別Fieldで持ちます。
+Terminal Outcomeを、別のFieldで持ちます。
 
 ---
 
 # 6. Terminal Outcome
 
-T-TERMINALではOutcomeを明示します。
+T-TERMINALでは、Outcomeを明示します。
 
 ## COMPLETED
 
-Task Policyに従うAcceptedResultまたはauthoritative completion evidenceが成立した。
+Task Policyに従う、AcceptedResultまたは権威のあるcompletion evidenceが成立した。
 
 ## CANCELLED
 
-Cancellation Intentにより将来実行を停止し、未解決external effectが残っていない状態。
+Cancellation Intentにより、将来の実行を停止した。未解決のexternal effectが残っていない状態。
 
 ## FAILED
 
-自動・手動方針によりTask Intentを満たせないことが確定した。
+自動または手動の方針により、Task Intentを満たせないことが確定した。
 
-単なるWorker disappearanceはFAILED確定根拠ではありません。
+単なるWorkerが消えたことは、FAILEDを確定する根拠ではありません。
 
 ## EXHAUSTED
 
-Retry / Budget / Deadline等を使い切り、Task Intentを達成できなかった。
+Retry、Budget、Deadlineなどを使い切り、Task Intentを達成できなかった。
 
-FAILEDのreason categoryとして実装することもできますが、運用上区別できる余地を持ちます。
+FAILEDのreason categoryとして実装することもできます。ただし、運用の上で区別できる余地を持ちます。
 
 ## ABANDONED
 
-結果または外部Effectを完全に確定できないまま、Policy / Operatorがこれ以上のreconciliationを行わないと判断した。
+結果や外部のEffectを完全には確定できないまま、PolicyやOperatorが、これ以上reconciliationを行わないと判断した。
 
 ABANDONEDは、
 
@@ -275,15 +269,15 @@ ABANDONEDは、
 
 という意味ではありません。
 
-Audit上UNKNOWN evidenceを保持します。
+Auditの上で、UNKNOWNのevidenceを保持します。
 
 ---
 
 # 7. Public Task Status
 
-Clientへは内部状態をそのまま公開しません。
+Clientには、内部の状態を、そのまま公開しません。
 
-概念的なPublic Status:
+概念上のPublic Statusは、次のとおりです。
 
 ~~~text
 queued
@@ -298,25 +292,25 @@ failed
 
 ## 7.1 runningの意味
 
-runningは便利な表示状態であり、
+runningは、便利な表示の状態です。
 
-> Workerが本当に現在CPU命令を実行している
+> Workerが、本当にいまCPUの命令を実行している
 
-という暗号学的事実ではありません。
+という、暗号学的な事実ではありません。
 
-有効なAttempt / Lease / recent Observationからderivedします。
+有効なAttempt、Lease、最近のObservationから、導きます。
 
 ## 7.2 reconciling
 
-外部Effect outcomeが未確定の場合、Clientへfailedと偽らずreconciling / unknown系の状態を返せるようにします。
+外部のEffectのoutcomeが未確定の場合、Clientに、failedと偽らずに、reconcilingやunknown系の状態を返せるようにします。
 
 ---
 
 # 8. AttemptRecord
 
-AttemptはTask State Authorityが生成するdurable identityです。
+Attemptは、Task State Authorityが生成する、永続的なidentityです。
 
-主なField:
+主なFieldは、次のとおりです。
 
 ~~~text
 Task ID
@@ -337,57 +331,57 @@ Close Reason
 State Revision
 ~~~
 
-Retry / migration / speculative duplicate / validation replicationは別Attemptを作ります。
+Retry、migration、speculativeな重複、validationのreplicationは、別のAttemptを作ります。
 
 ---
 
 # 9. Attempt Phase
 
-Attemptは次の大分類を持ちます。
+Attemptは、次の大きな分類を持ちます。
 
 ## A-CREATED
 
-Attempt identityは発行済みだがPlacement未確定。
+Attempt identityは発行済みだが、Placementが未確定。
 
 ## A-PLACING
 
-Scheduler Proposal / Placement Approvalを取得中。
+Scheduler ProposalとPlacement Approvalを取得している。
 
 ## A-ASSIGNED
 
 Worker、Lease、WorkOrderが確定した。
 
-Dispatch前を含みます。
+Dispatchの前を含みます。
 
 ## A-DISPATCHED
 
-WorkOrder deliveryを開始・完了した。
+WorkOrderの配送を、開始または完了した。
 
-Workerが受信したかを別Observationとして持てます。
+Workerが受信したかどうかを、別のObservationとして持てます。
 
 ## A-CLAIMED
 
-ResultClaimまたはExecution failure claim等を受信した。
+ResultClaimや、Executionの失敗のclaimなどを受信した。
 
-Claimの内容をまだAccepted factへしません。
+Claimの内容を、まだAcceptedな事実にはしません。
 
 ## A-VERIFYING
 
-Result Verification中。
+Result Verificationの途中。
 
 ## A-CLOSED
 
-このAttemptから追加Executionを期待しない。
+このAttemptから、追加のExecutionを期待しない。
 
-Close Reasonを別に持ちます。
+Close Reasonを、別に持ちます。
 
 ---
 
-# 10. A-RUNNINGをdurable factにしない理由
+# 10. A-RUNNINGを、永続的な事実にしない理由
 
-Worker自身がrunningと報告しても、悪意Workerは偽れます。
+Worker自身がrunningと報告しても、悪意のあるWorkerは偽れます。
 
-Control Planeが知れるのは主に、
+Control Planeが知れるのは、主に、次のObservationです。
 
 - WorkOrderをdispatchした
 - Worker sessionが応答した
@@ -395,17 +389,15 @@ Control Planeが知れるのは主に、
 - progress claimが来た
 - telemetryが来た
 
-というObservationです。
-
-そのためrunningはderived / observational statusとして扱い、Task StateのSecurity Decisionをrunning申告だけに依存させません。
+そのため、runningは、導いた、またはobservationalなstatusとして扱います。Task StateのSecurity Decisionを、runningの申告だけに依存させません。
 
 ---
 
 # 11. Attempt Close Reason
 
-A-CLOSEDではreasonを区別します。
+A-CLOSEDでは、reasonを区別します。
 
-例は次のとおりです。
+たとえば、次のものです。
 
 - RESULT_ACCEPTED
 - RESULT_REJECTED
@@ -421,17 +413,17 @@ A-CLOSEDではreasonを区別します。
 - POLICY_REVOKED
 - STALE_ATTEMPT
 
-Close ReasonはTask Terminal Outcomeではありません。
+Close Reasonは、Task Terminal Outcomeではありません。
 
-A1がWORKER_LOSTでも、Task T1はA2で継続できます。
+A1がWORKER_LOSTでも、Task T1は、A2で継続できます。
 
 ---
 
 # 12. LeaseRecord
 
-LeaseはAttemptとWorkerを期間限定でbindingします。
+Leaseは、AttemptとWorkerを、期間を限って結び付けます。
 
-概念Field:
+概念上のFieldは、次のとおりです。
 
 ~~~text
 Lease ID
@@ -458,19 +450,19 @@ Lease State
 
 ## 12.2 Lease IDとRevision
 
-Renewalでは、同じLease identityにmonotonic sequenceを持たせるか、新Leaseを発行する方式を選べます。
+Renewalでは、同じLease identityに、単調に増えるsequenceを持たせるか、新しいLeaseを発行する方式を、選べます。
 
-どちらでも古いrenewal messageで期限を巻き戻せない必要があります。
+どちらでも、古いrenewal messageで、期限を巻き戻せない必要があります。
 
-Baselineではmonotonic Lease Revision / Sequenceを要求し、exact wire方式は後続実装で決めます。
+Baselineでは、単調に増えるLease RevisionまたはSequenceを要求します。正確なwireの方式は、後続の実装で決めます。
 
 ---
 
 # 13. Lease Fencing
 
-新しいAssignmentが成立した後、古いWorkerが戻ってきてもAuthorityを復活できてはいけません。
+新しいAssignmentが成立した後に、古いWorkerが戻ってきても、Authorityを復活できてはいけません。
 
-Attempt / Leaseにはfencing可能なepochを持たせます。
+AttemptとLeaseには、fencingできるepochを持たせます。
 
 ~~~text
 Attempt A1
@@ -483,37 +475,35 @@ late heartbeat from epoch 4
   -> rejected
 ~~~
 
-古いheartbeat、renewal、progress claimでcurrent assignmentを巻き戻しません。
+古いheartbeat、renewal、progress claimで、現在のassignmentを巻き戻しません。
 
 ---
 
-# 14. WorkOrder deliveryはat-least-onceでよい
+# 14. WorkOrderの配送は、at-least-onceでよい
 
-Queue / Networkは重複deliveryし得ます。
+QueueやNetworkは、重複して配送し得ます。
 
-同じWorkOrderがWorkerへ複数回届いても、新Attemptを作りません。
+同じWorkOrderが、Workerに複数回届いても、新しいAttemptを作りません。
 
-Workerは、
+Workerは、次のもので、重複を認識します。
 
 - WorkOrder ID
 - Attempt ID
-- Lease ID / Revision
+- Lease IDとRevision
 
-で重複を認識します。
+誠実なWorker Agentは、同じWorkOrderを、二重に実行しないようにします。
 
-Honest Worker Agentは同一WorkOrderを二重実行しないようにします。
-
-malicious Workerが二重実行する可能性はResult / Contribution側で別途防ぎます。
+悪意のあるWorkerが二重に実行する可能性は、ResultとContributionの側で、別に防ぎます。
 
 ---
 
-# 15. QueueはState Source of Truthではない
+# 15. Queueは、State Source of Truthではない
 
-Internal Queue / BrokerにmessageがあることをTask Stateの正本にしません。
+内部のQueueやBrokerに、messageがあることを、Task Stateの正本にしません。
 
-正本はdurable Task / Attempt / Lease Decisionです。
+正本は、永続的なTask、Attempt、LeaseのDecisionです。
 
-推奨Logical Pattern:
+推奨する論理パターンは、次のとおりです。
 
 ~~~text
 durable state transaction
@@ -526,111 +516,105 @@ delivery layer
 Worker
 ~~~
 
-Deliveryが失敗・重複しても、Attempt identityやAuthority Decisionが曖昧にならない構造を優先します。
+配送が失敗したり重複したりしても、Attempt identityやAuthority Decisionが、あいまいにならない構造を優先します。
 
-具体Outbox implementationは固定しません。
+具体的なOutboxの実装は、固定しません。
 
 ---
 
 # 16. Commit before dispatch
 
-WorkerへWorkOrderを送る前に、
+WorkerにWorkOrderを送る前に、次のものを永続的に記録することを、標準にします。
 
 - Attempt
 - Lease
 - WorkOrder identity
-- prerequisite Decision refs
-
-をdurableに記録することを標準にします。
+- 前提となるDecisionの参照
 
 ~~~text
 send succeeded
 but state not committed
 ~~~
 
-のように、Workerは実行中なのにControl PlaneがAttemptを知らない状態を減らします。
+のように、Workerは実行しているのに、Control PlaneがAttemptを知らない状態を、減らします。
 
-完全なdistributed transactionを要求するのではなく、durable intent + idempotent deliveryで吸収します。
+完全な分散transactionを要求するのではなく、永続的なintentと、冪等な配送で吸収します。
 
 ---
 
 # 17. Heartbeat
 
-heartbeatはsession liveness Observationです。
+heartbeatは、sessionのlivenessのObservationです。
 
-Heartbeat内容例:
+Heartbeatの内容の例は、次のとおりです。
 
 - Worker ID
 - session ID
-- active Lease IDs / revisions
-- local governor state summary
-- optional progress observations
-- timestamp / sequence
+- 有効なLease IDとrevision
+- local governorの状態の要約
+- 任意の、progressのobservation
+- timestampとsequence
 
 ## 17.1 Heartbeatがしないこと
 
-heartbeatだけで、
+heartbeatだけでは、次のことをしません。
 
-- Leaseを延長
-- ResultをAccepted
-- Resource Measurementを確定
-- Security Assuranceを昇格
-- Artifact Grantを延長
+- Leaseを延長する
+- ResultをAcceptedにする
+- Resource Measurementを確定する
+- Security Assuranceを昇格する
+- Artifact Grantを延長する
 
-しません。
-
-各Authorityが別Decisionを行います。
+各Authorityが、別のDecisionを行います。
 
 ---
 
 # 18. Lease Renewal
 
-Lease RenewalはLease AuthorityのDecisionです。
+Lease Renewalは、Lease AuthorityのDecisionです。
 
-入力は次のとおりです。
+入力は、次のとおりです。
 
-- current Lease identity
-- current revision
-- Worker identity / session
-- Task still active
-- no cancellation / revoke
-- Worker / Provider capacity
-- policy / deadline
-- optional progress
+- 現在のLease identity
+- 現在のrevision
+- Worker identityとsession
+- Taskがまだactiveであること
+- cancellationやrevokeがないこと
+- Workerとproviderのcapacity
+- policyとdeadline
+- 任意の、progress
 
-出力は次のとおりです。
+出力は、次のとおりです。
 
-- renewed expiry / revision
-- or reject
+- 更新したexpiryとrevision
+- または、reject
 
-古いrevisionからのrenewを拒否します。
-
----
-
-# 19. Clock / expiry
-
-Lease、Grant、WorkOrder等はtime-boundedです。
-
-具体Clock synchronization方式は固定しませんが、
-
-- Control Plane authoritative time
-- bounded clock skew
-- Worker側safety margin
-- local monotonic timer利用可能性
-
-を考慮します。
-
-Workerは自分の時計を理由に、signed expiryより長くAuthorityを延長しません。
-
-時刻信頼性が不明なら安全側へ停止します。
+古いrevisionからのrenewは、拒否します。
 
 ---
 
-# 20. Worker disconnect
+# 19. ClockとExpiry
 
-Control Planeがheartbeatを受け取れなくなっても、即Attempt failureへしません。
+Lease、Grant、WorkOrderなどは、時間で区切られています。
 
-標準流れは次のとおりです。
+具体的なClock synchronizationの方式は、固定しません。ただし、次のことを考慮します。
+
+- Control Planeを、権威ある時刻とすること
+- 上限のあるclock skew
+- Worker側のsafety margin
+- localの単調なtimerを使えるか
+
+Workerは、自分の時計を理由に、署名されたexpiryより長く、Authorityを延長しません。
+
+時刻の信頼性が不明な場合は、安全な側に、停止します。
+
+---
+
+# 20. Workerの切断
+
+Control Planeがheartbeatを受け取れなくなっても、すぐにAttemptの失敗とはしません。
+
+標準の流れは、次のとおりです。
 
 ~~~text
 heartbeat missing
@@ -647,46 +631,46 @@ safe retry?
   └ budget exhausted -> Held / Terminal
 ~~~
 
-Workerがlocalではまだ動いている可能性を考慮します。
+Workerが、ローカルではまだ動いている可能性を考慮します。
 
-WorkOrder / Local Agentはexpiryで停止することを期待しますが、malicious Workerが無視する可能性はあります。
+WorkOrderとLocal Agentは、expiryで停止することを期待します。ただし、malicious Workerが無視する可能性はあります。
 
 ---
 
-# 21. Late Worker return
+# 21. 遅れて戻ってきたWorker
 
-Lease expiry後にWorkerが復帰しても、古いLeaseをrenewしません。
+Leaseのexpiryの後に、Workerが復帰しても、古いLeaseをrenewしません。
 
 新しいLeaseが必要です。
 
-Browser reload / resumeも同じです。
+Browserのreloadやresumeも、同じです。
 
-旧session / epochからのmessageはstaleとして扱います。
+古いsessionやepochからのmessageは、staleとして扱います。
 
 ---
 
-# 22. Late Result
+# 22. 遅れて届いたResult
 
-Lease expiry後に古いAttemptからResultClaimが届く場合があります。
+Leaseのexpiryの後に、古いAttemptから、ResultClaimが届く場合があります。
 
-Late ResultはLeaseを復活させません。
+遅れて届いたResultは、Leaseを復活させません。
 
-Baselineでは次のように扱います。
+Baselineでは、次のように扱います。
 
-1. ResultClaim provenanceを記録する。
+1. ResultClaimのprovenanceを記録する。
 2. Attemptがstaleであることを明示する。
-3. Task Policyがlate result verificationを許可するか確認する。
-4. Security-sensitive / side-effect Taskではdefault reject寄りに扱う。
-5. deterministic pure compute等でApplication Validatorが強い場合、optionalにVerificationへ回せる。
-6. Acceptedする場合も旧Lease Authorityを復活させない。
+3. Task Policyが、遅れて届いたresultのverificationを許可するかを確認する。
+4. Security上重要なTaskや、side-effectのあるTaskでは、rejectを既定とする。
+5. 決定的な純粋computeなどで、Application Validatorが強い場合は、任意で、Verificationに回せる。
+6. Acceptedにする場合も、古いLease Authorityを復活させない。
 
-late resultを利用するかはResult Assurance Policyです。
+遅れて届いたresultを利用するかどうかは、Result Assurance Policyです。
 
 ---
 
-# 23. Speculative / Replicated Attempts
+# 23. Speculative / ReplicatedなAttempt
 
-Result Assuranceやdeadlineのため、同じTaskへ複数Attemptを並行実行する場合があります。
+Result Assuranceやdeadlineのために、同じTaskに複数のAttemptを、並行して実行する場合があります。
 
 ~~~text
 Task T1
@@ -694,9 +678,9 @@ Task T1
   A2 -> Worker W2
 ~~~
 
-これはRetryと区別します。
+これは、Retryとは区別します。
 
-Attempt Purposeを、
+Attemptの目的を、次のように記録できる余地を持ちます。
 
 - PRIMARY
 - RETRY
@@ -704,33 +688,31 @@ Attempt Purposeを、
 - VERIFICATION_REPLICA
 - RECOVERY
 
-等で記録できる余地を持ちます。
-
-すべて同じTask budgetを消費します。
+すべて、同じTask budgetを消費します。
 
 ---
 
-# 24. ResultClaim handling
+# 24. ResultClaimの扱い
 
-ResultClaim受信時:
+ResultClaimを受信したときの処理は、次のとおりです。
 
-1. Task / Attempt binding確認
-2. Worker / WorkOrder provenance確認
-3. Output Artifact finalization確認
-4. AttemptをA-CLAIMEDへ
-5. Result Verificationへ送る
-6. ResultClaim重複はidempotentに処理
-7. 異なるOutput Digestの重複Claimはconflictとして記録
+1. TaskとAttemptのbindingを確認する。
+2. WorkerとWorkOrderのprovenanceを確認する。
+3. Output Artifactが確定したことを確認する。
+4. AttemptをA-CLAIMEDにする。
+5. Result Verificationに送る。
+6. 重複したResultClaimは、冪等に処理する。
+7. 異なるOutput Digestを持つ重複したClaimは、conflictとして記録する。
 
-Worker ClaimだけでAttemptを成功確定しません。
+WorkerのClaimだけで、Attemptの成功を確定しません。
 
 ---
 
-# 25. Verification and Acceptance
+# 25. VerificationとAcceptance
 
-VerificationResultが得られても、Task Policyが満たされるまではTask completeではありません。
+VerificationResultが得られても、Task Policyが満たされるまでは、Taskは完了ではありません。
 
-複数Attempt / Validatorを使う場合。
+複数のAttemptやValidatorを使う場合は、次のようになります。
 
 ~~~text
 A1 claim ─┐
@@ -740,63 +722,61 @@ A2 claim ─┘                ├─ Result Acceptance
                      AcceptedResult
 ~~~
 
-AcceptedResult成立後にTaskをCOMPLETEDへ進めます。
+AcceptedResultが成立した後に、TaskをCOMPLETEDに進めます。
 
-他のnon-terminal Attemptはstop / revoke / closeできます。
+他の、terminalではないAttemptは、stop、revoke、closeできます。
 
 ---
 
-# 26. AcceptedResult後の他Attempt
+# 26. AcceptedResultの後の、他のAttempt
 
-AcceptedResultが成立したら、
+AcceptedResultが成立したら、次のことを行います。
 
-- new Attempt生成停止
-- unnecessary Lease revoke
-- WorkOrder stop request
-- Artifact output session停止可能
-- other Attempt close as SUPERSEDED
+- 新しいAttemptの生成を止める。
+- 不要なLeaseをrevokeする。
+- WorkOrderの停止を要求する。
+- Artifact outputのsessionを止められる。
+- 他のAttemptを、SUPERSEDEDとしてcloseする。
 
-を行います。
-
-ただし外部副作用を持つ他Attemptがすでにdispatchしている場合、単にSUPERSEDEDとして忘れずEffect reconciliationを行います。
+ただし、外部への副作用を持つ他のAttemptが、すでにdispatchしている場合は、単にSUPERSEDEDとして忘れてはいけません。Effectのreconciliationを行います。
 
 ---
 
 # 27. Cancellation Intent
 
-Client / OperatorのCancel requestを受理すると、TaskRecordへCancellation Intentをdurableに記録します。
+ClientやOperatorのCancel requestを受理すると、TaskRecordに、Cancellation Intentを永続的に記録します。
 
 Cancellation Intentは、
 
 > 将来の実行を増やさない
 
-ための強い指示です。
+ための、強い指示です。
 
-## 27.1 Cancel時に行うこと
+## 27.1 Cancelのときに行うこと
 
-- new Attempt作成停止
-- pending Placement停止
-- Lease renew停止
-- current Lease revoke where possible
-- Worker stop request
-- Data Grant renew停止
-- Local Agentが観測できれば即停止
+- 新しいAttemptの作成を止める。
+- 保留中のPlacementを止める。
+- Leaseのrenewを止める。
+- 可能であれば、現在のLeaseをrevokeする。
+- Workerに、停止を要求する。
+- Data Grantのrenewを止める。
+- Local Agentが観測できれば、すぐに停止する。
 
 ## 27.2 Cancelで消えないもの
 
-- already committed external effect
-- already AcceptedResult
-- existing ContributionRecord
-- Audit history
-- UNKNOWN effect
+- すでに確定した外部のeffect
+- すでにAcceptedになったResult
+- すでに存在するContributionRecord
+- Auditの履歴
+- UNKNOWNのeffect
 
-Cancellationは過去事実のrollbackではありません。
+Cancellationは、過去の事実のrollbackではありません。
 
 ---
 
-# 28. Cancel + UNKNOWN
+# 28. CancelとUNKNOWN
 
-non-idempotent external effectをdispatch済みでoutcome不明のときCancelされた場合。
+冪等でない外部のeffectをdispatch済みで、outcomeが不明なときに、Cancelされた場合は、次のようにします。
 
 ~~~text
 Cancellation Intent = true
@@ -804,25 +784,21 @@ External Effect = UNKNOWN
 Task Phase = RECONCILING
 ~~~
 
-とします。
+すぐにCANCELLEDのterminalにはしません。
 
-即CANCELLED terminalへしません。
+Reconciliationの後は、次のように扱います。
 
-Reconciliation後、
-
-- effect not applied confirmed -> CANCELLED可能
-- effect applied confirmed -> completion / cancelled-after-effect等をApplication Policyで評価
-- unresolved and operator abandons -> ABANDONED with unknown evidence
-
-のように扱います。
+- effectが適用されていないと確認できた場合は、CANCELLEDにできる。
+- effectが適用されたと確認できた場合は、completionや、effectの後のcancelledなどを、Application Policyで評価する。
+- 未解決のまま、operatorが諦める場合は、unknownのevidenceを残して、ABANDONEDにする。
 
 ---
 
 # 29. External Effect State
 
-Side-effect semanticsをTask Stateから分離します。
+Side-effectのsemanticsを、Task Stateから分離します。
 
-例は次のとおりです。
+たとえば、次のとおりです。
 
 - E-NONE
 - E-NOT-DISPATCHED
@@ -834,19 +810,19 @@ Side-effect semanticsをTask Stateから分離します。
 
 Compensationは、
 
-> 元Effectが起きなかった
+> 元のEffectが起きなかった
 
 という意味ではありません。
 
-Original Effect historyを保持します。
+元のEffectの履歴を保持します。
 
 ---
 
 # 30. Pure Compute
 
-effect mode = noneのTaskは、Worker disappearance後に比較的安全にretryできます。
+effect mode = noneのTaskは、Workerが消えた後に、比較的安全にretryできます。
 
-ただしは次のとおりです。
+ただし、次の条件を満たす必要があります。
 
 - retryable flag
 - max attempts
@@ -855,17 +831,15 @@ effect mode = noneのTaskは、Worker disappearance後に比較的安全にretry
 - network budget
 - cancellation
 
-を満たす必要があります。
-
-pure computeだから無限retryしてよいわけではありません。
+pure computeだからといって、無限にretryしてよいわけではありません。
 
 ---
 
-# 31. Non-idempotent External Effect
+# 31. 冪等でない外部のEffect
 
-Effect dispatch前ならretry可能です。
+Effectをdispatchする前であれば、retryできます。
 
-dispatch後でauthoritative Receiptがない場合はUNKNOWN / RECONCILINGです。
+dispatchした後で、権威のあるReceiptがない場合は、UNKNOWNまたはRECONCILINGです。
 
 ~~~text
 dispatched
@@ -875,30 +849,28 @@ no authoritative confirmation
 do not auto retry
 ~~~
 
-Workerのfailed自己申告はretry authorityになりません。
+Workerによるfailedの自己申告は、retryのauthorityになりません。
 
 ---
 
-# 32. Idempotent External Effect
+# 32. 冪等な外部のEffect
 
-外部System / trusted Adapterが、
+外部のSystemや信頼できるAdapterが、次のものを使って、dedupできる場合は、dispatchの後でも、上限を設けたretryができます。
 
-- stable Operation ID
-- stable Request Intent Digest
+- 安定したOperation ID
+- 安定したRequest Intent Digest
 
-を使ってdedupできる場合、dispatch後でもbounded retry可能です。
+Retry Attemptでも、Operation IDとIntent Digestを変えません。
 
-Retry AttemptでもOperation IDとIntent Digestを変えません。
-
-同じOperation IDへ別Intentを割り当てたrequestはrejectします。
+同じOperation IDに、別のIntentを割り当てたrequestは、rejectします。
 
 ---
 
 # 33. External Effect Receipt
 
-External Effect AuthorityのReceiptがTask Intentへbindingされる場合、Effect Stateを更新できます。
+External Effect AuthorityのReceiptが、Task Intentに結び付けられる場合、Effect Stateを更新できます。
 
-Receiptは、
+Receiptは、次のものを持ちます。
 
 - Operation ID
 - Request Digest
@@ -907,36 +879,34 @@ Receiptは、
 - authority
 - observed time
 
-等を持ちます。
-
-Worker self-signatureはReceiptではありません。
+Workerの自己署名は、Receiptではありません。
 
 ---
 
 # 34. Reconciliation
 
-T-RECONCILINGでは、Taskを通常Recovery Queueへ入れません。
+T-RECONCILINGでは、Taskを、通常のRecovery Queueに入れません。
 
-可能なAction:
+可能なActionは、次のとおりです。
 
-- status API poll
-- authoritative receipt query
-- application-specific reconciliation
-- human review
-- compensation workflow
-- deadline / policy based abandon
+- status APIをpollする
+- 権威のあるreceiptをqueryする
+- アプリケーション固有のreconciliation
+- 人によるreview
+- compensationのworkflow
+- deadlineやpolicyにもとづくabandon
 
-Reconciliation自体もResource Budgetを持ちます。
+Reconciliation自体も、Resource Budgetを持ちます。
 
-無限pollをしません。
+無限にpollしません。
 
 ---
 
 # 35. Recovery Decision
 
-Attemptが閉じた後、Task State Authorityは次を評価します。
+Attemptが閉じた後、Task State Authorityは、次のことを評価します。
 
-概念順序は次のとおりです。
+概念上の順序は、次のとおりです。
 
 ~~~text
 AcceptedResult exists?
@@ -966,17 +936,17 @@ otherwise
   -> create new Attempt
 ~~~
 
-Worker lostだけでretry decisionを終えません。
+Workerが失われたことだけで、retryの判断を終えません。
 
 ---
 
 # 36. Recovery Candidate
 
-retry可能と判定しても、すぐAttemptを作りません。
+retryできると判定しても、すぐにAttemptを作りません。
 
-Mass reclaim時のamplificationを避けるため、Recovery Candidateを別状態として持てます。
+Mass reclaimのときの増幅を避けるため、Recovery Candidateを別の状態として持てます。
 
-概念Field:
+概念上のFieldは、次のとおりです。
 
 ~~~text
 Task ID
@@ -993,109 +963,101 @@ Recovery Batch / Event ID
 
 ---
 
-# 37. Backoff / Jitter
+# 37. BackoffとJitter
 
-同時Worker loss後のretry開始を分散します。
+同時にWorkerが失われた後の、retryの開始を分散します。
 
-具体algorithm / secondsは固定しません。
+具体的なalgorithmと秒数は、固定しません。
 
-重要なのは、
+重要なのは、次のものを別に持てることです。
 
-- per-task backoff
+- taskごとのbackoff
 - jitter
 - global release rate
 
-を別に持てることです。
-
-BackoffだけでNetwork Budgetは保証できません。
+Backoffだけでは、Network Budgetは保証できません。
 
 ---
 
 # 38. Recovery Admission Budget
 
-Recovery Queueから新Attemptをreleaseする際、
+Recovery Queueから、新しいAttemptをreleaseするときに、次のものを評価します。
 
-- max attempts per window
-- estimated transfer bytes per window
+- windowごとの、attemptの最大数
+- windowごとの、転送byte数の見積もり
 - compute capacity
-- per-store transfer concurrency
-- per-site bandwidth
-- Task priority
+- storeごとの転送のconcurrency
+- siteごとのbandwidth
+- Taskのpriority
 - deadline
 
-を評価します。
-
-Recovery処理自体が次のresource exhaustionを起こさないようにします。
+Recovery処理自体が、次のresource exhaustionを起こさないようにします。
 
 ---
 
 # 39. Mass Reclaim Event
 
-大量Workerが同時にreclaimされた場合、共通Recovery Event IDを付けられる余地を持ちます。
+大量のWorkerが同時にreclaimされた場合、共通のRecovery Event IDを付けられる余地を持ちます。
 
-これにより、
+これによって、次のものを観測できます。
 
-- affected Worker count
-- affected Task count
-- released retry count
-- transfer amplification
-- recovery duration
+- 影響を受けたWorkerの数
+- 影響を受けたTaskの数
+- releaseしたretryの数
+- 転送の増幅
+- 回復にかかった時間
 
-を観測できます。
-
-Provider reclaim権を待たせるための仕組みではありません。
+これは、Providerのreclaimの権利を待たせるための仕組みではありません。
 
 ---
 
 # 40. Reclaim Notice
 
-Provider / Workerが事前Noticeを送れる場合。
+ProviderやWorkerが、事前のNoticeを送れる場合は、次のことに利用できます。
 
-- new Lease停止
-- existing Lease non-renew
-- checkpoint request
-- new Placement回避
-- Recovery preparation
+- 新しいLeaseを止める
+- 既存のLeaseをrenewしない
+- checkpointを要求する
+- 新しいPlacementを避ける
+- Recoveryを準備する
 
-へ利用できます。
+Noticeは、best effortです。
 
-Noticeはbest effortです。
-
-突然消えても回復できることが基本です。
+突然消えても回復できることが、基本です。
 
 ---
 
-# 41. Local Governor Reclaim
+# 41. Local Governorによるreclaim
 
-user return / thermal / battery / opt-outによるLocal Governor stopは中央Task完遂より優先します。
+user return、thermal、battery、opt-outによるLocal Governorの停止は、中央のTaskの完了より優先します。
 
-Workerは可能ならReclaim Reasonを報告します。
+Workerは、可能であれば、Reclaim Reasonを報告します。
 
-しかし報告できなくてもLease expiryで回収します。
+しかし、報告できなくても、Leaseのexpiryで回収します。
 
-Central Control Planeは、
+中央のControl Planeは、
 
-> Taskが重要だからlocal stopを無視して続行
+> Taskが重要だから、local stopを無視して続行する
 
 というauthorityを持ちません。
 
 ---
 
-# 42. Checkpoint Recovery
+# 42. Checkpointからの回復
 
-Checkpointable Taskでは、reclaim時にCheckpointを生成できる場合があります。
+Checkpointできるtaskでは、reclaimのときに、Checkpointを生成できる場合があります。
 
-新Attemptはvalidated Checkpoint ArtifactをInputとして参照できます。
+新しいAttemptは、検証済みのCheckpoint Artifactを、Inputとして参照できます。
 
-Checkpointがない、壊れている、安全に検証できない場合は、元Inputから再実行できることを優先します。
+Checkpointがない、壊れている、安全に検証できないといった場合は、元のInputから再実行できることを、優先します。
 
-Checkpoint完成を待つためにuser reclaimを遅延しません。
+Checkpointの完成を待つために、userのreclaimを遅らせることはしません。
 
 ---
 
 # 43. Browser Worker
 
-Browser Profileでは短いLeaseを使い、lifecycle eventにFabric recoveryを依存させません。
+Browser Profileでは、短いLeaseを使い、lifecycle eventにFabricのrecoveryを依存させません。
 
 ~~~text
 visible-only:
@@ -1109,267 +1071,255 @@ freeze / discard:
   -> recovery
 ~~~
 
-Browser resume / reload後は新Leaseを必要とします。
+Browserのresumeやreloadの後は、新しいLeaseが必要です。
 
-old epoch messageは拒否します。
+古いepochのmessageは、拒否します。
 
 ---
 
 # 44. Multi-tab
 
-Browserのmulti-tab coordinationは未実装研究ですが、State Model上は同一Worker Identityから複数sessionが来ても、session / Lease / epochを区別できる必要があります。
+Browserのmulti-tabのcoordinationは、まだ研究が必要です。ただし、State Modelの上では、同じWorker Identityから複数のsessionが来ても、session、Lease、epochを区別できる必要があります。
 
-Session collisionで古いtabがcurrent Leaseを奪い返さないようfencingします。
+Sessionが衝突しても、古いtabが、現在のLeaseを奪い返さないように、fencingします。
 
 ---
 
-# 45. Federation Disconnect
+# 45. Federationの切断
 
-Federation Taskでは、
+Federation Taskでは、次の2つのdomainの間の通信が、切れる場合があります。
 
 - home domain
 - provider domain
 
-の通信が切れる場合があります。
+Provider側のローカルなWorkOrderとLeaseが有効であれば、Policyの範囲で、進行中のAttemptを継続できる余地があります。
 
-Provider側local WorkOrder / Leaseが有効なら、Policy範囲で進行中Attemptを継続できる余地があります。
+ただし、新しい外部のauthorityを、offlineで生成することはしません。
 
-ただし新しいforeign authorityをofflineで生成しません。
+Resultのexportができない場合は、Provider側で永続的に保持して、再接続の後にexportできます。
 
-Result exportができない場合、Provider側でdurableに保持し、再接続後にexportできます。
-
-具体RetentionはDeployment / Grant Policyに従います。
+具体的なRetentionは、DeploymentとGrant Policyに従います。
 
 ---
 
-# 46. Provider Grant Reclaim
+# 46. Providerによる、Grantのreclaim
 
-DP-5 Compute Grantが縮小された場合。
+DP-5のCompute Grantが縮小された場合は、次のように進めます。
 
-1. future Placement停止
-2. Lease renew停止
-3. affected Attemptをreclaim分類
-4. checkpoint best effort
-5. local stop
-6. safe retryability評価
-7. bounded Recovery Queue
-8. alternate pool / providerへ再配置
+1. 将来のPlacementを止める。
+2. Leaseのrenewを止める。
+3. 影響を受けるAttemptを、reclaimとして分類する。
+4. best effortでcheckpointする。
+5. localで停止する。
+6. 安全にretryできるかを評価する。
+7. 上限を設けたRecovery Queueに入れる。
+8. 別のpoolやproviderに再配置する。
 
-BeneficiaryのTask priorityがProvider reclaimを無効化しません。
+BeneficiaryのTaskのpriorityが、Providerのreclaimを無効にすることはありません。
 
 ---
 
 # 47. Deadline
 
-Task deadlineとLease expiryを同一にしません。
+Taskのdeadlineと、Leaseのexpiryを、同一にしません。
 
-Task deadlineはTask Intent上の時間条件です。
+Taskのdeadlineは、Task Intentの上の、時間の条件です。
 
-Lease expiryはWorker Assignment Authorityの有効期限です。
+Leaseのexpiryは、Worker Assignment Authorityの有効期限です。
 
-Deadline到達時に、
+Deadlineに到達したときに、次のどれを選ぶかは、Task ContractとDeadlineのsemanticsで決めます。
 
-- new Attempt停止
-- existing Attempt revoke
-- current Attempt completion待ち
+- 新しいAttemptを止める
+- 既存のAttemptをrevokeする
+- 現在のAttemptの完了を待つ
 
-のどれを選ぶかはTask Contract / deadline semanticsで決めます。
-
-Baselineでは少なくとも、deadlineを越えて無制限にnew Attemptを生成しないことを要求します。
+Baselineでは、少なくとも、deadlineを越えて、無制限に新しいAttemptを生成しないことを、要求します。
 
 ---
 
 # 48. Max Attempts
 
-Attempt BudgetはTask単位です。
+Attempt Budgetは、Taskの単位です。
 
-Speculative / verification / retryを含め、どのAttemptがBudgetを消費するかをPolicyで明示します。
+Speculative、verification、retryを含めて、どのAttemptがBudgetを消費するかを、Policyで明示します。
 
-Clientがretry requestを繰り返すことでBudgetをresetできません。
+Clientが、retryのrequestを繰り返すことで、Budgetをresetすることはできません。
 
 ---
 
 # 49. Fan-out / Child Task
 
-Taskが子Taskを生成できる拡張を導入する場合、子Taskは親Budgetを消費します。
+Taskが子Taskを生成できる拡張を導入する場合、子Taskは、親のBudgetを消費します。
 
-必要な制約は次のとおりです。
+必要な制約は、次のとおりです。
 
-- max depth
-- max children
-- remaining compute budget
+- 最大の深さ
+- 最大の子の数
+- 残りのcompute budget
 - network budget
-- deadline inheritance
+- deadlineの継承
 
-Task graph cycleやdistributed fork bombを防ぎます。
+Task graphのcycleや、分散したfork bombを防ぎます。
 
-具体Graph ContractはExtension SPI以降で扱います。
+具体的なGraph Contractは、Extension SPI以降で扱います。
 
 ---
 
 # 50. Quota Reservation
 
-Admission時にestimated maximum costをreserveし、Attempt実行・retry・output・transferで消費します。
+Admissionのときに、見積もった最大のcostを予約します。そして、Attemptの実行、retry、output、転送で消費します。
 
-Attempt failureで未使用分をrefundできます。
+Attemptが失敗したときは、未使用の分を、refundできます。
 
-ただし実消費したResourceはfailureでも消費として扱います。
+ただし、実際に消費したResourceは、失敗でも、消費として扱います。
 
-retryで新しい無制限Quotaを得ません。
+Retryによって、新しい無制限のQuotaを得ることはありません。
 
 ---
 
 # 51. Task StateとQueue State
 
-TaskがT-READYでも、Queueにmessageがない瞬間はあり得ます。
+TaskがT-READYでも、Queueにmessageがない瞬間は、あり得ます。
 
-Queue messageがあっても、Taskがcancelled / staleなら実行してはいけません。
+Queueにmessageがあっても、Taskがcancelledやstaleであれば、実行してはいけません。
 
-Worker delivery前にcurrent Task / Attempt / Lease stateを確認します。
+Workerへ配送する前に、現在のTask、Attempt、Leaseのstateを確認します。
 
-Queueはdelivery mechanismでありauthorityではありません。
+Queueは、delivery mechanismであり、authorityではありません。
 
 ---
 
 # 52. Task StateとScheduler
 
-SchedulerはTask stateを読んでProposalを作ります。
+Schedulerは、Task stateを読んで、Proposalを作ります。
 
-SchedulerがTask stateを書き換えてretry / completionを確定しません。
+Schedulerが、Task stateを書き換えて、retryやcompletionを確定することはありません。
 
-Scheduler crashはTask lifecycleを破損させない構造を選びます。
+Schedulerがcrashしても、Task lifecycleを破損させない構造を選びます。
 
 ---
 
 # 53. Task StateとResult Acceptance
 
-Result Acceptance AuthorityがAcceptedResultを発行した後、Task State AuthorityがTaskRecordをCOMPLETEDへ遷移させます。
+Result Acceptance Authorityが、AcceptedResultを発行した後、Task State Authorityが、TaskRecordをCOMPLETEDに遷移させます。
 
-AcceptanceとTask state writeを同一transactionへできない場合、
+AcceptanceとTask stateの書き込みを、同じtransactionにできない場合は、次の2つで、最終的に収束します。
 
-- durable AcceptedResult
-- idempotent completion transition
+- 永続的なAcceptedResult
+- 冪等なcompletionの遷移
 
-でeventual convergenceします。
-
-AcceptedResultが存在するのにretryを増やさないguardが必要です。
+AcceptedResultが存在するのに、retryを増やさないためのguardが必要です。
 
 ---
 
 # 54. Task StateとContribution
 
-ContributionRecordはTask completionに必須ではありません。
+ContributionRecordは、Task completionに必須ではありません。
 
-AcceptedResult成立後またはAttempt終了後に非同期で生成できます。
+AcceptedResultが成立した後、またはAttemptが終了した後に、非同期で生成できます。
 
-Contribution pipeline failureでTaskを再実行しません。
+Contributionのpipelineが失敗しても、Taskを再実行しません。
 
-Contribution accountingをexecution correctness pathから分離します。
+Contribution accountingを、executionの正しさの経路から、分離します。
 
 ---
 
-# 55. State recovery after Control Plane restart
+# 55. Control Planeの再起動後の、状態の回復
 
-DP-1単一Control Planeがrestartしても、durable storeから次を復元できる必要があります。
+DP-1の単一のControl Planeが再起動しても、永続的なstoreから、次のものを復元できる必要があります。
 
 - Task phase
-- non-terminal Attempts
-- active Lease / expiry
+- terminalではないAttempt
+- 有効なLeaseとexpiry
 - WorkOrder identity
 - Cancellation Intent
-- External Effect UNKNOWN
+- External EffectのUNKNOWN
 - Recovery Candidate
-- AcceptedResult ref
-- Budget consumption
+- AcceptedResultの参照
+- Budgetの消費
 
-Process memoryだけにcritical stateを置きません。
-
----
-
-# 56. Startup reconciliation
-
-Control Plane startup時:
-
-1. durable state load
-2. expired Lease分類
-3. active Worker session再接続待ち
-4. WorkOrder delivery outbox replay
-5. AcceptedResultとのTask state整合
-6. UNKNOWN EffectをReconciliationへ
-7. Recovery budget再構築
-
-を行える構造にします。
-
-Startupだから全non-terminal Taskをretryしません。
+Processのmemoryだけに、重要な状態を置きません。
 
 ---
 
-# 57. Split-brain control avoidance
+# 56. 起動時のreconciliation
 
-DP-2で複数Control Plane instanceを動かす場合、一つのTask / Attemptについて互いに矛盾するLease / State Transitionを発行しない必要があります。
+Control Planeの起動時に、次のことを行える構造にします。
 
-必要Property:
+1. 永続的なstateを読み込む。
+2. 期限切れのLeaseを分類する。
+3. 有効なWorker sessionの再接続を待つ。
+4. WorkOrderの配送のoutboxをreplayする。
+5. AcceptedResultとTask stateの整合を取る。
+6. UNKNOWNのEffectを、Reconciliationに回す。
+7. Recovery budgetを再構築する。
 
-- authoritative durable state
-- state revision fencing
+起動したからといって、terminalではないすべてのTaskを、retryしません。
+
+---
+
+# 57. Split-brainの回避
+
+DP-2で、複数のControl Plane instanceを動かす場合、一つのTaskやAttemptについて、互いに矛盾するLeaseやState Transitionを、発行しない必要があります。
+
+必要なPropertyは、次のとおりです。
+
+- 権威のある永続的なstate
+- state revisionのfencing
 - Lease epoch
-- unique Attempt identity
-- idempotent transition
-- signer policy
+- 一意なAttempt identity
+- 冪等な遷移
+- signerのpolicy
 
-具体consensus / database lock / transaction方式は実装比較へ残します。
+具体的なconsensus、database lock、transactionの方式は、実装の比較に残します。
 
 ---
 
-# 58. Idempotent state transition
+# 58. 冪等なstateの遷移
 
-同じEventが二度処理されても、
+同じEventが二度処理されても、次のことが起きないように、Transition IDやDecision IDを利用します。
 
 - Attemptを二つ作る
-- retry budgetを二回消費
-- AcceptedResultを二重記録
-- Contributionを二重発行
-
-しないようTransition ID / Decision IDを利用します。
+- retry budgetを二回消費する
+- AcceptedResultを二重に記録する
+- Contributionを二重に発行する
 
 ---
 
-# 59. Event log / audit
+# 59. Event logとaudit
 
-State transitionは少なくとも:
+State transitionは、少なくとも、次のものに関連付けられる必要があります。
 
-- previous state revision
-- transition type
-- actor / authority
-- reason
-- Task / Attempt
-- related Lease / Result / Receipt
+- 前のstate revision
+- transitionの種類
+- actorとauthority
+- 理由
+- TaskとAttempt
+- 関連するLease、Result、Receipt
 - policy revision
 - timestamp
 
-へ関連付けられる必要があります。
+Event sourcingは、必須にはしません。
 
-Event sourcingを必須にはしません。
-
-Current state + append-only auditでもRequirementを満たせます。
+現在のstateと、追記専用のauditでも、Requirementを満たせます。
 
 ---
 
-# 60. State retention
+# 60. Stateの保持
 
-Task terminal後もAudit / Result / Contribution / side-effect provenanceに必要な期間、Task / Attempt identityを保持します。
+Taskがterminalになった後も、Audit、Result、Contribution、side-effectのprovenanceに必要な期間、TaskとAttemptのidentityを保持します。
 
-ClientがTaskを削除しても、Security / Accounting上必要なAudit historyまで即消去するとは限りません。
+ClientがTaskを削除しても、SecurityやAccountingの上で必要なAuditの履歴まで、すぐに消去するとは限りません。
 
-Retention / privacy policyに従います。
+Retentionとprivacyのpolicyに従います。
 
 ---
 
-# 61. Retry reason taxonomy
+# 61. Retryの理由の分類
 
-Operational explainabilityのため、retry / new Attempt理由を分類します。
+運用で説明できるように、retryや新しいAttemptの理由を、分類します。
 
-例は次のとおりです。
+たとえば、次のものです。
 
 - WORKER_LOST
 - USER_RECLAIM
@@ -1382,13 +1332,13 @@ Operational explainabilityのため、retry / new Attempt理由を分類しま�
 - POLICY_MIGRATION
 - MANUAL_RETRY
 
-ReasonはSecurity Authorityではありませんが、Audit / Recovery tuningに使います。
+Reasonは、Security Authorityではありません。ただし、Auditと、Recoveryのtuningに使います。
 
 ---
 
-# 62. Hold reason taxonomy
+# 62. Holdの理由の分類
 
-T-HELDの理由例:
+T-HELDの理由の例は、次のとおりです。
 
 - RETRY_BUDGET_EXHAUSTED
 - UNKNOWN_EFFECT
@@ -1399,246 +1349,236 @@ T-HELDの理由例:
 - DEADLINE_EXCEEDED
 - MANUAL_REVIEW_REQUIRED
 
-Client向けmessageは情報漏えいしない範囲へ縮約します。
+Client向けのmessageは、情報が漏えいしない範囲に、縮約します。
 
 ---
 
-# 63. Failure classification
+# 63. 失敗の分類
 
-Attempt failureとTask failureを分けます。
+Attemptの失敗と、Taskの失敗を、分けます。
 
-## Attempt local failure
+## Attemptのローカルな失敗
 
-- process exit
-- sandbox limit
-- Worker loss
-- Artifact fetch error
-- output limit
+次のものは、通常、Attemptの単位です。
 
-は通常Attempt単位です。
+- processの終了
+- sandboxのlimit
+- Workerの喪失
+- Artifactのfetchのerror
+- outputのlimit
 
-## Task semantic failure
+## Taskのsemanticな失敗
 
 Application Validatorが、
 
-> このInputでは業務上処理不能
+> このInputでは、業務上、処理できない
 
-と権威ある形で判定する場合、Task-level failureへ進める可能性があります。
+と、権威のある形で判定する場合は、Task-levelの失敗に進める可能性があります。
 
-Worker self-reported failureだけでTask terminalへしません。
-
----
-
-# 64. Retry safety matrix
-
-概略は次のとおりです。
-
-| Task / Effect | Worker loss後 |
-| --- | --- |
-| pure compute + retryable | bounded retry可能 |
-| pure compute + not retryable | hold / fail |
-| non-idempotent effect, not dispatched | bounded retry可能 |
-| non-idempotent effect, dispatched unconfirmed | reconcile / UNKNOWN |
-| idempotent effect + stable operation identity | bounded retry可能 |
-| authoritative effect confirmed applied | completion policyへ |
-| cancellation + no unknown effect | cancel path |
-| cancellation + unknown effect | reconcile |
+Workerによる失敗の自己申告だけで、Taskをterminalにしません。
 
 ---
 
-# 65. Late message matrix
+# 64. Retryの安全のmatrix
 
-| Late message | 扱い |
+概略は、次のとおりです。
+
+| Task / Effect | Workerが失われた後 |
 | --- | --- |
-| old heartbeat | lease復活不可 |
-| old lease renewal | reject |
-| old WorkOrder ack | audit only / stale |
-| late ResultClaim | optional verification、lease復活不可 |
-| late Checkpoint | validation後にのみreuse候補 |
-| late Effect Receipt | authoritativeならreconciliation更新可能 |
-| late cancellation ack | state authorityではない |
+| pure compute + retryable | 上限を設けたretryが可能 |
+| pure compute + not retryable | holdまたはfail |
+| 冪等でないeffect、dispatch前 | 上限を設けたretryが可能 |
+| 冪等でないeffect、dispatch済みで未確認 | reconcile / UNKNOWN |
+| 冪等なeffect + 安定したoperation identity | 上限を設けたretryが可能 |
+| 権威のあるeffectが、適用済みと確認された | completion policyへ |
+| cancellation + unknown effectなし | cancelの経路 |
+| cancellation + unknown effectあり | reconcile |
 
-Effect Receiptは外部世界の事実を後から確定できるため、TaskがT-HELDでも受理する余地があります。
+---
+
+# 65. 遅れて届くmessageのmatrix
+
+| 遅れて届いたmessage | 扱い |
+| --- | --- |
+| 古いheartbeat | leaseを復活できない |
+| 古いlease renewal | reject |
+| 古いWorkOrder ack | auditのみ、stale |
+| 遅れて届いたResultClaim | 任意のverification、leaseを復活できない |
+| 遅れて届いたCheckpoint | validationの後にのみ、再利用の候補 |
+| 遅れて届いたEffect Receipt | 権威のあるものなら、reconciliationを更新できる |
+| 遅れて届いたcancellation ack | state authorityではない |
+
+Effect Receiptは、外部の世界の事実を、あとから確定できます。そのため、TaskがT-HELDでも、受理する余地があります。
 
 ---
 
 # 66. Reconciliation budget
 
-UNKNOWNを無期限にpollし続けないため:
+UNKNOWNを、無期限にpollし続けないために、次のものを設定できます。
 
-- max queries
-- max wall time
-- API rate
-- monetary cost
-- operator deadline
+- queryの最大回数
+- 最大のwall time
+- APIのrate
+- 金銭的なcost
+- operatorのdeadline
 
-を設定できます。
-
-Budget exhausted後はT-HELDまたはABANDONEDへ移行します。
+Budgetを使い切った後は、T-HELDまたはABANDONEDに移ります。
 
 ---
 
-# 67. Manual intervention
+# 67. 手動の介入
 
-Human / Application Operatorが行えるAction例:
+HumanやApplication Operatorが行えるActionの例は、次のとおりです。
 
-- retry authorize
-- abandon
-- mark external effect reconciled with evidence
-- trigger compensation
-- extend deadline
-- increase budget within separate authorization
+- retryを許可する
+- abandonする
+- evidenceを添えて、external effectをreconciledにする
+- compensationを起動する
+- deadlineを延長する
+- 別の認可の範囲で、budgetを増やす
 
-Operator actionもAuditし、Client userが自分でPolicy上限を無制限に増やせるものにはしません。
+Operatorのactionも、Auditします。Client userが、自分でPolicyの上限を、無制限に増やせるものにはしません。
 
 ---
 
 # 68. Compensation
 
-Compensationは新しいExternal Effectです。
+Compensationは、新しいExternal Effectです。
 
-Original effectを消したことにはしません。
+元のeffectを消したことには、なりません。
 
 ~~~text
 Effect E1 applied
 Compensation E2 applied
 ~~~
 
-として双方を記録します。
+として、両方を記録します。
 
-Task outcome上どう解釈するかはApplication Policyです。
+Task outcomeの上で、どう解釈するかは、Application Policyです。
 
 ---
 
-# 69. Verification replica lifecycle
+# 69. Verification replicaのlifecycle
 
-Result Assuranceのためのreplica Attemptも通常Attemptです。
+Result Assuranceのための、replicaのAttemptも、通常のAttemptです。
 
-Worker数の多数決ではなくIndependence requirementを別に評価します。
+Workerの数による多数決ではなく、Independence requirementを、別に評価します。
 
-accepted result成立後、不要replicaはstopできます。
+accepted resultが成立した後、不要なreplicaは、stopできます。
 
 ---
 
 # 70. Speculative execution
 
-Deadline対策でslow Attemptと並行してspeculative Attemptを作る場合。
+Deadlineへの対策として、遅いAttemptと並行して、speculativeなAttemptを作る場合は、次の条件を満たす必要があります。
 
-- additional compute budget
+- 追加のcompute budget
 - network budget
-- max parallel attempts
-- result dedup
-- side-effect-free requirement
+- 並行するattemptの最大数
+- resultのdedup
+- side-effectがないこと
 
-を満たす必要があります。
-
-external side-effect Taskを無条件にspeculative duplicateしません。
+外部への副作用を持つTaskを、無条件にspeculativeに重複させません。
 
 ---
 
-# 71. Checkpointable vs checkpoint-required
+# 71. CheckpointableとCheckpoint-required
 
-Checkpointableは、
+Checkpointableが意味するのは、
 
 > checkpointを作れる可能性がある
 
-という意味です。
+ということです。
 
-reclaim時に必ずcheckpointが成功するとは限りません。
+reclaimのときに、必ずcheckpointが成功するとは限りません。
 
-Task recoveryはcheckpointなしでも安全に動けるか、明示的にrequired profileとして扱います。
+Task Recoveryは、checkpointがなくても安全に動けるか、明示的にrequired profileとして扱います。
 
 ---
 
 # 72. Worker sessionとWorker identity
 
-Worker Identityが同じでもsessionは変わります。
+Worker Identityが同じでも、sessionは変わります。
 
-restart / browser reload後に新sessionを作ります。
+再起動やbrowserのreloadの後は、新しいsessionを作ります。
 
-古sessionのLease / nonce / heartbeatをcurrent sessionへ持ち越しません。
+古いsessionのLease、nonce、heartbeatを、現在のsessionに持ち越しません。
 
-Worker Identity long-livednessとsession authorityを分離します。
-
----
-
-# 73. Worker deregistration
-
-WorkerをAdministrativeにdisable / revokeした場合。
-
-- new Placement禁止
-- Lease renew停止
-- active Lease revoke
-- Data Grant revoke where possible
-- active Task recovery
-
-を行います。
-
-WorkerがofflineでもrevocationはControl Plane stateへ先に反映します。
+Worker Identityの長い寿命と、sessionのauthorityを、分離します。
 
 ---
 
-# 74. Executor revocation
+# 73. Workerの登録解除
 
-Executor Approvalがrevokedされた場合、Task Stateは影響Attemptを評価します。
+WorkerをAdministrativeにdisableやrevokeした場合は、次のことを行います。
 
-高risk revocationではactive WorkOrderをrevoke / stopできます。
+- 新しいPlacementを禁止する。
+- Leaseのrenewを止める。
+- 有効なLeaseをrevokeする。
+- 可能であれば、Data Grantをrevokeする。
+- 有効なTaskをrecoveryする。
 
-既に生成されたResultを受理してよいかはrevocation reason / Result Policyへ依存します。
+Workerがofflineでも、revocationは、先にControl Plane stateに反映します。
 
-単純に全履歴を消しません。
+---
+
+# 74. Executorのrevocation
+
+Executor Approvalがrevokeされた場合、Task Stateは、影響を受けるAttemptを評価します。
+
+リスクの高いrevocationでは、有効なWorkOrderをrevokeしたり、stopしたりできます。
+
+すでに生成されたResultを、受理してよいかは、revocationの理由とResult Policyに依存します。
+
+単純に、すべての履歴を消しません。
 
 ---
 
 # 75. Policy revision
 
-Policy更新によって現在Attemptが新Policyを満たさなくなった場合。
+Policyの更新によって、現在のAttemptが、新しいPolicyを満たさなくなった場合は、次のいずれかを、Policy Change Ruleで明示します。
 
 - grandfather
-- stop / migrate
+- stopしてmigrate
 - revalidate
 
-のいずれかをPolicy Change Ruleで明示します。
-
-古いPolicy RevisionのDecisionを無条件にcurrentとして扱いません。
+古いPolicy RevisionのDecisionを、無条件に現在のものとして扱いません。
 
 ---
 
-# 76. Resource budget reconciliation
+# 76. Resource budgetの突き合わせ
 
-Attempt終了時にreserved budgetとactual usageをreconcileします。
+Attemptが終了したときに、予約したbudgetと、実際の使用量を突き合わせます。
 
-- unused reservation refund
-- actual usage charge
-- retry budget consume
-- output / transfer usage
+次のものを、Task budgetに戻します。
 
-をTask budgetへ戻します。
+- 未使用の予約のrefund
+- 実際の使用量のcharge
+- retry budgetの消費
+- outputと転送の使用量
 
-悪意Worker self-reportだけでactual resource usageを確定しません。
+悪意のあるWorkerの自己申告だけで、実際のresource usageを確定しません。
 
 ---
 
-# 77. Task priority
+# 77. Taskのpriority
 
-PriorityはRecovery順序に利用できますが、Security / Local Governor / Budgetを上書きしません。
+Priorityは、Recoveryの順序に利用できます。ただし、Security、Local Governor、Budgetを上書きしません。
 
-high priorityだから、
+priorityが高くても、次のことはできません。
 
-- confidential dataをpublic Workerへ置く
-- Provider reclaimを拒否する
+- confidentialなdataを、public Workerに置く
+- Providerのreclaimを拒否する
 - thermal stopを無視する
-- retry budgetを無限化する
-
-ことはできません。
+- retry budgetを無限にする
 
 ---
 
-# 78. Recovery fairness
+# 78. Recoveryの公平性
 
-大量Recoveryで一つのTenant / Beneficiaryが全capacityを占有しないよう、Principal / Grant / priority classごとのfairnessを適用できる余地を持ちます。
+大量のRecoveryで、一つのTenantやBeneficiaryが、すべてのcapacityを占有しないように、Principal、Grant、priority classごとのfairnessを適用できる余地を持ちます。
 
-具体queue algorithmは固定しません。
+具体的なqueueのalgorithmは、固定しません。
 
 ---
 
@@ -1646,65 +1586,65 @@ high priorityだから、
 
 ## DP-1 Small
 
-single durable state storeでrevisionを守る。
+単一の永続的なstate storeで、revisionを守る。
 
 ## DP-2 Enterprise
 
-multiple Control instancesでもfencing / transactionを維持。
+複数のControl instanceでも、fencingとtransactionを維持する。
 
 ## DP-3 Browser
 
-short Lease、high churn、大量stale sessionに耐える。
+短いLease、高いchurn、大量のstaleなsessionに耐える。
 
 ## DP-4 Federation
 
-domain-local Attempt / Lease authorityを維持し、remote disconnectをTask failureへ直結させない。
+domain-localなAttemptとLeaseのauthorityを維持する。remoteの切断を、Taskの失敗に直結させない。
 
 ## DP-5 Grant
 
-mass reclaimをRecovery Eventとして扱う。
+mass reclaimを、Recovery Eventとして扱う。
 
 ## DP-6 Dedicated
 
-Leaseは長めにできても同じstate semanticsを維持。
+Leaseを長めにできても、同じstateのsemanticsを維持する。
 
 ---
 
 # 80. State Model Invariants
 
-1. TaskとAttemptを同一Identityにしない。
-2. Retryは新Attemptを作る。
-3. Queue delivery retryで新Attemptを作らない。
-4. Lease expiryをTask failureと同一視しない。
-5. Lease expiryをexternal effect failureと同一視しない。
-6. heartbeatをLease Authorityにしない。
-7. Worker running申告をdurable factにしない。
-8. old Lease / epochでcurrent authorityを復活させない。
-9. WorkOrder dispatch前にdurable execution intentを記録する。
-10. Queueをsource of truthにしない。
-11. Worker disappearanceだけでretryを決めない。
-12. non-idempotent dispatched effectのUNKNOWNを自動retryしない。
-13. CancellationでUNKNOWNを消さない。
-14. AcceptedResult成立後に不要Attemptを増やさない。
-15. late Resultでexpired Leaseを復活させない。
-16. speculative / replica AttemptもBudgetを消費する。
-17. mass reclaim recoveryへrelease / transfer budgetを適用する。
-18. Local Governor reclaimをTask completionより優先する。
-19. Control Plane restartでUNKNOWN / Lease / Attempt historyを失わない。
-20. State transitionをidempotentに処理できる。
-21. state revision / fencingでstale writerを拒否する。
-22. Task priorityでSecurity / Safety / Budgetを迂回しない。
-23. Contribution failureをTask retry reasonにしない。
-24. Worker self-reportだけでTask terminal outcomeを確定しない。
-25. ABANDONED UNKNOWNをfailed-not-appliedと誤表現しない。
+1. TaskとAttemptを、同一のIdentityにしない。
+2. Retryは、新しいAttemptを作る。
+3. Queueの配送のretryで、新しいAttemptを作らない。
+4. Leaseのexpiryを、Taskの失敗と同一視しない。
+5. Leaseのexpiryを、external effectの失敗と同一視しない。
+6. heartbeatを、Lease Authorityにしない。
+7. Workerのrunningの申告を、永続的な事実にしない。
+8. 古いLeaseやepochで、現在のauthorityを復活させない。
+9. WorkOrderをdispatchする前に、永続的なexecution intentを記録する。
+10. Queueを、source of truthにしない。
+11. Workerが消えたことだけで、retryを決めない。
+12. dispatch済みの、冪等でないeffectのUNKNOWNを、自動でretryしない。
+13. Cancellationで、UNKNOWNを消さない。
+14. AcceptedResultが成立した後に、不要なAttemptを増やさない。
+15. 遅れて届いたResultで、期限切れのLeaseを復活させない。
+16. speculativeやreplicaのAttemptも、Budgetを消費する。
+17. mass reclaimのrecoveryに、releaseと転送のbudgetを適用する。
+18. Local Governorのreclaimを、Taskのcompletionより優先する。
+19. Control Planeを再起動しても、UNKNOWN、Lease、Attemptの履歴を失わない。
+20. State transitionを、冪等に処理できる。
+21. state revisionとfencingで、staleなwriterを拒否する。
+22. Taskのpriorityで、Security、Safety、Budgetを迂回しない。
+23. Contributionの失敗を、Taskのretryの理由にしない。
+24. Workerの自己申告だけで、Taskのterminal outcomeを確定しない。
+25. ABANDONEDのUNKNOWNを、failed-not-appliedと誤って表現しない。
 
 ---
 
 # 81. 次のWork Unitへの入力
 
-次はExtension SPIを定義します。
+次は、Extension SPIを定義します。
 
-State Modelから引き継ぐExtension Point候補:
+State Modelから引き継ぐ、Extension Pointの候補は、次のとおりです。
 
 - Queue / Delivery
 - State Store
@@ -1718,15 +1658,13 @@ State Modelから引き継ぐExtension Point候補:
 - Contribution Measurement
 - Telemetry
 
-SPIはCore State / Authority semanticsを差し替えるものではありません。
+SPIは、CoreのStateとAuthorityのsemanticsを、差し替えるものではありません。
 
-Adapterが変わっても、
+Adapterが変わっても、次のものを維持することを、条件にします。
 
-- Task / Attempt identity
-- Lease fencing
-- UNKNOWN effect
-- ResultClaim / AcceptedResult
+- TaskとAttemptのidentity
+- Leaseのfencing
+- UNKNOWNのeffect
+- ResultClaimとAcceptedResult
 - ArtifactGrant
-- Authority separation
-
-を維持することを条件にします。
+- Authorityの分離

@@ -101,8 +101,9 @@ type Revocation struct {
 }
 
 // Grant is an issued Compute Grant. Its zero value is a nil grant. Only Issue
-// creates a usable Grant, and Grant is immutable after that: Revoke returns a
-// copy rather than changing the receiver.
+// creates a usable Grant, and a Grant never changes after that. Whether it has
+// been revoked is not stored in the Grant. The Ledger holds it, keyed by the
+// grant's digest, so every copy of a grant gets the same answer.
 type Grant struct {
 	issued      bool
 	provider    Identity
@@ -113,8 +114,6 @@ type Grant struct {
 	maxLeases   int
 	purpose     Purpose
 	policy      contract.Digest
-	revoked     bool
-	revocation  Revocation
 }
 
 // Issue builds a grant from spec. The issuer must be the provider that spec
@@ -191,14 +190,6 @@ func (g Grant) Purpose() Purpose { return g.purpose }
 // PolicyRevision returns the digest of the policy revision the grant was issued under.
 func (g Grant) PolicyRevision() contract.Digest { return g.policy }
 
-// Revocation returns the revocation record, and false if the grant was never revoked.
-func (g Grant) Revocation() (Revocation, bool) {
-	if !g.revoked {
-		return Revocation{}, false
-	}
-	return g.revocation, true
-}
-
 // Ceiling returns the percent ceiling for class, and false if the grant does
 // not cover that class.
 func (g Grant) Ceiling(class ResourceClass) (int, bool) {
@@ -210,33 +201,22 @@ func (g Grant) Ceiling(class ResourceClass) (int, bool) {
 	return 0, false
 }
 
-// ActiveAt reports whether the grant was active at the instant at. A grant is
-// active from IssuedAt up to ExpiresAt, exclusive, and stops being active at
-// the revocation's effective time. Querying an earlier time still answers
-// whether the grant was active then.
-func (g Grant) ActiveAt(at time.Time) bool {
+// inWindow reports whether the instant at falls inside the validity window,
+// which runs from IssuedAt up to ExpiresAt, exclusive. It does not consider
+// revocation. Admit checks the Ledger as well.
+func (g Grant) inWindow(at time.Time) bool {
 	if !g.issued || at.IsZero() {
 		return false
 	}
-	if at.Before(g.issuedAt) || !at.Before(g.expiresAt) {
-		return false
-	}
-	if g.revoked && !at.Before(g.revocation.EffectiveAt) {
-		return false
-	}
-	return true
+	return !at.Before(g.issuedAt) && at.Before(g.expiresAt)
 }
 
-// inactiveError names why the grant is not active at at, without echoing times.
-func (g Grant) inactiveError(at time.Time) error {
-	switch {
-	case at.Before(g.issuedAt):
+// windowError names why at falls outside the validity window, without echoing times.
+func (g Grant) windowError(at time.Time) error {
+	if at.Before(g.issuedAt) {
 		return fmt.Errorf("%w: not yet issued", ErrGrantNotActive)
-	case !at.Before(g.expiresAt):
-		return fmt.Errorf("%w: expired", ErrGrantNotActive)
-	default:
-		return fmt.Errorf("%w: revoked", ErrGrantNotActive)
 	}
+	return fmt.Errorf("%w: expired", ErrGrantNotActive)
 }
 
 func checkIdentity(field string, v Identity) error {
