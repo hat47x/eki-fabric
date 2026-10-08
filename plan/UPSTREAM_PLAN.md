@@ -489,3 +489,28 @@ current main `9e990e7c89924fb4005264e7556b41e0e3fb62b1` を計画と再照合し
 - `plan/adr/0010-contribution-record-is-not-currency.md`: Contribution Recordに残高、移転、価格を持たせない（RQ-038、#68）。
 
 隣接Product（SUI、SEI、TEI）に依存していないことの機械的な検査は、#69で扱う。
+
+### 2026-10-08 製品価値の中核（core）の統合状況
+
+2026-10-08時点で、次のcoreがmainに入っている。いずれも、入力と時刻を外から受け取って判定を返す純粋な実装であり、I/O、時計の読み取り、Goroutineを持たない。Adapterへの接続と、Attempt / Leaseとの統合は含まない。
+
+- Local Governor（`internal/agent/governor`）: 人の操作を最優先し、opt-outと中央Grantによる絞り込みを判定する。古い読み取り値の場合は、より制限的な側に倒して判定する。
+- Contribution Record（`internal/core/contribution`）: 測定のassuranceを閉じた単位で表す。残高、通貨、価格の欄は持たない（ADR-0010）。
+- Result Acceptance（`internal/core/resultaccept`）: 独立性の次元、票、RA-level、NotGuaranteedを分けて扱う。identityの値はUnicodeの書式文字（Cf）を拒否する。
+- Artifact ingest admission（`internal/core/artifactsafety`）: ZIPの展開量、圧縮比、名前の大文字小文字の畳み込み、拡張フィールドの曖昧さを事前に判定する。
+- Effect state（`internal/core/effectstate`）とDispatch guard（`internal/core/dispatchguard`、`internal/spi/dispatchlog`）: commit-before-dispatchを守る。非冪等な効果は、dispatchを一度も記録していない世代に限って再実行する（ADR-0007、暫定）。
+- External Effect適合試験（`conformance/externaleffecttest`）: 外部呼び出しが記録より先に始まらないことを、失敗系を含めて確認する。参照実装であるdispatchguard.Guardは、メモリ版とSQLite版の両方でこの試験を通る。Adapter SPIの形はまだ決めていない。
+- Compute Grant（`internal/core/grant`）: 発行できるのは、Grantが名指しした提供者だけである。資源クラスごとの上限と同時利用の割合を検査する。失効は台帳（Ledger）に記録する。一つのGrantに対しては最初の失効だけが有効になり、後からの失効は拒否する。同じ内容で発行し直したGrantも、同じ失効の対象となる。判定に使う台帳がnilの場合は拒否する。
+- Federation trust binding（`internal/core/federation`）: Trust Domainには、一度に一つのBundleだけを対応付ける。Bundleの版番号の巻き戻しと、同じ版番号での内容の食い違いを拒否する。Ed25519の小さな位数の公開鍵（単位元を含む）と、非正規のy座標をもつ公開鍵は、Bundleの鍵としても認可鍵としても受け入れない。
+
+レビューで見つかり、修正した欠陥は次のとおりである。
+
+- Compute Grant: 失効が値ごとのフラグで表されていたため、失効していない複製に対して再び失効させることができ、停止時刻を後から動かせた。失効をDigestごとの台帳で管理する形に修正した（ee224d1）。
+- Federation trust binding: Ed25519の検証は単位元を公開鍵として受け入れる。そのような鍵がBundleの鍵や認可鍵に入ると、任意のメッセージに対する署名を偽造できた。小さな位数の鍵と非正規の鍵を拒否するように修正した（4ba45a2）。
+
+まだ決めていない事項、または未着手の事項は次のとおりである。
+
+- Attempt / Leaseの永続化とLSE-1は、別の作業で扱っている。M0 gateの直接blockerのままである。
+- External Effect Adapter SPIの形。現在のSenderは暫定である。
+- 上記coreのAdapterへの接続。具体的には、Compute Grantの発行、Federationの取り込み、Local Governorの実行への組み込み。
+- Compute Grant、Federation、Local Governorの上流要件の確定。業務フローに依存する判断は、ADRで暫定として記録する。
