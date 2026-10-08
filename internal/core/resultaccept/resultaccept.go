@@ -164,7 +164,7 @@ const (
 	NotGuaranteedVerifierIntegrity    = "integrity of verifiers beyond the independence dimensions declared by the trusted boundary"
 	NotGuaranteedUndeclaredCollusion  = "independence not shown by the declared dimensions, including collusion"
 	// NotGuaranteedMechanicalCheckLimit applies to mechanical outputs.
-	NotGuaranteedMechanicalCheckLimit = "correctness beyond the mechanical check named by the task contract"
+	NotGuaranteedMechanicalCheckLimit = "whether the mechanical check named by the task contract passed; this decision does not evaluate it"
 	// NotGuaranteedSemanticCorrectness applies to semantically open outputs.
 	NotGuaranteedSemanticCorrectness = "semantic correctness of the output is not established"
 )

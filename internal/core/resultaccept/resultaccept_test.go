@@ -691,3 +691,29 @@ func TestDecisionHasNoBooleanVerdict(t *testing.T) {
 		}
 	}
 }
+
+// Invisible format characters make two identities look equal while they are
+// different bytes, so they are refused rather than compared. The values are
+// written as byte escapes so the source stays plain ASCII.
+func TestIdentityValuesRefuseInvisibleFormatCharacters(t *testing.T) {
+	for _, value := range []string{
+		"principal-P0\xe2\x80\x8b", // zero-width space
+		"prin\xe2\x80\x8dcipal",    // zero-width joiner
+		"\xef\xbb\xbfprincipal",    // byte order mark
+		"principal\xe2\x80\xaeP0",  // right-to-left override
+		"operator\xe2\x81\xa6O1",   // left-to-right isolate
+	} {
+		if validID(value) {
+			t.Errorf("validID(%q) = true, want false", value)
+		}
+	}
+	if !validID("principal-P0") {
+		t.Error("an ordinary identity was refused")
+	}
+}
+
+func TestMechanicalLimitSaysTheCheckIsNotEvaluated(t *testing.T) {
+	if !strings.Contains(NotGuaranteedMechanicalCheckLimit, "does not evaluate") {
+		t.Errorf("mechanical limit does not say the check is unevaluated: %q", NotGuaranteedMechanicalCheckLimit)
+	}
+}

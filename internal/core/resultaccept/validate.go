@@ -169,12 +169,16 @@ func checkValue(d Dimension, value string) error {
 	return nil
 }
 
+// validID reports whether s is usable as an identity value. Format characters are
+// refused because they are invisible: two values that print the same could name
+// two different principals. Lookalike letters from other scripts are not detected
+// here, so the trusted boundary must canonicalize identity text.
 func validID(s string) bool {
 	if s == "" || len(s) > maxIDBytes || !utf8.ValidString(s) || strings.TrimSpace(s) != s {
 		return false
 	}
 	for _, r := range s {
-		if unicode.IsControl(r) {
+		if unicode.IsControl(r) || unicode.Is(unicode.Cf, r) {
 			return false
 		}
 	}
