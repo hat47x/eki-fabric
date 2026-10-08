@@ -39,6 +39,7 @@ func TestExportedTypesCarryNoMoneyFields(t *testing.T) {
 		reflect.TypeOf(ResourceCeiling{}),
 		reflect.TypeOf(Spec{}),
 		reflect.TypeOf(Revocation{}),
+		reflect.TypeOf(RecordedRevocation{}),
 		reflect.TypeOf(Ledger{}),
 		reflect.TypeOf(Grant{}),
 		reflect.TypeOf(Request{}),
