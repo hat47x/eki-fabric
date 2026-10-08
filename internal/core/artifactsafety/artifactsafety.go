@@ -169,6 +169,9 @@ const (
 	ReasonNameWindowsTrailing Reason = "name_windows_trailing_dot_or_space"
 	ReasonNameOutsideRoot     Reason = "name_outside_root"
 	ReasonDuplicateName       Reason = "duplicate_name"
+	ReasonNameExtraMismatch   Reason = "name_extra_mismatch"
+	ReasonExtraMalformed      Reason = "extra_field_malformed"
+	ReasonCompressedTotal     Reason = "compressed_total_exceeded"
 	ReasonPathConflict        Reason = "path_conflict"
 
 	ReasonLinkEntry         Reason = "entry_link"
@@ -308,7 +311,7 @@ func (p *Policy) run(r io.Reader, expect Digest) (d Decision, st runStats) {
 		return reject(ReasonTooManyEntries, -1, digest), st
 	}
 
-	planned, reason, index := p.plan(zr.File)
+	planned, reason, index := p.plan(zr.File, uint64(len(data)))
 	if reason != "" {
 		return reject(reason, index, digest), st
 	}
@@ -357,6 +360,8 @@ func notGuaranteed() []string {
 		"trustworthiness of the caller-supplied expected digest itself",
 		"parser isolation: decoding runs in this process without OS-level CPU, memory, or wall-time limits",
 		"Unicode normalization equivalence of names, which the standard library cannot check; names that differ only by normalization form are not detected as duplicates",
+		"full case folding, such as \"ß\" with \"ss\", is not applied to names; simple case folding is",
+		"extra fields in local file headers are not inspected, because archive/zip does not expose them; central directory extra fields are checked",
 		"bytes the zip container parser does not interpret, such as data before the first local header or after the central directory, are covered by the digest only",
 		"CRC32 detects accidental corruption, not deliberate tampering",
 		"write-time behavior on the target file system (existing files, mount points, link races), because this package writes nothing",

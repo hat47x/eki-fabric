@@ -4,6 +4,7 @@ import (
 	"archive/zip"
 	"bufio"
 	"compress/flate"
+	"encoding/binary"
 	"hash/crc32"
 	"io"
 	"math/bits"
@@ -56,16 +57,17 @@ type plannedEntry struct {
 
 // plan checks the metadata of every entry without decoding any content. It
 // returns the planned entries in central directory order, or the first
-// rejection with its index.
+// rejection with its index. archiveBytes is the size of the whole archive.
 //
 // Declared sizes are used here only to reject early. Acceptance is decided by
 // stream, which measures the sizes.
-func (p *Policy) plan(files []*zip.File) ([]plannedEntry, Reason, int) {
+func (p *Policy) plan(files []*zip.File, archiveBytes uint64) ([]plannedEntry, Reason, int) {
 	out := make([]plannedEntry, 0, len(files))
 	seen := make(map[string]struct{}, len(files))
 	fileKeys := make(map[string]struct{})
 	ancestorKeys := make(map[string]struct{})
 	var declared uint64
+	var compressed uint64
 
 	for i, f := range files {
 		name, reason := normalizeName(f.Name, p.limits.MaxNameBytes, p.limits.MaxPathDepth)
@@ -79,6 +81,18 @@ func (p *Policy) plan(files []*zip.File) ([]plannedEntry, Reason, int) {
 		if reason := checkHeader(f); reason != "" {
 			return nil, reason, i
 		}
+		if reason := checkExtraFields(f); reason != "" {
+			return nil, reason, i
+		}
+		// Each entry reads exactly its declared compressed range. The ranges of
+		// well-formed entries do not overlap, so together they fit in the archive.
+		// Records that share bytes would make the decoder read the same input
+		// again for each entry, so the sum is bounded here. compressed never
+		// exceeds archiveBytes, so the subtraction is safe.
+		if f.CompressedSize64 > archiveBytes-compressed {
+			return nil, ReasonCompressedTotal, i
+		}
+		compressed += f.CompressedSize64
 		if f.UncompressedSize64 > uint64(p.limits.MaxEntryBytes) {
 			return nil, ReasonEntryTooLarge, i
 		}
@@ -90,7 +104,7 @@ func (p *Policy) plan(files []*zip.File) ([]plannedEntry, Reason, int) {
 
 		// Two entries that map to the same name, ignoring ASCII and Unicode
 		// simple case, are a rejection, not an overwrite.
-		key := strings.ToLower(name)
+		key := foldKey(name)
 		if _, dup := seen[key]; dup {
 			return nil, ReasonDuplicateName, i
 		}
@@ -163,6 +177,43 @@ func checkHeader(f *zip.File) Reason {
 	}
 	if f.Method != zip.Store && f.Method != zip.Deflate {
 		return ReasonUnsupportedMethod
+	}
+	return ""
+}
+
+// zipExtraUnicodePath is the Info-ZIP Unicode Path extra field (tag 0x7075). It
+// carries a UTF-8 name, and some extractors write that name in place of the
+// header name.
+const zipExtraUnicodePath = 0x7075
+
+// checkExtraFields parses the extra fields of an entry. The Unicode Path field
+// must repeat the header name exactly, with a matching CRC32 of that name, so an
+// extractor that honours the field writes the same file as one that does not.
+// Malformed extra data is rejected, because a malformed block could hide such a
+// field from this check. Local file header extra fields are not visible through
+// archive/zip and are not inspected; see the NotGuaranteed list.
+func checkExtraFields(f *zip.File) Reason {
+	extra := f.Extra
+	for len(extra) > 0 {
+		if len(extra) < 4 {
+			return ReasonExtraMalformed
+		}
+		tag := binary.LittleEndian.Uint16(extra[0:2])
+		size := int(binary.LittleEndian.Uint16(extra[2:4]))
+		if size > len(extra)-4 {
+			return ReasonExtraMalformed
+		}
+		data := extra[4 : 4+size]
+		if tag == zipExtraUnicodePath {
+			if len(data) < 5 || data[0] != 1 {
+				return ReasonExtraMalformed
+			}
+			if binary.LittleEndian.Uint32(data[1:5]) != crc32.ChecksumIEEE([]byte(f.Name)) ||
+				string(data[5:]) != f.Name {
+				return ReasonNameExtraMismatch
+			}
+		}
+		extra = extra[4+size:]
 	}
 	return ""
 }

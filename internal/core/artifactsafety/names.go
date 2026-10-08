@@ -104,6 +104,32 @@ func isWindowsReserved(segment string) bool {
 	return windowsReserved[strings.ToUpper(base)]
 }
 
+// foldKey returns the key used to detect duplicate names and path conflicts. Each
+// rune is replaced by the smallest rune in its Unicode simple case-folding orbit,
+// so "σ", "ς" and "Σ" share a key, as do "s", "S" and "ſ". Separators are
+// unchanged, so the key keeps the path structure. Full case folding, which maps
+// one letter to several (for example "ß" to "ss"), is not applied; see the
+// NotGuaranteed list.
+func foldKey(s string) string {
+	var b strings.Builder
+	b.Grow(len(s))
+	for _, r := range s {
+		b.WriteRune(minFold(r))
+	}
+	return b.String()
+}
+
+// minFold returns the smallest rune in the simple case-folding orbit of r.
+func minFold(r rune) rune {
+	least := r
+	for f := unicode.SimpleFold(r); f != r; f = unicode.SimpleFold(f) {
+		if f < least {
+			least = f
+		}
+	}
+	return least
+}
+
 // ancestorsOf returns the proper ancestor paths of a normalized key, from the
 // top level down. For "a/b/c" it returns "a" and "a/b".
 func ancestorsOf(key string) []string {
