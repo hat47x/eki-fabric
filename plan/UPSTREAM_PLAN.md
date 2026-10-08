@@ -511,6 +511,7 @@ current main `9e990e7c89924fb4005264e7556b41e0e3fb62b1` を計画と再照合し
 まだ決めていない事項、または未着手の事項は次のとおりである。
 
 - Attempt / Leaseの永続化とLSE-1は、別の作業で扱っている。M0 gateの直接blockerのままである。
-- External Effect Adapter SPIの形。現在のSenderは暫定である。
+- External Effect Adapter SPIの形。境界は、ADR-0011で暫定に決めた。記録はCoreが書き、Adapterは宣言と呼び出しだけを提供する。EffectProfileの型と、Receipt検証のSPIは未決である。
+- 失効台帳（Compute Grant）とFederation Registryの永続化。プロセスの再起動で状態が失われると、失効した Grant の再受理や、失効した Domain の再 Federationが起きる。ADR-0012に従い、別の作業で進めている。
 - 上記coreのAdapterへの接続。具体的には、Compute Grantの発行、Federationの取り込み、Local Governorの実行への組み込み。
 - Compute Grant、Federation、Local Governorの上流要件の確定。業務フローに依存する判断は、ADRで暫定として記録する。
