@@ -54,7 +54,8 @@ type Bundle struct {
 // NewBundle returns the bundle for domain at sequence. The sequence must be at
 // least 1 and must increase with each new bundle of the domain. The keys are
 // copied and sorted by ID. A bundle holds 1 to 64 keys, every key ID is unique,
-// and every public key is distinct and exactly 32 bytes. The caller supplies
+// and every public key is distinct, exactly 32 bytes, and not the identity or
+// another small-order point (see usableSigningKey). The caller supplies
 // validatedAt, and the package never reads a clock.
 func NewBundle(domain TrustDomain, sequence uint64, validatedAt time.Time, keys []BundleKey) (Bundle, error) {
 	b := Bundle{
@@ -131,6 +132,9 @@ func (b Bundle) checkContent() error {
 		}
 		if len(k.PublicKey) != ed25519.PublicKeySize {
 			return fmt.Errorf("%w: key %q is not a %d-byte Ed25519 public key", ErrInvalidBundle, k.ID, ed25519.PublicKeySize)
+		}
+		if !usableSigningKey(k.PublicKey) {
+			return fmt.Errorf("%w: key %q is the identity, another point of small order, or not canonically encoded", ErrInvalidBundle, k.ID)
 		}
 		if _, dup := ids[k.ID]; dup {
 			return fmt.Errorf("%w: key ID %q appears twice", ErrInvalidBundle, k.ID)

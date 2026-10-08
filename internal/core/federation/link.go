@@ -68,6 +68,9 @@ func (l Link) validate() error {
 	if len(l.authorityKey) != ed25519.PublicKeySize {
 		return fmt.Errorf("%w: bundle authority key must be a %d-byte Ed25519 public key", ErrInvalidLink, ed25519.PublicKeySize)
 	}
+	if !usableSigningKey(l.authorityKey) {
+		return fmt.Errorf("%w: bundle authority key is the identity, another point of small order, or not canonically encoded", ErrInvalidLink)
+	}
 	if len(l.purposes) == 0 {
 		return fmt.Errorf("%w: at least one purpose is required; blanket trust is not allowed", ErrInvalidLink)
 	}
