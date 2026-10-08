@@ -85,7 +85,13 @@ func (d Decider) pureCompute(in Input) Decision {
 
 // notDispatched handles an external effect for which no dispatch was attempted
 // in the current generation. A recorded intent is required before any retry.
-// A non-idempotent effect has no retry condition here, so it is held.
+//
+// A non-idempotent effect may be retried only when no dispatch was ever attempted
+// for it (DispatchedGeneration is zero). The caller records a dispatch attempt
+// before the call is sent, so a missing record shows that no call was sent. Once
+// any generation was dispatched, that dispatch's outcome is unresolved and a
+// retry could repeat it, so the effect is held. This is the provisional rule in
+// plan/adr/0007-provisional-side-effect-retry-policy.md.
 func (d Decider) notDispatched(in Input) Decision {
 	if !in.intentRecorded() {
 		return newDecision(ActionHold, ReasonIntentMissing, EffectStateNotDispatched,
@@ -95,15 +101,19 @@ func (d Decider) notDispatched(in Input) Decision {
 		return newDecision(ActionNoop, ReasonCancelledNoOpenEffect, EffectStateNotDispatched,
 			in.UnknownEffectsInBatch, ngNoEffectEvidence)
 	}
-	if in.Kind == EffectKindNonIdempotent {
+	if in.Kind == EffectKindNonIdempotent && in.DispatchedGeneration != 0 {
 		return newDecision(ActionHold, ReasonNonIdempotentRetryNotAuthed, EffectStateNotDispatched,
 			in.UnknownEffectsInBatch, ngExactlyOnceUnknown, ngNoEffectEvidence)
 	}
-	// Idempotent: a retry is allowed under the same operation identity.
 	if in.attemptsExhausted() {
 		return newDecision(ActionHold, ReasonRetryBudgetExhausted, EffectStateNotDispatched,
 			in.UnknownEffectsInBatch, ngIdempotencyHonored)
 	}
+	if in.Kind == EffectKindNonIdempotent {
+		return newDecision(ActionRetry, ReasonNotDispatchedRetry, EffectStateNotDispatched,
+			in.UnknownEffectsInBatch, ngExactlyOnceUnknown, ngNoEffectEvidence)
+	}
+	// Idempotent: a retry is allowed under the same operation identity.
 	return newDecision(ActionRetry, ReasonIdempotentRetry, EffectStateNotDispatched,
 		in.UnknownEffectsInBatch, ngIdempotencyHonored)
 }

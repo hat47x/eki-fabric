@@ -35,6 +35,7 @@ const (
 	ReasonNotAppliedConfirmed         ReasonCode = "NOT_APPLIED_CONFIRMED"
 	ReasonPureComputeRetry            ReasonCode = "PURE_COMPUTE_RETRY"
 	ReasonIdempotentRetry             ReasonCode = "IDEMPOTENT_RETRY_ALLOWED"
+	ReasonNotDispatchedRetry          ReasonCode = "NOT_DISPATCHED_RETRY_ALLOWED"
 	ReasonRetryBudgetExhausted        ReasonCode = "RETRY_BUDGET_EXHAUSTED"
 	ReasonReconciliationBudgetOut     ReasonCode = "RECONCILIATION_BUDGET_EXHAUSTED"
 	ReasonEffectOutcomeUnknown        ReasonCode = "EFFECT_OUTCOME_UNKNOWN"

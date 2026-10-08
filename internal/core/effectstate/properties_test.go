@@ -75,11 +75,16 @@ func checkInvariants(t *testing.T, d Decider, in Input) {
 		t.Fatalf("empty NotGuaranteed for %+v: %+v", in, got)
 	}
 	if got.Action == ActionRetry {
-		retryable := in.Kind == EffectKindPureCompute || in.Kind == EffectKindIdempotent ||
+		retryable := in.Kind == EffectKindPureCompute || in.Kind == EffectKindIdempotent || got.Reason == ReasonNotDispatchedRetry ||
 			got.EffectState == EffectStateConfirmedNotApplied
 		if !retryable {
 			t.Fatalf("RETRY without a retry condition for %+v: %+v", in, got)
 		}
+	}
+	// A non-idempotent retry is allowed only when no dispatch was ever attempted
+	// for the effect; an earlier dispatch with an unresolved outcome holds it.
+	if got.Reason == ReasonNotDispatchedRetry && in.DispatchedGeneration != 0 {
+		t.Fatalf("non-idempotent retry after an earlier dispatch for %+v: %+v", in, got)
 	}
 	if got.Action == ActionFailTerminal && got.EffectState == EffectStateDispatchedUnknown {
 		t.Fatalf("FAIL_TERMINAL with unknown effect for %+v: %+v", in, got)

@@ -82,8 +82,16 @@ func TestEffectKindAndIntent(t *testing.T) {
 			wantAction: ActionHold, wantReason: ReasonIntentMissing, wantState: EffectStateNotDispatched,
 		},
 		{
-			name:       "non-idempotent with intent but no dispatch is held because no retry condition holds",
+			name:       "non-idempotent with intent but no dispatch retries, since no call was sent",
 			in:         baseInput(EffectKindNonIdempotent),
+			wantAction: ActionRetry, wantReason: ReasonNotDispatchedRetry, wantState: EffectStateNotDispatched,
+		},
+		{
+			name: "non-idempotent after an earlier generation was dispatched is held",
+			in: Input{
+				Kind: EffectKindNonIdempotent, Intent: IntentRecord{Generation: 2},
+				DispatchedGeneration: 1, CurrentGeneration: 2, AttemptsUsed: 1, AttemptLimit: 3,
+			},
 			wantAction: ActionHold, wantReason: ReasonNonIdempotentRetryNotAuthed, wantState: EffectStateNotDispatched,
 		},
 		{
@@ -206,9 +214,9 @@ func TestRetryConditions(t *testing.T) {
 			wantAction: ActionRetry, wantReason: ReasonIdempotentRetry, wantState: EffectStateNotDispatched,
 		},
 		{
-			name:       "non-idempotent effect lost before dispatch is held",
+			name:       "non-idempotent effect lost before dispatch retries, since no call was sent",
 			in:         nonIdemLostBeforeDispatch,
-			wantAction: ActionHold, wantReason: ReasonNonIdempotentRetryNotAuthed, wantState: EffectStateNotDispatched,
+			wantAction: ActionRetry, wantReason: ReasonNotDispatchedRetry, wantState: EffectStateNotDispatched,
 		},
 	})
 }
@@ -382,6 +390,19 @@ func TestRetryBudget(t *testing.T) {
 			wantAction: ActionHold, wantReason: ReasonInputInvalid, wantState: EffectStateInvalid,
 		},
 	})
+}
+
+// A non-idempotent effect that was never dispatched still stops when the attempt
+// budget is spent, so no retry is unbounded.
+func TestNonIdempotentRetryIsBoundedByTheAttemptBudget(t *testing.T) {
+	d := mustDecider(t, 2)
+	spent := baseInput(EffectKindNonIdempotent)
+	spent.AttemptsUsed = 3
+	runDecisionCases(t, d, []decisionCase{{
+		name:       "non-idempotent not dispatched and out of attempts holds",
+		in:         spent,
+		wantAction: ActionHold, wantReason: ReasonRetryBudgetExhausted, wantState: EffectStateNotDispatched,
+	}})
 }
 
 func TestInconsistentInputFailsClosed(t *testing.T) {
