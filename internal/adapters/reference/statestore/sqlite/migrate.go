@@ -268,15 +268,15 @@ BEFORE DELETE ON policy_current
 BEGIN
 	SELECT RAISE(ABORT, 'current policy pointer cannot be deleted');
 END;
-CREATE TRIGGER policy_history_no_revoked_reactivation
+CREATE TRIGGER policy_history_no_revision_reuse
 BEFORE INSERT ON policy_history
 WHEN NEW.status = 'active'
   AND EXISTS (
 	SELECT 1 FROM policy_history
-	WHERE revision = NEW.revision AND status = 'revoked'
+	WHERE revision = NEW.revision
   )
 BEGIN
-	SELECT RAISE(ABORT, 'revoked policy revision cannot be reactivated');
+	SELECT RAISE(ABORT, 'previously activated policy revision cannot be reactivated');
 END;
 CREATE TRIGGER leases_policy_insert
 BEFORE INSERT ON leases
