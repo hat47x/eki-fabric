@@ -68,7 +68,7 @@ zkVMの実測による性能比較、学習に基づく処理配置、匿名の�
 
 設計基準0.1では、六つの主要領域を横断して点検しました。`BASELINE_REVIEW_2026-09-21.md`には、責務の重大な矛盾が見つからなかったことを記録しています。`MVP_IMPLEMENTATION_PLAN.md`には、設計基準の安全上の境界と状態の意味を守りながら、一連の処理を最小構成で通す実装、M0からM5の段階、各段階の完了条件を定めています。
 
-`plan/adr/0001-protocol-surfaces-and-canonical-encoding.md`では、通信に用いる技術を接続先ごとに決めました。外部の依頼元との接続（External Client Plane）には、HTTPS、JSON、OpenAPIを使います。処理を実行する側との接続（Worker Plane）と、別プロセスで動く接続部（Adapter Plane）には、Protobuf IDLとConnectによる参照通信方式を使います。署名を付けた権限判断（Authority Decision）には、決定論的なCBOR、CDDL、COSE_Sign1を使います。Protobufで符号化したバイト列は、署名や汎用的な内容の指紋値を作る際の正規表現には使いません。
+`plan/adr/0001-protocol-surfaces-and-canonical-encoding.md`では、通信に用いる技術を接続先ごとに決めました。外部の依頼元との接続（External Client Plane）には、HTTPS、JSON、OpenAPIを使います。処理を実行する側との接続（Worker Plane）と、別プロセスで動く接続部（Adapter Plane）には、Protobuf IDLとConnectによる参照通信方式を使います。署名を付けた権限判断（Authority Decision）には、決定論的なCBOR、CDDL、COSE_Sign1を使います。Protobufで符号化したバイト列は、署名や汎用的な内容の指紋値を作る際の正規のバイト列には使いません。
 
 P1のWorker Planeは`spec/worker/v1/worker.proto`に、P2の署名付きAuthority Decisionのpayloadは`spec/decisions/v1/decisions.cddl`に、それぞれ機械可読な形でまとめました。Worker Identityは認証の文脈に置き、HeartbeatとLeaseの更新を分けています。WorkOrder、Lease、Artifact Grantなど、署名の対象になるものは、P2のdeterministic CBORに固定しています。
 
