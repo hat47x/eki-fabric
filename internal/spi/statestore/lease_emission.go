@@ -45,21 +45,19 @@ func (c LeaseEmissionCommit) Validate() error {
 	if c.DecisionID == "" || len(c.DecisionID) > 128 || !utf8.ValidString(c.DecisionID) {
 		return errors.New("Lease emission: invalid Decision ID")
 	}
-	record, err := leaseemission.NewEmitted(leaseemission.EmittedConfig{
-		LeaseID:            c.LeaseID,
-		DecisionID:         c.DecisionID,
-		TrustDomain:        c.TrustDomain,
-		AuthorityPrincipal: c.AuthorityPrincipal,
-		KeyID:              c.KeyID,
-		Algorithm:          c.Algorithm,
-		PayloadDigest:      c.PayloadDigest,
-		EnvelopeDigest:     c.EnvelopeDigest,
-		SignedEnvelope:     c.SignedEnvelope,
-		PolicyRevision:     "validated-against-lease",
-		PolicyEpoch:        c.ExpectedPolicyEpoch,
-		CommittedAt:        c.CommittedAt,
-	})
-	if err != nil || record.IsZero() {
+	if c.CommittedAt.IsZero() {
+		return errors.New("Lease emission: committed time is required")
+	}
+	if err := leaseemission.ValidateSignedBinding(
+		c.DecisionID,
+		c.TrustDomain,
+		c.AuthorityPrincipal,
+		c.KeyID,
+		c.Algorithm,
+		c.PayloadDigest,
+		c.EnvelopeDigest,
+		c.SignedEnvelope,
+	); err != nil {
 		return fmt.Errorf("Lease emission: %w", err)
 	}
 	return nil
