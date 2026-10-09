@@ -15,6 +15,7 @@ import (
 	"github.com/hat47x/eki-fabric/internal/core/attemptstate"
 	"github.com/hat47x/eki-fabric/internal/core/contract"
 	"github.com/hat47x/eki-fabric/internal/core/ids"
+	"github.com/hat47x/eki-fabric/internal/core/policystate"
 	"github.com/hat47x/eki-fabric/internal/core/taskstate"
 	"github.com/hat47x/eki-fabric/internal/spi/statestore"
 )
@@ -172,7 +173,7 @@ func TestVersion2DatabaseUpgradesToLeaseSchemaWithoutLosingTask(t *testing.T) {
 	}
 }
 
-func TestVersion3DatabaseUpgradesToAttemptSchemaWithoutLosingLease(t *testing.T) {
+func TestVersion3DatabaseUpgradesWithoutLosingLease(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "state.db")
 	old, err := openWithMigrations(context.Background(), path, migrations[:3])
 	if err != nil {
@@ -203,9 +204,9 @@ INSERT INTO lease_fences (task_id, last_fence_epoch) VALUES (?, ?)`,
 INSERT INTO leases (
 	lease_id, task_id, task_ir_digest, attempt_id, worker_identity,
 	placement_trust_domain, placement_authority_principal, placement_decision_id,
-	placement_payload_digest, placement_expires_at_ns, policy_revision,
+	placement_payload_digest, placement_expires_at_ns, policy_revision, policy_epoch,
 	fence_epoch, renewal_sequence, issued_at_ns, expires_at_ns
-) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		leaseID.String(),
 		task.ID.String(),
 		task.TaskIRDigest.Hex(),
@@ -217,6 +218,7 @@ INSERT INTO leases (
 		placementDigest.Hex(),
 		now.Add(2*time.Minute).UnixNano(),
 		"policy-42",
+		1,
 		1,
 		0,
 		now.UnixNano(),
@@ -237,7 +239,10 @@ INSERT INTO leases (
 	}
 	if gotLease.ID != leaseID || gotLease.FenceEpoch != 1 ||
 		gotLease.AttemptID != attemptID || gotLease.PlacementPayloadDigest != placementDigest {
-		t.Fatalf("Lease changed across v3 -> v4 migration: %#v", gotLease)
+		t.Fatalf("Lease changed across v3 -> current migration: %#v", gotLease)
+	}
+	if gotLease.PolicyFenced() || gotLease.PolicyEpoch != 0 {
+		t.Fatalf("pre-v5 Lease unexpectedly gained policy authority: %#v", gotLease)
 	}
 
 	newAttemptID := mustAttemptIDForSQLite(t)
@@ -322,6 +327,7 @@ UPDATE attempts SET attempt_number = 99 WHERE attempt_id = ?`, second.ID.String(
 func TestLeaseSchemaAssignsAttemptAndRejectsWrongBinding(t *testing.T) {
 	store := openStore(t, filepath.Join(t.TempDir(), "state.db"))
 	defer store.Close()
+	ensureSQLitePolicy(t, store, "policy-42")
 
 	task := newTaskRecord(t, "lease-attempt-trigger")
 	task.Phase = taskstate.TaskPhaseReady
@@ -344,9 +350,9 @@ INSERT INTO lease_fences (task_id, last_fence_epoch) VALUES (?, ?)`,
 INSERT INTO leases (
 	lease_id, task_id, task_ir_digest, attempt_id, worker_identity,
 	placement_trust_domain, placement_authority_principal, placement_decision_id,
-	placement_payload_digest, placement_expires_at_ns, policy_revision,
+	placement_payload_digest, placement_expires_at_ns, policy_revision, policy_epoch,
 	fence_epoch, renewal_sequence, issued_at_ns, expires_at_ns
-) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		leaseID.String(),
 		task.ID.String(),
 		task.TaskIRDigest.Hex(),
@@ -358,6 +364,7 @@ INSERT INTO leases (
 		payloadDigest.Hex(),
 		now.Add(2*time.Minute).UnixNano(),
 		"policy-42",
+		1,
 		1,
 		0,
 		now.UnixNano(),
@@ -384,9 +391,9 @@ INSERT INTO leases (
 INSERT INTO leases (
 	lease_id, task_id, task_ir_digest, attempt_id, worker_identity,
 	placement_trust_domain, placement_authority_principal, placement_decision_id,
-	placement_payload_digest, placement_expires_at_ns, policy_revision,
+	placement_payload_digest, placement_expires_at_ns, policy_revision, policy_epoch,
 	fence_epoch, renewal_sequence, issued_at_ns, expires_at_ns
-) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		otherLease.String(),
 		task.ID.String(),
 		task.TaskIRDigest.Hex(),
@@ -398,6 +405,7 @@ INSERT INTO leases (
 		contract.SHA256([]byte("wrong-worker")).Hex(),
 		now.Add(3*time.Minute).UnixNano(),
 		"policy-42",
+		1,
 		2,
 		0,
 		now.Add(time.Minute).UnixNano(),
@@ -412,6 +420,28 @@ INSERT INTO leases (
 	if current.Phase != attemptstate.AttemptPhasePlacing || current.LeaseID != "" || current.Revision != other.Revision {
 		t.Fatalf("failed Lease insert mutated Attempt: %#v", current)
 	}
+}
+
+func ensureSQLitePolicy(t testing.TB, store *Store, revision string) policystate.State {
+	t.Helper()
+	current, err := store.LoadCurrentPolicy(context.Background())
+	if err == nil {
+		if current.Revision != revision || current.Status != policystate.StatusActive {
+			t.Fatalf("current policy = %#v, want active %q", current, revision)
+		}
+		return current
+	}
+	if !errors.Is(err, statestore.ErrPolicyUnavailable) {
+		t.Fatal(err)
+	}
+	initial, err := policystate.NewActive(1, revision, time.Date(2026, 10, 6, 0, 0, 0, 0, time.UTC))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := store.CompareAndSwapPolicy(context.Background(), 0, initial); err != nil {
+		t.Fatal(err)
+	}
+	return initial
 }
 
 func mustAttemptIDForSQLite(t testing.TB) ids.AttemptID {
@@ -452,6 +482,7 @@ func createPlacingAttemptForSQLite(t testing.TB, store *Store, task taskstate.Ta
 func TestFenceEpochSurvivesLeaseHistoryGarbageCollection(t *testing.T) {
 	store := openStore(t, filepath.Join(t.TempDir(), "state.db"))
 	defer store.Close()
+	ensureSQLitePolicy(t, store, "policy-42")
 
 	task := newTaskRecord(t, "lease-history-gc")
 	task.Phase = taskstate.TaskPhaseReady
@@ -478,6 +509,7 @@ func TestFenceEpochSurvivesLeaseHistoryGarbageCollection(t *testing.T) {
 		PlacementPayloadDigest:      contract.SHA256([]byte("placement-gc-1")),
 		PlacementExpiresAt:          now.Add(2 * time.Minute),
 		PolicyRevision:              "policy-42",
+		ExpectedPolicyEpoch:         1,
 		IssuedAt:                    now,
 		ExpiresAt:                   now.Add(time.Minute),
 	})
@@ -531,6 +563,7 @@ func TestFenceEpochSurvivesLeaseHistoryGarbageCollection(t *testing.T) {
 		PlacementPayloadDigest:      contract.SHA256([]byte("placement-gc-2")),
 		PlacementExpiresAt:          secondNow.Add(2 * time.Minute),
 		PolicyRevision:              "policy-42",
+		ExpectedPolicyEpoch:         1,
 		IssuedAt:                    secondNow,
 		ExpiresAt:                   secondNow.Add(time.Minute),
 	})
