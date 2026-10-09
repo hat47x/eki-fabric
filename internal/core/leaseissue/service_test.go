@@ -580,7 +580,11 @@ func setPolicy(t *testing.T, store statestore.PolicyStore, revision string) poli
 	if current.Status == policystate.StatusActive && current.Revision == revision {
 		return current
 	}
-	next, err := policystate.NewActive(current.Epoch+1, revision, current.ActivatedAt.Add(time.Second))
+	activatedAt := current.ActivatedAt.Add(time.Second)
+	if current.Status == policystate.StatusRevoked && !current.RevokedAt.Before(activatedAt) {
+		activatedAt = current.RevokedAt.Add(time.Second)
+	}
+	next, err := policystate.NewActive(current.Epoch+1, revision, activatedAt)
 	if err != nil {
 		t.Fatal(err)
 	}
