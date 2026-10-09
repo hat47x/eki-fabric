@@ -9,7 +9,8 @@ import "slices"
 // checks this.
 type Secondary struct {
 	// SourceIDs lists every GovernorReclaim and ContributionRecord observation that
-	// was examined, in ascending order. Unverified records are included.
+	// was examined, together with the supporting fact IDs of the contribution records,
+	// in ascending order. Unverified records are included.
 	SourceIDs []string
 	// WorkerCount is the number of distinct worker IDs in GovernorReclaim records and
 	// in verified ContributionRecords. Unverified contribution records do not add a
@@ -35,10 +36,12 @@ func DeriveSecondary(log []Observation) (Secondary, error) {
 	}
 	for _, c := range b.contribs {
 		ids = append(ids, c.ID)
+		ids = append(ids, c.SupportingFactIDs...)
 		if c.Verified {
 			workers[c.WorkerID] = struct{}{}
 		}
 	}
 	slices.Sort(ids)
+	ids = slices.Compact(ids)
 	return Secondary{SourceIDs: ids, WorkerCount: len(workers)}, nil
 }

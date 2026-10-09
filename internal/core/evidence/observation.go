@@ -81,10 +81,16 @@ type RetryEvent struct {
 // ContributionRecord records a resource-provision fact. Verified is set only when
 // the caller's verification layer has established the fact. An unverified record
 // is a claim and never counts toward a verified metric.
+//
+// SupportingFactIDs names the facts that back the record. A verified record must name
+// at least one, because a verified count with no fact behind it cannot be traced. An
+// unverified record may name facts too, and they are traced like any other examined
+// evidence. The package does not interpret the facts.
 type ContributionRecord struct {
-	ID       string
-	WorkerID string
-	Verified bool
+	ID                string
+	WorkerID          string
+	Verified          bool
+	SupportingFactIDs []string
 }
 
 // SuitabilityOutcome is one of the three values the suitability gate returns. The
@@ -199,6 +205,14 @@ func split(log []Observation) (buckets, error) {
 			if err := checkID("worker ID", v.WorkerID); err != nil {
 				return buckets{}, err
 			}
+			if v.Verified && len(v.SupportingFactIDs) == 0 {
+				return buckets{}, fmt.Errorf("%w: verified contribution %s has no supporting fact", ErrInvalidObservation, v.ID)
+			}
+			for _, f := range v.SupportingFactIDs {
+				if err := checkID("supporting fact ID", f); err != nil {
+					return buckets{}, err
+				}
+			}
 			id = v.ID
 			b.contribs = append(b.contribs, v)
 		case nil:
@@ -226,9 +240,25 @@ func split(log []Observation) (buckets, error) {
 // trace points at. The check runs after the whole log is read, so the result does not
 // depend on the order of the log.
 func checkEvidenceIDs(b buckets, observationIDs map[string]struct{}) error {
+	reuse := func(kind, id string) error {
+		if _, clash := observationIDs[id]; clash {
+			return fmt.Errorf("%w: %s %s reuses an observation ID", ErrInvalidObservation, kind, id)
+		}
+		return nil
+	}
 	for _, r := range b.results {
-		if _, clash := observationIDs[r.VerificationRecordID]; r.VerificationRecordID != "" && clash {
-			return fmt.Errorf("%w: verification record %s reuses an observation ID", ErrInvalidObservation, r.VerificationRecordID)
+		if r.VerificationRecordID == "" {
+			continue
+		}
+		if err := reuse("verification record", r.VerificationRecordID); err != nil {
+			return err
+		}
+	}
+	for _, c := range b.contribs {
+		for _, f := range c.SupportingFactIDs {
+			if err := reuse("supporting fact", f); err != nil {
+				return err
+			}
 		}
 	}
 	return nil
