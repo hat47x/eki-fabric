@@ -377,6 +377,38 @@ func TestReserveRejectsAttemptWorkerDriftBeforeLeaseMutation(t *testing.T) {
 	}
 }
 
+func TestReserveFailsClosedWhenPolicyStateIsUnavailable(t *testing.T) {
+	fx := newCryptoFixture(t)
+	base := readyPlacingState(t, testWorkerID)
+	state := unavailablePolicyState{Store: base}
+	service, err := leaseissue.New(leaseissue.Config{
+		Verifier:      fx.verifier,
+		State:         state,
+		TrustBundle:   staticTrustBundle{value: fx.bundle},
+		Clock:         &testClock{now: testNow},
+		MaxLifetime:   time.Minute,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	_, err = service.Reserve(context.Background(), leaseissue.Request{
+		SignedPlacement: fx.signedPlacement(), RequestedLifetime: time.Minute,
+	})
+	if !errors.Is(err, statestore.ErrPolicyUnavailable) {
+		t.Fatalf("Reserve() error = %v, want ErrPolicyUnavailable", err)
+	}
+
+	attemptID, _ := ids.ParseAttemptID(testAttemptID)
+	attempt, loadErr := base.LoadAttempt(context.Background(), attemptID)
+	if loadErr != nil {
+		t.Fatal(loadErr)
+	}
+	if attempt.Phase != attemptstate.AttemptPhasePlacing || attempt.LeaseID != "" {
+		t.Fatalf("unavailable policy mutated Attempt: %#v", attempt)
+	}
+}
+
 func TestReservePolicyRevokeBetweenReadAndCommitFailsClosed(t *testing.T) {
 	fx := newCryptoFixture(t)
 	base := readyPlacingState(t, testWorkerID)
@@ -592,6 +624,14 @@ func setPolicy(t *testing.T, store statestore.PolicyStore, revision string) poli
 		t.Fatal(err)
 	}
 	return next
+}
+
+type unavailablePolicyState struct {
+	*memory.Store
+}
+
+func (s unavailablePolicyState) LoadCurrentPolicy(context.Context) (policystate.State, error) {
+	return policystate.State{}, statestore.ErrPolicyUnavailable
 }
 
 type revokeBeforeReserveState struct {
