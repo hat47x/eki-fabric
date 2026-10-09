@@ -35,6 +35,7 @@ type LeaseReservation struct {
 	PlacementPayloadDigest      contract.Digest
 	PlacementExpiresAt          time.Time
 	PolicyRevision              string
+	ExpectedPolicyEpoch         uint64
 	IssuedAt                    time.Time
 	ExpiresAt                   time.Time
 }
@@ -79,6 +80,9 @@ func (r LeaseReservation) Validate() error {
 	if r.PolicyRevision == "" || len(r.PolicyRevision) > 128 || !utf8.ValidString(r.PolicyRevision) {
 		return errors.New("lease reservation: invalid policy revision")
 	}
+	if r.ExpectedPolicyEpoch == 0 {
+		return errors.New("lease reservation: expected policy epoch must be positive")
+	}
 	if r.IssuedAt.IsZero() || r.ExpiresAt.IsZero() || !r.IssuedAt.Before(r.ExpiresAt) {
 		return errors.New("lease reservation: invalid issued/expires window")
 	}
@@ -110,7 +114,8 @@ func (r LeaseReservation) MatchesReservedPlacement(existing leasestate.LeaseReco
 		existing.PlacementDecisionID == r.PlacementDecisionID &&
 		existing.PlacementPayloadDigest == r.PlacementPayloadDigest &&
 		existing.PlacementExpiresAt.Equal(r.PlacementExpiresAt.UTC()) &&
-		existing.PolicyRevision == r.PolicyRevision
+		existing.PolicyRevision == r.PolicyRevision &&
+		existing.PolicyEpoch == r.ExpectedPolicyEpoch
 }
 
 // LeaseStore reserves durable fencing state before any signed Lease is emitted.

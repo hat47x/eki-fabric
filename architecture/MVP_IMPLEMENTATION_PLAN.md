@@ -334,6 +334,45 @@ PLC-1 ApprovalDraft
 
 このReference adapterは、外部のCBOR libraryに依存します。そのため、依存moduleを実際に取得して、focused testを実行できるまで、採用済みとは扱いません。依存を取得できない環境で、GoのAPIの形だけを確認した結果を、Security Evidenceに読み替えません。
 
+### LSE-1 — Policy EpochとLease reservationのlinearization
+
+P2 Placement Approvalを暗号学的に検証し、current Task / Attempt / Workerを再確認しても、PolicyのcurrentnessをLease予約と別transactionで確認するだけでは不十分です。
+
+次のraceをfail closedにします。
+
+```text
+T1  LSE-1 reads policy P42
+T2  Placement(P42) passes revalidation
+T3  ADM-1 revokes P42
+T4  stale LSE-1 tries to reserve Lease
+```
+
+M0では、State Storeへ次を追加します。
+
+- 単調増加する`Policy Epoch`
+- current policy revisionと`active / revoked`
+- append-onlyなPolicy history
+- Policy Stateのcompare-and-swap
+- Lease reservationへ渡す`expectedPolicyEpoch`
+- Lease recordへ残す`PolicyEpoch`
+
+Reference `leaseissue.Service`は、独立した`CurrentPolicyRevision() string`を使いません。Task / Attempt / Leaseと同じdurable State ownerからcurrent Policy Stateを読み、そのepochをLease reservationの前提にします。
+
+Memory adapterでは同じmutex、SQLite adapterでは同じtransactionの内側で、少なくとも次を再確認します。
+
+- current policy epochがexpected epochと一致する
+- current revisionがPlacement Approvalのrevisionと一致する
+- current stateがactiveである
+- Task / Attempt / Worker bindingがcurrentである
+- active Leaseがない
+- FenceEpochを単調に採番できる
+
+一つでも変わっていれば、新しいLease reservationもFenceEpochも作りません。同じPlacement Decisionのreplayも、Policyがrevokeまたは置換された後は返しません。
+
+SQLiteのReferenceでは、Adapterを迂回した直接INSERTでもstale policy Leaseを作れないtriggerを置きます。Policy historyもappend-onlyとし、epoch飛び、revoked revisionの再活性化、時刻の逆転を拒否します。
+
+この段階で作る`LeaseRecord`は、依然として内部のdurable reservation stateです。Workerが依拠できる署名済みP2 Leaseは後続のsigning boundaryで生成します。そのboundaryでも、`PolicyEpoch=0`のlegacy recordや、current policyから外れたreservationを署名対象にしません。
+
 ## 3.6 WorkOrder
 
 最初のWorkOrderは、少なくとも、次のものに結び付けます。

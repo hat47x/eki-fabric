@@ -29,7 +29,8 @@ type Config struct {
 	PlacementPayloadDigest        contract.Digest
 	PlacementExpiresAt            time.Time
 	PolicyRevision                string
-	FenceEpoch             uint64
+	PolicyEpoch                   uint64
+	FenceEpoch                    uint64
 	RenewalSequence        uint64
 	IssuedAt               time.Time
 	ExpiresAt              time.Time
@@ -47,7 +48,8 @@ type LeaseRecord struct {
 	PlacementPayloadDigest      contract.Digest
 	PlacementExpiresAt          time.Time
 	PolicyRevision              string
-	FenceEpoch             uint64
+	PolicyEpoch                 uint64
+	FenceEpoch                  uint64
 	RenewalSequence        uint64
 	IssuedAt               time.Time
 	ExpiresAt              time.Time
@@ -105,7 +107,8 @@ func New(cfg Config) (LeaseRecord, error) {
 		PlacementPayloadDigest:        cfg.PlacementPayloadDigest,
 		PlacementExpiresAt:            cfg.PlacementExpiresAt.UTC(),
 		PolicyRevision:                cfg.PolicyRevision,
-		FenceEpoch:             cfg.FenceEpoch,
+		PolicyEpoch:                   cfg.PolicyEpoch,
+		FenceEpoch:                    cfg.FenceEpoch,
 		RenewalSequence:        cfg.RenewalSequence,
 		IssuedAt:               cfg.IssuedAt.UTC(),
 		ExpiresAt:              cfg.ExpiresAt.UTC(),
@@ -125,12 +128,20 @@ func (r LeaseRecord) Validate() error {
 		PlacementPayloadDigest:        r.PlacementPayloadDigest,
 		PlacementExpiresAt:            r.PlacementExpiresAt,
 		PolicyRevision:                r.PolicyRevision,
-		FenceEpoch:             r.FenceEpoch,
+		PolicyEpoch:                   r.PolicyEpoch,
+		FenceEpoch:                    r.FenceEpoch,
 		RenewalSequence:        r.RenewalSequence,
 		IssuedAt:               r.IssuedAt,
 		ExpiresAt:              r.ExpiresAt,
 	})
 	return err
+}
+
+// PolicyFenced reports whether this reservation was committed under the
+// durable Policy Epoch mechanism. Migrated pre-v5 rows have epoch 0 and must
+// never be promoted to newly signed Lease Authority.
+func (r LeaseRecord) PolicyFenced() bool {
+	return r.PolicyEpoch > 0
 }
 
 func (r LeaseRecord) ActiveAt(now time.Time) bool {
