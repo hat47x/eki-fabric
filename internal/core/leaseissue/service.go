@@ -42,11 +42,16 @@ type PolicyRevisionSource interface {
 	CurrentPolicyRevision(ctx context.Context) (string, error)
 }
 
+type Clock interface {
+	Now() time.Time
+}
+
 type Config struct {
 	Verifier      *placementverify.Verifier
 	State         State
 	TrustBundle   TrustBundleSource
 	Policy        PolicyRevisionSource
+	Clock         Clock
 	MaxLifetime   time.Duration
 }
 
@@ -55,6 +60,7 @@ type Service struct {
 	state       State
 	trustBundle TrustBundleSource
 	policy      PolicyRevisionSource
+	clock       Clock
 	maxLifetime time.Duration
 }
 
@@ -68,6 +74,8 @@ func New(cfg Config) (*Service, error) {
 		return nil, fmt.Errorf("%w: Trust Bundle source is required", ErrInvalidConfig)
 	case cfg.Policy == nil:
 		return nil, fmt.Errorf("%w: policy revision source is required", ErrInvalidConfig)
+	case cfg.Clock == nil:
+		return nil, fmt.Errorf("%w: trusted Clock is required", ErrInvalidConfig)
 	case cfg.MaxLifetime <= 0:
 		return nil, fmt.Errorf("%w: maximum Lease lifetime must be positive", ErrInvalidConfig)
 	}
@@ -76,13 +84,13 @@ func New(cfg Config) (*Service, error) {
 		state:       cfg.State,
 		trustBundle: cfg.TrustBundle,
 		policy:      cfg.Policy,
+		clock:       cfg.Clock,
 		maxLifetime: cfg.MaxLifetime,
 	}, nil
 }
 
 type Request struct {
 	SignedPlacement   []byte
-	Now               time.Time
 	RequestedLifetime time.Duration
 }
 
@@ -92,7 +100,7 @@ type Result struct {
 }
 
 func (s *Service) Reserve(ctx context.Context, req Request) (Result, error) {
-	if s == nil || s.verifier == nil || s.state == nil || s.trustBundle == nil || s.policy == nil {
+	if s == nil || s.verifier == nil || s.state == nil || s.trustBundle == nil || s.policy == nil || s.clock == nil {
 		return Result{}, ErrInvalidConfig
 	}
 	if err := ctx.Err(); err != nil {
@@ -101,13 +109,13 @@ func (s *Service) Reserve(ctx context.Context, req Request) (Result, error) {
 	if len(req.SignedPlacement) == 0 {
 		return Result{}, fmt.Errorf("%w: signed Placement Approval is required", ErrInvalidRequest)
 	}
-	if req.Now.IsZero() {
-		return Result{}, fmt.Errorf("%w: current time is required", ErrInvalidRequest)
-	}
 	if req.RequestedLifetime <= 0 {
 		return Result{}, fmt.Errorf("%w: requested Lease lifetime must be positive", ErrInvalidRequest)
 	}
-	now := req.Now.UTC()
+	now := s.clock.Now().UTC()
+	if now.IsZero() {
+		return Result{}, fmt.Errorf("%w: trusted Clock returned zero time", ErrInvalidConfig)
+	}
 
 	bundle, err := s.trustBundle.CurrentTrustBundle(ctx)
 	if err != nil {
