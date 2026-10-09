@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"crypto/ed25519"
+	"encoding/hex"
 	"errors"
 	"reflect"
 	"testing"
@@ -500,7 +501,12 @@ func readyPlacingState(t *testing.T, worker string) *memory.Store {
 	if err != nil {
 		t.Fatal(err)
 	}
-	taskDigest := contract.SHA256(testTaskIR)
+	// The approval payload carries testTaskIR as the raw TaskIR digest bytes, so the
+	// Task record must use the same digest. contract.SHA256 would hash them again.
+	taskDigest, err := contract.ParseSHA256(hex.EncodeToString(testTaskIR))
+	if err != nil {
+		t.Fatal(err)
+	}
 	task, err := taskstate.NewTask(taskID, taskDigest, testIssuedAt.Add(-time.Minute))
 	if err != nil {
 		t.Fatal(err)
