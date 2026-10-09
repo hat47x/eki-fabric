@@ -107,6 +107,37 @@ func RunLeaseEmissionContract(t *testing.T, newStore LeaseEmissionFactory) {
 		assertEmissionEqual(t, replay.Record, first.Record)
 	})
 
+	t.Run("decision-id-cannot-be-reused-for-another-lease", func(t *testing.T) {
+		store := newStore(t)
+
+		taskA := readyTask(t, store, "emit-decision-a")
+		reservationA := leaseReservation(t, store, taskA, "placement-decision-a", leaseNow, leaseNow.Add(time.Minute))
+		leaseA, err := store.ReserveLease(context.Background(), reservationA)
+		if err != nil {
+			t.Fatal(err)
+		}
+		commitA := emissionCommit(t, store, leaseA.Lease, leaseA.Lease.IssuedAt.Add(time.Second))
+		commitA.DecisionID = "shared-lease-decision"
+		if _, err := store.CommitLeaseEmission(context.Background(), commitA); err != nil {
+			t.Fatal(err)
+		}
+
+		taskB := readyTask(t, store, "emit-decision-b")
+		reservationB := leaseReservation(t, store, taskB, "placement-decision-b", leaseNow, leaseNow.Add(time.Minute))
+		leaseB, err := store.ReserveLease(context.Background(), reservationB)
+		if err != nil {
+			t.Fatal(err)
+		}
+		commitB := emissionCommit(t, store, leaseB.Lease, leaseB.Lease.IssuedAt.Add(time.Second))
+		commitB.DecisionID = commitA.DecisionID
+		if _, err := store.CommitLeaseEmission(context.Background(), commitB); !errors.Is(err, statestore.ErrLeaseEmissionConflict) {
+			t.Fatalf("reused Decision ID error = %v, want ErrLeaseEmissionConflict", err)
+		}
+		if _, err := store.LoadLeaseEmission(context.Background(), leaseB.Lease.ID); !errors.Is(err, statestore.ErrNotFound) {
+			t.Fatalf("Decision ID collision emitted second Lease: %v", err)
+		}
+	})
+
 	t.Run("policy-drift-stops-new-emission", func(t *testing.T) {
 		store := newStore(t)
 		task := readyTask(t, store, "emit-policy-drift")
