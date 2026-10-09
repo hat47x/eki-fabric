@@ -103,6 +103,9 @@ func (s *Store) CompareAndSwapTask(ctx context.Context, id ids.TaskID, expectedR
 	if current.Revision != expectedRevision {
 		return fmt.Errorf("%w: task %s is at revision %d, expected %d", statestore.ErrConflict, id, current.Revision, expectedRevision)
 	}
+	if current.TaskIRDigest != next.TaskIRDigest {
+		return fmt.Errorf("%w: task %s TaskIR digest is immutable", statestore.ErrConflict, id)
+	}
 
 	s.tasks[id] = next
 	return nil

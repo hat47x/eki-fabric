@@ -114,6 +114,31 @@ func RunTaskStoreContract(t *testing.T, newStore Factory) {
 		}
 	})
 
+	t.Run("taskir-digest-is-immutable", func(t *testing.T) {
+		// The TaskIR digest is the content binding that Attempts and Leases
+		// copy at creation. A Task must not be rebound to another TaskIR by a
+		// state transition, or previously created Attempts would silently
+		// point at a different workload.
+		store := newStore(t)
+		record := newTask(t, "taskir-immutable")
+		if err := store.CreateTask(context.Background(), record); err != nil {
+			t.Fatalf("CreateTask() error = %v", err)
+		}
+
+		rebound := nextRevision(record, taskstate.TaskPhaseReady)
+		rebound.TaskIRDigest = contract.SHA256([]byte("taskir-immutable-rebound"))
+		err := store.CompareAndSwapTask(context.Background(), record.ID, record.Revision, rebound)
+		if !errors.Is(err, statestore.ErrConflict) {
+			t.Fatalf("CompareAndSwapTask() rebinding TaskIR error = %v, want ErrConflict", err)
+		}
+
+		got, err := store.LoadTask(context.Background(), record.ID)
+		if err != nil {
+			t.Fatalf("LoadTask() error = %v", err)
+		}
+		assertTaskRecordEqual(t, got, record)
+	})
+
 	t.Run("revision-must-increment-once", func(t *testing.T) {
 		store := newStore(t)
 		record := newTask(t, "revision-must-increment-once")
