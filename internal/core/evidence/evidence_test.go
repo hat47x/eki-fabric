@@ -415,7 +415,10 @@ func TestDerivationIsOrderIndependentAndDoesNotMutateInput(t *testing.T) {
 }
 
 // TestEverySourceIDTracesBackToTheInput is the traceability check. Each metric's IDs
-// must exist in the log, and each counted subset must be inside its SourceIDs.
+// must exist in the log, and each counted subset must be inside its SourceIDs. Every
+// SourceIDs list is checked against the input, so no metric can cite an ID the log
+// never recorded. The containment check runs even when a SourceIDs list is empty, so a
+// deleted append cannot make the check pass by skipping.
 func TestEverySourceIDTracesBackToTheInput(t *testing.T) {
 	log := []Observation{
 		completedReclaim("rec-1", "wkr-a", 0, 3),
@@ -424,6 +427,7 @@ func TestEverySourceIDTracesBackToTheInput(t *testing.T) {
 		decision("res-obs-2", "result-b", true, false),
 		decision("res-obs-3", "result-c", false, true),
 		suitability("suit-1", SuitabilityFabricJustified),
+		suitability("suit-2", SuitabilityNeedsMeasurement),
 		retry("rty-1", true),
 		contribution("con-1", "wkr-a", true),
 		contribution("con-2", "wkr-c", false),
@@ -440,8 +444,16 @@ func TestEverySourceIDTracesBackToTheInput(t *testing.T) {
 			if !input[id] {
 				t.Errorf("%s cites %q, which is not in the input", name, id)
 			}
-			if source != nil && !slices.Contains(source, id) {
+			if !slices.Contains(source, id) {
 				t.Errorf("%s counts %q, which is outside its SourceIDs", name, id)
+			}
+		}
+	}
+	assertSourced := func(name string, source []string) {
+		t.Helper()
+		for _, id := range source {
+			if !input[id] {
+				t.Errorf("%s SourceIDs cites %q, which is not in the input", name, id)
 			}
 		}
 	}
@@ -450,14 +462,41 @@ func TestEverySourceIDTracesBackToTheInput(t *testing.T) {
 	assertTraced("verified results", p.VerifiedResults.Verified, p.VerifiedResults.SourceIDs)
 	assertTraced("accepted results", p.VerifiedResults.Accepted, p.VerifiedResults.SourceIDs)
 	assertTraced("suitability justified", p.SuitabilityOutcomes.Justified, p.SuitabilityOutcomes.SourceIDs)
+	assertTraced("suitability needs measurement", p.SuitabilityOutcomes.NeedsMeasurement, p.SuitabilityOutcomes.SourceIDs)
 	assertTraced("retry growth", p.RetryAuthorityGrowth.AuthorityGrew, p.RetryAuthorityGrowth.SourceIDs)
 	assertTraced("verified contributions", p.VerifiedContributions.Verified, p.VerifiedContributions.SourceIDs)
+
+	assertSourced("reclaim latency", p.ReclaimLatency.SourceIDs)
+	assertSourced("verified results", p.VerifiedResults.SourceIDs)
+	assertSourced("suitability", p.SuitabilityOutcomes.SourceIDs)
+	assertSourced("retry", p.RetryAuthorityGrowth.SourceIDs)
+	assertSourced("verified contributions", p.VerifiedContributions.SourceIDs)
 
 	secondary, err := DeriveSecondary(log)
 	if err != nil {
 		t.Fatalf("DeriveSecondary() error = %v", err)
 	}
-	assertTraced("secondary", secondary.SourceIDs, nil)
+	assertSourced("secondary", secondary.SourceIDs)
+}
+
+// TestSuitabilitySourceIDsAreExactlyTheDecisionIDs pins the SourceIDs of the suitability
+// counts to the suitability observations only. A retry or a reclaim in the same log must
+// not leak in, and no decision may be dropped. Deleting the append in suitabilityOf must
+// fail this test.
+func TestSuitabilitySourceIDsAreExactlyTheDecisionIDs(t *testing.T) {
+	log := []Observation{
+		suitability("suit-3", SuitabilityNeedsMeasurement),
+		retry("rty-1", false),
+		suitability("suit-1", SuitabilityFabricJustified),
+		completedReclaim("rec-1", "wkr-a", 0, 1),
+		suitability("suit-2", SuitabilityFabricNotJustified),
+	}
+	p := mustDerive(t, log)
+
+	want := []string{"suit-1", "suit-2", "suit-3"}
+	if got := p.SuitabilityOutcomes.SourceIDs; !slices.Equal(got, want) {
+		t.Fatalf("SourceIDs = %v, want %v", got, want)
+	}
 }
 
 func sampleIDs(samples []ReclaimSample) []string {
