@@ -25,6 +25,13 @@ type placementScope struct {
 	decisionID  string
 }
 
+type authorityDecisionScope struct {
+	trustDomain string
+	principal   string
+	decisionID  string
+}
+
+
 type Store struct {
 	mu              sync.RWMutex
 	admissions      map[ids.TaskID]statestore.Admission
@@ -33,7 +40,7 @@ type Store struct {
 	attempts        map[ids.AttemptID]attemptstate.AttemptRecord
 	leases            map[ids.LeaseID]leasestate.LeaseRecord
 	leaseEmissions    map[ids.LeaseID]leaseemission.Record
-	emissionDecisions map[placementScope]ids.LeaseID
+	emissionDecisions map[authorityDecisionScope]ids.LeaseID
 	placementLeases   map[placementScope]ids.LeaseID
 	maxFence        map[ids.TaskID]uint64
 	policyCurrent   uint64
@@ -48,7 +55,7 @@ func New() *Store {
 		idempotent:      make(map[idempotencyScope]ids.TaskID),
 		leases:            make(map[ids.LeaseID]leasestate.LeaseRecord),
 		leaseEmissions:    make(map[ids.LeaseID]leaseemission.Record),
-		emissionDecisions: make(map[placementScope]ids.LeaseID),
+		emissionDecisions: make(map[authorityDecisionScope]ids.LeaseID),
 		placementLeases:   make(map[placementScope]ids.LeaseID),
 		maxFence:        make(map[ids.TaskID]uint64),
 		policyHistory:   make(map[uint64]policystate.State),
