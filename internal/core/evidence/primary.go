@@ -80,10 +80,20 @@ func (l ReclaimLatency) Percentile(p int) (time.Duration, bool, error) {
 	return l.Samples[rank-1].Latency, true, nil
 }
 
+// EvidenceLink connects one observation to one piece of evidence that it cites, such as
+// a verification record. A link lets a reader follow from a count to the record behind
+// it. One record can back several results, so several links can share an EvidenceID.
+type EvidenceLink struct {
+	ObservationID string
+	EvidenceID    string
+}
+
 // VerifiedResults is the share of accepted results that a verifier established.
 type VerifiedResults struct {
-	// SourceIDs lists every ResultDecision observation that was examined. Results
-	// that were not accepted are included here but do not enter the share.
+	// SourceIDs lists every ResultDecision observation that was examined, together with
+	// the verification record IDs those observations cite, in ascending order. Each ID
+	// appears once even when several results cite the same record. Results that were
+	// not accepted are included here but do not enter the share.
 	SourceIDs []string
 	// Accepted lists the accepted results. This is the denominator of the share.
 	Accepted []string
@@ -93,6 +103,10 @@ type VerifiedResults struct {
 	// UnverifiedAccepted lists the accepted results that were not verified. They are
 	// in the denominator and never in the numerator.
 	UnverifiedAccepted []string
+	// VerificationRecords links each result in Verified to the record that established
+	// it, in ascending order of observation ID. A rejected result has no link here, even
+	// when it was verified, because it does not enter the share.
+	VerificationRecords []EvidenceLink
 }
 
 // Share returns len(Verified) / len(Accepted). The second result is false when
@@ -191,21 +205,39 @@ func verifiedOf(rs []ResultDecision) VerifiedResults {
 	var out VerifiedResults
 	for _, r := range rs {
 		out.SourceIDs = append(out.SourceIDs, r.ID)
+		if r.VerificationRecordID != "" {
+			out.SourceIDs = append(out.SourceIDs, r.VerificationRecordID)
+		}
 		if !r.Accepted {
 			continue
 		}
 		out.Accepted = append(out.Accepted, r.ID)
 		if r.Verified {
 			out.Verified = append(out.Verified, r.ID)
+			out.VerificationRecords = append(out.VerificationRecords, EvidenceLink{ObservationID: r.ID, EvidenceID: r.VerificationRecordID})
 		} else {
 			out.UnverifiedAccepted = append(out.UnverifiedAccepted, r.ID)
 		}
 	}
 	slices.Sort(out.SourceIDs)
+	out.SourceIDs = slices.Compact(out.SourceIDs)
 	slices.Sort(out.Accepted)
 	slices.Sort(out.Verified)
 	slices.Sort(out.UnverifiedAccepted)
+	out.VerificationRecords = sortLinks(out.VerificationRecords)
 	return out
+}
+
+// sortLinks orders links by observation ID and then by evidence ID, and drops exact
+// duplicates. Ordering makes the output independent of the order of the log.
+func sortLinks(links []EvidenceLink) []EvidenceLink {
+	slices.SortFunc(links, func(a, b EvidenceLink) int {
+		if c := cmp.Compare(a.ObservationID, b.ObservationID); c != 0 {
+			return c
+		}
+		return cmp.Compare(a.EvidenceID, b.EvidenceID)
+	})
+	return slices.Compact(links)
 }
 
 func suitabilityOf(ds []SuitabilityDecision) SuitabilityCounts {

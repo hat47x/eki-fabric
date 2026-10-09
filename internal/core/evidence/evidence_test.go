@@ -23,8 +23,14 @@ func pendingReclaim(id, worker string, startSec int) GovernorReclaim {
 	return GovernorReclaim{ID: id, WorkerID: worker, ReclaimStart: at(startSec)}
 }
 
+// decision builds a result decision. A verified decision names a verification record
+// derived from its ID, so the helper gives a valid verified result by default.
 func decision(id, resultID string, accepted, verified bool) ResultDecision {
-	return ResultDecision{ID: id, ResultID: resultID, Accepted: accepted, Verified: verified}
+	d := ResultDecision{ID: id, ResultID: resultID, Accepted: accepted, Verified: verified}
+	if verified {
+		d.VerificationRecordID = "rec-" + id
+	}
+	return d
 }
 
 func suitability(id string, outcome SuitabilityOutcome) SuitabilityDecision {
@@ -192,8 +198,110 @@ func TestVerifiedButNotAcceptedResultStaysOutsideTheShare(t *testing.T) {
 	if !slices.Equal(p.VerifiedResults.Accepted, []string{"res-obs-2"}) {
 		t.Errorf("Accepted = %v, want only res-obs-2", p.VerifiedResults.Accepted)
 	}
-	if !slices.Equal(p.VerifiedResults.SourceIDs, []string{"res-obs-1", "res-obs-2"}) {
-		t.Errorf("SourceIDs = %v, want both decisions", p.VerifiedResults.SourceIDs)
+	// Both decisions and both verification records are examined, so all four IDs are traced.
+	if !slices.Equal(p.VerifiedResults.SourceIDs, []string{"rec-res-obs-1", "rec-res-obs-2", "res-obs-1", "res-obs-2"}) {
+		t.Errorf("SourceIDs = %v, want both decisions and both records", p.VerifiedResults.SourceIDs)
+	}
+}
+
+// TestVerifiedResultWithoutVerificationRecordIsRejected checks that a verified result
+// must name the record that verified it. The rule applies to a rejected result too,
+// because it concerns the verified flag itself. The derivation fails with no partial
+// result.
+func TestVerifiedResultWithoutVerificationRecordIsRejected(t *testing.T) {
+	cases := map[string]ResultDecision{
+		"accepted, no record":  {ID: "res-obs-1", ResultID: "result-a", Accepted: true, Verified: true},
+		"rejected, no record":  {ID: "res-obs-2", ResultID: "result-b", Accepted: false, Verified: true},
+		"verified, blank name": {ID: "res-obs-3", ResultID: "result-c", Accepted: true, Verified: true, VerificationRecordID: "   "},
+	}
+	for name, d := range cases {
+		p, err := DerivePrimary([]Observation{d})
+		if !errors.Is(err, ErrInvalidObservation) {
+			t.Errorf("%s: error = %v, want ErrInvalidObservation", name, err)
+		}
+		if !reflect.DeepEqual(p, Primary{}) {
+			t.Errorf("%s: a rejected log must not yield a partial result: %+v", name, p)
+		}
+	}
+}
+
+// TestVerificationRecordIDMustBeAWellFormedIdentifier checks that an unverified result
+// may carry a record name, but the name must still be a valid identifier, because it is
+// traced into the output.
+func TestVerificationRecordIDMustBeAWellFormedIdentifier(t *testing.T) {
+	bad := ResultDecision{ID: "res-obs-1", ResultID: "result-a", Accepted: true, VerificationRecordID: " "}
+	if _, err := DerivePrimary([]Observation{bad}); !errors.Is(err, ErrInvalidObservation) {
+		t.Fatalf("blank record name on an unverified result: error = %v, want ErrInvalidObservation", err)
+	}
+	ok := ResultDecision{ID: "res-obs-1", ResultID: "result-a", Accepted: true, VerificationRecordID: "ver-1"}
+	if _, err := DerivePrimary([]Observation{ok}); err != nil {
+		t.Fatalf("unverified result with a valid record name: error = %v", err)
+	}
+}
+
+// TestVerificationRecordIDAppearsInSourceIDsAndLinksToItsResult checks that every
+// verification record of a counted result is in SourceIDs, and that the links show
+// which record verified which result. Two results may cite one record. It then appears
+// once in SourceIDs, and both results link to it.
+func TestVerificationRecordIDAppearsInSourceIDsAndLinksToItsResult(t *testing.T) {
+	log := []Observation{
+		ResultDecision{ID: "res-obs-2", ResultID: "result-b", Accepted: true, Verified: true, VerificationRecordID: "ver-batch-7"},
+		ResultDecision{ID: "res-obs-1", ResultID: "result-a", Accepted: true, Verified: true, VerificationRecordID: "ver-batch-7"},
+		ResultDecision{ID: "res-obs-3", ResultID: "result-c", Accepted: true, Verified: true, VerificationRecordID: "ver-3"},
+	}
+	p := mustDerive(t, log)
+
+	wantSource := []string{"res-obs-1", "res-obs-2", "res-obs-3", "ver-3", "ver-batch-7"}
+	if !slices.Equal(p.VerifiedResults.SourceIDs, wantSource) {
+		t.Fatalf("SourceIDs = %v, want %v", p.VerifiedResults.SourceIDs, wantSource)
+	}
+	wantLinks := []EvidenceLink{
+		{ObservationID: "res-obs-1", EvidenceID: "ver-batch-7"},
+		{ObservationID: "res-obs-2", EvidenceID: "ver-batch-7"},
+		{ObservationID: "res-obs-3", EvidenceID: "ver-3"},
+	}
+	if !reflect.DeepEqual(p.VerifiedResults.VerificationRecords, wantLinks) {
+		t.Fatalf("VerificationRecords = %+v, want %+v", p.VerifiedResults.VerificationRecords, wantLinks)
+	}
+}
+
+// TestVerificationRecordOfRejectedResultIsTracedButNotCounted checks that a rejected
+// result's record is still examined, so it is in SourceIDs, but it does not become a
+// link, because the rejected result is not in the share.
+func TestVerificationRecordOfRejectedResultIsTracedButNotCounted(t *testing.T) {
+	log := []Observation{
+		ResultDecision{ID: "res-obs-1", ResultID: "result-a", Accepted: false, Verified: true, VerificationRecordID: "ver-1"},
+		decision("res-obs-2", "result-b", true, true),
+	}
+	p := mustDerive(t, log)
+
+	wantSource := []string{"rec-res-obs-2", "res-obs-1", "res-obs-2", "ver-1"}
+	if !slices.Equal(p.VerifiedResults.SourceIDs, wantSource) {
+		t.Fatalf("SourceIDs = %v, want %v", p.VerifiedResults.SourceIDs, wantSource)
+	}
+	wantLinks := []EvidenceLink{{ObservationID: "res-obs-2", EvidenceID: "rec-res-obs-2"}}
+	if !reflect.DeepEqual(p.VerifiedResults.VerificationRecords, wantLinks) {
+		t.Fatalf("VerificationRecords = %+v, want %+v", p.VerifiedResults.VerificationRecords, wantLinks)
+	}
+}
+
+// TestEvidenceIDMayNotReuseAnObservationID checks that a verification record cannot share
+// its name with an observation in the same log, in either order. Both kinds of ID appear
+// in SourceIDs, so a shared name would make the trace ambiguous.
+func TestEvidenceIDMayNotReuseAnObservationID(t *testing.T) {
+	clash := ResultDecision{ID: "res-obs-1", ResultID: "result-a", Accepted: true, Verified: true, VerificationRecordID: "rty-1"}
+	logs := map[string][]Observation{
+		"observation first": {retry("rty-1", false), clash},
+		"record first":      {clash, retry("rty-1", false)},
+	}
+	for name, log := range logs {
+		p, err := DerivePrimary(log)
+		if !errors.Is(err, ErrInvalidObservation) {
+			t.Errorf("%s: error = %v, want ErrInvalidObservation", name, err)
+		}
+		if !reflect.DeepEqual(p, Primary{}) {
+			t.Errorf("%s: a rejected log must not yield a partial result: %+v", name, p)
+		}
 	}
 }
 
@@ -432,10 +540,7 @@ func TestEverySourceIDTracesBackToTheInput(t *testing.T) {
 		contribution("con-1", "wkr-a", true),
 		contribution("con-2", "wkr-c", false),
 	}
-	input := map[string]bool{}
-	for _, o := range log {
-		input[o.ObservationID()] = true
-	}
+	input := knownIDs(log)
 	p := mustDerive(t, log)
 
 	assertTraced := func(name string, ids []string, source []string) {
@@ -497,6 +602,19 @@ func TestSuitabilitySourceIDsAreExactlyTheDecisionIDs(t *testing.T) {
 	if got := p.SuitabilityOutcomes.SourceIDs; !slices.Equal(got, want) {
 		t.Fatalf("SourceIDs = %v, want %v", got, want)
 	}
+}
+
+// knownIDs returns every identifier that the log supplies: the observation IDs and the
+// evidence IDs that observations cite. A metric may cite only these.
+func knownIDs(log []Observation) map[string]bool {
+	known := map[string]bool{}
+	for _, o := range log {
+		known[o.ObservationID()] = true
+		if r, ok := o.(ResultDecision); ok && r.VerificationRecordID != "" {
+			known[r.VerificationRecordID] = true
+		}
+	}
+	return known
 }
 
 func sampleIDs(samples []ReclaimSample) []string {
