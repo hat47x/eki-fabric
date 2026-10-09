@@ -53,6 +53,27 @@ func RunPolicyStoreContract(t *testing.T, newStore PolicyFactory) {
 		assertPolicyEqual(t, got, p2)
 	})
 
+	t.Run("superseded-revision-cannot-return", func(t *testing.T) {
+		store := newStore(t)
+		p1 := mustActivePolicy(t, 1, "policy-1", policyNow)
+		if err := store.CompareAndSwapPolicy(context.Background(), 0, p1); err != nil {
+			t.Fatal(err)
+		}
+		p2 := mustActivePolicy(t, 2, "policy-2", policyNow.Add(time.Minute))
+		if err := store.CompareAndSwapPolicy(context.Background(), p1.Epoch, p2); err != nil {
+			t.Fatal(err)
+		}
+		rollback := mustActivePolicy(t, 3, p1.Revision, policyNow.Add(2*time.Minute))
+		if err := store.CompareAndSwapPolicy(context.Background(), p2.Epoch, rollback); !errors.Is(err, statestore.ErrPolicyReactivation) {
+			t.Fatalf("historical revision rollback error = %v, want ErrPolicyReactivation", err)
+		}
+		current, err := store.LoadCurrentPolicy(context.Background())
+		if err != nil {
+			t.Fatal(err)
+		}
+		assertPolicyEqual(t, current, p2)
+	})
+
 	t.Run("revoke-and-no-reactivation", func(t *testing.T) {
 		store := newStore(t)
 		p1 := mustActivePolicy(t, 1, "policy-1", policyNow)
@@ -123,6 +144,11 @@ func RunPolicyDurabilityContract(t *testing.T, factory DurablePolicyFactory) {
 		p2 := mustActivePolicy(t, 3, "policy-2", policyNow.Add(2*time.Minute))
 		if err := reopened.CompareAndSwapPolicy(context.Background(), revoked.Epoch, p2); err != nil {
 			t.Fatalf("policy advance after restart error = %v", err)
+		}
+
+		rollback := mustActivePolicy(t, 4, p1.Revision, policyNow.Add(3*time.Minute))
+		if err := reopened.CompareAndSwapPolicy(context.Background(), p2.Epoch, rollback); !errors.Is(err, statestore.ErrPolicyReactivation) {
+			t.Fatalf("historical revision rollback after restart error = %v, want ErrPolicyReactivation", err)
 		}
 	})
 }
