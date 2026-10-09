@@ -49,6 +49,17 @@ func TestPolicyStateRejectsRollbackAndReactivation(t *testing.T) {
 	}
 }
 
+func TestPolicyStateRejectsActivationBeforeRevocation(t *testing.T) {
+	t0 := time.Date(2026, 10, 9, 0, 0, 0, 0, time.UTC)
+	p1, _ := NewActive(1, "policy-1", t0)
+	revoked, _ := Revoke(p1, 2, t0.Add(2*time.Minute), "revoke")
+	p2, _ := NewActive(3, "policy-2", t0.Add(time.Minute))
+
+	if err := ValidateTransition(revoked, p2); !errors.Is(err, ErrInvalidPolicyState) {
+		t.Fatalf("ValidateTransition() error = %v, want ErrInvalidPolicyState", err)
+	}
+}
+
 func TestPolicyStateRejectsMalformedRevocation(t *testing.T) {
 	t0 := time.Date(2026, 10, 9, 0, 0, 0, 0, time.UTC)
 	state := State{
