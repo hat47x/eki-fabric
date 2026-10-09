@@ -70,12 +70,49 @@ type SuitabilityDecision struct {
 	Outcome SuitabilityOutcome
 }
 
-// RetryEvent records a retry after a reclaim or a worker departure. AuthorityGrew
-// is set by the caller's authority check. It is true when the retry ran with more
-// authority than the original attempt had.
+// RetryEvent records a retry after a reclaim or a worker departure. Cause names the
+// event that started the retry, and it is required. AuthorityGrew is set by the
+// caller's authority check. It is true when the retry ran with more authority than the
+// original attempt had. DuplicateExecution is set by the caller when the retry made the
+// same work run a second time.
 type RetryEvent struct {
-	ID            string
-	AuthorityGrew bool
+	ID                 string
+	Cause              RetryCause
+	AuthorityGrew      bool
+	DuplicateExecution bool
+}
+
+// RetryCause says why a retry happened. The set is closed, so every retry belongs to
+// exactly one cause, and the counts by cause add up to the total number of retries.
+type RetryCause string
+
+const (
+	// RetryCauseReclaim means the retry followed a governor reclaim of the resource.
+	RetryCauseReclaim RetryCause = "RECLAIM"
+	// RetryCauseWorkerDeparture means the retry followed a worker leaving the fabric.
+	RetryCauseWorkerDeparture RetryCause = "WORKER_DEPARTURE"
+	// RetryCauseOther means the retry followed some other event. Use it only when neither
+	// of the two causes above applies.
+	RetryCauseOther RetryCause = "OTHER"
+)
+
+// RetryCauses returns the closed set of retry causes in a fixed order.
+func RetryCauses() []RetryCause {
+	return []RetryCause{
+		RetryCauseReclaim,
+		RetryCauseWorkerDeparture,
+		RetryCauseOther,
+	}
+}
+
+// Valid reports whether c is one of the closed retry causes. The empty value is not
+// valid, so a retry without a cause is rejected rather than counted as "other".
+func (c RetryCause) Valid() bool {
+	switch c {
+	case RetryCauseReclaim, RetryCauseWorkerDeparture, RetryCauseOther:
+		return true
+	}
+	return false
 }
 
 // ContributionRecord records a resource-provision fact. Verified is set only when
@@ -199,6 +236,9 @@ func split(log []Observation) (buckets, error) {
 			id = v.ID
 			b.outcomes = append(b.outcomes, v)
 		case RetryEvent:
+			if !v.Cause.Valid() {
+				return buckets{}, fmt.Errorf("%w: retry cause %q is not one of the closed set", ErrInvalidObservation, string(v.Cause))
+			}
 			id = v.ID
 			b.retries = append(b.retries, v)
 		case ContributionRecord:

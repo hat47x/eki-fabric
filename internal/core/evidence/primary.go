@@ -144,23 +144,60 @@ func (c SuitabilityCounts) Count(o SuitabilityOutcome) int {
 	return 0
 }
 
-// RetryAuthorityGrowth counts the retries where the authority grew beyond the
-// original attempt. The product invariant requires this count to be zero.
+// RetryAuthorityGrowth counts the retries that broke the reliability contract of
+// ADR-0008. A retry breaks it when the authority grew beyond the original attempt, or
+// when it made the same work run a second time. The product invariant requires both
+// kinds of count to be zero. The retries are also grouped by cause, so a reader can
+// see whether reclaims or worker departures produce them.
 type RetryAuthorityGrowth struct {
 	// SourceIDs lists every RetryEvent observation that was examined, in ascending order.
 	SourceIDs []string
 	// AuthorityGrew lists the retries where authority grew, in ascending order.
 	AuthorityGrew []string
+	// DuplicateExecution lists the retries that made the same work run a second time, in
+	// ascending order.
+	DuplicateExecution []string
+	// Harmful lists the retries that grew authority, caused duplicate execution, or both,
+	// in ascending order. A retry that does both appears here once.
+	Harmful []string
+	// ByCause groups every examined retry under its cause.
+	ByCause RetryCauseCounts
+}
+
+// RetryCauseCounts lists the examined retries under each cause, in ascending order.
+// Every examined retry appears under exactly one cause, because the derivation rejects
+// any other value.
+type RetryCauseCounts struct {
+	Reclaim         []string
+	WorkerDeparture []string
+	Other           []string
+}
+
+// Count returns how many retries had cause c. A value outside the closed set returns zero.
+func (c RetryCauseCounts) Count(cause RetryCause) int {
+	switch cause {
+	case RetryCauseReclaim:
+		return len(c.Reclaim)
+	case RetryCauseWorkerDeparture:
+		return len(c.WorkerDeparture)
+	case RetryCauseOther:
+		return len(c.Other)
+	}
+	return 0
 }
 
 // Count returns the number of retries where authority grew.
 func (r RetryAuthorityGrowth) Count() int { return len(r.AuthorityGrew) }
 
-// InvariantHolds reports whether the evidence supports the invariant. It requires
-// at least one examined retry and none in which authority grew. An empty log does
-// not prove that authority never grew, so it returns false.
+// HarmfulCount returns the number of retries that grew authority, caused duplicate
+// execution, or both.
+func (r RetryAuthorityGrowth) HarmfulCount() int { return len(r.Harmful) }
+
+// InvariantHolds reports whether the evidence supports the invariant. It requires at
+// least one examined retry and no harmful retry. An empty log does not prove that
+// authority never grew or that work never ran twice, so it returns false.
 func (r RetryAuthorityGrowth) InvariantHolds() bool {
-	return len(r.SourceIDs) > 0 && len(r.AuthorityGrew) == 0
+	return len(r.SourceIDs) > 0 && len(r.Harmful) == 0
 }
 
 // VerifiedContributions counts the verified contribution records. An unverified
@@ -272,9 +309,30 @@ func retryOf(rs []RetryEvent) RetryAuthorityGrowth {
 		if r.AuthorityGrew {
 			out.AuthorityGrew = append(out.AuthorityGrew, r.ID)
 		}
+		if r.DuplicateExecution {
+			out.DuplicateExecution = append(out.DuplicateExecution, r.ID)
+		}
+		if r.AuthorityGrew || r.DuplicateExecution {
+			out.Harmful = append(out.Harmful, r.ID)
+		}
+		// split has already rejected every cause outside the closed set, so the switch
+		// covers each retry exactly once.
+		switch r.Cause {
+		case RetryCauseReclaim:
+			out.ByCause.Reclaim = append(out.ByCause.Reclaim, r.ID)
+		case RetryCauseWorkerDeparture:
+			out.ByCause.WorkerDeparture = append(out.ByCause.WorkerDeparture, r.ID)
+		case RetryCauseOther:
+			out.ByCause.Other = append(out.ByCause.Other, r.ID)
+		}
 	}
 	slices.Sort(out.SourceIDs)
 	slices.Sort(out.AuthorityGrew)
+	slices.Sort(out.DuplicateExecution)
+	slices.Sort(out.Harmful)
+	slices.Sort(out.ByCause.Reclaim)
+	slices.Sort(out.ByCause.WorkerDeparture)
+	slices.Sort(out.ByCause.Other)
 	return out
 }
 
