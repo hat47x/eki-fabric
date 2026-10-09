@@ -161,9 +161,9 @@ func RunLeaseStoreContract(t *testing.T, newStore LeaseFactory) {
 				r.TaskIRDigest = otherTask.TaskIRDigest
 				r.ExpectedTaskRevision = otherTask.Revision
 			},
-			"attempt": func(r *statestore.LeaseReservation) { r.AttemptID = mustAttemptID(t) },
-			"worker": func(r *statestore.LeaseReservation) { r.WorkerIdentity = "worker-b" },
-			"policy": func(r *statestore.LeaseReservation) { r.PolicyRevision = "policy-43" },
+			"attempt":          func(r *statestore.LeaseReservation) { r.AttemptID = mustAttemptID(t) },
+			"worker":           func(r *statestore.LeaseReservation) { r.WorkerIdentity = "worker-b" },
+			"policy":           func(r *statestore.LeaseReservation) { r.PolicyRevision = "policy-43" },
 			"placement-expiry": func(r *statestore.LeaseReservation) { r.PlacementExpiresAt = r.PlacementExpiresAt.Add(time.Second) },
 		}
 		for name, mutate := range tests {

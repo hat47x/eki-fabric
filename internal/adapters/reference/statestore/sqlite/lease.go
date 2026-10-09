@@ -173,21 +173,21 @@ SELECT last_fence_epoch FROM lease_fences WHERE task_id = ?`,
 	fence := uint64(lastFence + 1)
 
 	lease, err := leasestate.New(leasestate.Config{
-		ID:                     reservation.LeaseID,
-		TaskID:                 reservation.TaskID,
-		TaskIRDigest:           reservation.TaskIRDigest,
-		AttemptID:              reservation.AttemptID,
-		WorkerIdentity:         reservation.WorkerIdentity,
+		ID:                          reservation.LeaseID,
+		TaskID:                      reservation.TaskID,
+		TaskIRDigest:                reservation.TaskIRDigest,
+		AttemptID:                   reservation.AttemptID,
+		WorkerIdentity:              reservation.WorkerIdentity,
 		PlacementTrustDomain:        reservation.PlacementTrustDomain,
 		PlacementAuthorityPrincipal: reservation.PlacementAuthorityPrincipal,
-		PlacementDecisionID:           reservation.PlacementDecisionID,
-		PlacementPayloadDigest:        reservation.PlacementPayloadDigest,
-		PlacementExpiresAt:            reservation.PlacementExpiresAt,
-		PolicyRevision:                reservation.PolicyRevision,
-		FenceEpoch:             fence,
-		RenewalSequence:        0,
-		IssuedAt:               reservation.IssuedAt,
-		ExpiresAt:              reservation.ExpiresAt,
+		PlacementDecisionID:         reservation.PlacementDecisionID,
+		PlacementPayloadDigest:      reservation.PlacementPayloadDigest,
+		PlacementExpiresAt:          reservation.PlacementExpiresAt,
+		PolicyRevision:              reservation.PolicyRevision,
+		FenceEpoch:                  fence,
+		RenewalSequence:             0,
+		IssuedAt:                    reservation.IssuedAt,
+		ExpiresAt:                   reservation.ExpiresAt,
 	})
 	if err != nil {
 		return statestore.LeaseReservationResult{}, err
@@ -315,21 +315,21 @@ func scanLease(row rowScanner) (leasestate.LeaseRecord, error) {
 }
 
 type leaseColumns struct {
-	id                     string
-	taskID                 string
-	taskIRDigest           string
-	attemptID              string
+	id                          string
+	taskID                      string
+	taskIRDigest                string
+	attemptID                   string
 	workerIdentity              string
 	placementTrustDomain        string
 	placementAuthorityPrincipal string
 	placementDecisionID         string
-	placementPayloadDigest string
-	placementExpiresNS     int64
-	policyRevision         string
-	fenceEpoch             int64
-	renewalSequence        int64
-	issuedNS               int64
-	expiresNS              int64
+	placementPayloadDigest      string
+	placementExpiresNS          int64
+	policyRevision              string
+	fenceEpoch                  int64
+	renewalSequence             int64
+	issuedNS                    int64
+	expiresNS                   int64
 }
 
 func (c leaseColumns) record() (leasestate.LeaseRecord, error) {
@@ -357,21 +357,21 @@ func (c leaseColumns) record() (leasestate.LeaseRecord, error) {
 		return leasestate.LeaseRecord{}, corruptLease(c.id, errors.New("negative or zero lease sequence"))
 	}
 	lease, err := leasestate.New(leasestate.Config{
-		ID:                     leaseID,
-		TaskID:                 taskID,
-		TaskIRDigest:           taskIR,
-		AttemptID:              attemptID,
-		WorkerIdentity:         c.workerIdentity,
+		ID:                          leaseID,
+		TaskID:                      taskID,
+		TaskIRDigest:                taskIR,
+		AttemptID:                   attemptID,
+		WorkerIdentity:              c.workerIdentity,
 		PlacementTrustDomain:        c.placementTrustDomain,
 		PlacementAuthorityPrincipal: c.placementAuthorityPrincipal,
-		PlacementDecisionID:           c.placementDecisionID,
-		PlacementPayloadDigest:        placementDigest,
-		PlacementExpiresAt:            time.Unix(0, c.placementExpiresNS).UTC(),
-		PolicyRevision:                c.policyRevision,
-		FenceEpoch:             uint64(c.fenceEpoch),
-		RenewalSequence:        uint64(c.renewalSequence),
-		IssuedAt:               time.Unix(0, c.issuedNS).UTC(),
-		ExpiresAt:              time.Unix(0, c.expiresNS).UTC(),
+		PlacementDecisionID:         c.placementDecisionID,
+		PlacementPayloadDigest:      placementDigest,
+		PlacementExpiresAt:          time.Unix(0, c.placementExpiresNS).UTC(),
+		PolicyRevision:              c.policyRevision,
+		FenceEpoch:                  uint64(c.fenceEpoch),
+		RenewalSequence:             uint64(c.renewalSequence),
+		IssuedAt:                    time.Unix(0, c.issuedNS).UTC(),
+		ExpiresAt:                   time.Unix(0, c.expiresNS).UTC(),
 	})
 	if err != nil {
 		return leasestate.LeaseRecord{}, corruptLease(c.id, err)

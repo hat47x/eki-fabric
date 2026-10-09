@@ -107,4 +107,3 @@ func (s *Store) CompareAndSwapTask(ctx context.Context, id ids.TaskID, expectedR
 	s.tasks[id] = next
 	return nil
 }
-
