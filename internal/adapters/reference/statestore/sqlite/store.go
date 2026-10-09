@@ -146,11 +146,14 @@ func (s *Store) CompareAndSwapTask(ctx context.Context, id ids.TaskID, expectedR
 	defer func() { _ = tx.Rollback() }()
 
 	// The creation time is immutable and the digest is the Task identity's
-	// content binding, so neither is rewritten by a state transition.
+	// content binding, so neither is rewritten by a state transition. The
+	// digest is part of the WHERE clause so that a rebinding attempt matches
+	// no row and is reported as a conflict below, instead of being silently
+	// dropped.
 	res, err := tx.ExecContext(ctx, `
 UPDATE tasks
 SET phase = ?, terminal_outcome = ?, cancellation_requested = ?, revision = ?, updated_at_ns = ?
-WHERE task_id = ? AND revision = ?`,
+WHERE task_id = ? AND revision = ? AND task_ir_digest = ?`,
 		string(next.Phase),
 		string(next.TerminalOutcome),
 		boolToInt(next.CancellationRequested),
@@ -158,6 +161,7 @@ WHERE task_id = ? AND revision = ?`,
 		next.UpdatedAt.UTC().UnixNano(),
 		string(id),
 		int64(expectedRevision),
+		next.TaskIRDigest.Hex(),
 	)
 	if err != nil {
 		return fmt.Errorf("compare-and-swap task %s: %w", id, err)
@@ -168,13 +172,19 @@ WHERE task_id = ? AND revision = ?`,
 	}
 
 	if n == 0 {
-		var current int64
-		err := tx.QueryRowContext(ctx, `SELECT revision FROM tasks WHERE task_id = ?`, string(id)).Scan(&current)
+		var (
+			current       int64
+			currentDigest string
+		)
+		err := tx.QueryRowContext(ctx, `SELECT revision, task_ir_digest FROM tasks WHERE task_id = ?`, string(id)).Scan(&current, &currentDigest)
 		if errors.Is(err, sql.ErrNoRows) {
 			return fmt.Errorf("%w: task %s", statestore.ErrNotFound, id)
 		}
 		if err != nil {
 			return fmt.Errorf("compare-and-swap task %s: %w", id, err)
+		}
+		if current == int64(expectedRevision) && currentDigest != next.TaskIRDigest.Hex() {
+			return fmt.Errorf("%w: task %s TaskIR digest is immutable", statestore.ErrConflict, id)
 		}
 		return fmt.Errorf("%w: task %s is at revision %d, expected %d", statestore.ErrConflict, id, current, expectedRevision)
 	}

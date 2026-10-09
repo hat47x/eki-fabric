@@ -167,6 +167,17 @@ WHEN NEW.revision <> OLD.revision + 1
 BEGIN
 	SELECT RAISE(ABORT, 'invalid attempt transition');
 END`,
+	// 5: the TaskIR digest of a Task is immutable at the schema level. The
+	// adapter's CompareAndSwapTask never writes the column, so this only
+	// refuses writes that bypass the adapter. Attempts and Leases copy the
+	// digest at creation, and a rebinding would make them describe another
+	// TaskIR.
+	`CREATE TRIGGER tasks_task_ir_digest_immutable
+BEFORE UPDATE OF task_ir_digest ON tasks
+WHEN OLD.task_ir_digest <> NEW.task_ir_digest
+BEGIN
+	SELECT RAISE(ABORT, 'task TaskIR digest is immutable');
+END`,
 }
 
 // migrate brings the database to the latest version. It is idempotent, rejects

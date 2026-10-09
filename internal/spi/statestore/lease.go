@@ -22,11 +22,18 @@ var (
 )
 
 type LeaseReservation struct {
-	LeaseID                     ids.LeaseID
-	TaskID                      ids.TaskID
-	TaskIRDigest                contract.Digest
-	ExpectedTaskRevision        uint64
-	AttemptID                   ids.AttemptID
+	LeaseID      ids.LeaseID
+	TaskID       ids.TaskID
+	TaskIRDigest contract.Digest
+	// ExpectedTaskRevision is the Task revision the caller revalidated. A new
+	// reservation fails with ErrConflict if the stored Task has moved on.
+	ExpectedTaskRevision uint64
+	// AttemptID must name the Attempt that the Placement Approval was issued
+	// for. The store checks it is bound to TaskID and TaskIRDigest.
+	AttemptID ids.AttemptID
+	// ExpectedAttemptRevision is the Attempt revision the caller revalidated.
+	// A new reservation requires the stored Attempt to be PLACING at this
+	// revision, so a close or replan that raced the approval is rejected.
 	ExpectedAttemptRevision     uint64
 	WorkerIdentity              string
 	PlacementTrustDomain        string
@@ -118,6 +125,13 @@ func (r LeaseReservation) MatchesReservedPlacement(existing leasestate.LeaseReco
 // For a new Lease, implementations must make Task and Attempt revision/current
 // state checks, Worker binding, active-Lease exclusion, FenceEpoch allocation,
 // Lease persistence, and Attempt PLACING -> ASSIGNED binding atomic.
+//
+// The Attempt checks are: the Attempt exists; it is bound to the reservation's
+// Task and TaskIR digest; it is PLACING, so it is neither CREATED nor closed,
+// superseded, or already ASSIGNED; its Worker binding matches the reservation;
+// and its revision equals ExpectedAttemptRevision. Every check runs in the
+// same transaction as the Task checks, so a concurrent close of the Attempt
+// and a new Lease cannot both commit.
 //
 // Exact Placement replay may ignore stale expected revisions because it does
 // not allocate new authority, but only while the current Task is schedulable

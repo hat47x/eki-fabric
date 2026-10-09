@@ -18,21 +18,21 @@ import (
 var ErrInvalidLeaseRecord = errors.New("invalid lease record")
 
 type Config struct {
-	ID                     ids.LeaseID
-	TaskID                 ids.TaskID
-	TaskIRDigest           contract.Digest
-	AttemptID              ids.AttemptID
-	WorkerIdentity         string
-	PlacementTrustDomain   string
+	ID                          ids.LeaseID
+	TaskID                      ids.TaskID
+	TaskIRDigest                contract.Digest
+	AttemptID                   ids.AttemptID
+	WorkerIdentity              string
+	PlacementTrustDomain        string
 	PlacementAuthorityPrincipal string
-	PlacementDecisionID           string
-	PlacementPayloadDigest        contract.Digest
-	PlacementExpiresAt            time.Time
-	PolicyRevision                string
-	FenceEpoch             uint64
-	RenewalSequence        uint64
-	IssuedAt               time.Time
-	ExpiresAt              time.Time
+	PlacementDecisionID         string
+	PlacementPayloadDigest      contract.Digest
+	PlacementExpiresAt          time.Time
+	PolicyRevision              string
+	FenceEpoch                  uint64
+	RenewalSequence             uint64
+	IssuedAt                    time.Time
+	ExpiresAt                   time.Time
 }
 
 type LeaseRecord struct {
@@ -47,10 +47,10 @@ type LeaseRecord struct {
 	PlacementPayloadDigest      contract.Digest
 	PlacementExpiresAt          time.Time
 	PolicyRevision              string
-	FenceEpoch             uint64
-	RenewalSequence        uint64
-	IssuedAt               time.Time
-	ExpiresAt              time.Time
+	FenceEpoch                  uint64
+	RenewalSequence             uint64
+	IssuedAt                    time.Time
+	ExpiresAt                   time.Time
 }
 
 func New(cfg Config) (LeaseRecord, error) {
@@ -94,41 +94,41 @@ func New(cfg Config) (LeaseRecord, error) {
 		return LeaseRecord{}, fmt.Errorf("%w: issued/expires window is invalid", ErrInvalidLeaseRecord)
 	}
 	return LeaseRecord{
-		ID:                     cfg.ID,
-		TaskID:                 cfg.TaskID,
-		TaskIRDigest:           cfg.TaskIRDigest,
-		AttemptID:              cfg.AttemptID,
-		WorkerIdentity:         cfg.WorkerIdentity,
+		ID:                          cfg.ID,
+		TaskID:                      cfg.TaskID,
+		TaskIRDigest:                cfg.TaskIRDigest,
+		AttemptID:                   cfg.AttemptID,
+		WorkerIdentity:              cfg.WorkerIdentity,
 		PlacementTrustDomain:        cfg.PlacementTrustDomain,
 		PlacementAuthorityPrincipal: cfg.PlacementAuthorityPrincipal,
-		PlacementDecisionID:           cfg.PlacementDecisionID,
-		PlacementPayloadDigest:        cfg.PlacementPayloadDigest,
-		PlacementExpiresAt:            cfg.PlacementExpiresAt.UTC(),
-		PolicyRevision:                cfg.PolicyRevision,
-		FenceEpoch:             cfg.FenceEpoch,
-		RenewalSequence:        cfg.RenewalSequence,
-		IssuedAt:               cfg.IssuedAt.UTC(),
-		ExpiresAt:              cfg.ExpiresAt.UTC(),
+		PlacementDecisionID:         cfg.PlacementDecisionID,
+		PlacementPayloadDigest:      cfg.PlacementPayloadDigest,
+		PlacementExpiresAt:          cfg.PlacementExpiresAt.UTC(),
+		PolicyRevision:              cfg.PolicyRevision,
+		FenceEpoch:                  cfg.FenceEpoch,
+		RenewalSequence:             cfg.RenewalSequence,
+		IssuedAt:                    cfg.IssuedAt.UTC(),
+		ExpiresAt:                   cfg.ExpiresAt.UTC(),
 	}, nil
 }
 
 func (r LeaseRecord) Validate() error {
 	_, err := New(Config{
-		ID:                     r.ID,
-		TaskID:                 r.TaskID,
-		TaskIRDigest:           r.TaskIRDigest,
-		AttemptID:              r.AttemptID,
-		WorkerIdentity:         r.WorkerIdentity,
+		ID:                          r.ID,
+		TaskID:                      r.TaskID,
+		TaskIRDigest:                r.TaskIRDigest,
+		AttemptID:                   r.AttemptID,
+		WorkerIdentity:              r.WorkerIdentity,
 		PlacementTrustDomain:        r.PlacementTrustDomain,
 		PlacementAuthorityPrincipal: r.PlacementAuthorityPrincipal,
-		PlacementDecisionID:           r.PlacementDecisionID,
-		PlacementPayloadDigest:        r.PlacementPayloadDigest,
-		PlacementExpiresAt:            r.PlacementExpiresAt,
-		PolicyRevision:                r.PolicyRevision,
-		FenceEpoch:             r.FenceEpoch,
-		RenewalSequence:        r.RenewalSequence,
-		IssuedAt:               r.IssuedAt,
-		ExpiresAt:              r.ExpiresAt,
+		PlacementDecisionID:         r.PlacementDecisionID,
+		PlacementPayloadDigest:      r.PlacementPayloadDigest,
+		PlacementExpiresAt:          r.PlacementExpiresAt,
+		PolicyRevision:              r.PolicyRevision,
+		FenceEpoch:                  r.FenceEpoch,
+		RenewalSequence:             r.RenewalSequence,
+		IssuedAt:                    r.IssuedAt,
+		ExpiresAt:                   r.ExpiresAt,
 	})
 	return err
 }

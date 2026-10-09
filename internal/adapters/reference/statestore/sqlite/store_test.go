@@ -85,6 +85,56 @@ func TestLeaseStoreContract(t *testing.T) {
 	})
 }
 
+func TestLeaseBypassContract(t *testing.T) {
+	statestoretest.RunLeaseBypassContract(t, statestoretest.LeaseBypassFactory{
+		New: func(t testing.TB) statestoretest.TaskLeaseStore {
+			t.Helper()
+			store := openStore(t, filepath.Join(t.TempDir(), "state.db"))
+			t.Cleanup(func() {
+				if err := store.Close(); err != nil {
+					t.Errorf("Close() error = %v", err)
+				}
+			})
+			return store
+		},
+		RebindTaskIRDigest: func(t testing.TB, store statestoretest.TaskLeaseStore, id ids.TaskID, digest contract.Digest) {
+			t.Helper()
+			// Version 5 of the schema refuses this write. The bypass contract checks
+			// the Attempt binding behind that guard, so the guard is removed here to
+			// simulate a repair that bypasses the schema. The guard itself is tested
+			// in migrate_test.go.
+			s := store.(*Store)
+			if _, err := s.db.Exec(`DROP TRIGGER tasks_task_ir_digest_immutable`); err != nil {
+				t.Fatalf("drop TaskIR digest guard: %v", err)
+			}
+			if _, err := s.db.Exec(`UPDATE tasks SET task_ir_digest = ? WHERE task_id = ?`, digest.Hex(), id.String()); err != nil {
+				t.Fatalf("rebind TaskIR digest through SQL: %v", err)
+			}
+		},
+		OverwriteAttempt: func(t testing.TB, store statestoretest.TaskLeaseStore, record attemptstate.AttemptRecord) {
+			t.Helper()
+			s := store.(*Store)
+			dropAttemptBindingGuards(t, s)
+			var lease any
+			if record.LeaseID != "" {
+				lease = record.LeaseID.String()
+			}
+			if _, err := s.db.Exec(`
+UPDATE attempts
+SET task_id = ?, task_ir_digest = ?, worker_identity = ?, lease_id = ?
+WHERE attempt_id = ?`,
+				record.TaskID.String(),
+				record.TaskIRDigest.Hex(),
+				record.WorkerIdentity,
+				lease,
+				record.ID.String(),
+			); err != nil {
+				t.Fatalf("overwrite Attempt binding through SQL: %v", err)
+			}
+		},
+	})
+}
+
 func TestLeaseDurabilityContract(t *testing.T) {
 	statestoretest.RunLeaseDurabilityContract(t, statestoretest.DurableLeaseFactory{
 		Open: func(t testing.TB, location string) (statestoretest.TaskLeaseStore, func() error) {
