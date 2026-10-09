@@ -267,14 +267,6 @@ func attemptCanReplayLease(attempt attemptstate.AttemptRecord, lease leasestate.
 	}
 }
 
-func laterAttemptTime(a, b time.Time) time.Time {
-	a, b = a.UTC(), b.UTC()
-	if b.After(a) {
-		return b
-	}
-	return a
-}
-
 func (s *Store) LoadLease(ctx context.Context, id ids.LeaseID) (leasestate.LeaseRecord, error) {
 	if err := ctx.Err(); err != nil {
 		return leasestate.LeaseRecord{}, err

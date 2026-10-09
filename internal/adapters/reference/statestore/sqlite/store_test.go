@@ -85,6 +85,29 @@ func TestLeaseStoreContract(t *testing.T) {
 	})
 }
 
+func TestLeaseBypassContract(t *testing.T) {
+	statestoretest.RunLeaseBypassContract(t, statestoretest.LeaseBypassFactory{
+		New: func(t testing.TB) statestoretest.TaskLeaseStore {
+			t.Helper()
+			store := openStore(t, filepath.Join(t.TempDir(), "state.db"))
+			t.Cleanup(func() {
+				if err := store.Close(); err != nil {
+					t.Errorf("Close() error = %v", err)
+				}
+			})
+			return store
+		},
+		RebindTaskIRDigest: func(t testing.TB, store statestoretest.TaskLeaseStore, id ids.TaskID, digest contract.Digest) {
+			t.Helper()
+			// The tasks table has no trigger on its digest column, so this direct
+			// write is accepted by the schema and only the Attempt check can catch it.
+			if _, err := store.(*Store).db.Exec(`UPDATE tasks SET task_ir_digest = ? WHERE task_id = ?`, digest.Hex(), id.String()); err != nil {
+				t.Fatalf("rebind TaskIR digest through SQL: %v", err)
+			}
+		},
+	})
+}
+
 func TestLeaseDurabilityContract(t *testing.T) {
 	statestoretest.RunLeaseDurabilityContract(t, statestoretest.DurableLeaseFactory{
 		Open: func(t testing.TB, location string) (statestoretest.TaskLeaseStore, func() error) {
