@@ -16,4 +16,6 @@ M0ではcurrent policyを一つに限定し、epochは1から単調増加しま�
 
 `policystate.ValidateTransition`は現在値と次値だけを見るpure ruleです。過去revisionの再利用禁止は履歴を持つ`PolicyStore`が担当し、memory / SQLite / SQLite triggerで同じ規則を実装します。
 
+P2 `eki.lease/v1`はwire上に`policy_revision`を持ちますが、内部の`PolicyEpoch`は持ちません。このためrevision identityの単一使用は、同じ署名上のrevision文字列が後から別epoch・別policy snapshotへ再解釈されることも防ぎます。内部Epochはlinearizationと監査に使い、P2 v1の意味同一性は一意なrevision identityで維持します。
+
 PolicyStoreはAdmission Storeと別Authority surfaceです。物理DBを共有しても、Admission Serviceへpolicy mutation APIを渡しません。
