@@ -50,11 +50,18 @@ type GovernorReclaim struct {
 // ResultDecision records the acceptance decision for one result and whether a
 // verifier established the result as verified. The caller's verification layer
 // sets Verified. The package cannot check it, so it trusts that value.
+//
+// A verified result must also name the verification record that established it in
+// VerificationRecordID. Without that ID, a reader of the verified share cannot find the
+// record behind a count. A verified result without the ID is rejected. For an
+// unverified result the ID is optional, and when it is present it is traced like any
+// other examined evidence.
 type ResultDecision struct {
-	ID       string
-	ResultID string
-	Accepted bool
-	Verified bool
+	ID                   string
+	ResultID             string
+	Accepted             bool
+	Verified             bool
+	VerificationRecordID string
 }
 
 // SuitabilityDecision records one outcome of the suitability gate for one task.
@@ -169,6 +176,14 @@ func split(log []Observation) (buckets, error) {
 				return buckets{}, fmt.Errorf("%w: %s", ErrDuplicateResult, v.ResultID)
 			}
 			seenResults[v.ResultID] = struct{}{}
+			if v.Verified && strings.TrimSpace(v.VerificationRecordID) == "" {
+				return buckets{}, fmt.Errorf("%w: verified result %s has no verification record", ErrInvalidObservation, v.ID)
+			}
+			if v.VerificationRecordID != "" {
+				if err := checkID("verification record ID", v.VerificationRecordID); err != nil {
+					return buckets{}, err
+				}
+			}
 			id = v.ID
 			b.results = append(b.results, v)
 		case SuitabilityDecision:
@@ -199,7 +214,24 @@ func split(log []Observation) (buckets, error) {
 		}
 		seenIDs[id] = struct{}{}
 	}
+	if err := checkEvidenceIDs(b, seenIDs); err != nil {
+		return buckets{}, err
+	}
 	return b, nil
+}
+
+// checkEvidenceIDs requires that no evidence ID reuses an observation ID. Evidence IDs,
+// such as verification record IDs, appear in the SourceIDs of the metrics next to
+// observation IDs. If one value named both, a reader could not tell which record a
+// trace points at. The check runs after the whole log is read, so the result does not
+// depend on the order of the log.
+func checkEvidenceIDs(b buckets, observationIDs map[string]struct{}) error {
+	for _, r := range b.results {
+		if _, clash := observationIDs[r.VerificationRecordID]; r.VerificationRecordID != "" && clash {
+			return fmt.Errorf("%w: verification record %s reuses an observation ID", ErrInvalidObservation, r.VerificationRecordID)
+		}
+	}
+	return nil
 }
 
 // checkReclaim requires a worker ID and a start time. A completion time, when
