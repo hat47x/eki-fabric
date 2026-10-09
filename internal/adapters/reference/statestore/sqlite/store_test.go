@@ -466,6 +466,31 @@ INSERT INTO policy_history (
 	); err == nil {
 		t.Fatal("direct SQL skipped policy epoch")
 	}
+
+	p2, err := policystate.NewActive(p1.Epoch+1, "policy-43", p1.ActivatedAt.Add(time.Minute))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := store.CompareAndSwapPolicy(context.Background(), p1.Epoch, p2); err != nil {
+		t.Fatalf("advance to replacement policy: %v", err)
+	}
+	if _, err := store.db.Exec(`
+INSERT INTO policy_history (
+	epoch, revision, status, activated_at_ns, revoked_at_ns, revoke_reason
+) VALUES (?, ?, 'active', ?, NULL, '')`,
+		int64(p2.Epoch+1),
+		p1.Revision,
+		p2.ActivatedAt.Add(time.Minute).UnixNano(),
+	); err == nil {
+		t.Fatal("direct SQL reactivated a superseded policy revision")
+	}
+	current, err := store.LoadCurrentPolicy(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if current.Epoch != p2.Epoch || current.Revision != p2.Revision || current.Status != policystate.StatusActive {
+		t.Fatalf("historical rollback attempt changed current policy: %#v", current)
+	}
 }
 
 func TestLeaseSchemaRejectsStalePolicyIfAdapterIsBypassed(t *testing.T) {
