@@ -99,7 +99,10 @@ func (a LeaseEmissionAbort) Validate() error {
 		return errors.New("Lease abort: close reason is required")
 	}
 	record, err := leaseemission.NewAborted(leaseemission.AbortedConfig{
-		LeaseID: a.LeaseID, Reason: a.Reason, CommittedAt: a.CommittedAt,
+		LeaseID: a.LeaseID,
+		CloseReason: string(a.CloseReason),
+		Reason: a.Reason,
+		CommittedAt: a.CommittedAt,
 	})
 	if err != nil || record.IsZero() {
 		return fmt.Errorf("Lease abort: %w", err)
