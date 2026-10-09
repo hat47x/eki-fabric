@@ -44,7 +44,7 @@ func (s *Store) CommitLeaseEmission(ctx context.Context, commit statestore.Lease
 		return statestore.LeaseEmissionResult{}, fmt.Errorf("%w: Lease is not live at emission commit", statestore.ErrConflict)
 	}
 
-	scope := placementScope{
+	scope := authorityDecisionScope{
 		trustDomain: commit.TrustDomain,
 		principal:   commit.AuthorityPrincipal,
 		decisionID:  commit.DecisionID,
