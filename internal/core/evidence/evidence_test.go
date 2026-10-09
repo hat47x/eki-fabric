@@ -41,8 +41,14 @@ func retry(id string, authorityGrew bool) RetryEvent {
 	return RetryEvent{ID: id, AuthorityGrew: authorityGrew}
 }
 
+// contribution builds a contribution record. A verified record cites a supporting fact
+// derived from its ID, so the helper gives a valid verified record by default.
 func contribution(id, worker string, verified bool) ContributionRecord {
-	return ContributionRecord{ID: id, WorkerID: worker, Verified: verified}
+	c := ContributionRecord{ID: id, WorkerID: worker, Verified: verified}
+	if verified {
+		c.SupportingFactIDs = []string{"fact-" + id}
+	}
+	return c
 }
 
 // mustDerive fails the test on error, so the call sites read as the main path.
@@ -285,14 +291,18 @@ func TestVerificationRecordOfRejectedResultIsTracedButNotCounted(t *testing.T) {
 	}
 }
 
-// TestEvidenceIDMayNotReuseAnObservationID checks that a verification record cannot share
-// its name with an observation in the same log, in either order. Both kinds of ID appear
-// in SourceIDs, so a shared name would make the trace ambiguous.
+// TestEvidenceIDMayNotReuseAnObservationID checks that a verification record or a
+// supporting fact cannot share its name with an observation in the same log, in either
+// order. Both kinds of ID appear in SourceIDs, so a shared name would make the trace
+// ambiguous.
 func TestEvidenceIDMayNotReuseAnObservationID(t *testing.T) {
-	clash := ResultDecision{ID: "res-obs-1", ResultID: "result-a", Accepted: true, Verified: true, VerificationRecordID: "rty-1"}
+	recordClash := ResultDecision{ID: "res-obs-1", ResultID: "result-a", Accepted: true, Verified: true, VerificationRecordID: "rty-1"}
+	factClash := ContributionRecord{ID: "con-1", WorkerID: "wkr-a", Verified: true, SupportingFactIDs: []string{"rty-1"}}
 	logs := map[string][]Observation{
-		"observation first": {retry("rty-1", false), clash},
-		"record first":      {clash, retry("rty-1", false)},
+		"record after observation":  {retry("rty-1", false), recordClash},
+		"record before observation": {recordClash, retry("rty-1", false)},
+		"fact after observation":    {retry("rty-1", false), factClash},
+		"fact before observation":   {factClash, retry("rty-1", false)},
 	}
 	for name, log := range logs {
 		p, err := DerivePrimary(log)
@@ -432,8 +442,66 @@ func TestUnverifiedContributionIsNotCounted(t *testing.T) {
 	if !slices.Equal(c.Verified, []string{"con-1"}) {
 		t.Errorf("Verified = %v, want [con-1]", c.Verified)
 	}
-	if !slices.Equal(c.SourceIDs, []string{"con-1", "con-2", "con-3"}) {
-		t.Errorf("SourceIDs = %v, want all three records", c.SourceIDs)
+	if !slices.Equal(c.SourceIDs, []string{"con-1", "con-2", "con-3", "fact-con-1"}) {
+		t.Errorf("SourceIDs = %v, want all three records and the fact of the verified one", c.SourceIDs)
+	}
+}
+
+// TestVerifiedContributionWithoutSupportingFactIsRejected checks that a verified
+// contribution must name at least one supporting fact. The derivation fails with no
+// partial result.
+func TestVerifiedContributionWithoutSupportingFactIsRejected(t *testing.T) {
+	cases := map[string]ContributionRecord{
+		"verified, no facts":   {ID: "con-1", WorkerID: "wkr-a", Verified: true},
+		"verified, blank fact": {ID: "con-2", WorkerID: "wkr-b", Verified: true, SupportingFactIDs: []string{"  "}},
+	}
+	for name, c := range cases {
+		p, err := DerivePrimary([]Observation{c})
+		if !errors.Is(err, ErrInvalidObservation) {
+			t.Errorf("%s: error = %v, want ErrInvalidObservation", name, err)
+		}
+		if !reflect.DeepEqual(p, Primary{}) {
+			t.Errorf("%s: a rejected log must not yield a partial result: %+v", name, p)
+		}
+	}
+}
+
+// TestSupportingFactIDMustBeWellFormed checks that a fact named by an unverified record
+// is still a valid identifier, because it is traced into the output.
+func TestSupportingFactIDMustBeWellFormed(t *testing.T) {
+	bad := ContributionRecord{ID: "con-1", WorkerID: "wkr-a", SupportingFactIDs: []string{"fact\n1"}}
+	if _, err := DerivePrimary([]Observation{bad}); !errors.Is(err, ErrInvalidObservation) {
+		t.Fatalf("control character in an unverified fact: error = %v, want ErrInvalidObservation", err)
+	}
+}
+
+// TestSupportingFactIDsAppearInSourceIDsAndLinkToTheirRecord checks that the facts of
+// every examined record are in SourceIDs. Links appear only for verified records. A
+// fact that two records cite appears once in SourceIDs, and a repeated fact within one
+// record gives one link.
+func TestSupportingFactIDsAppearInSourceIDsAndLinkToTheirRecord(t *testing.T) {
+	log := []Observation{
+		ContributionRecord{ID: "con-2", WorkerID: "wkr-b", Verified: true, SupportingFactIDs: []string{"fact-a"}},
+		ContributionRecord{ID: "con-1", WorkerID: "wkr-a", Verified: true, SupportingFactIDs: []string{"fact-b", "fact-a", "fact-b"}},
+		ContributionRecord{ID: "con-3", WorkerID: "wkr-c", Verified: false, SupportingFactIDs: []string{"fact-c"}},
+	}
+	p := mustDerive(t, log)
+	c := p.VerifiedContributions
+
+	wantSource := []string{"con-1", "con-2", "con-3", "fact-a", "fact-b", "fact-c"}
+	if !slices.Equal(c.SourceIDs, wantSource) {
+		t.Fatalf("SourceIDs = %v, want %v", c.SourceIDs, wantSource)
+	}
+	wantLinks := []EvidenceLink{
+		{ObservationID: "con-1", EvidenceID: "fact-a"},
+		{ObservationID: "con-1", EvidenceID: "fact-b"},
+		{ObservationID: "con-2", EvidenceID: "fact-a"},
+	}
+	if !reflect.DeepEqual(c.SupportingFacts, wantLinks) {
+		t.Fatalf("SupportingFacts = %+v, want %+v", c.SupportingFacts, wantLinks)
+	}
+	if c.Count() != 2 {
+		t.Fatalf("Count() = %d, want 2", c.Count())
 	}
 }
 
@@ -610,8 +678,15 @@ func knownIDs(log []Observation) map[string]bool {
 	known := map[string]bool{}
 	for _, o := range log {
 		known[o.ObservationID()] = true
-		if r, ok := o.(ResultDecision); ok && r.VerificationRecordID != "" {
-			known[r.VerificationRecordID] = true
+		switch v := o.(type) {
+		case ResultDecision:
+			if v.VerificationRecordID != "" {
+				known[v.VerificationRecordID] = true
+			}
+		case ContributionRecord:
+			for _, f := range v.SupportingFactIDs {
+				known[f] = true
+			}
 		}
 	}
 	return known
@@ -641,7 +716,7 @@ func TestSecondaryWorkerCountExcludesUnverifiedContributions(t *testing.T) {
 	if s.WorkerCount != 3 {
 		t.Errorf("WorkerCount = %d, want 3 (wkr-a, wkr-b, wkr-c)", s.WorkerCount)
 	}
-	if !slices.Equal(s.SourceIDs, []string{"con-1", "con-2", "rec-1", "rec-2"}) {
+	if !slices.Equal(s.SourceIDs, []string{"con-1", "con-2", "fact-con-1", "rec-1", "rec-2"}) {
 		t.Errorf("SourceIDs = %v", s.SourceIDs)
 	}
 }
