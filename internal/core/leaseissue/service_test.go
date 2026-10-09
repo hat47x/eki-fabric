@@ -59,6 +59,17 @@ func (s staticPolicy) CurrentPolicyRevision(context.Context) (string, error) {
 	return s.value, s.err
 }
 
+type testClock struct {
+	now time.Time
+}
+
+func (c *testClock) Now() time.Time {
+	if c == nil {
+		return time.Time{}
+	}
+	return c.now
+}
+
 type cryptoFixture struct {
 	t        *testing.T
 	registry *decisiontrust.Registry
@@ -215,7 +226,7 @@ func TestRequestSurfaceContainsNoCallerSuppliedAuthorityFields(t *testing.T) {
 	for i := 0; i < typ.NumField(); i++ {
 		got[i] = typ.Field(i).Name
 	}
-	want := []string{"SignedPlacement", "Now", "RequestedLifetime"}
+	want := []string{"SignedPlacement", "RequestedLifetime"}
 	if !reflect.DeepEqual(got, want) {
 		t.Fatalf("Request fields = %v, want only %v", got, want)
 	}
@@ -224,11 +235,11 @@ func TestRequestSurfaceContainsNoCallerSuppliedAuthorityFields(t *testing.T) {
 func TestReserveDerivesAuthorityBindingsFromSignedPlacementAndCurrentState(t *testing.T) {
 	fx := newCryptoFixture(t)
 	store := readyPlacingState(t, testWorkerID)
-	service := newService(t, fx, store, 30*time.Second, testPolicyRev)
+	clock := &testClock{now: testNow}
+	service := newService(t, fx, store, 30*time.Second, testPolicyRev, clock)
 
 	result, err := service.Reserve(context.Background(), leaseissue.Request{
 		SignedPlacement:   fx.signedPlacement(),
-		Now:               testNow,
 		RequestedLifetime: time.Minute,
 	})
 	if err != nil {
@@ -270,11 +281,12 @@ func TestReserveDerivesAuthorityBindingsFromSignedPlacementAndCurrentState(t *te
 func TestReserveExactReplayConvergesWithoutNewFence(t *testing.T) {
 	fx := newCryptoFixture(t)
 	store := readyPlacingState(t, testWorkerID)
-	service := newService(t, fx, store, time.Minute, testPolicyRev)
+	clock := &testClock{now: testNow}
+	service := newService(t, fx, store, time.Minute, testPolicyRev, clock)
 	raw := fx.signedPlacement()
 
 	first, err := service.Reserve(context.Background(), leaseissue.Request{
-		SignedPlacement: raw, Now: testNow, RequestedLifetime: 20 * time.Second,
+		SignedPlacement: raw, RequestedLifetime: 20 * time.Second,
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -285,8 +297,9 @@ func TestReserveExactReplayConvergesWithoutNewFence(t *testing.T) {
 		t.Fatal(err)
 	}
 
+	clock.now = testNow.Add(time.Second)
 	second, err := service.Reserve(context.Background(), leaseissue.Request{
-		SignedPlacement: raw, Now: testNow.Add(time.Second), RequestedLifetime: 5 * time.Second,
+		SignedPlacement: raw, RequestedLifetime: 5 * time.Second,
 	})
 	if err != nil {
 		t.Fatalf("replay Reserve() error = %v", err)
@@ -306,11 +319,12 @@ func TestReserveExactReplayConvergesWithoutNewFence(t *testing.T) {
 func TestReserveExpiredReplayRequiresNewPlacementDecision(t *testing.T) {
 	fx := newCryptoFixture(t)
 	store := readyPlacingState(t, testWorkerID)
-	service := newService(t, fx, store, 5*time.Second, testPolicyRev)
+	clock := &testClock{now: testNow}
+	service := newService(t, fx, store, 5*time.Second, testPolicyRev, clock)
 	raw := fx.signedPlacement()
 
 	first, err := service.Reserve(context.Background(), leaseissue.Request{
-		SignedPlacement: raw, Now: testNow, RequestedLifetime: 5 * time.Second,
+		SignedPlacement: raw, RequestedLifetime: 5 * time.Second,
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -319,8 +333,9 @@ func TestReserveExpiredReplayRequiresNewPlacementDecision(t *testing.T) {
 		t.Fatalf("first expiry = %s", first.Lease.ExpiresAt)
 	}
 
+	clock.now = testNow.Add(6 * time.Second)
 	got, err := service.Reserve(context.Background(), leaseissue.Request{
-		SignedPlacement: raw, Now: testNow.Add(6 * time.Second), RequestedLifetime: 5 * time.Second,
+		SignedPlacement: raw, RequestedLifetime: 5 * time.Second,
 	})
 	if !errors.Is(err, leaseissue.ErrPlacementConsumed) {
 		t.Fatalf("expired replay error = %v, want ErrPlacementConsumed", err)
@@ -333,10 +348,11 @@ func TestReserveExpiredReplayRequiresNewPlacementDecision(t *testing.T) {
 func TestReserveRejectsCurrentPolicyDriftBeforeLeaseMutation(t *testing.T) {
 	fx := newCryptoFixture(t)
 	store := readyPlacingState(t, testWorkerID)
-	service := newService(t, fx, store, time.Minute, "policy-43")
+	clock := &testClock{now: testNow}
+	service := newService(t, fx, store, time.Minute, "policy-43", clock)
 
 	_, err := service.Reserve(context.Background(), leaseissue.Request{
-		SignedPlacement: fx.signedPlacement(), Now: testNow, RequestedLifetime: time.Minute,
+		SignedPlacement: fx.signedPlacement(), RequestedLifetime: time.Minute,
 	})
 	if err == nil {
 		t.Fatal("Reserve() accepted stale Placement policy")
@@ -355,10 +371,11 @@ func TestReserveRejectsCurrentPolicyDriftBeforeLeaseMutation(t *testing.T) {
 func TestReserveRejectsAttemptWorkerDriftBeforeLeaseMutation(t *testing.T) {
 	fx := newCryptoFixture(t)
 	store := readyPlacingState(t, "worker-b")
-	service := newService(t, fx, store, time.Minute, testPolicyRev)
+	clock := &testClock{now: testNow}
+	service := newService(t, fx, store, time.Minute, testPolicyRev, clock)
 
 	_, err := service.Reserve(context.Background(), leaseissue.Request{
-		SignedPlacement: fx.signedPlacement(), Now: testNow, RequestedLifetime: time.Minute,
+		SignedPlacement: fx.signedPlacement(), RequestedLifetime: time.Minute,
 	})
 	if !errors.Is(err, leaseissue.ErrCurrentState) {
 		t.Fatalf("worker drift error = %v, want ErrCurrentState", err)
@@ -376,13 +393,14 @@ func TestReserveUsesCurrentTrustBundleOnEveryCall(t *testing.T) {
 			ValidatedAt: testNow.Add(-2 * time.Hour),
 		}},
 		Policy:      staticPolicy{value: testPolicyRev},
+		Clock:       &testClock{now: testNow},
 		MaxLifetime: time.Minute,
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
 	if _, err := service.Reserve(context.Background(), leaseissue.Request{
-		SignedPlacement: fx.signedPlacement(), Now: testNow, RequestedLifetime: time.Minute,
+		SignedPlacement: fx.signedPlacement(), RequestedLifetime: time.Minute,
 	}); err == nil {
 		t.Fatal("Reserve() accepted a stale current Trust Bundle")
 	}
@@ -391,7 +409,8 @@ func TestReserveUsesCurrentTrustBundleOnEveryCall(t *testing.T) {
 func TestReserveCapsLeaseAtPlacementExpiry(t *testing.T) {
 	fx := newCryptoFixture(t)
 	store := readyPlacingState(t, testWorkerID)
-	service := newService(t, fx, store, 10*time.Minute, testPolicyRev)
+	clock := &testClock{now: testNow}
+	service := newService(t, fx, store, 10*time.Minute, testPolicyRev, clock)
 
 	result, err := service.Reserve(context.Background(), leaseissue.Request{
 		SignedPlacement: fx.signedPlacement(),
@@ -406,13 +425,14 @@ func TestReserveCapsLeaseAtPlacementExpiry(t *testing.T) {
 	}
 }
 
-func newService(t *testing.T, fx *cryptoFixture, store *memory.Store, maxLifetime time.Duration, policy string) *leaseissue.Service {
+func newService(t *testing.T, fx *cryptoFixture, store *memory.Store, maxLifetime time.Duration, policy string, clock *testClock) *leaseissue.Service {
 	t.Helper()
 	service, err := leaseissue.New(leaseissue.Config{
 		Verifier:      fx.verifier,
 		State:         store,
 		TrustBundle:   staticTrustBundle{value: fx.bundle},
 		Policy:        staticPolicy{value: policy},
+		Clock:         clock,
 		MaxLifetime:   maxLifetime,
 	})
 	if err != nil {
