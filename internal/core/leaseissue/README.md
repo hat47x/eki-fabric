@@ -54,3 +54,7 @@ Lease expiryは次の最小値です。
 - Worker側のstrict decode / key / role / subject / FenceEpoch / expiry verification
 
 durable reservation commit前に署名済みLeaseを外へ出しません。
+
+また、durable reservationが成功したことだけを後続signing authorityにしません。reservation後にkey state、Trust Bundle、policy、Task / Attempt stateが変わる可能性があるため、将来のLSE-1 signing境界は**署名直前のcurrent key / trust / policy / subject stateを再確認**し、失効・取消・supersedeをfail closedにする必要があります。
+
+このserviceは「署名可能なLeaseを確定した」のではなく、「現在検証したPlacementを、Authorityを増幅させずdurable fencing stateへ予約した」ところまでを保証します。
