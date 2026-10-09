@@ -13,12 +13,15 @@
 // that is malformed or contradicts itself, and then Open fails, so a damaged file
 // is never loaded in part.
 //
-// Single writer. Run one Store per file. Two Stores may share a file. The database
-// lock orders their writes, and the primary key refuses a duplicate. But a Store
-// learns of another Store's revocations only when its own write is refused, or
-// when it is opened again. Admit reads the in-memory ledger, so a stale Store can
-// admit a grant that another Store has already revoked, until then. This package
-// does not prevent that.
+// Several Stores may share one file. Revoke, Admit, and PlanReclaim each read the
+// stored revocation of the grant they are given before they act, and load it into
+// memory when the file holds one. So a revocation committed by any Store on the
+// file applies to every Store's next call for that grant, without a reopen. The
+// database lock orders the writes, and the primary key refuses a second revocation
+// of one grant.
+//
+// A call that starts before a concurrent commit returns may not see that commit.
+// Any call that starts after Revoke returns sees the revocation.
 //
 // The file holds decision metadata. It is created readable only by its owner, and
 // nothing other than this package should write to it. Anyone who can delete rows
