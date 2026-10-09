@@ -11,7 +11,7 @@ var (
 	ErrPolicyUnavailable = errors.New("policy state is not initialized")
 	ErrPolicyChanged     = errors.New("policy state changed before lease reservation")
 	ErrPolicyRevoked     = errors.New("policy revision is revoked or inactive")
-	ErrPolicyReactivation = errors.New("revoked policy revision cannot be reactivated")
+	ErrPolicyReactivation = errors.New("previously activated policy revision cannot be reactivated")
 )
 
 // PolicyStore owns the durable, monotonic policy snapshot used by LSE-1.
