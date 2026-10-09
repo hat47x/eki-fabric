@@ -404,6 +404,52 @@ func RunLeaseStoreContract(t *testing.T, newStore LeaseFactory) {
 		}
 	})
 
+	t.Run("exact-replay-keeps-attempt-revision-and-fence", func(t *testing.T) {
+		store := newStore(t)
+		task := readyTask(t, store, "replay-no-advance")
+		reservation := leaseReservation(t, store, task, "placement-1", leaseNow, leaseNow.Add(time.Minute))
+		first, err := store.ReserveLease(context.Background(), reservation)
+		if err != nil {
+			t.Fatal(err)
+		}
+		before, err := store.LoadAttempt(context.Background(), reservation.AttemptID)
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		replay := reservation
+		replay.LeaseID = mustLeaseID(t)
+		again, err := store.ReserveLease(context.Background(), replay)
+		if err != nil {
+			t.Fatalf("exact replay error = %v", err)
+		}
+		if !again.Replayed || again.Lease.ID != first.Lease.ID || again.Lease.FenceEpoch != first.Lease.FenceEpoch {
+			t.Fatalf("exact replay = %#v, want stored Lease at FenceEpoch %d", again, first.Lease.FenceEpoch)
+		}
+		after, err := store.LoadAttempt(context.Background(), reservation.AttemptID)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if after.Revision != before.Revision || after.Phase != before.Phase || after.LeaseID != before.LeaseID {
+			t.Fatalf("exact replay advanced Attempt: before=%#v after=%#v", before, after)
+		}
+		// The replay must not have stored the caller's new Lease ID either.
+		assertLeaseNotReserved(t, store, replay.LeaseID)
+
+		// The replay must not consume a FenceEpoch. Once the stored Lease has
+		// expired, the next Attempt must receive the next epoch, not the one
+		// after it.
+		secondNow := first.Lease.ExpiresAt.Add(time.Nanosecond)
+		second := leaseReservation(t, store, task, "placement-2", secondNow, secondNow.Add(time.Minute))
+		got, err := store.ReserveLease(context.Background(), second)
+		if err != nil {
+			t.Fatalf("ReserveLease() after exact replay error = %v", err)
+		}
+		if got.Lease.FenceEpoch != first.Lease.FenceEpoch+1 {
+			t.Fatalf("fence after exact replay = %d, want %d", got.Lease.FenceEpoch, first.Lease.FenceEpoch+1)
+		}
+	})
+
 	t.Run("replay-after-attempt-close-fails-closed", func(t *testing.T) {
 		store := newStore(t)
 		task := readyTask(t, store, "attempt-replay-closed")
@@ -787,22 +833,28 @@ func RunLeaseDurabilityContract(t *testing.T, factory DurableLeaseFactory) {
 	})
 }
 
-// LeaseBypassFactory supports checks that must hold even when a Task row has
+// LeaseBypassFactory supports checks that must hold even when a stored row has
 // been changed outside the SPI, for example by a direct repair of the database.
-// The SPI cannot produce that state, so each adapter provides a hook to create
-// it and the contract checks that the Attempt's own binding still rejects the
-// reservation.
+// The SPI cannot produce that state, so each adapter provides hooks to create
+// it and the contract checks that the binding still rejects the reservation.
 type LeaseBypassFactory struct {
 	New func(t testing.TB) TaskLeaseStore
 	// RebindTaskIRDigest overwrites the stored TaskIR digest of one Task without
 	// going through CompareAndSwapTask. It must not change the Task revision.
+	// An adapter may remove its own schema guard for this write, because the
+	// check under test is the Attempt's binding, which must hold without it.
 	RebindTaskIRDigest func(t testing.TB, store TaskLeaseStore, id ids.TaskID, digest contract.Digest)
+	// OverwriteAttempt writes the binding columns of record (TaskID,
+	// TaskIRDigest, WorkerIdentity and LeaseID) over the stored Attempt with the
+	// same ID. It bypasses ValidateTransition and must not change the Attempt
+	// Revision or Phase.
+	OverwriteAttempt func(t testing.TB, store TaskLeaseStore, record attemptstate.AttemptRecord)
 }
 
 func RunLeaseBypassContract(t *testing.T, factory LeaseBypassFactory) {
 	t.Helper()
-	if factory.New == nil || factory.RebindTaskIRDigest == nil {
-		t.Fatal("LeaseBypassFactory requires New and RebindTaskIRDigest")
+	if factory.New == nil || factory.RebindTaskIRDigest == nil || factory.OverwriteAttempt == nil {
+		t.Fatal("LeaseBypassFactory requires New, RebindTaskIRDigest and OverwriteAttempt")
 	}
 
 	t.Run("attempt-taskir-binding-rejects-when-task-row-is-rebound", func(t *testing.T) {
@@ -821,6 +873,58 @@ func RunLeaseBypassContract(t *testing.T, factory LeaseBypassFactory) {
 		}
 		assertLeaseNotReserved(t, store, reservation.LeaseID)
 	})
+
+	// An exact replay matches the stored Lease on every reserved field, so the
+	// Lease-level comparison passes. The only thing left to reject it is the
+	// Attempt's own binding to that Lease. Each case corrupts one binding field
+	// of the Attempt and checks that the replay is refused. Before the
+	// corruption, the same replay must succeed, so the refusal comes from the
+	// corrupted field and not from the replay request itself.
+	mismatches := map[string]func(t testing.TB, store TaskLeaseStore, attempt *attemptstate.AttemptRecord){
+		"lease-id": func(t testing.TB, _ TaskLeaseStore, attempt *attemptstate.AttemptRecord) {
+			attempt.LeaseID = mustLeaseID(t)
+		},
+		"worker-identity": func(t testing.TB, _ TaskLeaseStore, attempt *attemptstate.AttemptRecord) {
+			attempt.WorkerIdentity = "worker-b"
+		},
+		"task-id": func(t testing.TB, store TaskLeaseStore, attempt *attemptstate.AttemptRecord) {
+			other := readyTask(t, store, "bypass-attempt-task-id-other")
+			attempt.TaskID = other.ID
+		},
+		"taskir-digest": func(t testing.TB, _ TaskLeaseStore, attempt *attemptstate.AttemptRecord) {
+			attempt.TaskIRDigest = contract.SHA256([]byte("bypass-attempt-taskir-other"))
+		},
+	}
+	for name, mutate := range mismatches {
+		t.Run("exact-replay-rejects-attempt-with-mismatched-"+name, func(t *testing.T) {
+			store := factory.New(t)
+			task := readyTask(t, store, "bypass-attempt-"+name)
+			reservation := leaseReservation(t, store, task, "placement-1", leaseNow, leaseNow.Add(time.Minute))
+			if _, err := store.ReserveLease(context.Background(), reservation); err != nil {
+				t.Fatal(err)
+			}
+
+			control := reservation
+			control.LeaseID = mustLeaseID(t)
+			if got, err := store.ReserveLease(context.Background(), control); err != nil || !got.Replayed {
+				t.Fatalf("control exact replay before corruption = %#v, %v; want Replayed", got, err)
+			}
+
+			attempt, err := store.LoadAttempt(context.Background(), reservation.AttemptID)
+			if err != nil {
+				t.Fatal(err)
+			}
+			mutate(t, store, &attempt)
+			factory.OverwriteAttempt(t, store, attempt)
+
+			replay := reservation
+			replay.LeaseID = mustLeaseID(t)
+			if _, err := store.ReserveLease(context.Background(), replay); !errors.Is(err, statestore.ErrConflict) {
+				t.Fatalf("exact replay with Attempt %s mismatch error = %v, want ErrConflict", name, err)
+			}
+			assertLeaseNotReserved(t, store, replay.LeaseID)
+		})
+	}
 }
 
 var leaseNow = time.Date(2026, 10, 6, 12, 0, 0, 0, time.UTC)
