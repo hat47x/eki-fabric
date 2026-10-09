@@ -69,36 +69,17 @@ func NewEmitted(cfg EmittedConfig) (Record, error) {
 	if _, err := ids.ParseLeaseID(cfg.LeaseID.String()); err != nil {
 		return Record{}, fmt.Errorf("%w: Lease ID: %v", ErrInvalidRecord, err)
 	}
-	if err := validateText("Decision ID", cfg.DecisionID, 128); err != nil {
+	if err := ValidateSignedBinding(
+		cfg.DecisionID,
+		cfg.TrustDomain,
+		cfg.AuthorityPrincipal,
+		cfg.KeyID,
+		cfg.Algorithm,
+		cfg.PayloadDigest,
+		cfg.EnvelopeDigest,
+		cfg.SignedEnvelope,
+	); err != nil {
 		return Record{}, err
-	}
-	if err := validateText("Trust Domain", cfg.TrustDomain, 256); err != nil {
-		return Record{}, err
-	}
-	if err := validateText("Authority principal", cfg.AuthorityPrincipal, 256); err != nil {
-		return Record{}, err
-	}
-	if err := validateText("key ID", string(cfg.KeyID), decisiontrust.MaxKeyIDBytes); err != nil {
-		return Record{}, err
-	}
-	if _, ok := cfg.Algorithm.COSEIdentifier(); !ok {
-		return Record{}, fmt.Errorf("%w: unsupported algorithm %q", ErrInvalidRecord, cfg.Algorithm)
-	}
-	if cfg.PayloadDigest.IsZero() {
-		return Record{}, fmt.Errorf("%w: payload digest is required", ErrInvalidRecord)
-	}
-	if cfg.EnvelopeDigest.IsZero() {
-		return Record{}, fmt.Errorf("%w: envelope digest is required", ErrInvalidRecord)
-	}
-	if len(cfg.SignedEnvelope) == 0 || len(cfg.SignedEnvelope) > decisiontrust.MaxCOSESign1Bytes {
-		return Record{}, fmt.Errorf(
-			"%w: signed envelope must contain 1..%d bytes",
-			ErrInvalidRecord,
-			decisiontrust.MaxCOSESign1Bytes,
-		)
-	}
-	if contract.SHA256(cfg.SignedEnvelope) != cfg.EnvelopeDigest {
-		return Record{}, fmt.Errorf("%w: signed envelope digest mismatch", ErrInvalidRecord)
 	}
 	if err := validateText("policy revision", cfg.PolicyRevision, 128); err != nil {
 		return Record{}, err
@@ -124,6 +105,53 @@ func NewEmitted(cfg EmittedConfig) (Record, error) {
 		policyEpoch:        cfg.PolicyEpoch,
 		committedAt:        cfg.CommittedAt.UTC(),
 	}, nil
+}
+
+// ValidateSignedBinding checks the immutable metadata and bytes that will be
+// durably committed as one worker-facing signed Lease candidate. It does not
+// assert current Policy, Task, Attempt, key, or Trust Bundle authority.
+func ValidateSignedBinding(
+	decisionID string,
+	trustDomain string,
+	authorityPrincipal string,
+	keyID decisiontrust.KeyID,
+	algorithm decisiontrust.Algorithm,
+	payloadDigest contract.Digest,
+	envelopeDigest contract.Digest,
+	signedEnvelope []byte,
+) error {
+	if err := validateText("Decision ID", decisionID, 128); err != nil {
+		return err
+	}
+	if err := validateText("Trust Domain", trustDomain, 256); err != nil {
+		return err
+	}
+	if err := validateText("Authority principal", authorityPrincipal, 256); err != nil {
+		return err
+	}
+	if err := validateText("key ID", string(keyID), decisiontrust.MaxKeyIDBytes); err != nil {
+		return err
+	}
+	if _, ok := algorithm.COSEIdentifier(); !ok {
+		return fmt.Errorf("%w: unsupported algorithm %q", ErrInvalidRecord, algorithm)
+	}
+	if payloadDigest.IsZero() {
+		return fmt.Errorf("%w: payload digest is required", ErrInvalidRecord)
+	}
+	if envelopeDigest.IsZero() {
+		return fmt.Errorf("%w: envelope digest is required", ErrInvalidRecord)
+	}
+	if len(signedEnvelope) == 0 || len(signedEnvelope) > decisiontrust.MaxCOSESign1Bytes {
+		return fmt.Errorf(
+			"%w: signed envelope must contain 1..%d bytes",
+			ErrInvalidRecord,
+			decisiontrust.MaxCOSESign1Bytes,
+		)
+	}
+	if contract.SHA256(signedEnvelope) != envelopeDigest {
+		return fmt.Errorf("%w: signed envelope digest mismatch", ErrInvalidRecord)
+	}
+	return nil
 }
 
 func NewAborted(cfg AbortedConfig) (Record, error) {
