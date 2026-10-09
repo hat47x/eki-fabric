@@ -22,11 +22,12 @@ type Secondary struct {
 // the same validation as DerivePrimary, and it does not modify the log.
 //
 // FLOPS and resource utilization are intentionally not derived yet. ADR-0008 names them
-// as secondary metrics, but none of the observation kinds it defines (GovernorReclaim,
-// ResultDecision, SuitabilityDecision, RetryEvent, ContributionRecord) carries a FLOPS or
-// utilization value, so this log cannot compute them. Deriving them needs an observation
-// kind that records resource usage, and that design is still open. The criterion stays
-// open rather than silently absent. See doc.go.
+// as secondary metrics. The observation kinds in this package (GovernorReclaim,
+// ResultDecision, SuitabilityDecision, RetryEvent, ContributionRecord) are defined here,
+// not by ADR-0008, and none of them carries a FLOPS or utilization value, so this log
+// cannot compute them. Deriving them needs an observation kind that records resource
+// usage, and that design is still open. The criterion stays open rather than silently
+// absent. See doc.go.
 func DeriveSecondary(log []Observation) (Secondary, error) {
 	b, err := split(log)
 	if err != nil {

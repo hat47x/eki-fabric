@@ -51,10 +51,14 @@
 //   - Audit の根拠種別: ADR-0008は、根拠として Audit 記録、ガバナログ、Verification 記録を挙げる。
 //     このパッケージは Audit 記録を観測の種別として持たないため、その種別の根拠は指標に現れない。
 //   - FLOPSと資源利用率: ADR-0008は補助指標として報告するよう定める。このパッケージは導出しない。
-//     ADR-0008が定める観測の種別（GovernorReclaim、ResultDecision、SuitabilityDecision、RetryEvent、
-//     ContributionRecord）のどれも、FLOPSや利用率の値を持たないため、この記録からは計算できない。
+//     ADR-0008は指標の名前と、根拠として挙げる記録の種類を定めるが、観測の種別は定めていない。
+//     観測の種別（GovernorReclaim、ResultDecision、SuitabilityDecision、RetryEvent、ContributionRecord）は
+//     このパッケージが定めるものであり、そのどれも、FLOPSや利用率の値を持たないため、この記録からは計算できない。
 //     導出には資源使用量を記録する観測の種別が要り、その設計は未決である。この基準は未決のまま残し、
 //     黙って欠けているのではないことを明示する。
+//
+// Audit の根拠種別と FLOPS・利用率は、この範囲では実装せず、未決（open）のまま残す。
+// 指標の定義は ADR-0008 のままであり、このパッケージでは変えていない。
 //
 // 補助指標（ワーカー数など）は、主指標とは別の型Secondaryで返す。補助指標だけで成功を主張しないよう、
 // 型の段階で分けてある。
