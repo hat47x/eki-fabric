@@ -220,7 +220,8 @@ EKI内部のAuthorityが信頼する、issuer、key、policy revisionなどを�
 
 - Authorityのtrust configurationの更新
 - keyのrotation
-- policyのactivationとrollback
+- policyのactivationとrevocation
+- 過去の内容へ戻す必要がある場合、新しいrevision identityとして再発行するsemantic rollback
 - 緊急のrevocation
 
 ### 持たせない権限
@@ -543,6 +544,8 @@ current epoch still N and P is active?
 ~~~
 
 Policy Revisionの文字列を読んだ事実だけを、freshnessの保証にはしません。Policyのrevokeや置換とLease reservationが競合した場合は、古いsnapshotを持つ側を失敗させます。
+
+Policy revision identityは一度currentになったら再利用しません。`P1 -> P2 -> P1`のようにepochだけを進めて古いrevisionを復活させることもrollbackとして拒否します。過去のpolicy内容へ戻す必要がある場合は、その内容を新しいrevision identityとして発行します。これにより、revision identityが「どのpolicy snapshotか」を一意に指し続けます。
 
 Policy Stateの読み取りと更新は、Admissionのwrite surfaceとは分離します。同じSQLite fileを使うReference Profileでも、ADM-2がPolicy Authorityを持つことにはしません。
 
