@@ -6,7 +6,8 @@ import (
 	"time"
 )
 
-// Primary は、ADR-0008 の五つの主指標を表す。
+// Primary は、ADR-0008 の五つの主指標のうち、追記型の観測記録から導出できる部分を表す。
+// 導出していない範囲（reclaim の突き合わせ、保証水準、Audit の根拠種別、FLOPS と利用率）は、doc.go の「部分実装の範囲」を参照する。
 //
 // 各フィールドの SourceIDs は、その指標が導出時に確認した観測のIDである。
 // カウントに入らなかった観測（未検証の申告や、未完了の reclaim など）も含む。
@@ -19,7 +20,9 @@ type Primary struct {
 	VerifiedContributions VerifiedContributions
 }
 
-// DerivePrimary derives the five primary metrics from an append-only log.
+// DerivePrimary derives the primary metrics that an append-only log supports. It does
+// not derive the parts listed as partial in the package documentation, so a count here
+// is not a complete ADR-0008 measurement.
 //
 // It reads the log and never modifies it. Its output does not depend on the order
 // of the log. When any observation is invalid, it returns an error and no partial
