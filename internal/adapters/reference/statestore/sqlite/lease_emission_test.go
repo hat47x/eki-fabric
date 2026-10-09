@@ -22,7 +22,83 @@ func TestVersion5DatabaseUpgradesToEmissionSchemaWithoutLosingLeaseState(t *test
 	if err != nil {
 		t.Fatalf("open v5 store: %v", err)
 	}
-	task, reserved := seedReservedLeaseForEmission(t, old, "v5-emission-upgrade")
+
+	now := time.Date(2026, 10, 10, 0, 0, 0, 0, time.UTC)
+	policy, err := policystate.NewActive(1, "policy-42", now.Add(-time.Minute))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := old.CompareAndSwapPolicy(context.Background(), 0, policy); err != nil {
+		t.Fatal(err)
+	}
+	taskID, err := ids.NewTaskID()
+	if err != nil {
+		t.Fatal(err)
+	}
+	task, err := taskstate.NewTask(taskID, contract.SHA256([]byte("v5-emission-upgrade")), now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	task.Phase = taskstate.TaskPhaseReady
+	if err := old.CreateTask(context.Background(), task); err != nil {
+		t.Fatal(err)
+	}
+	attemptID, err := ids.NewAttemptID()
+	if err != nil {
+		t.Fatal(err)
+	}
+	attempt, err := attemptstate.New(attemptID, task.ID, task.TaskIRDigest, 1, now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := old.CreateAttempt(context.Background(), attempt); err != nil {
+		t.Fatal(err)
+	}
+	placing := attempt
+	placing.Phase = attemptstate.AttemptPhasePlacing
+	placing.WorkerIdentity = "worker-a"
+	placing.Revision++
+	placing.UpdatedAt = now.Add(time.Nanosecond)
+	if err := old.CompareAndSwapAttempt(context.Background(), attempt.ID, attempt.Revision, placing); err != nil {
+		t.Fatal(err)
+	}
+	leaseID, err := ids.NewLeaseID()
+	if err != nil {
+		t.Fatal(err)
+	}
+	placementDigest := contract.SHA256([]byte("placement:v5-emission-upgrade"))
+	if _, err := old.db.Exec(
+		`INSERT INTO lease_fences (task_id, last_fence_epoch) VALUES (?, 1)`,
+		task.ID.String(),
+	); err != nil {
+		t.Fatalf("seed v5 fence: %v", err)
+	}
+	if _, err := old.db.Exec(`
+INSERT INTO leases (
+	lease_id, task_id, task_ir_digest, attempt_id, worker_identity,
+	placement_trust_domain, placement_authority_principal, placement_decision_id,
+	placement_payload_digest, placement_expires_at_ns, policy_revision, policy_epoch,
+	fence_epoch, renewal_sequence, issued_at_ns, expires_at_ns
+) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		leaseID.String(),
+		task.ID.String(),
+		task.TaskIRDigest.Hex(),
+		attempt.ID.String(),
+		placing.WorkerIdentity,
+		"local.example",
+		"control-plane/plc-1",
+		"placement-v5-emission-upgrade",
+		placementDigest.Hex(),
+		now.Add(2*time.Minute).UnixNano(),
+		policy.Revision,
+		int64(policy.Epoch),
+		1,
+		0,
+		now.Add(time.Second).UnixNano(),
+		now.Add(time.Minute).UnixNano(),
+	); err != nil {
+		t.Fatalf("seed v5 lease: %v", err)
+	}
 	if err := old.Close(); err != nil {
 		t.Fatal(err)
 	}
@@ -30,21 +106,21 @@ func TestVersion5DatabaseUpgradesToEmissionSchemaWithoutLosingLeaseState(t *test
 	upgraded := openStore(t, path)
 	defer upgraded.Close()
 
-	gotLease, err := upgraded.LoadLease(context.Background(), reserved.Lease.ID)
+	gotLease, err := upgraded.LoadLease(context.Background(), leaseID)
 	if err != nil {
 		t.Fatalf("LoadLease() after v6 migration error = %v", err)
 	}
-	if gotLease.ID != reserved.Lease.ID ||
-		gotLease.FenceEpoch != reserved.Lease.FenceEpoch ||
-		gotLease.PolicyEpoch != reserved.Lease.PolicyEpoch ||
-		gotLease.PlacementPayloadDigest != reserved.Lease.PlacementPayloadDigest {
-		t.Fatalf("Lease changed across v5 -> v6 migration: got=%#v want=%#v", gotLease, reserved.Lease)
+	if gotLease.ID != leaseID ||
+		gotLease.FenceEpoch != 1 ||
+		gotLease.PolicyEpoch != policy.Epoch ||
+		gotLease.PlacementPayloadDigest != placementDigest {
+		t.Fatalf("Lease changed across v5 -> v6 migration: %#v", gotLease)
 	}
-	gotAttempt, err := upgraded.LoadAttempt(context.Background(), reserved.Lease.AttemptID)
+	gotAttempt, err := upgraded.LoadAttempt(context.Background(), attempt.ID)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if gotAttempt.Phase != attemptstate.AttemptPhaseAssigned || gotAttempt.LeaseID != reserved.Lease.ID {
+	if gotAttempt.Phase != attemptstate.AttemptPhaseAssigned || gotAttempt.LeaseID != leaseID {
 		t.Fatalf("Attempt/Lease binding changed across v5 -> v6: %#v", gotAttempt)
 	}
 	gotTask, err := upgraded.LoadTask(context.Background(), task.ID)
@@ -54,7 +130,7 @@ func TestVersion5DatabaseUpgradesToEmissionSchemaWithoutLosingLeaseState(t *test
 	if gotTask.TaskIRDigest != task.TaskIRDigest || gotTask.Revision != task.Revision {
 		t.Fatalf("Task changed across v5 -> v6: got=%#v want=%#v", gotTask, task)
 	}
-	if _, err := upgraded.LoadLeaseEmission(context.Background(), reserved.Lease.ID); !errors.Is(err, statestore.ErrNotFound) {
+	if _, err := upgraded.LoadLeaseEmission(context.Background(), leaseID); !errors.Is(err, statestore.ErrNotFound) {
 		t.Fatalf("migration invented emission state: %v", err)
 	}
 }
