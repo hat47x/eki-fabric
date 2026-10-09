@@ -110,7 +110,11 @@ func ValidateTransition(current, next State) error {
 		if next.Revision == current.Revision {
 			return fmt.Errorf("%w: active transition must introduce a different revision", ErrInvalidPolicyState)
 		}
-		if next.ActivatedAt.Before(current.ActivatedAt) {
+		notBefore := current.ActivatedAt
+		if current.Status == StatusRevoked {
+			notBefore = current.RevokedAt
+		}
+		if next.ActivatedAt.Before(notBefore) {
 			return fmt.Errorf("%w: activation time moved backwards", ErrInvalidPolicyState)
 		}
 	}
