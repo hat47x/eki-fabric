@@ -215,6 +215,21 @@ WHEN NEW.status = 'active'
   )
 BEGIN
 	SELECT RAISE(ABORT, 'revoked policy revision cannot be reactivated');
+END;
+CREATE TRIGGER leases_policy_insert
+BEFORE INSERT ON leases
+WHEN NEW.policy_epoch < 1
+  OR NOT EXISTS (
+	SELECT 1
+	FROM policy_current c
+	JOIN policy_history h ON h.epoch = c.epoch
+	WHERE c.singleton = 1
+	  AND c.epoch = NEW.policy_epoch
+	  AND h.revision = NEW.policy_revision
+	  AND h.status = 'active'
+  )
+BEGIN
+	SELECT RAISE(ABORT, 'lease does not bind the current active policy');
 END`,
 }
 
