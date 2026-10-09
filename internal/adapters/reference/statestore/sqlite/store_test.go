@@ -421,6 +421,67 @@ INSERT INTO leases (
 	}
 }
 
+func TestLeaseSchemaRejectsStalePolicyIfAdapterIsBypassed(t *testing.T) {
+	store := openStore(t, filepath.Join(t.TempDir(), "state.db"))
+	defer store.Close()
+
+	p1 := ensureSQLitePolicy(t, store, "policy-42")
+	task := newTaskRecord(t, "lease-policy-trigger")
+	task.Phase = taskstate.TaskPhaseReady
+	if err := store.CreateTask(context.Background(), task); err != nil {
+		t.Fatal(err)
+	}
+	placing := createPlacingAttemptForSQLite(t, store, task, 1, "worker-a")
+
+	p2, err := policystate.NewActive(p1.Epoch+1, "policy-43", p1.ActivatedAt.Add(time.Minute))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := store.CompareAndSwapPolicy(context.Background(), p1.Epoch, p2); err != nil {
+		t.Fatal(err)
+	}
+
+	leaseID, err := ids.NewLeaseID()
+	if err != nil {
+		t.Fatal(err)
+	}
+	now := time.Date(2026, 10, 9, 12, 0, 0, 0, time.UTC)
+	if _, err := store.db.Exec(`
+INSERT INTO leases (
+	lease_id, task_id, task_ir_digest, attempt_id, worker_identity,
+	placement_trust_domain, placement_authority_principal, placement_decision_id,
+	placement_payload_digest, placement_expires_at_ns, policy_revision, policy_epoch,
+	fence_epoch, renewal_sequence, issued_at_ns, expires_at_ns
+) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		leaseID.String(),
+		task.ID.String(),
+		task.TaskIRDigest.Hex(),
+		placing.ID.String(),
+		placing.WorkerIdentity,
+		"local.example",
+		"control-plane/plc-1",
+		"stale-policy-direct-insert",
+		contract.SHA256([]byte("stale-policy-direct-insert")).Hex(),
+		now.Add(2*time.Minute).UnixNano(),
+		p1.Revision,
+		int64(p1.Epoch),
+		1,
+		0,
+		now.UnixNano(),
+		now.Add(time.Minute).UnixNano(),
+	); err == nil {
+		t.Fatal("direct SQL inserted Lease under stale Policy Epoch")
+	}
+
+	current, err := store.LoadAttempt(context.Background(), placing.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if current.Phase != attemptstate.AttemptPhasePlacing || current.LeaseID != "" || current.Revision != placing.Revision {
+		t.Fatalf("stale policy insert mutated Attempt: %#v", current)
+	}
+}
+
 func ensureSQLitePolicy(t testing.TB, store *Store, revision string) policystate.State {
 	t.Helper()
 	current, err := store.LoadCurrentPolicy(context.Background())
