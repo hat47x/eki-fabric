@@ -37,6 +37,11 @@ func (p AdministratorPolicy) Names(id ProviderID) bool {
 // is the provider's own claim and never enters the result, so a provider cannot
 // raise its own assurance by declaring itself managed. Requirement RQ-047 covers
 // this.
+//
+// No production code calls this function yet. Its callers are the tests of this
+// package and the shared conformance suite. Open question 6 in
+// conformance/providercontract/README.md records that DeclaredManaged has no reader
+// and that the consumer is undecided.
 func ManagedForPlacement(decl Declaration, policy AdministratorPolicy) bool {
 	return decl.Provider != "" && policy.Names(decl.Provider)
 }

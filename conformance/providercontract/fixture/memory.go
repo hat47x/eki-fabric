@@ -20,14 +20,25 @@ import (
 // already ended.
 var ErrLeaseFinished = errors.New("fixture: lease attempt already finished")
 
+// intPtr returns a pointer to a copy of v. It is used for Config.RetryLimit, where
+// nil and zero have different meanings.
+func intPtr(v int) *int { return &v }
+
 // Config describes one fixture.
 type Config struct {
 	// Declaration is what the adapter declares. The fixture behaves according to
 	// it. A declaration that the fixture does not follow would be a bug in the fixture.
 	Declaration resourceprovider.Declaration
 	// RetryLimit is the number of automatic retries a lease gets while automatic
-	// retry is on. Zero means the fixture does not model a count limit.
-	RetryLimit int
+	// retry is on. The three values have different meanings:
+	//   - nil: the fixture does not model a count limit. Retries continue without a bound.
+	//   - a pointer to 0: no automatic retry. The first failure is final. This is the
+	//     fixture's model of Kubernetes backoffLimit 0. Whether the real provider
+	//     behaves this way is not verified (see the README in the parent directory).
+	//   - a pointer to n > 0: at most n automatic retries, then the failure is final.
+	//
+	// A negative value is refused by New.
+	RetryLimit *int
 }
 
 // Memory is an in-memory ProviderAdapter. Its simulation methods drive the
@@ -35,7 +46,7 @@ type Config struct {
 type Memory struct {
 	mu         sync.Mutex
 	decl       resourceprovider.Declaration
-	retryLimit int
+	retryLimit *int
 	leases     map[ids.LeaseID]*lease
 	nextSlot   int
 }
@@ -54,12 +65,19 @@ func New(cfg Config) (*Memory, error) {
 	if err := resourceprovider.ValidateDeclaration(cfg.Declaration); err != nil {
 		return nil, err
 	}
-	if cfg.RetryLimit < 0 {
-		return nil, errors.New("fixture: negative retry limit")
+	var limit *int
+	if cfg.RetryLimit != nil {
+		if *cfg.RetryLimit < 0 {
+			return nil, errors.New("fixture: negative retry limit")
+		}
+		// Copy the value, so that a caller who changes its own variable later does
+		// not change the fixture.
+		v := *cfg.RetryLimit
+		limit = &v
 	}
 	return &Memory{
 		decl:       cfg.Declaration,
-		retryLimit: cfg.RetryLimit,
+		retryLimit: limit,
 		leases:     make(map[ids.LeaseID]*lease),
 	}, nil
 }
@@ -156,7 +174,7 @@ func (m *Memory) FailAttempt(id ids.LeaseID) error {
 		return err
 	}
 	retryOn := m.decl.Retry.OnByDefault && !l.retryOff
-	if retryOn && (m.retryLimit == 0 || l.retries < m.retryLimit) {
+	if retryOn && (m.retryLimit == nil || l.retries < *m.retryLimit) {
 		l.retries++
 		m.emit(l, resourceprovider.EventRequeued)
 		m.emit(l, resourceprovider.EventStarted)
