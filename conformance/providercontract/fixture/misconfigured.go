@@ -19,6 +19,6 @@ func NewRetryNotDisableable() (*Memory, error) {
 				Partition: "eki-workers",
 			},
 		},
-		RetryLimit: 6,
+		RetryLimit: intPtr(6),
 	})
 }
