@@ -18,8 +18,9 @@ signed Placement Approval bytes
 callerがRequestで指定できるのは次だけです。
 
 - signed Placement Approval bytes
-- 現在時刻
 - 希望Lease期間
+
+現在時刻はcallerから受け取りません。LSE-1が構成時に受け取るtrusted `Clock`から取得します。過去時刻を申告して期限切れPlacementを復活させる経路を作らないためです。
 
 Task、TaskIR、Attempt、Worker、Trust Domain、PLC-1 principal、Decision ID、payload digest、policy revision、Placement expiryはcallerから受け取りません。
 
