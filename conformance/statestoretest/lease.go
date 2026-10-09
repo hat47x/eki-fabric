@@ -157,24 +157,29 @@ func RunLeaseStoreContract(t *testing.T, newStore LeaseFactory) {
 		}
 		otherTask := readyTask(t, store, "replay-subject-other-task")
 
-		tests := map[string]func(*statestore.LeaseReservation){
-			"task": func(r *statestore.LeaseReservation) {
+		// The policy row is rejected by the policy-currentness check, which runs
+		// before the placement subject comparison, so it reports ErrPolicyChanged.
+		tests := map[string]struct {
+			mutate func(*statestore.LeaseReservation)
+			want   error
+		}{
+			"task": {want: statestore.ErrPlacementDecisionConflict, mutate: func(r *statestore.LeaseReservation) {
 				r.TaskID = otherTask.ID
 				r.TaskIRDigest = otherTask.TaskIRDigest
 				r.ExpectedTaskRevision = otherTask.Revision
-			},
-			"attempt":          func(r *statestore.LeaseReservation) { r.AttemptID = mustAttemptID(t) },
-			"worker":           func(r *statestore.LeaseReservation) { r.WorkerIdentity = "worker-b" },
-			"policy":           func(r *statestore.LeaseReservation) { r.PolicyRevision = "policy-43" },
-			"placement-expiry": func(r *statestore.LeaseReservation) { r.PlacementExpiresAt = r.PlacementExpiresAt.Add(time.Second) },
+			}},
+			"attempt": {want: statestore.ErrPlacementDecisionConflict, mutate: func(r *statestore.LeaseReservation) { r.AttemptID = mustAttemptID(t) }},
+			"worker": {want: statestore.ErrPlacementDecisionConflict, mutate: func(r *statestore.LeaseReservation) { r.WorkerIdentity = "worker-b" }},
+			"policy": {want: statestore.ErrPolicyChanged, mutate: func(r *statestore.LeaseReservation) { r.PolicyRevision = "policy-43" }},
+			"placement-expiry": {want: statestore.ErrPlacementDecisionConflict, mutate: func(r *statestore.LeaseReservation) { r.PlacementExpiresAt = r.PlacementExpiresAt.Add(time.Second) }},
 		}
-		for name, mutate := range tests {
+		for name, tc := range tests {
 			t.Run(name, func(t *testing.T) {
 				replay := first
 				replay.LeaseID = mustLeaseID(t)
-				mutate(&replay)
-				if _, err := store.ReserveLease(context.Background(), replay); !errors.Is(err, statestore.ErrPlacementDecisionConflict) {
-					t.Fatalf("ReserveLease() error = %v, want ErrPlacementDecisionConflict", err)
+				tc.mutate(&replay)
+				if _, err := store.ReserveLease(context.Background(), replay); !errors.Is(err, tc.want) {
+					t.Fatalf("ReserveLease() error = %v, want %v", err, tc.want)
 				}
 			})
 		}
