@@ -42,7 +42,7 @@ func (s *Store) CompareAndSwapPolicy(ctx context.Context, expectedEpoch uint64, 
 	}
 	if next.Status == policystate.StatusActive {
 		for _, prior := range s.policyHistory {
-			if prior.Revision == next.Revision && prior.Status == policystate.StatusRevoked {
+			if prior.Revision == next.Revision {
 				return fmt.Errorf("%w: %s", statestore.ErrPolicyReactivation, next.Revision)
 			}
 		}
