@@ -341,10 +341,8 @@ END`,
 			AND policy_epoch IS NULL
 			AND length(abort_reason) BETWEEN 1 AND 512
 			AND abort_close_reason IN (
-				'result_accepted','result_rejected','execution_failure_confirmed',
 				'worker_lost','lease_expired','reclaimed','cancelled','superseded',
-				'deadline','budget_exhausted','unknown_external_effect',
-				'policy_revoked','stale_attempt'
+				'deadline','budget_exhausted','policy_revoked','stale_attempt'
 			)
 		)
 	)
