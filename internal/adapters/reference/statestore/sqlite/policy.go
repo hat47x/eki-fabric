@@ -53,14 +53,14 @@ func (s *Store) CompareAndSwapPolicy(ctx context.Context, expectedEpoch uint64, 
 	}
 
 	if next.Status == policystate.StatusActive {
-		var revokedCount int
+		var priorCount int
 		if err := tx.QueryRowContext(ctx, `
-SELECT COUNT(*) FROM policy_history WHERE revision = ? AND status = 'revoked'`,
+SELECT COUNT(*) FROM policy_history WHERE revision = ?`,
 			next.Revision,
-		).Scan(&revokedCount); err != nil {
-			return fmt.Errorf("check revoked policy revision %q: %w", next.Revision, err)
+		).Scan(&priorCount); err != nil {
+			return fmt.Errorf("check prior policy revision %q: %w", next.Revision, err)
 		}
-		if revokedCount != 0 {
+		if priorCount != 0 {
 			return fmt.Errorf("%w: %s", statestore.ErrPolicyReactivation, next.Revision)
 		}
 	}
