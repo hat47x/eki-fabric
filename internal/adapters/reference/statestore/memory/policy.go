@@ -40,6 +40,14 @@ func (s *Store) CompareAndSwapPolicy(ctx context.Context, expectedEpoch uint64, 
 	if s.policyCurrent != expectedEpoch {
 		return fmt.Errorf("%w: current epoch=%d expected=%d", statestore.ErrPolicyChanged, s.policyCurrent, expectedEpoch)
 	}
+	if next.Status == policystate.StatusActive {
+		for _, prior := range s.policyHistory {
+			if prior.Revision == next.Revision && prior.Status == policystate.StatusRevoked {
+				return fmt.Errorf("%w: %s", statestore.ErrPolicyReactivation, next.Revision)
+			}
+		}
+	}
+
 	if expectedEpoch == 0 {
 		if next.Epoch != 1 || next.Status != policystate.StatusActive {
 			return fmt.Errorf("%w: initial policy must be active at epoch 1", statestore.ErrConflict)
@@ -51,14 +59,6 @@ func (s *Store) CompareAndSwapPolicy(ctx context.Context, expectedEpoch uint64, 
 		}
 		if err := policystate.ValidateTransition(current, next); err != nil {
 			return err
-		}
-	}
-
-	if next.Status == policystate.StatusActive {
-		for _, prior := range s.policyHistory {
-			if prior.Revision == next.Revision && prior.Status == policystate.StatusRevoked {
-				return fmt.Errorf("%w: %s", statestore.ErrPolicyReactivation, next.Revision)
-			}
 		}
 	}
 	if _, exists := s.policyHistory[next.Epoch]; exists {
