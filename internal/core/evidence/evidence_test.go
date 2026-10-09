@@ -37,8 +37,10 @@ func suitability(id string, outcome SuitabilityOutcome) SuitabilityDecision {
 	return SuitabilityDecision{ID: id, Outcome: outcome}
 }
 
+// retry builds a reclaim-caused retry. Tests that care about the cause or about duplicate
+// execution build the RetryEvent literal directly.
 func retry(id string, authorityGrew bool) RetryEvent {
-	return RetryEvent{ID: id, AuthorityGrew: authorityGrew}
+	return RetryEvent{ID: id, Cause: RetryCauseReclaim, AuthorityGrew: authorityGrew}
 }
 
 // contribution builds a contribution record. A verified record cites a supporting fact
@@ -416,6 +418,118 @@ func TestRetriesWithoutAuthorityGrowthHoldTheInvariant(t *testing.T) {
 	}
 }
 
+// TestRetryCauseIsRequiredAndClosed checks that every retry names one of the closed
+// causes. A retry with no cause or an unknown cause cannot be attributed, so the
+// derivation rejects it instead of counting it as "other".
+func TestRetryCauseIsRequiredAndClosed(t *testing.T) {
+	for _, bad := range []RetryCause{"", "PRICE_BASED", "reclaim"} {
+		_, err := DerivePrimary([]Observation{RetryEvent{ID: "rty-1", Cause: bad}})
+		if !errors.Is(err, ErrInvalidObservation) {
+			t.Errorf("cause %q: error = %v, want ErrInvalidObservation", bad, err)
+		}
+	}
+	want := []RetryCause{"RECLAIM", "WORKER_DEPARTURE", "OTHER"}
+	if got := RetryCauses(); !reflect.DeepEqual(got, want) {
+		t.Fatalf("RetryCauses() = %v, want %v", got, want)
+	}
+	for _, c := range RetryCauses() {
+		if !c.Valid() {
+			t.Errorf("%q is listed but not Valid", c)
+		}
+	}
+	if RetryCause("").Valid() {
+		t.Errorf("empty cause must not be Valid")
+	}
+}
+
+// TestRetriesAreCountedByCause checks that each examined retry appears under its own
+// cause, and that the counts by cause add up to the number of examined retries.
+func TestRetriesAreCountedByCause(t *testing.T) {
+	log := []Observation{
+		RetryEvent{ID: "rty-3", Cause: RetryCauseOther},
+		RetryEvent{ID: "rty-1", Cause: RetryCauseReclaim},
+		RetryEvent{ID: "rty-2", Cause: RetryCauseWorkerDeparture},
+		RetryEvent{ID: "rty-4", Cause: RetryCauseReclaim},
+	}
+	r := mustDerive(t, log).RetryAuthorityGrowth
+
+	if got := r.ByCause.Count(RetryCauseReclaim); got != 2 {
+		t.Errorf("reclaim count = %d, want 2", got)
+	}
+	if got := r.ByCause.Count(RetryCauseWorkerDeparture); got != 1 {
+		t.Errorf("worker-departure count = %d, want 1", got)
+	}
+	if got := r.ByCause.Count(RetryCauseOther); got != 1 {
+		t.Errorf("other count = %d, want 1", got)
+	}
+	if got := r.ByCause.Count("UNKNOWN"); got != 0 {
+		t.Errorf("Count(unknown) = %d, want 0", got)
+	}
+	if !slices.Equal(r.ByCause.Reclaim, []string{"rty-1", "rty-4"}) {
+		t.Errorf("Reclaim = %v, want [rty-1 rty-4]", r.ByCause.Reclaim)
+	}
+	if !slices.Equal(r.ByCause.WorkerDeparture, []string{"rty-2"}) {
+		t.Errorf("WorkerDeparture = %v, want [rty-2]", r.ByCause.WorkerDeparture)
+	}
+	if !slices.Equal(r.ByCause.Other, []string{"rty-3"}) {
+		t.Errorf("Other = %v, want [rty-3]", r.ByCause.Other)
+	}
+	total := r.ByCause.Count(RetryCauseReclaim) + r.ByCause.Count(RetryCauseWorkerDeparture) + r.ByCause.Count(RetryCauseOther)
+	if total != len(r.SourceIDs) {
+		t.Errorf("counts by cause sum to %d, want %d examined retries", total, len(r.SourceIDs))
+	}
+}
+
+// TestDuplicateExecutionRetryIsCountedAndBreaksTheInvariant checks that a retry which
+// made the same work run twice is harmful, even when authority did not grow. It is not
+// counted as authority growth.
+func TestDuplicateExecutionRetryIsCountedAndBreaksTheInvariant(t *testing.T) {
+	log := []Observation{
+		RetryEvent{ID: "rty-1", Cause: RetryCauseWorkerDeparture, DuplicateExecution: true},
+		retry("rty-2", false),
+	}
+	r := mustDerive(t, log).RetryAuthorityGrowth
+
+	if !slices.Equal(r.DuplicateExecution, []string{"rty-1"}) {
+		t.Errorf("DuplicateExecution = %v, want [rty-1]", r.DuplicateExecution)
+	}
+	if !slices.Equal(r.Harmful, []string{"rty-1"}) {
+		t.Errorf("Harmful = %v, want [rty-1]", r.Harmful)
+	}
+	if r.HarmfulCount() != 1 {
+		t.Errorf("HarmfulCount() = %d, want 1", r.HarmfulCount())
+	}
+	if r.Count() != 0 || len(r.AuthorityGrew) != 0 {
+		t.Errorf("duplicate execution must not count as authority growth: %+v", r)
+	}
+	if r.InvariantHolds() {
+		t.Errorf("InvariantHolds() = true, want false when work ran twice")
+	}
+}
+
+// TestRetryThatGrewAuthorityAndDuplicatedIsCountedOnce checks that a retry with both
+// harms is one harmful retry, and that it appears in each specific list.
+func TestRetryThatGrewAuthorityAndDuplicatedIsCountedOnce(t *testing.T) {
+	log := []Observation{
+		RetryEvent{ID: "rty-1", Cause: RetryCauseOther, AuthorityGrew: true, DuplicateExecution: true},
+		retry("rty-2", false),
+	}
+	r := mustDerive(t, log).RetryAuthorityGrowth
+
+	if r.HarmfulCount() != 1 || !slices.Equal(r.Harmful, []string{"rty-1"}) {
+		t.Errorf("Harmful = %v (count %d), want [rty-1] once", r.Harmful, r.HarmfulCount())
+	}
+	if r.Count() != 1 || !slices.Equal(r.AuthorityGrew, []string{"rty-1"}) {
+		t.Errorf("AuthorityGrew = %v, want [rty-1]", r.AuthorityGrew)
+	}
+	if !slices.Equal(r.DuplicateExecution, []string{"rty-1"}) {
+		t.Errorf("DuplicateExecution = %v, want [rty-1]", r.DuplicateExecution)
+	}
+	if r.InvariantHolds() {
+		t.Errorf("InvariantHolds() = true, want false")
+	}
+}
+
 // TestEmptyLogDoesNotProveTheRetryInvariant guards against reading "no retries
 // observed" as "authority never grew".
 func TestEmptyLogDoesNotProveTheRetryInvariant(t *testing.T) {
@@ -605,6 +719,7 @@ func TestEverySourceIDTracesBackToTheInput(t *testing.T) {
 		suitability("suit-1", SuitabilityFabricJustified),
 		suitability("suit-2", SuitabilityNeedsMeasurement),
 		retry("rty-1", true),
+		RetryEvent{ID: "rty-2", Cause: RetryCauseWorkerDeparture, DuplicateExecution: true},
 		contribution("con-1", "wkr-a", true),
 		contribution("con-2", "wkr-c", false),
 	}
@@ -637,6 +752,9 @@ func TestEverySourceIDTracesBackToTheInput(t *testing.T) {
 	assertTraced("suitability justified", p.SuitabilityOutcomes.Justified, p.SuitabilityOutcomes.SourceIDs)
 	assertTraced("suitability needs measurement", p.SuitabilityOutcomes.NeedsMeasurement, p.SuitabilityOutcomes.SourceIDs)
 	assertTraced("retry growth", p.RetryAuthorityGrowth.AuthorityGrew, p.RetryAuthorityGrowth.SourceIDs)
+	assertTraced("retry duplicate execution", p.RetryAuthorityGrowth.DuplicateExecution, p.RetryAuthorityGrowth.SourceIDs)
+	assertTraced("retry harmful", p.RetryAuthorityGrowth.Harmful, p.RetryAuthorityGrowth.SourceIDs)
+	assertTraced("retry by cause", p.RetryAuthorityGrowth.ByCause.WorkerDeparture, p.RetryAuthorityGrowth.SourceIDs)
 	assertTraced("verified contributions", p.VerifiedContributions.Verified, p.VerifiedContributions.SourceIDs)
 
 	assertSourced("reclaim latency", p.ReclaimLatency.SourceIDs)
