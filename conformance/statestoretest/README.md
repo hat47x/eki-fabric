@@ -67,6 +67,25 @@ Task Admissionを保存するStoreが通す契約です。冪等性とquotaの�
 - 再提出は上限に達していても拒否しない。terminalになったTaskは上限を解放する
 - 再起動後も、admission、冪等性、上限の使用量が残る
 
+## `RunLeaseStoreContract` / `RunLeaseDurabilityContract` / `RunLeaseBypassContract`
+
+LSE-1がWorkerへLeaseを発行する前に、State Storeへ新しいLeaseを予約する契約です。予約は署名済みのLeaseそのものではありません。予約の時点で、Taskと対象Attemptがまだ有効であることを、Leaseの保存とAttemptの状態遷移と同じtransactionで確かめます。
+
+予約時に確認すること。
+
+- Taskが存在し、取消されておらず、`ready`または`active`で、TaskIR digestが予約と一致する
+- Attemptが存在し、予約のTaskとTaskIR digestに結び付いている
+- Attemptが`A-PLACING`で、Worker bindingが予約と一致する
+- 呼び出し側が確認したAttempt revisionが、現在のrevisionと一致する
+- `A-CREATED`、`A-ASSIGNED`以降、`A-CLOSED`のAttemptからは新しいLeaseを作らない
+- 成功時は、FenceEpochを一つ進め、Lease保存とAttemptの`A-PLACING -> A-ASSIGNED`（Current Lease ref設定とrevisionの前進）を同時に確定する
+
+同じPlacement Decisionの再送は、既存のLeaseへ収束させ、FenceEpochもAttempt revisionも増やしません。ただし、現在のAttemptがその同じLeaseを`A-ASSIGNED`で保持している場合に限ります。Attemptが閉じられた後は、保存済みLeaseを返すことも許しません。Attemptのcloseと新しいLeaseの予約が競合した場合は、どちらか一方だけが成功します。
+
+`RunLeaseBypassContract`は、SPIの通常の経路では作れない状態を確かめます。通常の経路では、TaskのTaskIR digestは`CompareAndSwapTask`で変更できません（`RunTaskStoreContract`の`taskir-digest-is-immutable`）。そのため、Task行が外部から書き換えられた場合に備え、Attempt側のTaskIR bindingが単独で予約を拒否することを、adapterが提供する`RebindTaskIRDigest`で確認します。
+
+Store implementationは、これらの予約に対する拒否をErrConflictまたはErrNotFoundとして返してください。Backend固有errorへ置き換えないでください。
+
 ## このHarnessが決めないもの
 
 - SQLite / PostgreSQL等の製品選定
