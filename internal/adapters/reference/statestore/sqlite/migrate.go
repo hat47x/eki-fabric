@@ -167,6 +167,54 @@ WHEN NEW.revision <> OLD.revision + 1
 BEGIN
 	SELECT RAISE(ABORT, 'invalid attempt transition');
 END`,
+	// 5: durable Policy Epoch / revision status for Lease issuance fencing
+	`CREATE TABLE policy_history (
+	epoch           INTEGER NOT NULL PRIMARY KEY CHECK (epoch >= 1),
+	revision        TEXT    NOT NULL CHECK (length(revision) BETWEEN 1 AND 128),
+	status          TEXT    NOT NULL CHECK (status IN ('active','revoked')),
+	activated_at_ns INTEGER NOT NULL,
+	revoked_at_ns   INTEGER,
+	revoke_reason   TEXT    NOT NULL CHECK (length(revoke_reason) <= 512),
+	CHECK (
+		(status = 'active' AND revoked_at_ns IS NULL AND revoke_reason = '')
+		OR
+		(status = 'revoked' AND revoked_at_ns IS NOT NULL AND revoked_at_ns >= activated_at_ns AND length(revoke_reason) >= 1)
+	)
+) STRICT;
+CREATE TABLE policy_current (
+	singleton INTEGER NOT NULL PRIMARY KEY CHECK (singleton = 1),
+	epoch     INTEGER NOT NULL UNIQUE REFERENCES policy_history (epoch)
+) STRICT;
+CREATE TRIGGER policy_current_insert_guard
+BEFORE INSERT ON policy_current
+WHEN NEW.epoch <> 1
+  OR NOT EXISTS (
+	SELECT 1 FROM policy_history
+	WHERE epoch = NEW.epoch AND status = 'active'
+  )
+BEGIN
+	SELECT RAISE(ABORT, 'initial policy must be active at epoch 1');
+END;
+CREATE TRIGGER policy_current_update_guard
+BEFORE UPDATE OF epoch ON policy_current
+WHEN NEW.epoch <> OLD.epoch + 1
+  OR NOT EXISTS (
+	SELECT 1 FROM policy_history
+	WHERE epoch = NEW.epoch
+  )
+BEGIN
+	SELECT RAISE(ABORT, 'policy epoch must advance by one');
+END;
+CREATE TRIGGER policy_history_no_revoked_reactivation
+BEFORE INSERT ON policy_history
+WHEN NEW.status = 'active'
+  AND EXISTS (
+	SELECT 1 FROM policy_history
+	WHERE revision = NEW.revision AND status = 'revoked'
+  )
+BEGIN
+	SELECT RAISE(ABORT, 'revoked policy revision cannot be reactivated');
+END`,
 }
 
 // migrate brings the database to the latest version. It is idempotent, rejects
