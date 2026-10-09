@@ -5,6 +5,7 @@ import (
 	"context"
 	"errors"
 	"path/filepath"
+	"sync"
 	"testing"
 	"time"
 
@@ -245,6 +246,72 @@ func RunLeaseEmissionContract(t *testing.T, newStore LeaseEmissionFactory) {
 		}
 		if second.Lease.FenceEpoch != first.Lease.FenceEpoch+1 {
 			t.Fatalf("FenceEpoch rolled back after abort: first=%d second=%d", first.Lease.FenceEpoch, second.Lease.FenceEpoch)
+		}
+	})
+
+	t.Run("concurrent-emit-vs-abort-has-one-linearization-winner", func(t *testing.T) {
+		store := newStore(t)
+		task := readyTask(t, store, "emit-abort-race")
+		reservation := leaseReservation(t, store, task, "placement-race", leaseNow, leaseNow.Add(time.Minute))
+		reserved, err := store.ReserveLease(context.Background(), reservation)
+		if err != nil {
+			t.Fatal(err)
+		}
+		commit := emissionCommit(t, store, reserved.Lease, reserved.Lease.IssuedAt.Add(time.Second))
+		attempt, err := store.LoadAttempt(context.Background(), reserved.Lease.AttemptID)
+		if err != nil {
+			t.Fatal(err)
+		}
+		abort := statestore.LeaseEmissionAbort{
+			LeaseID: reserved.Lease.ID,
+			ExpectedAttemptRevision: attempt.Revision,
+			CloseReason: attemptstate.CloseReasonSuperseded,
+			Reason: "concurrent authority premise loss",
+			CommittedAt: commit.CommittedAt,
+		}
+
+		start := make(chan struct{})
+		results := make(chan error, 2)
+		var wg sync.WaitGroup
+		wg.Add(2)
+		go func() {
+			defer wg.Done()
+			<-start
+			_, err := store.CommitLeaseEmission(context.Background(), commit)
+			results <- err
+		}()
+		go func() {
+			defer wg.Done()
+			<-start
+			_, err := store.AbortLeaseEmission(context.Background(), abort)
+			results <- err
+		}()
+		close(start)
+		wg.Wait()
+		close(results)
+
+		var success, conflict int
+		for err := range results {
+			switch {
+			case err == nil:
+				success++
+			case errors.Is(err, statestore.ErrLeaseEmissionConflict),
+				errors.Is(err, statestore.ErrLeaseEmissionAborted),
+				errors.Is(err, statestore.ErrConflict):
+				conflict++
+			default:
+				t.Fatalf("unexpected concurrent emit/abort error = %v", err)
+			}
+		}
+		if success != 1 || conflict != 1 {
+			t.Fatalf("emit/abort race success=%d conflict=%d, want 1/1", success, conflict)
+		}
+		record, err := store.LoadLeaseEmission(context.Background(), reserved.Lease.ID)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if record.Status() != leaseemission.StatusEmitted && record.Status() != leaseemission.StatusAborted {
+			t.Fatalf("race left invalid emission status %q", record.Status())
 		}
 	})
 
