@@ -219,6 +219,32 @@ func RunLeaseEmissionContract(t *testing.T, newStore LeaseEmissionFactory) {
 		})
 	})
 
+	t.Run("abort-rejects-post-execution-close-reasons", func(t *testing.T) {
+		store := newStore(t)
+		task := readyTask(t, store, "abort-reason")
+		reservation := leaseReservation(t, store, task, "placement-abort-reason", leaseNow, leaseNow.Add(time.Minute))
+		reserved, err := store.ReserveLease(context.Background(), reservation)
+		if err != nil {
+			t.Fatal(err)
+		}
+		attempt, err := store.LoadAttempt(context.Background(), reserved.Lease.AttemptID)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, err := store.AbortLeaseEmission(context.Background(), statestore.LeaseEmissionAbort{
+			LeaseID: reserved.Lease.ID,
+			ExpectedAttemptRevision: attempt.Revision,
+			CloseReason: attemptstate.CloseReasonResultAccepted,
+			Reason: "impossible before Worker Authority emission",
+			CommittedAt: reserved.Lease.IssuedAt.Add(time.Second),
+		}); err == nil {
+			t.Fatal("pre-emission abort accepted result_accepted close reason")
+		}
+		if _, err := store.LoadLeaseEmission(context.Background(), reserved.Lease.ID); !errors.Is(err, statestore.ErrNotFound) {
+			t.Fatalf("invalid abort became durable: %v", err)
+		}
+	})
+
 	t.Run("abort-is-durable-releases-exclusion-and-keeps-fence-monotonic", func(t *testing.T) {
 		store := newStore(t)
 		task := readyTask(t, store, "emit-abort")
