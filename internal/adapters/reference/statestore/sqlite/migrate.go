@@ -168,7 +168,8 @@ BEGIN
 	SELECT RAISE(ABORT, 'invalid attempt transition');
 END`,
 	// 5: durable Policy Epoch / revision status for Lease issuance fencing
-	`CREATE TABLE policy_history (
+	`ALTER TABLE leases ADD COLUMN policy_epoch INTEGER NOT NULL DEFAULT 0 CHECK (policy_epoch >= 0);
+CREATE TABLE policy_history (
 	epoch           INTEGER NOT NULL PRIMARY KEY CHECK (epoch >= 1),
 	revision        TEXT    NOT NULL CHECK (length(revision) BETWEEN 1 AND 128),
 	status          TEXT    NOT NULL CHECK (status IN ('active','revoked')),
