@@ -166,11 +166,16 @@ func (r RetryAuthorityGrowth) InvariantHolds() bool {
 // VerifiedContributions counts the verified contribution records. An unverified
 // record is a claim and is never counted here.
 type VerifiedContributions struct {
-	// SourceIDs lists every ContributionRecord observation that was examined, in
-	// ascending order. This includes unverified records.
+	// SourceIDs lists every ContributionRecord observation that was examined, together
+	// with the supporting fact IDs those observations cite, in ascending order. This
+	// includes unverified records. Each ID appears once.
 	SourceIDs []string
 	// Verified lists the records that were verified, in ascending order.
 	Verified []string
+	// SupportingFacts links each verified record to each fact it cites, in ascending
+	// order of record ID. Unverified records have no link here, because a claim does not
+	// count toward the metric.
+	SupportingFacts []EvidenceLink
 }
 
 // Count returns the number of verified contribution records.
@@ -277,11 +282,17 @@ func contributionsOf(cs []ContributionRecord) VerifiedContributions {
 	var out VerifiedContributions
 	for _, c := range cs {
 		out.SourceIDs = append(out.SourceIDs, c.ID)
+		out.SourceIDs = append(out.SourceIDs, c.SupportingFactIDs...)
 		if c.Verified {
 			out.Verified = append(out.Verified, c.ID)
+			for _, f := range c.SupportingFactIDs {
+				out.SupportingFacts = append(out.SupportingFacts, EvidenceLink{ObservationID: c.ID, EvidenceID: f})
+			}
 		}
 	}
 	slices.Sort(out.SourceIDs)
+	out.SourceIDs = slices.Compact(out.SourceIDs)
 	slices.Sort(out.Verified)
+	out.SupportingFacts = sortLinks(out.SupportingFacts)
 	return out
 }
