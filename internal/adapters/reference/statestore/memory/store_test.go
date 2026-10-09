@@ -4,6 +4,7 @@ import (
 	"testing"
 
 	"github.com/hat47x/eki-fabric/conformance/statestoretest"
+	"github.com/hat47x/eki-fabric/internal/core/attemptstate"
 	"github.com/hat47x/eki-fabric/internal/core/contract"
 	"github.com/hat47x/eki-fabric/internal/core/ids"
 	"github.com/hat47x/eki-fabric/internal/spi/statestore"
@@ -47,6 +48,21 @@ func TestLeaseBypassContract(t *testing.T) {
 			}
 			task.TaskIRDigest = digest
 			s.tasks[id] = task
+		},
+		OverwriteAttempt: func(t testing.TB, store statestoretest.TaskLeaseStore, record attemptstate.AttemptRecord) {
+			t.Helper()
+			s := store.(*Store)
+			s.mu.Lock()
+			defer s.mu.Unlock()
+			current, ok := s.attempts[record.ID]
+			if !ok {
+				t.Fatalf("overwrite: attempt %s not found", record.ID)
+			}
+			current.TaskID = record.TaskID
+			current.TaskIRDigest = record.TaskIRDigest
+			current.WorkerIdentity = record.WorkerIdentity
+			current.LeaseID = record.LeaseID
+			s.attempts[record.ID] = current
 		},
 	})
 }

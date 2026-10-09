@@ -82,9 +82,16 @@ LSE-1がWorkerへLeaseを発行する前に、State Storeへ新しいLeaseを予
 
 同じPlacement Decisionの再送は、既存のLeaseへ収束させ、FenceEpochもAttempt revisionも増やしません。ただし、現在のAttemptがその同じLeaseを`A-ASSIGNED`で保持している場合に限ります。Attemptが閉じられた後は、保存済みLeaseを返すことも許しません。Attemptのcloseと新しいLeaseの予約が競合した場合は、どちらか一方だけが成功します。
 
-`RunLeaseBypassContract`は、SPIの通常の経路では作れない状態を確かめます。通常の経路では、TaskのTaskIR digestは`CompareAndSwapTask`で変更できません（`RunTaskStoreContract`の`taskir-digest-is-immutable`）。そのため、Task行が外部から書き換えられた場合に備え、Attempt側のTaskIR bindingが単独で予約を拒否することを、adapterが提供する`RebindTaskIRDigest`で確認します。
+`RunLeaseBypassContract`は、SPIの通常の経路では作れない状態を確かめます。通常の経路では、TaskのTaskIR digestは`CompareAndSwapTask`で変更できません（`RunTaskStoreContract`の`taskir-digest-is-immutable`）。Store外からの書き換えに備えて、次の二つを確認します。
+
+- Task行のTaskIR digestが書き換えられても、Attemptの作成時のTaskIR bindingが単独で予約を拒否すること（`RebindTaskIRDigest`）。SQLite Adapterは、schema version 5でTask行のdigest変更もtriggerで拒否します。この試験では、そのtriggerを外したうえで、Attempt側の確認だけを見ます。
+- 同じPlacement Decisionの再送が、保存済みLeaseと照合を通ったあとで、Attemptの結び付け（LeaseID、Worker identity、Task ID、TaskIR digest）の一つでも食い違うと拒否されること（`OverwriteAttempt`）。食い違いのない同じ再送は、拒否の前に成功することを確かめます。そのため、拒否の原因はAttemptの結び付けだけになります。
 
 Store implementationは、これらの予約に対する拒否をErrConflictまたはErrNotFoundとして返してください。Backend固有errorへ置き換えないでください。
+
+## 未決事項（Open Question）
+
+- `A-ASSIGNED`で保持されたLeaseへの同じPlacement Decisionの再送を許すかどうかは未決です。現在の契約（`reserve-load-replay`、`exact-replay-keeps-attempt-revision-and-fence`）と両Adapterは、この再送が既存のLeaseへ収束することを確認しています。ただし、これは「配送前の段階でも再送を許す」という設計判断を確定したものではありません。Leaseをまだ配送していない段階で再送を許してよいかは、後続の設計判断で決めます。それまで、この挙動は暫定です。
 
 ## このHarnessが決めないもの
 
