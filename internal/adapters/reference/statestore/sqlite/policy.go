@@ -52,6 +52,19 @@ func (s *Store) CompareAndSwapPolicy(ctx context.Context, expectedEpoch uint64, 
 		return fmt.Errorf("%w: current epoch=%d expected=%d", statestore.ErrPolicyChanged, currentEpoch, expectedEpoch)
 	}
 
+	if next.Status == policystate.StatusActive {
+		var revokedCount int
+		if err := tx.QueryRowContext(ctx, `
+SELECT COUNT(*) FROM policy_history WHERE revision = ? AND status = 'revoked'`,
+			next.Revision,
+		).Scan(&revokedCount); err != nil {
+			return fmt.Errorf("check revoked policy revision %q: %w", next.Revision, err)
+		}
+		if revokedCount != 0 {
+			return fmt.Errorf("%w: %s", statestore.ErrPolicyReactivation, next.Revision)
+		}
+	}
+
 	if expectedEpoch == 0 {
 		if next.Epoch != 1 || next.Status != policystate.StatusActive {
 			return fmt.Errorf("%w: initial policy must be active at epoch 1", statestore.ErrConflict)
@@ -65,19 +78,6 @@ FROM policy_history WHERE epoch = ?`, expectedEpoch))
 		}
 		if err := policystate.ValidateTransition(current, next); err != nil {
 			return err
-		}
-	}
-
-	if next.Status == policystate.StatusActive {
-		var revokedCount int
-		if err := tx.QueryRowContext(ctx, `
-SELECT COUNT(*) FROM policy_history WHERE revision = ? AND status = 'revoked'`,
-			next.Revision,
-		).Scan(&revokedCount); err != nil {
-			return fmt.Errorf("check revoked policy revision %q: %w", next.Revision, err)
-		}
-		if revokedCount != 0 {
-			return fmt.Errorf("%w: %s", statestore.ErrPolicyReactivation, next.Revision)
 		}
 	}
 
