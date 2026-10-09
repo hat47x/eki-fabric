@@ -286,6 +286,9 @@ func checkEvidenceIDs(b buckets, observationIDs map[string]struct{}) error {
 		}
 		return nil
 	}
+	// records collects the verification record IDs of all results before any fact is
+	// checked, so the fact check does not depend on the order of the two kinds in the log.
+	records := map[string]struct{}{}
 	for _, r := range b.results {
 		if r.VerificationRecordID == "" {
 			continue
@@ -293,11 +296,17 @@ func checkEvidenceIDs(b buckets, observationIDs map[string]struct{}) error {
 		if err := reuse("verification record", r.VerificationRecordID); err != nil {
 			return err
 		}
+		records[r.VerificationRecordID] = struct{}{}
 	}
+	// A verification record and a supporting fact must not share a name either. Both
+	// are evidence, but they are different kinds, and SourceIDs keeps one entry per name.
 	for _, c := range b.contribs {
 		for _, f := range c.SupportingFactIDs {
 			if err := reuse("supporting fact", f); err != nil {
 				return err
+			}
+			if _, clash := records[f]; clash {
+				return fmt.Errorf("%w: supporting fact %s reuses a verification record ID", ErrInvalidObservation, f)
 			}
 		}
 	}

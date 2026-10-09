@@ -293,6 +293,29 @@ func TestVerificationRecordOfRejectedResultIsTracedButNotCounted(t *testing.T) {
 	}
 }
 
+// TestSupportingFactMayNotReuseAVerificationRecordID checks that a supporting fact and a
+// verification record cannot share a name, in either order. Both appear in SourceIDs, and
+// that list keeps one entry per name, so a shared name would hide which kind of evidence
+// a trace refers to. Two facts may still share a name, because one fact can back two
+// records.
+func TestSupportingFactMayNotReuseAVerificationRecordID(t *testing.T) {
+	result := ResultDecision{ID: "res-obs-1", ResultID: "result-a", Accepted: true, Verified: true, VerificationRecordID: "ver-1"}
+	fact := ContributionRecord{ID: "con-1", WorkerID: "wkr-a", Verified: true, SupportingFactIDs: []string{"ver-1"}}
+	logs := map[string][]Observation{
+		"record before fact": {result, fact},
+		"fact before record": {fact, result},
+	}
+	for name, log := range logs {
+		p, err := DerivePrimary(log)
+		if !errors.Is(err, ErrInvalidObservation) {
+			t.Errorf("%s: error = %v, want ErrInvalidObservation", name, err)
+		}
+		if !reflect.DeepEqual(p, Primary{}) {
+			t.Errorf("%s: a rejected log must not yield a partial result: %+v", name, p)
+		}
+	}
+}
+
 // TestEvidenceIDMayNotReuseAnObservationID checks that a verification record or a
 // supporting fact cannot share its name with an observation in the same log, in either
 // order. Both kinds of ID appear in SourceIDs, so a shared name would make the trace
