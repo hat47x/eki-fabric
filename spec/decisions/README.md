@@ -1,20 +1,20 @@
-# P2 Signed Authority Decisions
+# 署名付き権限判断の仕様（P2）
 
-Status: **Baseline 0.1 — 2026-09-21**
+状態: **設計基準0.1（2026年9月21日）**
 
 正本は次のとおりです。
 
-- `v1/decisions.cddl` — signed payload CDDL
-- P1 carrier: `../worker/v1/worker.proto`
-- Authority model: `../../architecture/AUTHORITY_BOUNDARIES.md`
-- Contract model: `../../architecture/CONTRACT_BOUNDARIES.md`
-- Protocol ADR: `../../plan/adr/0001-protocol-surfaces-and-canonical-encoding.md`
+- `v1/decisions.cddl` — 署名するデータ本体のCDDL
+- P1の配送形式: `../worker/v1/worker.proto`
+- 権限のモデル: `../../architecture/AUTHORITY_BOUNDARIES.md`
+- 契約のモデル: `../../architecture/CONTRACT_BOUNDARIES.md`
+- 通信仕様に関するADR: `../../plan/adr/0001-protocol-surfaces-and-canonical-encoding.md`
 
 ## 目的
 
-P2は、Workerが実行Authorityとして検証するDecisionの**署名対象payload**を固定します。
+P2では、実行端末（Worker）が実行権限の根拠として検証する判断（Decision）について、**署名するデータの内容**を定めます。
 
-P1 Protobufはtransport carrierです。P2 CDDLはSecurity semanticsです。
+P1のProtobufは署名付きデータの配送を担い、P2のCDDLは安全上の意味を定義します。
 
 ~~~text
 P1 SignedDecisionCarrier
@@ -27,9 +27,9 @@ COSE_Sign1
   signature
 ~~~
 
-raw Protobuf serializationを署名対象にはしません。
+Protobufで符号化したバイト列を、そのまま署名対象にはしません。
 
-## v1で定義するDecision
+## 初版で定義する権限判断
 
 - Placement Approval — PLC-1
 - Lease — LSE-1
@@ -40,11 +40,11 @@ raw Protobuf serializationを署名対象にはしません。
 
 Task Admission / Result Acceptance / Contribution等は、Worker実行経路で必要になる順に後続追加します。
 
-## COSE Profile
+## COSEの形式
 
-EnvelopeはCOSE_Sign1を使用します。outer envelopeのmachine-readable正本は`spec/decisions/v1/cose-profile.cddl`です。
+署名付きデータの外側の形式にはCOSE_Sign1を使います。その形式を機械可読に定義する正本は`spec/decisions/v1/cose-profile.cddl`です。
 
-v1 Baselineは次へ固定します。
+初版の設計基準では、次の形式に固定します。
 
 - CBOR tag 18付きCOSE_Sign1だけを受理する
 - protected headerは`alg`、`crit`、`kid`、EKI profileの4項目だけ
@@ -66,11 +66,11 @@ RFC 9052自体はtagged/untagged COSE_Sign1の両方を許容しますが、P1 `
 
 RFC 9052はCOSE_Sign1等のstructureと署名処理を定義し、algorithm自体はRFC 9053等へ分離しています。その分離をEKIでも維持します。
 
-## Deterministic CBOR
+## 決定論的なCBOR符号化
 
-署名payloadはRFC 8949 Core Deterministic Encoding Requirementsへ従います。
+署名するデータの本体は、RFC 8949のCore Deterministic Encoding Requirementsに従います。
 
-特には次のとおりです。
+具体的には、次を要求します。
 
 - preferred serialization
 - definite-length item
@@ -79,21 +79,21 @@ RFC 9052はCOSE_Sign1等のstructureと署名処理を定義し、algorithm自�
 
 を要求します。
 
-P2 v1はSecurity-critical numeric fieldへfloating pointを使いません。timestamp、revision、budget、byte countはintegerです。
+P2の初版では、安全性に関わる数値項目に浮動小数点数を使いません。時刻、改訂番号、予算、バイト数は整数で表します。
 
 Signerはdeterministic bytesだけを生成し、Verifierは非deterministic encodingを受理しない方針とします。
 
-## Closed schema
+## 許可する項目を限定したスキーマ
 
-Decision mapはCDDLに列挙したfieldだけを許します。
+判断のデータには、CDDLに列挙した項目だけを許可します。
 
-Security-critical unknown fieldをforward-compatibleとしてsilent ignoreしません。
+安全性に関わる未知の項目を、将来との互換性のためとして無条件に無視しません。
 
 Fieldを追加・意味変更する場合は新しいDecision schema versionを発行します。
 
 これはP1 Protobufの「unknown fieldをtransport上保持できる」性質とは別です。署名Decisionの意味はより厳しく閉じます。
 
-## Common header fields
+## 共通のヘッダー項目
 
 各Decision payloadのtop-level mapは共通して:
 
@@ -122,7 +122,7 @@ Verifierは:
 
 正しいkeyで署名されていても、そのkeyが当該Authority roleへ許可されていなければrejectします。
 
-## Decision reference
+## 判断間の参照
 
 WorkOrderは前提Decisionをinlineで意味的にコピーせず、kind-specificなDecision refで:
 
@@ -138,13 +138,13 @@ P1 `WorkOrderDelivery.prerequisite_decisions`で運ばれたCOSE objectについ
 
 これにより、同じDecision IDの別payload差し替えを防ぎます。
 
-## TaskIR binding
+## 処理内容への結び付け
 
 Placement、Lease、Artifact Grant、WorkOrderはTask IDだけでなくTaskIR Digestへbindingします。
 
 Task IDを維持したまま実行意味を差し替えることを許しません。
 
-## Placement Approval
+## 実行先の承認
 
 Placement Approvalは:
 
@@ -159,7 +159,7 @@ optional Evidence refはPlacement Authorityが利用したassurance等の監査b
 
 Scheduler scoreやProposalそのものはAuthorization tokenではありません。
 
-## Lease
+## 期限付き実行権
 
 LeaseはTask / TaskIR / Attempt / Workerに加え:
 
@@ -174,7 +174,7 @@ LeaseはTask / TaskIR / Attempt / Workerに加え:
 
 Heartbeatはこのpayloadを生成できません。RenewalはLSE-1が新しいLease Decisionを発行した場合だけ成立します。
 
-## Executor Approval
+## 実行体の承認
 
 Executor Approvalはmutable tagではなくexact Artifact Digestを承認します。
 
@@ -190,7 +190,7 @@ Executor Approvalはmutable tagではなくexact Artifact Digestを承認しま�
 
 Workerは実際に取得したExecutor bytesをDigest検証してから実行します。
 
-## Artifact Grant
+## 成果物の利用許可
 
 Read GrantとWrite Grantを別Decision kindにしています。
 
@@ -210,7 +210,7 @@ Write Grantは事前に確保したoutput Artifact identity / slotとmaximum byt
 
 raw URL、filesystem path、bucket credentialはP2 GrantのAuthority表現にしません。
 
-## WorkOrder
+## 作業指示書
 
 WorkOrderはWorkerが実行できる最終execution envelopeです。
 
@@ -234,7 +234,7 @@ MVP v1のeffect modeは`0 = none`だけです。
 
 WorkOrder Authorityがmissing prerequisiteを自己生成できることを意味しません。WorkerはP1 carrierで受け取ったprerequisite Decisionsを独立検証します。
 
-## Expiry
+## 有効期限
 
 すべてのv1 Decisionはexpiryを持ちます。
 
@@ -252,7 +252,7 @@ workorder expiry
 
 単純な数式の大小だけでなく、各prerequisiteが現在時点で有効かを個別に確認します。
 
-## Default deny
+## 許可されない操作を拒否する
 
 WorkOrderにないCapabilityは利用できません。
 
@@ -262,7 +262,7 @@ Network accessもoptional registered Network Profile refが存在する場合だ
 
 Client supplied destinationはP2へ入りません。
 
-## Size bounds
+## データ量の上限
 
 CDDLでは文字列・Digest等の基本boundsを定義しています。
 
@@ -270,7 +270,7 @@ CDDLでは文字列・Digest等の基本boundsを定義しています。
 
 それとは別に、VerifierはCOSE object全体・CBOR nesting・総bytesへhard parser limitを適用します。
 
-## Replay / stale
+## 再送と古い情報の扱い
 
 署名が正しくても、次をrejectします。
 
@@ -287,7 +287,7 @@ CDDLでは文字列・Digest等の基本boundsを定義しています。
 
 Signature verificationはAuthorization判定の一部にすぎません。
 
-## P1との整合
+## P1の通信仕様との整合
 
 `SignedDecisionCarrier.kind`はrouting hintです。
 
@@ -295,7 +295,7 @@ Carrier kindとsigned payloadのDecision kindが一致しなければrejectし�
 
 Carrier自体に署名済みpayloadと矛盾するTask / Worker / expiry情報を追加しません。
 
-## Algorithm agility
+## 署名アルゴリズムの変更
 
 CDDL payloadへsignature algorithmを入れません。
 
@@ -305,7 +305,7 @@ AlgorithmはCOSE protected headerに置き、Trust / Policy Administrationのall
 
 ただしunknown / deprecated algorithmを自動fallbackしません。
 
-## Conformance候補
+## 適合性の検証候補
 
 - non-deterministic CBOR
 - duplicate map key
@@ -325,13 +325,13 @@ AlgorithmはCOSE protected headerに置き、Trust / Policy Administrationのall
 - unsupported effect mode
 - nonce length violation
 
-## Standards
+## 参照する標準
 
 - RFC 8949 — CBOR / Core Deterministic Encoding
 - RFC 8610 — CDDL
 - RFC 9052 — COSE Structures and Process
 - RFC 9053 — COSE Algorithms
 
-## 次
+## 今後の対応
 
 P2 merge後は、Reference Go implementationで使うDecision decoder / verifierの境界を設計します。ただしcryptographic algorithm選定とkey managementはSecurity Profileとして別work unitにし、SignerをScheduler等へgeneric `sign(bytes)`として公開しません。
