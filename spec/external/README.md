@@ -1,94 +1,94 @@
-# EKI Fabric P0 External Protocol
+# EKI Fabricの外部接続仕様（P0）
 
-Status: **Baseline 0.1 — 2026-09-21**
+状態: **設計基準0.1（2026年9月21日）**
 
-このディレクトリは、EKI Fabric External Client Planeの最初のmachine-readable contractを置きます。
+このディレクトリには、EKI Fabricと外部の依頼元をつなぐ、最初の機械可読な契約を置きます。
 
 正本は次のとおりです。
 
 - `openapi.json` — OpenAPI 3.2.1
-- Architecture decision: `../../plan/adr/0001-protocol-surfaces-and-canonical-encoding.md`
+- 設計上の判断: `../../plan/adr/0001-protocol-surfaces-and-canonical-encoding.md`
 
 ## P0の範囲
 
 P0で固定するのは次です。
 
-- Task submit
-- public Task status
-- Task cancellation request
-- Accepted Result retrieval
-- Artifact ingest intent
-- bounded Artifact upload
-- public Artifact descriptor
-- RFC 9457 Problem Detailsに基づくError shape
+- 処理依頼の投入
+- 処理依頼の公開状態
+- 処理依頼の取り消し要求
+- 受理済み結果の取得
+- 成果物の取り込み要求
+- 上限付きの成果物アップロード
+- 公開可能な成果物の記述
+- RFC 9457 Problem Detailsに基づくエラーの形式
 
-Worker Plane、WorkOrder、Lease、ArtifactGrant token、Placement、internal Policy Revision、raw Verification EvidenceはP0 External Contractへ含めません。
+実行端末との通信、作業指示書、期限付き実行権、成果物の利用許可を示すトークン、配置、内部規則の改訂番号、加工前の検証根拠は、P0の外部接続契約には含めません。
 
-## Hostile input boundary
+## 信頼できない入力への対処
 
-OpenAPI validationだけで安全になるとは考えません。
+OpenAPIによる形式の検証だけで、安全を保証できるとは考えません。
 
-Ingressは少なくとも次をschema validationより前または同時に制限します。
+受信する入口では、少なくとも次の項目を、スキーマの検証前または検証と同時に制限します。
 
-- request body bytes
-- nesting depth
-- array length
-- string length
-- object property count
-- duplicate JSON property
-- invalid encoding
-- decompression expansion
-- request timeout
+- 要求本文のバイト数
+- 入れ子の深さ
+- 配列の長さ
+- 文字列の長さ
+- オブジェクトの項目数
+- JSONの同名項目の重複
+- 不正な符号化
+- 展開後のデータ量
+- 要求の処理時間の上限
 
-Core objectは原則 `additionalProperties: false` です。
+中核となるオブジェクトには、原則として`additionalProperties: false`を指定します。
 
 明示的な拡張点は次だけです。
 
 - `TaskRequest.parameters`
 - `ExtensionEnvelope.payload`
 
-`parameters` はそのままWorkerへ渡しません。Task Admissionがapproved Executorのparameter schemaへ照合します。
+`parameters`を実行端末へそのまま渡すことはありません。処理依頼の受理審査で、承認済みの実行体が定めるパラメータの形式と照合します。
 
-## Idempotency
+## 同じ要求の重複処理を防ぐ仕組み
 
-Task submit、cancel、Artifact ingest intentは `Idempotency-Key` を要求します。
+処理依頼の投入・取り消しと成果物の取り込み要求には、`Idempotency-Key`を必須とします。
 
-KeyはPrincipal scopeです。
+キーは認証された主体の範囲で扱います。
 
-同一Keyについて:
+同じキーを使った場合は、次のように扱います。
 
-- 同一normalized semantic fingerprint → 同じlogical operationへ収束可能
-- 異なるfingerprint → conflict
+- 正規化した意味の指紋値が同じ場合は、同じ論理操作へまとめられる
+- 指紋値が異なる場合は、競合として扱う
 
 とします。
 
-raw JSON byte列はfingerprintに使いません。
+元のJSONのバイト列は、指紋値の算出に使いません。
 
-## Authentication
+## 認証
 
-P0 OpenAPIはAuthentication mechanism自体をまだ固定しません。
+P0のOpenAPIでは、認証方式そのものはまだ決めていません。
 
-ProductionではAuthenticationが必須です。
+本番環境では認証を必須とします。
 
-OAuth / OIDC / mTLS等の具体profileは別Security work unitで決定します。
+OAuth、OIDC、mTLSなどを使う具体的な方式は、別のセキュリティに関する作業で決定します。
 
 各operationの `x-eki-authentication-required: true` は、OpenAPI上の未選定を「anonymous allowed」と誤読しないためのEKI markerです。
 
-## Artifact upload
+## 成果物のアップロード
 
-Control metadataとbulk bytesを分けます。
+制御用の情報と、大きなデータ本体を分けます。
 
-1. Clientがingest intentを作る。
-2. Control Planeがbounded upload sessionを発行する。
-3. bytesはData Plane upload endpointへ送る。
-4. upload後もContent Identity / Safe Processing / Provenanceを別facetとして評価する。
-5. availableになったArtifactだけがTask input候補になる。
+1. 依頼元が取り込み要求を作る。
+2. 制御層が容量に上限のあるアップロード用セッションを発行する。
+3. データ本体はデータ転送層のアップロード先へ送る。
+4. アップロード後も、内容の同一性、安全な処理、来歴を別々の観点で評価する。
+5. 利用可能になった成果物だけが処理依頼の入力候補になる。
 
 Clientがdeclared / expected Digestを送っても、それだけでverified contentにはなりません。
 
-## Artifact facets
+## 成果物を評価する側面
 
-`ArtifactDescriptor.facets` は意図的に単一statusへ潰していません。
+`ArtifactDescriptor.facets`は、意図的に一つの状態へまとめていません。
 
 - `content_identity`
 - `safe_processing`
@@ -99,9 +99,9 @@ Clientがdeclared / expected Digestを送っても、それだけでverified con
 
 `trusted: true` のような総合bitは作りません。
 
-## Task public status
+## 処理依頼の公開状態
 
-Public statusは内部State Modelの縮約です。
+公開する状態は、内部の状態モデルから必要な情報に絞ったものです。
 
 External Clientへ返す候補:
 
@@ -118,7 +118,7 @@ External Clientへ返す候補:
 
 特に `running` は「Workerが現在CPU命令を実行していることを証明した」という意味ではなく、Client向けのderived statusです。
 
-## Effect semantics
+## 外部への副作用の扱い
 
 P0/MVPのTaskRequestでは `effect_mode = none` だけを許可します。
 
@@ -128,7 +128,7 @@ Side-effect UNKNOWN / reconciliationのArchitectureは既に定義済みです�
 
 後続versionで追加する場合も、v1の `none` semanticsを変更しません。
 
-## Error
+## エラー
 
 Error bodyはRFC 9457 Problem DetailsにEKI extensionを追加します。
 
@@ -143,7 +143,7 @@ machine logicは次を利用します。
 
 Security上の理由で存在を開示すべきでないTask / Artifactでは、403と404の使い分けをDeployment Policyで情報漏えいしないように扱います。
 
-## Data class
+## データの機密区分
 
 External Clientの `requested_data_class` はSecurity classificationを下げるAuthorityではありません。
 
@@ -165,11 +165,11 @@ Effective Data ClassはAdmission / Data Authorityが入力Artifact、Executor re
 - generic side-effect Task
 - Federation
 
-## Conformanceで必ず確認するもの
+## 適合性の検証で必ず確認すること
 
 ### Parser
 
-- duplicate JSON property
+- JSONの同名項目の重複
 - oversized body
 - excessive nesting
 - invalid UTF-8
@@ -199,11 +199,11 @@ Effective Data ClassはAdmission / Data Authorityが入力Artifact、Executor re
 - Lease / Attempt topologyを含めない
 - raw verification evidenceを含めない
 
-## 次のProtocol work unit
+## 関連する通信仕様の設計
 
-P0 merge後は、別branchでP1 Worker Planeを定義します。
+P0に続き、P1の実行端末向け通信仕様を`../worker/v1/worker.proto`で、P2の署名付き権限判断を`../decisions/v1/decisions.cddl`で、いずれも設計基準0.1として定義済みです。
 
-候補schema:
+P1の設計に先立って検討した主なメッセージ候補は、次のとおりです。
 
 - WorkerHello
 - ResourceAdvertisement
@@ -214,11 +214,11 @@ P0 merge後は、別branchでP1 Worker Planeを定義します。
 - ResultClaim carrier
 - Reclaim / Stop signal
 
-P1でもAuthority Decisionのcanonical signed payload自体はP2 CDDL / COSEへ残します。
+P1はメッセージの配送を扱います。権限判断の署名対象となる内容は、P2のCDDLとCOSEに分けて定義しています。
 
-## M0 Reference Implementationでの扱い
+## M0の参照実装での扱い
 
-Reference Implementation（`internal/control/clientapi`）は、P0 OpenAPIの`submitTask`、`getTaskStatus`、`cancelTask`を実装しています。応答のschemaが`openapi.json`と一致することは、テストが同じ文書を読んで確認します。
+参照実装（`internal/control/clientapi`）では、P0のOpenAPIに記した`submitTask`、`getTaskStatus`、`cancelTask`を実装しています。応答のschemaが`openapi.json`と一致することは、テストが同じ文書を読んで確認します。
 
 認証には、M0に限り固定のBearer tokenを使います（[ADR-0006](../../plan/adr/0006-m0-client-api-authentication-and-admission.md)）。P0が宣言していない次の応答を返します。契約へ反映する場合は、別の変更として`openapi.json`を更新してください。
 
