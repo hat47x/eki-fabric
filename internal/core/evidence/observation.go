@@ -330,7 +330,10 @@ func checkReclaim(r GovernorReclaim) error {
 }
 
 // checkID requires a non-blank identifier of at most MaxIDLength bytes. It must
-// have no surrounding space, valid UTF-8, and no control characters.
+// have no surrounding space, valid UTF-8, no control characters, and no format
+// characters (Unicode category Cf). A format character, such as a zero-width space
+// or a bidi override, is invisible or reorders the text around it, so two different
+// IDs could look the same to a reader.
 func checkID(field, value string) error {
 	if strings.TrimSpace(value) == "" {
 		return fmt.Errorf("%w: %s is missing", ErrInvalidObservation, field)
@@ -342,8 +345,8 @@ func checkID(field, value string) error {
 		return fmt.Errorf("%w: %s has surrounding space or invalid UTF-8", ErrInvalidObservation, field)
 	}
 	for _, r := range value {
-		if unicode.IsControl(r) {
-			return fmt.Errorf("%w: %s contains a control character", ErrInvalidObservation, field)
+		if unicode.IsControl(r) || unicode.Is(unicode.Cf, r) {
+			return fmt.Errorf("%w: %s contains a control or format character", ErrInvalidObservation, field)
 		}
 	}
 	return nil

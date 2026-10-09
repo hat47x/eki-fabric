@@ -701,6 +701,24 @@ func TestIdentifierBoundsAreEnforced(t *testing.T) {
 	}
 }
 
+// TestFormatCharactersAreRejectedInIdentifiers checks that an identifier cannot hide a
+// format character (Unicode category Cf). A zero-width space is invisible, and a bidi
+// override reorders the text after it, so two different IDs could look the same to a
+// reader. Neither character is a control character, so both must be rejected by the
+// format-character rule itself.
+func TestFormatCharactersAreRejectedInIdentifiers(t *testing.T) {
+	cases := map[string]string{
+		"zero-width space": "obs​x",
+		"bidi override":    "obs‮gnp",
+	}
+	for name, id := range cases {
+		_, err := DerivePrimary([]Observation{retry(id, false)})
+		if !errors.Is(err, ErrInvalidObservation) {
+			t.Errorf("%s: error = %v, want ErrInvalidObservation", name, err)
+		}
+	}
+}
+
 // TestDerivationIsOrderIndependentAndDoesNotMutateInput checks two properties. The
 // log is read but not changed, and the output does not depend on record order.
 func TestDerivationIsOrderIndependentAndDoesNotMutateInput(t *testing.T) {
