@@ -206,6 +206,68 @@ WHEN NEW.epoch <> OLD.epoch + 1
 BEGIN
 	SELECT RAISE(ABORT, 'policy epoch must advance by one');
 END;
+CREATE TRIGGER policy_history_insert_guard
+BEFORE INSERT ON policy_history
+WHEN (
+	NOT EXISTS (SELECT 1 FROM policy_current WHERE singleton = 1)
+	AND NOT (
+		NEW.epoch = 1
+		AND NEW.status = 'active'
+		AND NEW.revoked_at_ns IS NULL
+		AND NEW.revoke_reason = ''
+	)
+) OR (
+	EXISTS (SELECT 1 FROM policy_current WHERE singleton = 1)
+	AND (
+		NEW.epoch <> (SELECT epoch + 1 FROM policy_current WHERE singleton = 1)
+		OR (
+			NEW.status = 'revoked'
+			AND NOT EXISTS (
+				SELECT 1
+				FROM policy_current c
+				JOIN policy_history h ON h.epoch = c.epoch
+				WHERE c.singleton = 1
+				  AND h.status = 'active'
+				  AND h.revision = NEW.revision
+				  AND h.activated_at_ns = NEW.activated_at_ns
+			)
+		)
+		OR (
+			NEW.status = 'active'
+			AND EXISTS (
+				SELECT 1
+				FROM policy_current c
+				JOIN policy_history h ON h.epoch = c.epoch
+				WHERE c.singleton = 1
+				  AND (
+					h.revision = NEW.revision
+					OR NEW.activated_at_ns < CASE
+						WHEN h.status = 'revoked' THEN h.revoked_at_ns
+						ELSE h.activated_at_ns
+					END
+				  )
+			)
+		)
+	)
+)
+BEGIN
+	SELECT RAISE(ABORT, 'invalid policy history transition');
+END;
+CREATE TRIGGER policy_history_update_guard
+BEFORE UPDATE ON policy_history
+BEGIN
+	SELECT RAISE(ABORT, 'policy history is append-only');
+END;
+CREATE TRIGGER policy_history_delete_guard
+BEFORE DELETE ON policy_history
+BEGIN
+	SELECT RAISE(ABORT, 'policy history is append-only');
+END;
+CREATE TRIGGER policy_current_delete_guard
+BEFORE DELETE ON policy_current
+BEGIN
+	SELECT RAISE(ABORT, 'current policy pointer cannot be deleted');
+END;
 CREATE TRIGGER policy_history_no_revoked_reactivation
 BEFORE INSERT ON policy_history
 WHEN NEW.status = 'active'
