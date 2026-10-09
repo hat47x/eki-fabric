@@ -1,8 +1,8 @@
 # EKI Fabric 要求文書の読み方
 
-このディレクトリには、EKI Fabricが満たすべき要求、安全上の前提、Workerに求める保証の考え方、Architectureの候補を比べるための品質特性を置いています。
+このディレクトリには、EKI Fabricが満たすべき要求、安全上の前提、実行端末（Worker）に求める保証の考え方、全体構成の候補を比べるための品質特性を置いています。
 
-ここにある文書は、アイデアを集めただけのものではありません。かといって、Architectureを確定する段階でもありません。いまは、具体的な実装方式とは切り離して、次の点を詰めている段階です。
+ここにある文書は、アイデアを集めただけのものではありません。現在は最初の全体構成を設計基準として定めていますが、この文書に記す要求は、具体的な実装方式とは切り離して扱います。特に、次の点を引き続き確かめます。
 
 - 何を守る必要があるか
 - どのような失敗や攻撃に耐える必要があるか
@@ -17,7 +17,7 @@
 
 ## 文書ごとの役割
 
-### Product Requirements
+### 製品要求
 
 [PRODUCT_REQUIREMENTS.md](PRODUCT_REQUIREMENTS.md)は、EKIが満たすべき性質の正本です。
 
@@ -29,18 +29,18 @@
 - 悪意のあるClientやWorkerを前提にすること
 - Browserや一時的なWorkerの離脱を、通常の状態として扱うこと
 - アドホック参加者や複数の組織を受け入れられること
-- Federationで、Identityの名前空間を取り違えないこと
-- Artifactの取り込みと展開の処理にも、資源の上限を設けること
-- Control Plane内部でも、不要な全権限を一か所に集めないこと
-- 大規模なResourceのreclaimが、retryの嵐に増幅しないようにすること
+- 組織間連携（Federation）で、識別情報（Identity）の名前空間を取り違えないこと
+- 成果物（Artifact）の取り込みと展開の処理にも、資源の上限を設けること
+- 制御系（Control Plane）の内部でも、不要な全権限を一か所に集めないこと
+- 多数の計算資源を回収する処理（reclaim）が、大量の再試行（retry）を引き起こさないようにすること
 - 電力、発熱、機器の安全を、Resource Policyに含められること
 - Compute Grantや資源提供実績を扱えること
 - 副作用を持つTaskを、無条件には再実行しないこと
-- 非決定的なAI Taskについて、確認できない正しさを誇張しないこと
+- 実行ごとに結果が変わり得るAI処理について、確認できない正しさを誇張しないこと
 
-Requirementに書くのは「何を満たすか」です。NATS、SPIFFE、WASMのように「何を使って実現するか」は、原則として、この段階では決めません。
+製品要求に書くのは「何を満たすか」です。NATS、SPIFFE、WASMのように「何を使って実現するか」は、原則として、この段階では決めません。
 
-### Threat Model
+### 脅威の想定
 
 [THREAT_MODEL.md](THREAT_MODEL.md)は、どのような攻撃者を想定し、どの性質を安全上の不変条件として守るかの正本です。
 
@@ -61,13 +61,13 @@ Threat Modelを読むときは、「あらゆる攻撃を完全に防げるか�
 3. どの信頼基盤まで壊れた場合は、保証の対象外なのか
 4. 単一の主体、Credential、componentが、許された境界を越えて被害を広げられないか
 
-### Worker Assurance Model
+### 実行端末に求める保証
 
 [ASSURANCE_MODEL.md](ASSURANCE_MODEL.md)は、Workerを単純に`trusted / untrusted`へ二分しないための、要求の解釈をまとめた文書です。
 
 「企業が管理する端末だから安全」「匿名だから危険」と単純にすると、何が確認できていて、何が確認できていないのかを見誤ります。
 
-現在は、少なくとも次の観点を分けています。
+現在は、少なくとも次の観点を区別しています。
 
 - Identity
 - Execution Environment
@@ -81,23 +81,23 @@ Threat Modelを読むときは、「あらゆる攻撃を完全に防げるか�
 
 大切なのは、ある軸が強いことを、別の軸の保証として使わないことです。
 
-### Acceptance Scenarios
+### 受け入れ場面
 
 [ACCEPTANCE_SCENARIOS.md](ACCEPTANCE_SCENARIOS.md)は、要求を具体的な利用、攻撃、離脱の場面に当てはめて、矛盾や不足を探すための文書です。
 
-Requirementを増やすためのチェックリストではありません。実際の場面を考えたとき、現在の要求だけで必要な判断ができるかを確かめます。
+要求を増やすための単なる確認項目ではありません。実際の場面を考えたとき、現在の要求だけで必要な判断ができるかを確かめます。
 
 現在は、次のような場面を扱っています。社内のEndpoint pool、悪意のあるClientやWorker、Sybil、Browser Worker、Federation、Compute Grant、非決定的なAI、Artifactの展開、Control Planeの部分的な侵害、大規模なreclaim。
 
-### Quality Attributes
+### 品質特性
 
 [QUALITY_ATTRIBUTES.md](QUALITY_ATTRIBUTES.md)は、Requirementを満たす複数のArchitecture候補を比べるための、品質特性をまとめた文書です。
 
-セキュリティだけを最大にした案や、throughputだけを最大にした案を選ぶことはしません。Endpointの利用者への影響、ネットワークの効率、回復のしやすさ、相互運用性、運用のしやすさ、電力と機器の安全などを並べて、Trade-offを確認します。
+セキュリティや処理能力のどちらかだけを最大にした案は選びません。Endpointの利用者への影響、ネットワークの効率、回復のしやすさ、相互運用性、運用のしやすさ、電力と機器の安全などを並べて、両立しにくい条件の関係を確かめます。
 
-ここに挙げた測定の候補は、本番のSLOではありません。Architectureの候補を比べられる状態にするための、基準です。
+ここに挙げる測定項目は、本番運用のサービス水準目標（SLO）ではありません。Architectureの候補を比べられる状態にするための、基準です。
 
-### Requirement Gap Review
+### 要求の不足に関する点検
 
 [REQUIREMENT_GAP_REVIEW.md](REQUIREMENT_GAP_REVIEW.md)は、要求全体を横断して不足を洗い出した、レビューの記録です。
 
