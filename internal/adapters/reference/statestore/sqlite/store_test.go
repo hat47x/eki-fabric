@@ -421,6 +421,50 @@ INSERT INTO leases (
 	}
 }
 
+func TestPolicySchemaRejectsDirectMutationAndInvalidTransitions(t *testing.T) {
+	store := openStore(t, filepath.Join(t.TempDir(), "state.db"))
+	defer store.Close()
+
+	p1 := ensureSQLitePolicy(t, store, "policy-42")
+
+	if _, err := store.db.Exec(`
+UPDATE policy_history SET revision = 'tampered' WHERE epoch = ?`, int64(p1.Epoch)); err == nil {
+		t.Fatal("policy history UPDATE bypassed append-only guard")
+	}
+	if _, err := store.db.Exec(`
+DELETE FROM policy_history WHERE epoch = ?`, int64(p1.Epoch)); err == nil {
+		t.Fatal("policy history DELETE bypassed append-only guard")
+	}
+	if _, err := store.db.Exec(`
+DELETE FROM policy_current WHERE singleton = 1`); err == nil {
+		t.Fatal("current policy pointer was deleted through direct SQL")
+	}
+
+	if _, err := store.db.Exec(`
+INSERT INTO policy_history (
+	epoch, revision, status, activated_at_ns, revoked_at_ns, revoke_reason
+) VALUES (?, ?, 'revoked', ?, ?, ?)`,
+		int64(p1.Epoch+1),
+		"policy-other",
+		p1.ActivatedAt.UnixNano(),
+		p1.ActivatedAt.Add(time.Minute).UnixNano(),
+		"wrong revision",
+	); err == nil {
+		t.Fatal("direct SQL inserted revocation for a non-current revision")
+	}
+
+	if _, err := store.db.Exec(`
+INSERT INTO policy_history (
+	epoch, revision, status, activated_at_ns, revoked_at_ns, revoke_reason
+) VALUES (?, ?, 'active', ?, NULL, '')`,
+		int64(p1.Epoch+2),
+		"policy-skip",
+		p1.ActivatedAt.Add(time.Minute).UnixNano(),
+	); err == nil {
+		t.Fatal("direct SQL skipped policy epoch")
+	}
+}
+
 func TestLeaseSchemaRejectsStalePolicyIfAdapterIsBypassed(t *testing.T) {
 	store := openStore(t, filepath.Join(t.TempDir(), "state.db"))
 	defer store.Close()
