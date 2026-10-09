@@ -125,7 +125,7 @@ func (s *Store) AbortLeaseEmission(ctx context.Context, abort statestore.LeaseEm
 		if existing.Status() == leaseemission.StatusEmitted {
 			return statestore.LeaseEmissionResult{}, statestore.ErrLeaseEmissionConflict
 		}
-		if existing.Reason() != abort.Reason {
+		if existing.Reason() != abort.Reason || existing.CloseReason() != string(abort.CloseReason) {
 			return statestore.LeaseEmissionResult{}, statestore.ErrLeaseEmissionConflict
 		}
 		return statestore.LeaseEmissionResult{Record: existing, Replayed: true}, nil
@@ -155,7 +155,10 @@ func (s *Store) AbortLeaseEmission(ctx context.Context, abort statestore.LeaseEm
 		return statestore.LeaseEmissionResult{}, err
 	}
 	record, err := leaseemission.NewAborted(leaseemission.AbortedConfig{
-		LeaseID: lease.ID, Reason: abort.Reason, CommittedAt: abort.CommittedAt,
+		LeaseID: lease.ID,
+		CloseReason: string(abort.CloseReason),
+		Reason: abort.Reason,
+		CommittedAt: abort.CommittedAt,
 	})
 	if err != nil {
 		return statestore.LeaseEmissionResult{}, err
