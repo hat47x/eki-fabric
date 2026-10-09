@@ -45,6 +45,23 @@ func (s *Store) CommitLeaseEmission(ctx context.Context, commit statestore.Lease
 		return statestore.LeaseEmissionResult{}, err
 	}
 
+	other, err := scanLeaseEmission(tx.QueryRowContext(
+		ctx,
+		leaseEmissionSelect+` WHERE status = 'emitted' AND trust_domain = ? AND authority_principal = ? AND decision_id = ?`,
+		commit.TrustDomain,
+		commit.AuthorityPrincipal,
+		commit.DecisionID,
+	))
+	switch {
+	case err == nil:
+		if other.LeaseID() != commit.LeaseID {
+			return statestore.LeaseEmissionResult{}, statestore.ErrLeaseEmissionConflict
+		}
+	case errors.Is(err, sql.ErrNoRows):
+	default:
+		return statestore.LeaseEmissionResult{}, err
+	}
+
 	lease, err := scanLease(tx.QueryRowContext(ctx, `
 SELECT lease_id, task_id, task_ir_digest, attempt_id, worker_identity,
        placement_trust_domain, placement_authority_principal, placement_decision_id, placement_payload_digest, placement_expires_at_ns, policy_revision, policy_epoch,
