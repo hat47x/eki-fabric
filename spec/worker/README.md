@@ -150,7 +150,6 @@ ResourceAdvertisementやcache hintをExternal Client APIへそのまま投影し
 - Browser Worker特有のAPI
 - Attestation Evidence carrier
 - Contribution metering
-- P2 CDDL / COSE payload schema
 - Artifact Data Plane transport
 
 ## 適合性の検証候補
