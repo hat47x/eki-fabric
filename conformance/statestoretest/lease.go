@@ -510,6 +510,9 @@ func RunLeaseStoreContract(t *testing.T, newStore LeaseFactory) {
 	t.Run("unschedulable-phase-fails-closed", func(t *testing.T) {
 		store := newStore(t)
 		task := readyTask(t, store, "held")
+		// Create the Attempt while the Task is still schedulable: the adapters refuse
+		// new Attempts for a held Task, so the Hold must come after the Attempt exists.
+		reservation := leaseReservation(t, store, task, "placement-1", leaseNow, leaseNow.Add(time.Minute))
 		held := task
 		held.Phase = taskstate.TaskPhaseHeld
 		held.Revision++
@@ -517,7 +520,7 @@ func RunLeaseStoreContract(t *testing.T, newStore LeaseFactory) {
 		if err := store.CompareAndSwapTask(context.Background(), task.ID, task.Revision, held); err != nil {
 			t.Fatal(err)
 		}
-		reservation := leaseReservation(t, store, held, "placement-1", leaseNow, leaseNow.Add(time.Minute))
+		reservation.ExpectedTaskRevision = held.Revision
 		if _, err := store.ReserveLease(context.Background(), reservation); !errors.Is(err, statestore.ErrConflict) {
 			t.Fatalf("ReserveLease() error = %v, want ErrConflict", err)
 		}
