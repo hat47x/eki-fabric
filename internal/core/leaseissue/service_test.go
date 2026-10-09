@@ -406,6 +406,55 @@ func TestReserveUsesCurrentTrustBundleOnEveryCall(t *testing.T) {
 	}
 }
 
+func TestReserveCannotUseCallerTimeToReviveExpiredPlacement(t *testing.T) {
+	fx := newCryptoFixture(t)
+	store := readyPlacingState(t, testWorkerID)
+	clock := &testClock{now: testExpires.Add(time.Second)}
+	service := newService(t, fx, store, time.Minute, testPolicyRev, clock)
+
+	if _, err := service.Reserve(context.Background(), leaseissue.Request{
+		SignedPlacement: fx.signedPlacement(), RequestedLifetime: time.Minute,
+	}); err == nil {
+		t.Fatal("Reserve() accepted an expired Placement under the trusted Clock")
+	}
+
+	attemptID, _ := ids.ParseAttemptID(testAttemptID)
+	attempt, err := store.LoadAttempt(context.Background(), attemptID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if attempt.Phase != attemptstate.AttemptPhasePlacing || attempt.LeaseID != "" {
+		t.Fatalf("expired Placement mutated Attempt: %#v", attempt)
+	}
+}
+
+func TestReserveReverifiesKeyStateInsteadOfTrustingOldPlacementBytes(t *testing.T) {
+	fx := newCryptoFixture(t)
+	raw := fx.signedPlacement()
+	if err := fx.registry.MarkCompromised(testKeyID, testNow); err != nil {
+		t.Fatal(err)
+	}
+
+	store := readyPlacingState(t, testWorkerID)
+	clock := &testClock{now: testNow}
+	service := newService(t, fx, store, time.Minute, testPolicyRev, clock)
+
+	if _, err := service.Reserve(context.Background(), leaseissue.Request{
+		SignedPlacement: raw, RequestedLifetime: time.Minute,
+	}); err == nil {
+		t.Fatal("Reserve() trusted Placement bytes after the signing key became compromised")
+	}
+
+	attemptID, _ := ids.ParseAttemptID(testAttemptID)
+	attempt, err := store.LoadAttempt(context.Background(), attemptID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if attempt.Phase != attemptstate.AttemptPhasePlacing || attempt.LeaseID != "" {
+		t.Fatalf("compromised-key failure mutated Attempt: %#v", attempt)
+	}
+}
+
 func TestReserveCapsLeaseAtPlacementExpiry(t *testing.T) {
 	fx := newCryptoFixture(t)
 	store := readyPlacingState(t, testWorkerID)
@@ -414,7 +463,6 @@ func TestReserveCapsLeaseAtPlacementExpiry(t *testing.T) {
 
 	result, err := service.Reserve(context.Background(), leaseissue.Request{
 		SignedPlacement: fx.signedPlacement(),
-		Now: testNow,
 		RequestedLifetime: 10 * time.Minute,
 	})
 	if err != nil {
