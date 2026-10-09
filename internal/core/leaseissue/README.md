@@ -1,6 +1,6 @@
 # LSE-1 verified Placement service
 
-このpackageは、署名済みPlacement Approvalからdurable Lease reservationへ進むproduction向け境界です。
+このpackageは、署名済みPlacement Approvalからdurable Lease reservationへ進むpre-signing境界です。#78のpolicy currentness linearizationが成立するまでは、productionのsigned Lease発行経路が完成したとは扱いません。
 
 低層の`statestore.LeaseReservation`は保存契約として公開されていますが、production callerがAuthority fieldを自由に組み立てるためのAPIではありません。
 
