@@ -29,8 +29,8 @@ func (s *Store) CreateAttempt(ctx context.Context, record attemptstate.AttemptRe
 	defer func() { _ = tx.Rollback() }()
 
 	var (
-		parentDigest string
-		parentPhase string
+		parentDigest    string
+		parentPhase     string
 		parentCancelled int64
 	)
 	err = tx.QueryRowContext(ctx, `
@@ -170,8 +170,8 @@ WHERE attempt_id = ? AND revision = ?`,
 func scanAttempt(row rowScanner) (attemptstate.AttemptRecord, error) {
 	var (
 		attemptID, taskID, digestHex, phase, worker, closeReason string
-		leaseID                                                sql.NullString
-		number, revision, createdNS, updatedNS                 int64
+		leaseID                                                  sql.NullString
+		number, revision, createdNS, updatedNS                   int64
 	)
 	if err := row.Scan(
 		&attemptID, &taskID, &digestHex, &number, &phase,

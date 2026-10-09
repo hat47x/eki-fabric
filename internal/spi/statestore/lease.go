@@ -22,13 +22,13 @@ var (
 )
 
 type LeaseReservation struct {
-	LeaseID                    ids.LeaseID
-	TaskID                     ids.TaskID
-	TaskIRDigest               contract.Digest
-	ExpectedTaskRevision       uint64
-	AttemptID                  ids.AttemptID
-	ExpectedAttemptRevision    uint64
-	WorkerIdentity             string
+	LeaseID                     ids.LeaseID
+	TaskID                      ids.TaskID
+	TaskIRDigest                contract.Digest
+	ExpectedTaskRevision        uint64
+	AttemptID                   ids.AttemptID
+	ExpectedAttemptRevision     uint64
+	WorkerIdentity              string
 	PlacementTrustDomain        string
 	PlacementAuthorityPrincipal string
 	PlacementDecisionID         string

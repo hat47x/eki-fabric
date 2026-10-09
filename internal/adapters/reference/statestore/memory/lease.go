@@ -106,21 +106,21 @@ func (s *Store) ReserveLease(ctx context.Context, reservation statestore.LeaseRe
 		return statestore.LeaseReservationResult{}, fmt.Errorf("%w: fence epoch exhausted for task %s", statestore.ErrConflict, reservation.TaskID)
 	}
 	lease, err := leasestate.New(leasestate.Config{
-		ID:                     reservation.LeaseID,
-		TaskID:                 reservation.TaskID,
-		TaskIRDigest:           reservation.TaskIRDigest,
-		AttemptID:              reservation.AttemptID,
-		WorkerIdentity:         reservation.WorkerIdentity,
+		ID:                          reservation.LeaseID,
+		TaskID:                      reservation.TaskID,
+		TaskIRDigest:                reservation.TaskIRDigest,
+		AttemptID:                   reservation.AttemptID,
+		WorkerIdentity:              reservation.WorkerIdentity,
 		PlacementTrustDomain:        reservation.PlacementTrustDomain,
 		PlacementAuthorityPrincipal: reservation.PlacementAuthorityPrincipal,
-		PlacementDecisionID:           reservation.PlacementDecisionID,
-		PlacementPayloadDigest:        reservation.PlacementPayloadDigest,
-		PlacementExpiresAt:            reservation.PlacementExpiresAt,
-		PolicyRevision:                reservation.PolicyRevision,
-		FenceEpoch:             fence,
-		RenewalSequence:        0,
-		IssuedAt:               reservation.IssuedAt,
-		ExpiresAt:              reservation.ExpiresAt,
+		PlacementDecisionID:         reservation.PlacementDecisionID,
+		PlacementPayloadDigest:      reservation.PlacementPayloadDigest,
+		PlacementExpiresAt:          reservation.PlacementExpiresAt,
+		PolicyRevision:              reservation.PolicyRevision,
+		FenceEpoch:                  fence,
+		RenewalSequence:             0,
+		IssuedAt:                    reservation.IssuedAt,
+		ExpiresAt:                   reservation.ExpiresAt,
 	})
 	if err != nil {
 		return statestore.LeaseReservationResult{}, err
