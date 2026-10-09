@@ -292,7 +292,138 @@ WHEN NEW.policy_epoch < 1
   )
 BEGIN
 	SELECT RAISE(ABORT, 'lease does not bind the current active policy');
+END`,	// 6: durable Lease Authority emission / abort state
+	`CREATE TABLE lease_emissions (
+	lease_id             TEXT    NOT NULL PRIMARY KEY REFERENCES leases (lease_id),
+	status               TEXT    NOT NULL CHECK (status IN ('emitted','aborted')),
+	decision_id          TEXT,
+	trust_domain         TEXT,
+	authority_principal  TEXT,
+	key_id               TEXT,
+	algorithm            TEXT,
+	payload_digest       TEXT,
+	envelope_digest      TEXT,
+	signed_envelope      BLOB,
+	policy_revision      TEXT,
+	policy_epoch         INTEGER,
+	committed_at_ns      INTEGER NOT NULL,
+	abort_reason         TEXT    NOT NULL DEFAULT '',
+	abort_close_reason   TEXT    NOT NULL DEFAULT '',
+	CHECK (
+		(
+			status = 'emitted'
+			AND length(decision_id) BETWEEN 1 AND 128
+			AND length(trust_domain) BETWEEN 1 AND 256
+			AND length(authority_principal) BETWEEN 1 AND 256
+			AND length(key_id) BETWEEN 1 AND 128
+			AND algorithm IN ('EdDSA','ES256')
+			AND length(payload_digest) = 64
+			AND length(envelope_digest) = 64
+			AND length(signed_envelope) BETWEEN 1 AND 262144
+			AND length(policy_revision) BETWEEN 1 AND 128
+			AND policy_epoch >= 1
+			AND abort_reason = ''
+			AND abort_close_reason = ''
+		)
+		OR
+		(
+			status = 'aborted'
+			AND decision_id IS NULL
+			AND trust_domain IS NULL
+			AND authority_principal IS NULL
+			AND key_id IS NULL
+			AND algorithm IS NULL
+			AND payload_digest IS NULL
+			AND envelope_digest IS NULL
+			AND signed_envelope IS NULL
+			AND policy_revision IS NULL
+			AND policy_epoch IS NULL
+			AND length(abort_reason) BETWEEN 1 AND 512
+			AND abort_close_reason IN (
+				'result_accepted','result_rejected','execution_failure_confirmed',
+				'worker_lost','lease_expired','reclaimed','cancelled','superseded',
+				'deadline','budget_exhausted','unknown_external_effect',
+				'policy_revoked','stale_attempt'
+			)
+		)
+	)
+) STRICT;
+CREATE UNIQUE INDEX lease_emissions_decision_scope
+ON lease_emissions (trust_domain, authority_principal, decision_id)
+WHERE status = 'emitted';
+CREATE TRIGGER lease_emissions_emitted_guard
+BEFORE INSERT ON lease_emissions
+WHEN NEW.status = 'emitted'
+  AND NOT EXISTS (
+	SELECT 1
+	FROM leases l
+	JOIN tasks t ON t.task_id = l.task_id
+	JOIN attempts a ON a.attempt_id = l.attempt_id
+	JOIN policy_current pc ON pc.singleton = 1
+	JOIN policy_history ph ON ph.epoch = pc.epoch
+	WHERE l.lease_id = NEW.lease_id
+	  AND l.policy_epoch = NEW.policy_epoch
+	  AND l.policy_revision = NEW.policy_revision
+	  AND pc.epoch = l.policy_epoch
+	  AND ph.revision = l.policy_revision
+	  AND ph.status = 'active'
+	  AND t.task_ir_digest = l.task_ir_digest
+	  AND t.cancellation_requested = 0
+	  AND t.phase IN ('ready','active')
+	  AND a.task_id = l.task_id
+	  AND a.task_ir_digest = l.task_ir_digest
+	  AND a.worker_identity = l.worker_identity
+	  AND a.lease_id = l.lease_id
+	  AND a.phase = 'assigned'
+	  AND NEW.committed_at_ns >= l.issued_at_ns
+	  AND NEW.committed_at_ns < l.expires_at_ns
+  )
+BEGIN
+	SELECT RAISE(ABORT, 'Lease emission does not bind current Lease authority state');
+END;
+CREATE TRIGGER lease_emissions_abort_guard
+BEFORE INSERT ON lease_emissions
+WHEN NEW.status = 'aborted'
+  AND NOT EXISTS (
+	SELECT 1
+	FROM leases l
+	JOIN attempts a ON a.attempt_id = l.attempt_id
+	WHERE l.lease_id = NEW.lease_id
+	  AND a.task_id = l.task_id
+	  AND a.task_ir_digest = l.task_ir_digest
+	  AND a.worker_identity = l.worker_identity
+	  AND a.lease_id = l.lease_id
+	  AND a.phase = 'assigned'
+  )
+BEGIN
+	SELECT RAISE(ABORT, 'Lease abort does not bind current assigned Attempt');
+END;
+CREATE TRIGGER lease_emissions_abort_attempt
+AFTER INSERT ON lease_emissions
+WHEN NEW.status = 'aborted'
+BEGIN
+	UPDATE attempts
+	SET phase = 'closed',
+	    close_reason = NEW.abort_close_reason,
+	    revision = revision + 1,
+	    updated_at_ns = CASE
+		WHEN updated_at_ns < NEW.committed_at_ns THEN NEW.committed_at_ns
+		ELSE updated_at_ns
+	    END
+	WHERE lease_id = NEW.lease_id
+	  AND phase = 'assigned';
+END;
+CREATE TRIGGER lease_emissions_immutable_update
+BEFORE UPDATE ON lease_emissions
+BEGIN
+	SELECT RAISE(ABORT, 'Lease emission state is immutable');
+END;
+CREATE TRIGGER lease_emissions_immutable_delete
+BEFORE DELETE ON lease_emissions
+BEGIN
+	SELECT RAISE(ABORT, 'Lease emission state is immutable');
 END`,
+
 }
 
 // migrate brings the database to the latest version. It is idempotent, rejects
