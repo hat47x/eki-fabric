@@ -203,7 +203,7 @@ Effective Data ClassはAdmission / Data Authorityが入力Artifact、Executor re
 
 P0に続き、P1の実行端末向け通信仕様を`../worker/v1/worker.proto`で、P2の署名付き権限判断を`../decisions/v1/decisions.cddl`で、いずれも設計基準0.1として定義済みです。
 
-P1で扱う主なメッセージは次のとおりです。
+P1の設計に先立って検討した主なメッセージ候補は、次のとおりです。
 
 - WorkerHello
 - ResourceAdvertisement
