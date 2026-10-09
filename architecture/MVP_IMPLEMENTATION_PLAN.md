@@ -373,6 +373,35 @@ SQLiteのReferenceでは、Adapterを迂回した直接INSERTでもstale policy 
 
 この段階で作る`LeaseRecord`は、依然として内部のdurable reservation stateです。Workerが依拠できる署名済みP2 Leaseは後続のsigning boundaryで生成します。そのboundaryでも、`PolicyEpoch=0`のlegacy recordや、current policyから外れたreservationを署名対象にしません。
 
+### LSE-1 — 署名済みLeaseの発行を耐久化する
+
+Lease reservationと署名処理の間には、もう一つ境界を置きます。署名関数が成功したことだけでは、Worker向けAuthorityを発行済みとみなしません。
+
+```text
+durable Lease reservation
+  -> canonical Lease payload
+  -> LSE-1 signing
+       # signed bytesはまだ外へ出さない
+  -> current Policy / Task / Attempt / signing premiseを再確認
+  -> durable emission commit
+  -> EMITTED
+  -> Worker delivery
+```
+
+Reference State Storeでは、Lease reservationに対して次の状態を区別します。
+
+- `RESERVED`: Lease reservationはあるが、発行記録はない。
+- `EMITTED`: exact signed envelopeを耐久的に確定した。
+- `ABORTED`: Worker向けAuthorityを発行しないことを耐久的に確定した。
+
+`EMITTED`のcommitを、新しいLease Authority発行の線形化点とします。commit前にPolicy、Task、Attemptなどの前提が変われば、署名済みbytesを外へ出さず、発行を止めます。
+
+一度`EMITTED`になったLeaseを再送するときは、再署名しません。耐久記録にある同じsigned bytesを返します。これによって、再送やControl Plane再起動が新しいAuthorityを増やすことを防ぎます。
+
+`ABORTED`では、対応するAttemptを同じ保存境界で`closed`へ進めます。新しいPlacementへ進むことはできますが、消費済みのFenceEpochは戻しません。同じPlacement DecisionからLeaseを作り直すことも許しません。
+
+このState Store境界は、署名済みbytesとmetadataの暗号学的な対応を、それ自体で証明するものではありません。後続のLSE-1 compositionでは、canonical Lease payloadの生成、LSE-1 keyでの署名、signed envelopeの再decodeと検証、Trust Bundleとkeyのcurrentness確認を行った型付き結果だけを、emission commitへ渡します。呼出側の自己申告fieldをAuthority証明として扱いません。
+
 ## 3.6 WorkOrder
 
 最初のWorkOrderは、少なくとも、次のものに結び付けます。
@@ -1027,15 +1056,16 @@ Section 20の最初の列挙は、すでに一部が完了しています。そ�
 
 未達で、優先するものは、次のとおりです。
 
-1. ~~**M0の永続的なState Store**~~ — SQLiteのreference adapterを、実装済みです（2026-10-06、ADR-0003 §14）。再起動後のTask identityとrevisionの保持を、確認しました。Task以外のtable（AttemptとLease、outbox）は、未実装です。
+1. **M0の永続的なState Store** — SQLiteのreference adapterを実装し、Task、Attempt、Lease reservation、FenceEpoch、Policy Epochまで耐久化しています。再起動後のidentityとrevision、Leaseのfencing、Placement replay、Policy revokeとの競合をconformanceで固定しています。未実装の中心は、outboxとWorker deliveryです。
 2. ~~**P2の具体的なCOSE decoder**~~ — 厳格なCOSE_Sign1 decoderと、Signature1 encoderを、実装済みです（2026-10-06、ADR-0005 §18）。
    - Placement Approvalのpayloadについては、型付きのCore contract、decoder SPI、厳格なCBORのReference adapterを、`feature/placement-approval-payload-decoder`で実装中です。
    - RFC 8949の決定的な再エンコードの比較、閉じたschema、重複したkey、長さを定めないitem、未知のfield、P2のbindingについての、negativeなtestを含みます。
    - 外部のmoduleを取得したfocused testは、2026-10-06に実施済みです（Go 1.27.0、WSL2）。
    - COSE envelopeのdecode -> payloadのdecode -> 暗号の検証 -> 現在のstateでの再検証という組み合わせは、`internal/core/placementverify`に、実装済みです（2026-10-06）。LSE-1自体は、未実装です。
 3. 永続的なstateを前提に、M0のE2Eを、Task submitとstatus -> Workerの登録 -> 一つのWorkerでのローカルな実行まで接続する。
-   - Task submit、status、cancelは、実装済みです（2026-10-06、ADR-0006）。再起動の後も、Task、冪等性、未完了Task数の上限が保たれます。
-   - 残りは、AttemptとLeaseの永続化とLSE-1、Workerの登録、一つのWorkerでのローカルな実行です。
+   - Task submit、status、cancelは実装済みです。再起動後も、Task、冪等性、未完了Task数の上限を保持します。
+   - Attempt、Lease reservation、FenceEpoch、Policy Epoch、検証済みPlacementからLease reservationへ進むLSE-1の前半は実装済みです。
+   - 次の中心作業は、canonical Lease payloadの署名、署名済みbytesの耐久的な発行確定、Worker deliveryとWorker側検証、一つのWorkerでのローカル実行です。
 
 `learned scheduler`は、Section 4と11で定義したとおり、MVPの必須ではありません。Researchの実装がmainに存在しても、上記のM0とM1のgateの優先順位を変更しません。
 
