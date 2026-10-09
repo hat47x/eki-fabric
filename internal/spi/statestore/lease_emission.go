@@ -93,8 +93,18 @@ func (a LeaseEmissionAbort) Validate() error {
 	if a.ExpectedAttemptRevision == 0 {
 		return errors.New("Lease abort: expected Attempt revision must be positive")
 	}
-	if a.CloseReason == attemptstate.CloseReasonNone {
-		return errors.New("Lease abort: close reason is required")
+	switch a.CloseReason {
+	case attemptstate.CloseReasonWorkerLost,
+		attemptstate.CloseReasonLeaseExpired,
+		attemptstate.CloseReasonReclaimed,
+		attemptstate.CloseReasonCancelled,
+		attemptstate.CloseReasonSuperseded,
+		attemptstate.CloseReasonDeadline,
+		attemptstate.CloseReasonBudgetExhausted,
+		attemptstate.CloseReasonPolicyRevoked,
+		attemptstate.CloseReasonStaleAttempt:
+	default:
+		return fmt.Errorf("Lease abort: close reason %q is not valid before Authority emission", a.CloseReason)
 	}
 	record, err := leaseemission.NewAborted(leaseemission.AbortedConfig{
 		LeaseID: a.LeaseID,
