@@ -42,6 +42,7 @@ type EmittedConfig struct {
 
 type AbortedConfig struct {
 	LeaseID     ids.LeaseID
+	CloseReason string
 	Reason      string
 	CommittedAt time.Time
 }
@@ -59,6 +60,7 @@ type Record struct {
 	signedEnvelope     []byte
 	policyRevision     string
 	policyEpoch        uint64
+	closeReason        string
 	reason             string
 	committedAt        time.Time
 }
@@ -128,6 +130,9 @@ func NewAborted(cfg AbortedConfig) (Record, error) {
 	if _, err := ids.ParseLeaseID(cfg.LeaseID.String()); err != nil {
 		return Record{}, fmt.Errorf("%w: Lease ID: %v", ErrInvalidRecord, err)
 	}
+	if err := validateText("abort close reason", cfg.CloseReason, 64); err != nil {
+		return Record{}, err
+	}
 	if err := validateText("abort reason", cfg.Reason, 512); err != nil {
 		return Record{}, err
 	}
@@ -137,6 +142,7 @@ func NewAborted(cfg AbortedConfig) (Record, error) {
 	return Record{
 		leaseID:     cfg.LeaseID,
 		status:      StatusAborted,
+		closeReason: cfg.CloseReason,
 		reason:      cfg.Reason,
 		committedAt: cfg.CommittedAt.UTC(),
 	}, nil
@@ -153,6 +159,7 @@ func (r Record) PayloadDigest() contract.Digest     { return r.payloadDigest }
 func (r Record) EnvelopeDigest() contract.Digest    { return r.envelopeDigest }
 func (r Record) PolicyRevision() string             { return r.policyRevision }
 func (r Record) PolicyEpoch() uint64                { return r.policyEpoch }
+func (r Record) CloseReason() string                { return r.closeReason }
 func (r Record) Reason() string                     { return r.reason }
 func (r Record) CommittedAt() time.Time             { return r.committedAt }
 func (r Record) SignedEnvelope() []byte             { return append([]byte(nil), r.signedEnvelope...) }
@@ -178,7 +185,7 @@ func (r Record) Validate() error {
 		return err
 	case StatusAborted:
 		_, err := NewAborted(AbortedConfig{
-			LeaseID: r.leaseID, Reason: r.reason, CommittedAt: r.committedAt,
+			LeaseID: r.leaseID, CloseReason: r.closeReason, Reason: r.reason, CommittedAt: r.committedAt,
 		})
 		return err
 	default:
