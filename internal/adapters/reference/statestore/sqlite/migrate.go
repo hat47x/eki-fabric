@@ -292,7 +292,8 @@ WHEN NEW.policy_epoch < 1
   )
 BEGIN
 	SELECT RAISE(ABORT, 'lease does not bind the current active policy');
-END`,	// 6: durable Lease Authority emission / abort state
+END`,
+	// 6: durable Lease Authority emission / abort state
 	`CREATE TABLE lease_emissions (
 	lease_id             TEXT    NOT NULL PRIMARY KEY REFERENCES leases (lease_id),
 	status               TEXT    NOT NULL CHECK (status IN ('emitted','aborted')),
