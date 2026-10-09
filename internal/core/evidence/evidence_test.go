@@ -381,13 +381,13 @@ func TestSuitabilityNotJustifiedIsCountedAsNormalOutcome(t *testing.T) {
 	if !slices.Equal(p.SuitabilityOutcomes.NotJustified, []string{"suit-2", "suit-3"}) {
 		t.Errorf("NotJustified = %v", p.SuitabilityOutcomes.NotJustified)
 	}
-	if got := p.SuitabilityOutcomes.Count("PRICE_BASED"); got != 0 {
+	if got := p.SuitabilityOutcomes.Count("UNKNOWN_OUTCOME"); got != 0 {
 		t.Errorf("Count(unknown) = %d, want 0", got)
 	}
 }
 
 func TestUnknownSuitabilityOutcomeIsRejected(t *testing.T) {
-	_, err := DerivePrimary([]Observation{suitability("suit-1", "PRICE_BASED")})
+	_, err := DerivePrimary([]Observation{suitability("suit-1", "UNKNOWN_OUTCOME")})
 	if !errors.Is(err, ErrInvalidObservation) {
 		t.Fatalf("error = %v, want ErrInvalidObservation", err)
 	}
@@ -445,7 +445,7 @@ func TestRetriesWithoutAuthorityGrowthHoldTheInvariant(t *testing.T) {
 // causes. A retry with no cause or an unknown cause cannot be attributed, so the
 // derivation rejects it instead of counting it as "other".
 func TestRetryCauseIsRequiredAndClosed(t *testing.T) {
-	for _, bad := range []RetryCause{"", "PRICE_BASED", "reclaim"} {
+	for _, bad := range []RetryCause{"", "UNKNOWN_OUTCOME", "reclaim"} {
 		_, err := DerivePrimary([]Observation{RetryEvent{ID: "rty-1", Cause: bad}})
 		if !errors.Is(err, ErrInvalidObservation) {
 			t.Errorf("cause %q: error = %v, want ErrInvalidObservation", bad, err)

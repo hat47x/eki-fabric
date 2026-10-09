@@ -21,10 +21,6 @@ import (
 // declares. The fragment check is a name check, and it is a second line of defense
 // behind the reviewed classification, not the main one.
 
-// modulePath is the import path prefix of this repository. The evidence package may not
-// import any package under it.
-const modulePath = "github.com/hat47x/eki-fabric"
-
 // forbiddenMemberFragments are name fragments that would mean the package carries
 // money, credit, or a score. Matching is case-insensitive. The fragments are checked
 // against every package-level name, struct field, interface method, and method,
@@ -42,36 +38,21 @@ var secondaryMemberFragments = []string{
 	"flops", "utilization", "throughput", "workercount", "secondary",
 }
 
-// forbiddenPackages are standard-library packages that this package may not import at
-// all. They perform I/O, read the environment, start concurrency, or introduce
-// randomness. "C" is cgo, which can run arbitrary native code.
-var forbiddenPackages = map[string]bool{
-	"C":             true,
-	"context":       true,
-	"crypto/rand":   true,
-	"database/sql":  true,
-	"hash/maphash":  true,
-	"io":            true,
-	"io/fs":         true,
-	"io/ioutil":     true,
-	"log":           true,
-	"log/slog":      true,
-	"math/rand":     true,
-	"math/rand/v2":  true,
-	"net":           true,
-	"net/http":      true,
-	"os":            true,
-	"os/exec":       true,
-	"os/signal":     true,
-	"os/user":       true,
-	"path/filepath": true,
-	"plugin":        true,
-	"runtime":       true,
-	"runtime/debug": true,
-	"sync":          true,
-	"sync/atomic":   true,
-	"syscall":       true,
-	"unsafe":        true,
+// allowedImports is the import allowlist for the non-test files of this package. It is
+// exactly the set of packages the package uses today. Any other import fails the guard,
+// including standard-library packages that do I/O, read the environment, or start
+// concurrency, such as mime, expvar, net/http/pprof, and go/build. Adding a package is a
+// review decision. The allowed packages are then checked member by member; see
+// forbiddenTimeMembers, forbiddenSelectorNames, and allowedFmtMembers.
+var allowedImports = map[string]bool{
+	"cmp":          true,
+	"errors":       true,
+	"fmt":          true,
+	"slices":       true,
+	"strings":      true,
+	"time":         true,
+	"unicode":      true,
+	"unicode/utf8": true,
 }
 
 // forbiddenTimeMembers are the members of package time that read the clock, wait on it,
@@ -259,9 +240,10 @@ func isMajorVersion(s string) bool {
 	return true
 }
 
-// checkImports checks the imports of one file and returns the package name that each
-// import binds in that file. Names come from the import path, so an alias cannot hide a
-// package. A dot import would make package members look unqualified, so it is refused.
+// checkImports checks each import of one file against allowedImports and returns the
+// package name that each import binds in that file. Names come from the import path, so an
+// alias cannot hide a package. A dot import would make package members look unqualified,
+// so it is refused.
 func checkImports(t *testing.T, fset *token.FileSet, file *ast.File) map[string]string {
 	t.Helper()
 	bound := map[string]string{}
@@ -271,17 +253,8 @@ func checkImports(t *testing.T, fset *token.FileSet, file *ast.File) map[string]
 		if err != nil {
 			t.Fatalf("%s: unquote import: %v", where, err)
 		}
-		if path == "C" {
-			t.Errorf("%s: imports C, which can run arbitrary native code", where)
-		}
-		if strings.HasPrefix(path, modulePath) {
-			t.Errorf("%s: imports %q, but evidence must not depend on any package of this module", where, path)
-		}
-		if strings.Contains(strings.SplitN(path, "/", 2)[0], ".") {
-			t.Errorf("%s: imports non-standard-library package %q", where, path)
-		}
-		if forbiddenPackages[path] {
-			t.Errorf("%s: imports %q, which performs I/O, reads the environment, or manages concurrency or randomness", where, path)
+		if !allowedImports[path] {
+			t.Errorf("%s: imports %q, which is not on the import allowlist; review it for I/O, environment, clock, concurrency, and randomness before adding it to allowedImports", where, path)
 		}
 		name := defaultImportName(path)
 		if imp.Name != nil {
@@ -434,9 +407,12 @@ func enumerate(files []*ast.File) declarations {
 	return d
 }
 
-// TestPackageSourceStaysPureAndDependencyFree checks that the package imports only
-// allowed packages, that no selector or builtin reaches the clock, the environment,
-// standard error, or the network, and that the package starts no goroutine.
+// TestPackageSourceStaysPureAndDependencyFree checks the non-test files of the package in
+// two steps. First, every import must be on allowedImports. Then, within the allowed
+// packages, package time may not use the members in forbiddenTimeMembers, package fmt may
+// use only the members in allowedFmtMembers, no selector may name a member in
+// forbiddenSelectorNames, the print and println builtins are refused, and the package may
+// not declare init or start a goroutine.
 func TestPackageSourceStaysPureAndDependencyFree(t *testing.T) {
 	fset, files := parseSourceFiles(t)
 	for _, file := range files {

@@ -5,8 +5,12 @@ import "slices"
 // Secondary holds the auxiliary metrics. They are reported for reference only,
 // and ADR-0008 forbids claiming success from them alone. The type is kept apart
 // from Primary so that a secondary number cannot be read as a primary one by
-// accident. Secondary has no field that Primary contains, and the guard test
-// checks this.
+// accident. The guard test TestPrimaryMetricsCarryNoSecondaryMembers checks two things
+// about the types reachable from Primary through struct fields and slices: no field in
+// that tree has the Secondary type (so Primary does not embed Secondary), and no field
+// name in that tree contains one of the secondaryMemberFragments, such as "workercount".
+// The check is by fragment, not by full field name, so a field such as SourceIDs appears
+// in both trees without failing the guard.
 type Secondary struct {
 	// SourceIDs lists every GovernorReclaim and ContributionRecord observation that
 	// was examined, together with the supporting fact IDs of the contribution records,
