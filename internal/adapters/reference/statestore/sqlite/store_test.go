@@ -243,6 +243,9 @@ INSERT INTO leases (
 	if gotLease.PolicyFenced() || gotLease.PolicyEpoch != 0 {
 		t.Fatalf("pre-v5 Lease unexpectedly gained policy authority: %#v", gotLease)
 	}
+	if _, err := upgraded.LoadCurrentPolicy(context.Background()); !errors.Is(err, statestore.ErrPolicyUnavailable) {
+		t.Fatalf("migration invented current Policy from historical Lease: %v", err)
+	}
 
 	newAttemptID := mustAttemptIDForSQLite(t)
 	attempt, err := attemptstate.New(newAttemptID, task.ID, task.TaskIRDigest, 1, now)
