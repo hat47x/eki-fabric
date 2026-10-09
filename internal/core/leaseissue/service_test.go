@@ -21,7 +21,9 @@ import (
 	"github.com/hat47x/eki-fabric/internal/core/ids"
 	"github.com/hat47x/eki-fabric/internal/core/leaseissue"
 	"github.com/hat47x/eki-fabric/internal/core/placementverify"
+	"github.com/hat47x/eki-fabric/internal/core/policystate"
 	"github.com/hat47x/eki-fabric/internal/core/taskstate"
+	"github.com/hat47x/eki-fabric/internal/spi/statestore"
 )
 
 const (
@@ -47,15 +49,6 @@ type staticTrustBundle struct {
 }
 
 func (s staticTrustBundle) CurrentTrustBundle(context.Context) (decisiontrust.TrustBundleMetadata, error) {
-	return s.value, s.err
-}
-
-type staticPolicy struct {
-	value string
-	err   error
-}
-
-func (s staticPolicy) CurrentPolicyRevision(context.Context) (string, error) {
 	return s.value, s.err
 }
 
@@ -255,7 +248,9 @@ func TestReserveDerivesAuthorityBindingsFromSignedPlacementAndCurrentState(t *te
 		lease.PlacementTrustDomain != testTrustDomain ||
 		lease.PlacementAuthorityPrincipal != testPrincipal ||
 		lease.PlacementDecisionID != "plc-decision-001" ||
-		lease.PolicyRevision != testPolicyRev {
+		lease.PolicyRevision != testPolicyRev ||
+		lease.PolicyEpoch != 1 ||
+		!lease.PolicyFenced() {
 		t.Fatalf("Lease lost signed Placement bindings: %#v", lease)
 	}
 	if lease.PlacementPayloadDigest.IsZero() {
@@ -382,6 +377,84 @@ func TestReserveRejectsAttemptWorkerDriftBeforeLeaseMutation(t *testing.T) {
 	}
 }
 
+func TestReservePolicyRevokeBetweenReadAndCommitFailsClosed(t *testing.T) {
+	fx := newCryptoFixture(t)
+	base := readyPlacingState(t, testWorkerID)
+	state := &revokeBeforeReserveState{Store: base}
+	service, err := leaseissue.New(leaseissue.Config{
+		Verifier:      fx.verifier,
+		State:         state,
+		TrustBundle:   staticTrustBundle{value: fx.bundle},
+		Clock:         &testClock{now: testNow},
+		MaxLifetime:   time.Minute,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	_, err = service.Reserve(context.Background(), leaseissue.Request{
+		SignedPlacement: fx.signedPlacement(), RequestedLifetime: time.Minute,
+	})
+	if !errors.Is(err, statestore.ErrPolicyChanged) {
+		t.Fatalf("Reserve() error = %v, want ErrPolicyChanged", err)
+	}
+
+	attemptID, _ := ids.ParseAttemptID(testAttemptID)
+	attempt, loadErr := base.LoadAttempt(context.Background(), attemptID)
+	if loadErr != nil {
+		t.Fatal(loadErr)
+	}
+	if attempt.Phase != attemptstate.AttemptPhasePlacing || attempt.LeaseID != "" {
+		t.Fatalf("policy race mutated Attempt: %#v", attempt)
+	}
+	policy, loadErr := base.LoadCurrentPolicy(context.Background())
+	if loadErr != nil {
+		t.Fatal(loadErr)
+	}
+	if policy.Status != policystate.StatusRevoked || policy.Epoch != 2 {
+		t.Fatalf("policy race did not install revoke: %#v", policy)
+	}
+}
+
+func TestReservePolicyRevokeBlocksExactReplay(t *testing.T) {
+	fx := newCryptoFixture(t)
+	store := readyPlacingState(t, testWorkerID)
+	service := newService(t, fx, store, time.Minute, testPolicyRev, &testClock{now: testNow})
+	raw := fx.signedPlacement()
+
+	first, err := service.Reserve(context.Background(), leaseissue.Request{
+		SignedPlacement: raw, RequestedLifetime: 20 * time.Second,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	current, err := store.LoadCurrentPolicy(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	revoked, err := policystate.Revoke(current, current.Epoch+1, testNow.Add(time.Second), "emergency revoke")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := store.CompareAndSwapPolicy(context.Background(), current.Epoch, revoked); err != nil {
+		t.Fatal(err)
+	}
+
+	_, err = service.Reserve(context.Background(), leaseissue.Request{
+		SignedPlacement: raw, RequestedLifetime: 20 * time.Second,
+	})
+	if !errors.Is(err, statestore.ErrPolicyRevoked) {
+		t.Fatalf("replay after revoke error = %v, want ErrPolicyRevoked", err)
+	}
+	got, err := store.LoadLease(context.Background(), first.Lease.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.ID != first.Lease.ID || got.FenceEpoch != first.Lease.FenceEpoch {
+		t.Fatalf("revoke changed durable Lease history: %#v", got)
+	}
+}
+
 func TestReserveUsesCurrentTrustBundleOnEveryCall(t *testing.T) {
 	fx := newCryptoFixture(t)
 	store := readyPlacingState(t, testWorkerID)
@@ -392,7 +465,6 @@ func TestReserveUsesCurrentTrustBundleOnEveryCall(t *testing.T) {
 			Revision: 4,
 			ValidatedAt: testNow.Add(-2 * time.Hour),
 		}},
-		Policy:      staticPolicy{value: testPolicyRev},
 		Clock:       &testClock{now: testNow},
 		MaxLifetime: time.Minute,
 	})
@@ -475,11 +547,11 @@ func TestReserveCapsLeaseAtPlacementExpiry(t *testing.T) {
 
 func newService(t *testing.T, fx *cryptoFixture, store *memory.Store, maxLifetime time.Duration, policy string, clock *testClock) *leaseissue.Service {
 	t.Helper()
+	setPolicy(t, store, policy)
 	service, err := leaseissue.New(leaseissue.Config{
 		Verifier:      fx.verifier,
 		State:         store,
 		TrustBundle:   staticTrustBundle{value: fx.bundle},
-		Policy:        staticPolicy{value: policy},
 		Clock:         clock,
 		MaxLifetime:   maxLifetime,
 	})
@@ -489,9 +561,66 @@ func newService(t *testing.T, fx *cryptoFixture, store *memory.Store, maxLifetim
 	return service
 }
 
+func setPolicy(t *testing.T, store statestore.PolicyStore, revision string) policystate.State {
+	t.Helper()
+	current, err := store.LoadCurrentPolicy(context.Background())
+	if errors.Is(err, statestore.ErrPolicyUnavailable) {
+		initial, err := policystate.NewActive(1, revision, testIssuedAt.Add(-2*time.Minute))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := store.CompareAndSwapPolicy(context.Background(), 0, initial); err != nil {
+			t.Fatal(err)
+		}
+		return initial
+	}
+	if err != nil {
+		t.Fatal(err)
+	}
+	if current.Status == policystate.StatusActive && current.Revision == revision {
+		return current
+	}
+	next, err := policystate.NewActive(current.Epoch+1, revision, current.ActivatedAt.Add(time.Second))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := store.CompareAndSwapPolicy(context.Background(), current.Epoch, next); err != nil {
+		t.Fatal(err)
+	}
+	return next
+}
+
+type revokeBeforeReserveState struct {
+	*memory.Store
+	done bool
+	err  error
+}
+
+func (s *revokeBeforeReserveState) ReserveLease(ctx context.Context, reservation statestore.LeaseReservation) (statestore.LeaseReservationResult, error) {
+	if !s.done {
+		s.done = true
+		current, err := s.LoadCurrentPolicy(ctx)
+		if err != nil {
+			s.err = err
+		} else {
+			revoked, revokeErr := policystate.Revoke(current, current.Epoch+1, testNow, "revoke between read and commit")
+			if revokeErr != nil {
+				s.err = revokeErr
+			} else {
+				s.err = s.CompareAndSwapPolicy(ctx, current.Epoch, revoked)
+			}
+		}
+	}
+	if s.err != nil {
+		return statestore.LeaseReservationResult{}, s.err
+	}
+	return s.Store.ReserveLease(ctx, reservation)
+}
+
 func readyPlacingState(t *testing.T, worker string) *memory.Store {
 	t.Helper()
 	store := memory.New()
+	setPolicy(t, store, testPolicyRev)
 	taskID, err := ids.ParseTaskID(testTaskID)
 	if err != nil {
 		t.Fatal(err)
