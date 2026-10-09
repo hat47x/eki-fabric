@@ -432,10 +432,7 @@ func readyPlacingState(t *testing.T, worker string) *memory.Store {
 	if err != nil {
 		t.Fatal(err)
 	}
-	taskDigest, err := contract.NewSHA256(testTaskIR)
-	if err != nil {
-		t.Fatal(err)
-	}
+	taskDigest := contract.SHA256(testTaskIR)
 	task, err := taskstate.NewTask(taskID, taskDigest, testIssuedAt.Add(-time.Minute))
 	if err != nil {
 		t.Fatal(err)
