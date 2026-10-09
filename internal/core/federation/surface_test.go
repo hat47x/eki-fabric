@@ -54,6 +54,7 @@ func TestExportedSurfaceHasNoMergedPool(t *testing.T) {
 		"BundleSigningInput":   true,
 		"IdentitySigningInput": true,
 		"NewRegistry":          true,
+		"RestoreRegistry":      true,
 		"ReasonOf":             true,
 
 		"TrustDomain.String":     true,
@@ -85,6 +86,7 @@ func TestExportedSurfaceHasNoMergedPool(t *testing.T) {
 		"Registry.Revoke":        true,
 		"Registry.Binding":       true,
 		"Registry.Verify":        true,
+		"Registry.Snapshot":      true,
 	}
 
 	fset := token.NewFileSet()

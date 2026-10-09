@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"crypto/ed25519"
 	"fmt"
+	"slices"
 	"sync"
 	"time"
 )
@@ -21,8 +22,11 @@ type Registry struct {
 // entry is the federation state of one trust domain. A revoked entry is kept so
 // that its history stays queryable and cannot be replaced.
 type entry struct {
-	link      Link
-	bundle    Bundle
+	link   Link
+	bundle Bundle
+	// signature is the authority signature over bundle. It is kept so that
+	// Snapshot can store it and RestoreRegistry can verify it again.
+	signature []byte
 	revoked   bool
 	revokedAt time.Time
 }
@@ -83,7 +87,7 @@ func (r *Registry) Federate(link Link, bundle Bundle, authoritySignature []byte)
 	if err := verifyBundleSignature(link.authorityKey, bundle, authoritySignature); err != nil {
 		return err
 	}
-	r.entries[link.domain] = &entry{link: link, bundle: bundle}
+	r.entries[link.domain] = &entry{link: link, bundle: bundle, signature: slices.Clone(authoritySignature)}
 	return nil
 }
 
@@ -124,6 +128,7 @@ func (r *Registry) InstallBundle(bundle Bundle, authoritySignature []byte) error
 		return fmt.Errorf("%w: bound %d, offered %d", ErrRollback, e.bundle.sequence, bundle.sequence)
 	case bundle.sequence > e.bundle.sequence:
 		e.bundle = bundle
+		e.signature = slices.Clone(authoritySignature)
 	case bundle.digest != e.bundle.digest:
 		return fmt.Errorf("%w: sequence %d", ErrEquivocation, bundle.sequence)
 	case bundle.validatedAt.After(e.bundle.validatedAt):
