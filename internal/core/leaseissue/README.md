@@ -58,3 +58,19 @@ durable reservation commit前に署名済みLeaseを外へ出しません。
 また、durable reservationが成功したことだけを後続signing authorityにしません。reservation後にkey state、Trust Bundle、policy、Task / Attempt stateが変わる可能性があるため、将来のLSE-1 signing境界は**署名直前のcurrent key / trust / policy / subject stateを再確認**し、失効・取消・supersedeをfail closedにする必要があります。
 
 このserviceは「署名可能なLeaseを確定した」のではなく、「現在検証したPlacementを、Authorityを増幅させずdurable fencing stateへ予約した」ところまでを保証します。
+
+## reservation後のdrift
+
+verificationとdurable reservationの後、実際にLeaseをsignする前にkey、Trust Bundle、policy、Task / Attempt stateが変わるraceは残ります。
+
+Security上はsigningをfail closedにすればAuthorityを外へ出さずに済みます。ただし、signingを拒否したreservation / fenceをそのままexpiryまで残すと、新しいPlacementを一時的に妨げる可用性問題になります。
+
+そのため後続のsigning work unitでは、少なくとも次を同時に設計します。
+
+- signing直前のcurrent authority再検証
+- signing失敗・policy revoke・key compromise時のreservation revoke / close
+- stale reservationを新Authorityへ再利用しない
+- cleanupがFenceEpochを巻き戻さない
+- Worker / Local Governor currentnessをAuthority sourceへ接続するまでは、Worker向けsigned Leaseを完成扱いしない
+
+現在のserviceはこのraceを「安全に解決済み」とは主張しません。
