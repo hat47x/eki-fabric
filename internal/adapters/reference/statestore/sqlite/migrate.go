@@ -177,6 +177,131 @@ BEFORE UPDATE OF task_ir_digest ON tasks
 WHEN OLD.task_ir_digest <> NEW.task_ir_digest
 BEGIN
 	SELECT RAISE(ABORT, 'task TaskIR digest is immutable');
+END;
+ALTER TABLE leases ADD COLUMN policy_epoch INTEGER NOT NULL DEFAULT 0 CHECK (policy_epoch >= 0);
+CREATE TABLE policy_history (
+	epoch           INTEGER NOT NULL PRIMARY KEY CHECK (epoch >= 1),
+	revision        TEXT    NOT NULL CHECK (length(revision) BETWEEN 1 AND 128),
+	status          TEXT    NOT NULL CHECK (status IN ('active','revoked')),
+	activated_at_ns INTEGER NOT NULL,
+	revoked_at_ns   INTEGER,
+	revoke_reason   TEXT    NOT NULL CHECK (length(revoke_reason) <= 512),
+	CHECK (
+		(status = 'active' AND revoked_at_ns IS NULL AND revoke_reason = '')
+		OR
+		(status = 'revoked' AND revoked_at_ns IS NOT NULL AND revoked_at_ns >= activated_at_ns AND length(revoke_reason) >= 1)
+	)
+) STRICT;
+CREATE TABLE policy_current (
+	singleton INTEGER NOT NULL PRIMARY KEY CHECK (singleton = 1),
+	epoch     INTEGER NOT NULL UNIQUE REFERENCES policy_history (epoch)
+) STRICT;
+CREATE TRIGGER policy_current_insert_guard
+BEFORE INSERT ON policy_current
+WHEN NEW.epoch <> 1
+  OR NOT EXISTS (
+	SELECT 1 FROM policy_history
+	WHERE epoch = NEW.epoch AND status = 'active'
+  )
+BEGIN
+	SELECT RAISE(ABORT, 'initial policy must be active at epoch 1');
+END;
+CREATE TRIGGER policy_current_update_guard
+BEFORE UPDATE OF epoch ON policy_current
+WHEN NEW.epoch <> OLD.epoch + 1
+  OR NOT EXISTS (
+	SELECT 1 FROM policy_history
+	WHERE epoch = NEW.epoch
+  )
+BEGIN
+	SELECT RAISE(ABORT, 'policy epoch must advance by one');
+END;
+CREATE TRIGGER policy_history_insert_guard
+BEFORE INSERT ON policy_history
+WHEN (
+	NOT EXISTS (SELECT 1 FROM policy_current WHERE singleton = 1)
+	AND NOT (
+		NEW.epoch = 1
+		AND NEW.status = 'active'
+		AND NEW.revoked_at_ns IS NULL
+		AND NEW.revoke_reason = ''
+	)
+) OR (
+	EXISTS (SELECT 1 FROM policy_current WHERE singleton = 1)
+	AND (
+		NEW.epoch <> (SELECT epoch + 1 FROM policy_current WHERE singleton = 1)
+		OR (
+			NEW.status = 'revoked'
+			AND NOT EXISTS (
+				SELECT 1
+				FROM policy_current c
+				JOIN policy_history h ON h.epoch = c.epoch
+				WHERE c.singleton = 1
+				  AND h.status = 'active'
+				  AND h.revision = NEW.revision
+				  AND h.activated_at_ns = NEW.activated_at_ns
+			)
+		)
+		OR (
+			NEW.status = 'active'
+			AND EXISTS (
+				SELECT 1
+				FROM policy_current c
+				JOIN policy_history h ON h.epoch = c.epoch
+				WHERE c.singleton = 1
+				  AND (
+					h.revision = NEW.revision
+					OR NEW.activated_at_ns < CASE
+						WHEN h.status = 'revoked' THEN h.revoked_at_ns
+						ELSE h.activated_at_ns
+					END
+				  )
+			)
+		)
+	)
+)
+BEGIN
+	SELECT RAISE(ABORT, 'invalid policy history transition');
+END;
+CREATE TRIGGER policy_history_update_guard
+BEFORE UPDATE ON policy_history
+BEGIN
+	SELECT RAISE(ABORT, 'policy history is append-only');
+END;
+CREATE TRIGGER policy_history_delete_guard
+BEFORE DELETE ON policy_history
+BEGIN
+	SELECT RAISE(ABORT, 'policy history is append-only');
+END;
+CREATE TRIGGER policy_current_delete_guard
+BEFORE DELETE ON policy_current
+BEGIN
+	SELECT RAISE(ABORT, 'current policy pointer cannot be deleted');
+END;
+CREATE TRIGGER policy_history_no_revision_reuse
+BEFORE INSERT ON policy_history
+WHEN NEW.status = 'active'
+  AND EXISTS (
+	SELECT 1 FROM policy_history
+	WHERE revision = NEW.revision
+  )
+BEGIN
+	SELECT RAISE(ABORT, 'previously activated policy revision cannot be reactivated');
+END;
+CREATE TRIGGER leases_policy_insert
+BEFORE INSERT ON leases
+WHEN NEW.policy_epoch < 1
+  OR NOT EXISTS (
+	SELECT 1
+	FROM policy_current c
+	JOIN policy_history h ON h.epoch = c.epoch
+	WHERE c.singleton = 1
+	  AND c.epoch = NEW.policy_epoch
+	  AND h.revision = NEW.policy_revision
+	  AND h.status = 'active'
+  )
+BEGIN
+	SELECT RAISE(ABORT, 'lease does not bind the current active policy');
 END`,
 }
 

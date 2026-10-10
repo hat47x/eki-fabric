@@ -12,6 +12,7 @@ import (
 	"github.com/hat47x/eki-fabric/internal/core/contract"
 	"github.com/hat47x/eki-fabric/internal/core/ids"
 	"github.com/hat47x/eki-fabric/internal/core/leasestate"
+	"github.com/hat47x/eki-fabric/internal/core/policystate"
 	"github.com/hat47x/eki-fabric/internal/core/taskstate"
 	"github.com/hat47x/eki-fabric/internal/spi/statestore"
 )
@@ -49,9 +50,40 @@ FROM tasks WHERE task_id = ?`, reservation.TaskID.String()))
 		)
 	}
 
+	policy, err := scanPolicy(tx.QueryRowContext(ctx, `
+SELECT h.epoch, h.revision, h.status, h.activated_at_ns, h.revoked_at_ns, h.revoke_reason
+FROM policy_current c
+JOIN policy_history h ON h.epoch = c.epoch
+WHERE c.singleton = 1`))
+	if errors.Is(err, sql.ErrNoRows) {
+		return statestore.LeaseReservationResult{}, statestore.ErrPolicyUnavailable
+	}
+	if err != nil {
+		return statestore.LeaseReservationResult{}, err
+	}
+	if policy.Epoch != reservation.ExpectedPolicyEpoch {
+		return statestore.LeaseReservationResult{}, fmt.Errorf(
+			"%w: current epoch=%d expected=%d",
+			statestore.ErrPolicyChanged,
+			policy.Epoch,
+			reservation.ExpectedPolicyEpoch,
+		)
+	}
+	if policy.Status == policystate.StatusRevoked && policy.Revision == reservation.PolicyRevision {
+		return statestore.LeaseReservationResult{}, fmt.Errorf("%w: %s", statestore.ErrPolicyRevoked, reservation.PolicyRevision)
+	}
+	if !policy.ActiveRevision(reservation.PolicyRevision) {
+		return statestore.LeaseReservationResult{}, fmt.Errorf(
+			"%w: current revision=%s requested=%s",
+			statestore.ErrPolicyChanged,
+			policy.Revision,
+			reservation.PolicyRevision,
+		)
+	}
+
 	existing, err := scanLease(tx.QueryRowContext(ctx, `
 SELECT lease_id, task_id, task_ir_digest, attempt_id, worker_identity,
-       placement_trust_domain, placement_authority_principal, placement_decision_id, placement_payload_digest, placement_expires_at_ns, policy_revision,
+       placement_trust_domain, placement_authority_principal, placement_decision_id, placement_payload_digest, placement_expires_at_ns, policy_revision, policy_epoch,
        fence_epoch, renewal_sequence, issued_at_ns, expires_at_ns
 FROM leases WHERE placement_trust_domain = ? AND placement_authority_principal = ? AND placement_decision_id = ?`,
 		reservation.PlacementTrustDomain,
@@ -184,6 +216,7 @@ SELECT last_fence_epoch FROM lease_fences WHERE task_id = ?`,
 		PlacementPayloadDigest:      reservation.PlacementPayloadDigest,
 		PlacementExpiresAt:          reservation.PlacementExpiresAt,
 		PolicyRevision:              reservation.PolicyRevision,
+		PolicyEpoch:                 reservation.ExpectedPolicyEpoch,
 		FenceEpoch:                  fence,
 		RenewalSequence:             0,
 		IssuedAt:                    reservation.IssuedAt,
@@ -220,9 +253,9 @@ WHERE lease_fences.last_fence_epoch = ?`,
 	_, err = tx.ExecContext(ctx, `
 INSERT INTO leases (
 	lease_id, task_id, task_ir_digest, attempt_id, worker_identity,
-	placement_trust_domain, placement_authority_principal, placement_decision_id, placement_payload_digest, placement_expires_at_ns, policy_revision,
+	placement_trust_domain, placement_authority_principal, placement_decision_id, placement_payload_digest, placement_expires_at_ns, policy_revision, policy_epoch,
 	fence_epoch, renewal_sequence, issued_at_ns, expires_at_ns
-) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		lease.ID.String(),
 		lease.TaskID.String(),
 		lease.TaskIRDigest.Hex(),
@@ -234,6 +267,7 @@ INSERT INTO leases (
 		lease.PlacementPayloadDigest.Hex(),
 		lease.PlacementExpiresAt.UnixNano(),
 		lease.PolicyRevision,
+		int64(lease.PolicyEpoch),
 		int64(lease.FenceEpoch),
 		int64(lease.RenewalSequence),
 		lease.IssuedAt.UnixNano(),
@@ -273,7 +307,7 @@ func (s *Store) LoadLease(ctx context.Context, id ids.LeaseID) (leasestate.Lease
 	}
 	lease, err := scanLease(s.db.QueryRowContext(ctx, `
 SELECT lease_id, task_id, task_ir_digest, attempt_id, worker_identity,
-       placement_trust_domain, placement_authority_principal, placement_decision_id, placement_payload_digest, placement_expires_at_ns, policy_revision,
+       placement_trust_domain, placement_authority_principal, placement_decision_id, placement_payload_digest, placement_expires_at_ns, policy_revision, policy_epoch,
        fence_epoch, renewal_sequence, issued_at_ns, expires_at_ns
 FROM leases WHERE lease_id = ?`, id.String()))
 	if errors.Is(err, sql.ErrNoRows) {
@@ -296,6 +330,7 @@ func scanLease(row rowScanner) (leasestate.LeaseRecord, error) {
 		&c.placementPayloadDigest,
 		&c.placementExpiresNS,
 		&c.policyRevision,
+		&c.policyEpoch,
 		&c.fenceEpoch,
 		&c.renewalSequence,
 		&c.issuedNS,
@@ -318,6 +353,7 @@ type leaseColumns struct {
 	placementPayloadDigest      string
 	placementExpiresNS          int64
 	policyRevision              string
+	policyEpoch                 int64
 	fenceEpoch                  int64
 	renewalSequence             int64
 	issuedNS                    int64
@@ -345,7 +381,7 @@ func (c leaseColumns) record() (leasestate.LeaseRecord, error) {
 	if err != nil {
 		return leasestate.LeaseRecord{}, corruptLease(c.id, err)
 	}
-	if c.fenceEpoch < 1 || c.renewalSequence < 0 {
+	if c.policyEpoch < 0 || c.fenceEpoch < 1 || c.renewalSequence < 0 {
 		return leasestate.LeaseRecord{}, corruptLease(c.id, errors.New("negative or zero lease sequence"))
 	}
 	lease, err := leasestate.New(leasestate.Config{
@@ -360,6 +396,7 @@ func (c leaseColumns) record() (leasestate.LeaseRecord, error) {
 		PlacementPayloadDigest:      placementDigest,
 		PlacementExpiresAt:          time.Unix(0, c.placementExpiresNS).UTC(),
 		PolicyRevision:              c.policyRevision,
+		PolicyEpoch:                 uint64(c.policyEpoch),
 		FenceEpoch:                  uint64(c.fenceEpoch),
 		RenewalSequence:             uint64(c.renewalSequence),
 		IssuedAt:                    time.Unix(0, c.issuedNS).UTC(),

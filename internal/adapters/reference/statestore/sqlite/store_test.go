@@ -15,6 +15,7 @@ import (
 	"github.com/hat47x/eki-fabric/internal/core/attemptstate"
 	"github.com/hat47x/eki-fabric/internal/core/contract"
 	"github.com/hat47x/eki-fabric/internal/core/ids"
+	"github.com/hat47x/eki-fabric/internal/core/policystate"
 	"github.com/hat47x/eki-fabric/internal/core/taskstate"
 	"github.com/hat47x/eki-fabric/internal/spi/statestore"
 )
@@ -144,6 +145,28 @@ func TestLeaseDurabilityContract(t *testing.T) {
 	})
 }
 
+func TestPolicyStoreContract(t *testing.T) {
+	statestoretest.RunPolicyStoreContract(t, func(t testing.TB) statestore.PolicyStore {
+		t.Helper()
+		store := openStore(t, filepath.Join(t.TempDir(), "state.db"))
+		t.Cleanup(func() {
+			if err := store.Close(); err != nil {
+				t.Errorf("Close() error = %v", err)
+			}
+		})
+		return store
+	})
+}
+
+func TestPolicyDurabilityContract(t *testing.T) {
+	statestoretest.RunPolicyDurabilityContract(t, statestoretest.DurablePolicyFactory{
+		Open: func(t testing.TB, location string) (statestore.PolicyStore, func() error) {
+			store := openStore(t, location)
+			return store, store.Close
+		},
+	})
+}
+
 func TestOpenRequiresPath(t *testing.T) {
 	if _, err := Open(context.Background(), ""); err == nil {
 		t.Fatal("Open(\"\") error = nil, want error")
@@ -200,7 +223,7 @@ func TestVersion2DatabaseUpgradesToLeaseSchemaWithoutLosingTask(t *testing.T) {
 	}
 }
 
-func TestVersion3DatabaseUpgradesToAttemptSchemaWithoutLosingLease(t *testing.T) {
+func TestVersion3DatabaseUpgradesWithoutLosingLease(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "state.db")
 	old, err := openWithMigrations(context.Background(), path, migrations[:3])
 	if err != nil {
@@ -265,7 +288,13 @@ INSERT INTO leases (
 	}
 	if gotLease.ID != leaseID || gotLease.FenceEpoch != 1 ||
 		gotLease.AttemptID != attemptID || gotLease.PlacementPayloadDigest != placementDigest {
-		t.Fatalf("Lease changed across v3 -> v4 migration: %#v", gotLease)
+		t.Fatalf("Lease changed across v3 -> current migration: %#v", gotLease)
+	}
+	if gotLease.PolicyFenced() || gotLease.PolicyEpoch != 0 {
+		t.Fatalf("pre-v5 Lease unexpectedly gained policy authority: %#v", gotLease)
+	}
+	if _, err := upgraded.LoadCurrentPolicy(context.Background()); !errors.Is(err, statestore.ErrPolicyUnavailable) {
+		t.Fatalf("migration invented current Policy from historical Lease: %v", err)
 	}
 
 	newAttemptID := mustAttemptIDForSQLite(t)
@@ -350,6 +379,7 @@ UPDATE attempts SET attempt_number = 99 WHERE attempt_id = ?`, second.ID.String(
 func TestLeaseSchemaAssignsAttemptAndRejectsWrongBinding(t *testing.T) {
 	store := openStore(t, filepath.Join(t.TempDir(), "state.db"))
 	defer store.Close()
+	ensureSQLitePolicy(t, store, "policy-42")
 
 	task := newTaskRecord(t, "lease-attempt-trigger")
 	task.Phase = taskstate.TaskPhaseReady
@@ -372,9 +402,9 @@ INSERT INTO lease_fences (task_id, last_fence_epoch) VALUES (?, ?)`,
 INSERT INTO leases (
 	lease_id, task_id, task_ir_digest, attempt_id, worker_identity,
 	placement_trust_domain, placement_authority_principal, placement_decision_id,
-	placement_payload_digest, placement_expires_at_ns, policy_revision,
+	placement_payload_digest, placement_expires_at_ns, policy_revision, policy_epoch,
 	fence_epoch, renewal_sequence, issued_at_ns, expires_at_ns
-) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		leaseID.String(),
 		task.ID.String(),
 		task.TaskIRDigest.Hex(),
@@ -386,6 +416,7 @@ INSERT INTO leases (
 		payloadDigest.Hex(),
 		now.Add(2*time.Minute).UnixNano(),
 		"policy-42",
+		1,
 		1,
 		0,
 		now.UnixNano(),
@@ -412,9 +443,9 @@ INSERT INTO leases (
 INSERT INTO leases (
 	lease_id, task_id, task_ir_digest, attempt_id, worker_identity,
 	placement_trust_domain, placement_authority_principal, placement_decision_id,
-	placement_payload_digest, placement_expires_at_ns, policy_revision,
+	placement_payload_digest, placement_expires_at_ns, policy_revision, policy_epoch,
 	fence_epoch, renewal_sequence, issued_at_ns, expires_at_ns
-) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		otherLease.String(),
 		task.ID.String(),
 		task.TaskIRDigest.Hex(),
@@ -426,6 +457,7 @@ INSERT INTO leases (
 		contract.SHA256([]byte("wrong-worker")).Hex(),
 		now.Add(3*time.Minute).UnixNano(),
 		"policy-42",
+		1,
 		2,
 		0,
 		now.Add(time.Minute).UnixNano(),
@@ -440,6 +472,158 @@ INSERT INTO leases (
 	if current.Phase != attemptstate.AttemptPhasePlacing || current.LeaseID != "" || current.Revision != other.Revision {
 		t.Fatalf("failed Lease insert mutated Attempt: %#v", current)
 	}
+}
+
+func TestPolicySchemaRejectsDirectMutationAndInvalidTransitions(t *testing.T) {
+	store := openStore(t, filepath.Join(t.TempDir(), "state.db"))
+	defer store.Close()
+
+	p1 := ensureSQLitePolicy(t, store, "policy-42")
+
+	if _, err := store.db.Exec(`
+UPDATE policy_history SET revision = 'tampered' WHERE epoch = ?`, int64(p1.Epoch)); err == nil {
+		t.Fatal("policy history UPDATE bypassed append-only guard")
+	}
+	if _, err := store.db.Exec(`
+DELETE FROM policy_history WHERE epoch = ?`, int64(p1.Epoch)); err == nil {
+		t.Fatal("policy history DELETE bypassed append-only guard")
+	}
+	if _, err := store.db.Exec(`
+DELETE FROM policy_current WHERE singleton = 1`); err == nil {
+		t.Fatal("current policy pointer was deleted through direct SQL")
+	}
+
+	if _, err := store.db.Exec(`
+INSERT INTO policy_history (
+	epoch, revision, status, activated_at_ns, revoked_at_ns, revoke_reason
+) VALUES (?, ?, 'revoked', ?, ?, ?)`,
+		int64(p1.Epoch+1),
+		"policy-other",
+		p1.ActivatedAt.UnixNano(),
+		p1.ActivatedAt.Add(time.Minute).UnixNano(),
+		"wrong revision",
+	); err == nil {
+		t.Fatal("direct SQL inserted revocation for a non-current revision")
+	}
+
+	if _, err := store.db.Exec(`
+INSERT INTO policy_history (
+	epoch, revision, status, activated_at_ns, revoked_at_ns, revoke_reason
+) VALUES (?, ?, 'active', ?, NULL, '')`,
+		int64(p1.Epoch+2),
+		"policy-skip",
+		p1.ActivatedAt.Add(time.Minute).UnixNano(),
+	); err == nil {
+		t.Fatal("direct SQL skipped policy epoch")
+	}
+
+	p2, err := policystate.NewActive(p1.Epoch+1, "policy-43", p1.ActivatedAt.Add(time.Minute))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := store.CompareAndSwapPolicy(context.Background(), p1.Epoch, p2); err != nil {
+		t.Fatalf("advance to replacement policy: %v", err)
+	}
+	if _, err := store.db.Exec(`
+INSERT INTO policy_history (
+	epoch, revision, status, activated_at_ns, revoked_at_ns, revoke_reason
+) VALUES (?, ?, 'active', ?, NULL, '')`,
+		int64(p2.Epoch+1),
+		p1.Revision,
+		p2.ActivatedAt.Add(time.Minute).UnixNano(),
+	); err == nil {
+		t.Fatal("direct SQL reactivated a superseded policy revision")
+	}
+	current, err := store.LoadCurrentPolicy(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if current.Epoch != p2.Epoch || current.Revision != p2.Revision || current.Status != policystate.StatusActive {
+		t.Fatalf("historical rollback attempt changed current policy: %#v", current)
+	}
+}
+
+func TestLeaseSchemaRejectsStalePolicyIfAdapterIsBypassed(t *testing.T) {
+	store := openStore(t, filepath.Join(t.TempDir(), "state.db"))
+	defer store.Close()
+
+	p1 := ensureSQLitePolicy(t, store, "policy-42")
+	task := newTaskRecord(t, "lease-policy-trigger")
+	task.Phase = taskstate.TaskPhaseReady
+	if err := store.CreateTask(context.Background(), task); err != nil {
+		t.Fatal(err)
+	}
+	placing := createPlacingAttemptForSQLite(t, store, task, 1, "worker-a")
+
+	p2, err := policystate.NewActive(p1.Epoch+1, "policy-43", p1.ActivatedAt.Add(time.Minute))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := store.CompareAndSwapPolicy(context.Background(), p1.Epoch, p2); err != nil {
+		t.Fatal(err)
+	}
+
+	leaseID, err := ids.NewLeaseID()
+	if err != nil {
+		t.Fatal(err)
+	}
+	now := time.Date(2026, 10, 9, 12, 0, 0, 0, time.UTC)
+	if _, err := store.db.Exec(`
+INSERT INTO leases (
+	lease_id, task_id, task_ir_digest, attempt_id, worker_identity,
+	placement_trust_domain, placement_authority_principal, placement_decision_id,
+	placement_payload_digest, placement_expires_at_ns, policy_revision, policy_epoch,
+	fence_epoch, renewal_sequence, issued_at_ns, expires_at_ns
+) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		leaseID.String(),
+		task.ID.String(),
+		task.TaskIRDigest.Hex(),
+		placing.ID.String(),
+		placing.WorkerIdentity,
+		"local.example",
+		"control-plane/plc-1",
+		"stale-policy-direct-insert",
+		contract.SHA256([]byte("stale-policy-direct-insert")).Hex(),
+		now.Add(2*time.Minute).UnixNano(),
+		p1.Revision,
+		int64(p1.Epoch),
+		1,
+		0,
+		now.UnixNano(),
+		now.Add(time.Minute).UnixNano(),
+	); err == nil {
+		t.Fatal("direct SQL inserted Lease under stale Policy Epoch")
+	}
+
+	current, err := store.LoadAttempt(context.Background(), placing.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if current.Phase != attemptstate.AttemptPhasePlacing || current.LeaseID != "" || current.Revision != placing.Revision {
+		t.Fatalf("stale policy insert mutated Attempt: %#v", current)
+	}
+}
+
+func ensureSQLitePolicy(t testing.TB, store *Store, revision string) policystate.State {
+	t.Helper()
+	current, err := store.LoadCurrentPolicy(context.Background())
+	if err == nil {
+		if current.Revision != revision || current.Status != policystate.StatusActive {
+			t.Fatalf("current policy = %#v, want active %q", current, revision)
+		}
+		return current
+	}
+	if !errors.Is(err, statestore.ErrPolicyUnavailable) {
+		t.Fatal(err)
+	}
+	initial, err := policystate.NewActive(1, revision, time.Date(2026, 10, 6, 0, 0, 0, 0, time.UTC))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := store.CompareAndSwapPolicy(context.Background(), 0, initial); err != nil {
+		t.Fatal(err)
+	}
+	return initial
 }
 
 func mustAttemptIDForSQLite(t testing.TB) ids.AttemptID {
@@ -480,6 +664,7 @@ func createPlacingAttemptForSQLite(t testing.TB, store *Store, task taskstate.Ta
 func TestFenceEpochSurvivesLeaseHistoryGarbageCollection(t *testing.T) {
 	store := openStore(t, filepath.Join(t.TempDir(), "state.db"))
 	defer store.Close()
+	ensureSQLitePolicy(t, store, "policy-42")
 
 	task := newTaskRecord(t, "lease-history-gc")
 	task.Phase = taskstate.TaskPhaseReady
@@ -506,6 +691,7 @@ func TestFenceEpochSurvivesLeaseHistoryGarbageCollection(t *testing.T) {
 		PlacementPayloadDigest:      contract.SHA256([]byte("placement-gc-1")),
 		PlacementExpiresAt:          now.Add(2 * time.Minute),
 		PolicyRevision:              "policy-42",
+		ExpectedPolicyEpoch:         1,
 		IssuedAt:                    now,
 		ExpiresAt:                   now.Add(time.Minute),
 	})
@@ -559,6 +745,7 @@ func TestFenceEpochSurvivesLeaseHistoryGarbageCollection(t *testing.T) {
 		PlacementPayloadDigest:      contract.SHA256([]byte("placement-gc-2")),
 		PlacementExpiresAt:          secondNow.Add(2 * time.Minute),
 		PolicyRevision:              "policy-42",
+		ExpectedPolicyEpoch:         1,
 		IssuedAt:                    secondNow,
 		ExpiresAt:                   secondNow.Add(time.Minute),
 	})

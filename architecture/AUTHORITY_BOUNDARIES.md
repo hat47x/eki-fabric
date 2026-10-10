@@ -220,7 +220,8 @@ EKI内部のAuthorityが信頼する、issuer、key、policy revisionなどを�
 
 - Authorityのtrust configurationの更新
 - keyのrotation
-- policyのactivationとrollback
+- policyのactivationとrevocation
+- 過去の内容へ戻す必要がある場合、新しいrevision identityとして再発行するsemantic rollback
 - 緊急のrevocation
 
 ### 持たせない権限
@@ -521,6 +522,34 @@ Artifact / Data Authorityは、Placement Approvalだけを唯一のSecurity Evid
 - 古い割り当ての失効
 - retryとrescheduleの境界
 - replayの抑制
+
+### Policy currentnessの境界
+
+署名済みPlacement Approvalが、あるPolicy Revisionで正しく発行されていても、それだけでは新しいLeaseを発行しません。
+
+LSE-1は、Lease予約の直前に、ADM-1が管理する現在のPolicy Stateを読みます。M0ではPolicy Stateを単調増加する`Policy Epoch`としてState Storeに永続化し、Lease予約も同じ永続化境界でexpected epochを再確認します。
+
+~~~text
+read current Policy(epoch=N, revision=P)
+  ↓
+verify Placement against P
+  ↓
+possible concurrent revoke / replace
+  ↓
+ReserveLease(expected policy epoch=N)
+  ↓ same durable boundary
+current epoch still N and P is active?
+  ├─ no  -> fail closed
+  └─ yes -> reserve FenceEpoch
+~~~
+
+Policy Revisionの文字列を読んだ事実だけを、freshnessの保証にはしません。Policyのrevokeや置換とLease reservationが競合した場合は、古いsnapshotを持つ側を失敗させます。
+
+Policy revision identityは一度currentになったら再利用しません。`P1 -> P2 -> P1`のようにepochだけを進めて古いrevisionを復活させることもrollbackとして拒否します。過去のpolicy内容へ戻す必要がある場合は、その内容を新しいrevision identityとして発行します。これにより、revision identityが「どのpolicy snapshotか」を一意に指し続けます。
+
+Policy Stateの読み取りと更新は、Admissionのwrite surfaceとは分離します。同じSQLite fileを使うReference Profileでも、ADM-2がPolicy Authorityを持つことにはしません。
+
+既存のpre-Policy-Epoch Leaseは、履歴として読めても`PolicyEpoch=0`のunfenced stateです。新しい署名済みLease Authorityへ、そのまま昇格しません。
 
 ### 非目標
 

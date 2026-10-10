@@ -29,6 +29,18 @@ func TestLeaseRecordValidatesAndTracksActivityWindow(t *testing.T) {
 	}
 }
 
+func TestLeaseRecordMarksLegacyPolicyUnfencedState(t *testing.T) {
+	cfg := validConfig(t)
+	cfg.PolicyEpoch = 0
+	lease, err := New(cfg)
+	if err != nil {
+		t.Fatalf("legacy Lease New() error = %v", err)
+	}
+	if lease.PolicyFenced() {
+		t.Fatal("policy epoch 0 must remain explicitly unfenced")
+	}
+}
+
 func TestLeaseRecordRejectsMissingAuthorityBindings(t *testing.T) {
 	base := validConfig(t)
 	cases := map[string]func(*Config){
@@ -85,6 +97,7 @@ func validConfig(t *testing.T) Config {
 		PlacementPayloadDigest:      contract.SHA256([]byte("placement")),
 		PlacementExpiresAt:          issued.Add(2 * time.Minute),
 		PolicyRevision:              "policy-42",
+		PolicyEpoch:                 1,
 		FenceEpoch:                  1,
 		RenewalSequence:             0,
 		IssuedAt:                    issued,

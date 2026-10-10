@@ -8,6 +8,7 @@ import (
 	"github.com/hat47x/eki-fabric/internal/core/attemptstate"
 	"github.com/hat47x/eki-fabric/internal/core/ids"
 	"github.com/hat47x/eki-fabric/internal/core/leasestate"
+	"github.com/hat47x/eki-fabric/internal/core/policystate"
 	"github.com/hat47x/eki-fabric/internal/core/taskstate"
 	"github.com/hat47x/eki-fabric/internal/spi/statestore"
 )
@@ -31,6 +32,30 @@ func (s *Store) ReserveLease(ctx context.Context, reservation statestore.LeaseRe
 		task.CancellationRequested ||
 		(task.Phase != taskstate.TaskPhaseReady && task.Phase != taskstate.TaskPhaseActive) {
 		return statestore.LeaseReservationResult{}, fmt.Errorf("%w: task %s changed before lease reservation", statestore.ErrConflict, reservation.TaskID)
+	}
+
+	policy, ok := s.policyHistory[s.policyCurrent]
+	if !ok || s.policyCurrent == 0 {
+		return statestore.LeaseReservationResult{}, statestore.ErrPolicyUnavailable
+	}
+	if s.policyCurrent != reservation.ExpectedPolicyEpoch {
+		return statestore.LeaseReservationResult{}, fmt.Errorf(
+			"%w: current epoch=%d expected=%d",
+			statestore.ErrPolicyChanged,
+			s.policyCurrent,
+			reservation.ExpectedPolicyEpoch,
+		)
+	}
+	if policy.Status == policystate.StatusRevoked && policy.Revision == reservation.PolicyRevision {
+		return statestore.LeaseReservationResult{}, fmt.Errorf("%w: %s", statestore.ErrPolicyRevoked, reservation.PolicyRevision)
+	}
+	if !policy.ActiveRevision(reservation.PolicyRevision) {
+		return statestore.LeaseReservationResult{}, fmt.Errorf(
+			"%w: current revision=%s requested=%s",
+			statestore.ErrPolicyChanged,
+			policy.Revision,
+			reservation.PolicyRevision,
+		)
 	}
 
 	scope := placementScope{
@@ -117,6 +142,7 @@ func (s *Store) ReserveLease(ctx context.Context, reservation statestore.LeaseRe
 		PlacementPayloadDigest:      reservation.PlacementPayloadDigest,
 		PlacementExpiresAt:          reservation.PlacementExpiresAt,
 		PolicyRevision:              reservation.PolicyRevision,
+		PolicyEpoch:                 reservation.ExpectedPolicyEpoch,
 		FenceEpoch:                  fence,
 		RenewalSequence:             0,
 		IssuedAt:                    reservation.IssuedAt,

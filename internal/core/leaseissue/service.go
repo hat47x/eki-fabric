@@ -16,6 +16,7 @@ import (
 	"github.com/hat47x/eki-fabric/internal/core/ids"
 	"github.com/hat47x/eki-fabric/internal/core/leasestate"
 	"github.com/hat47x/eki-fabric/internal/core/placementverify"
+	"github.com/hat47x/eki-fabric/internal/core/policystate"
 	"github.com/hat47x/eki-fabric/internal/core/taskstate"
 	"github.com/hat47x/eki-fabric/internal/spi/statestore"
 )
@@ -31,15 +32,12 @@ var (
 type State interface {
 	LoadTask(ctx context.Context, id ids.TaskID) (taskstate.TaskRecord, error)
 	LoadAttempt(ctx context.Context, id ids.AttemptID) (attemptstate.AttemptRecord, error)
+	LoadCurrentPolicy(ctx context.Context) (policystate.State, error)
 	ReserveLease(ctx context.Context, reservation statestore.LeaseReservation) (statestore.LeaseReservationResult, error)
 }
 
 type TrustBundleSource interface {
 	CurrentTrustBundle(ctx context.Context) (decisiontrust.TrustBundleMetadata, error)
-}
-
-type PolicyRevisionSource interface {
-	CurrentPolicyRevision(ctx context.Context) (string, error)
 }
 
 type Clock interface {
@@ -50,7 +48,6 @@ type Config struct {
 	Verifier      *placementverify.Verifier
 	State         State
 	TrustBundle   TrustBundleSource
-	Policy        PolicyRevisionSource
 	Clock         Clock
 	MaxLifetime   time.Duration
 }
@@ -59,7 +56,6 @@ type Service struct {
 	verifier    *placementverify.Verifier
 	state       State
 	trustBundle TrustBundleSource
-	policy      PolicyRevisionSource
 	clock       Clock
 	maxLifetime time.Duration
 }
@@ -72,8 +68,6 @@ func New(cfg Config) (*Service, error) {
 		return nil, fmt.Errorf("%w: State is required", ErrInvalidConfig)
 	case cfg.TrustBundle == nil:
 		return nil, fmt.Errorf("%w: Trust Bundle source is required", ErrInvalidConfig)
-	case cfg.Policy == nil:
-		return nil, fmt.Errorf("%w: policy revision source is required", ErrInvalidConfig)
 	case cfg.Clock == nil:
 		return nil, fmt.Errorf("%w: trusted Clock is required", ErrInvalidConfig)
 	case cfg.MaxLifetime <= 0:
@@ -83,7 +77,6 @@ func New(cfg Config) (*Service, error) {
 		verifier:    cfg.Verifier,
 		state:       cfg.State,
 		trustBundle: cfg.TrustBundle,
-		policy:      cfg.Policy,
 		clock:       cfg.Clock,
 		maxLifetime: cfg.MaxLifetime,
 	}, nil
@@ -100,7 +93,7 @@ type Result struct {
 }
 
 func (s *Service) Reserve(ctx context.Context, req Request) (Result, error) {
-	if s == nil || s.verifier == nil || s.state == nil || s.trustBundle == nil || s.policy == nil || s.clock == nil {
+	if s == nil || s.verifier == nil || s.state == nil || s.trustBundle == nil || s.clock == nil {
 		return Result{}, ErrInvalidConfig
 	}
 	if err := ctx.Err(); err != nil {
@@ -143,15 +136,18 @@ func (s *Service) Reserve(ctx context.Context, req Request) (Result, error) {
 		return Result{}, err
 	}
 
-	policyRevision, err := s.policy.CurrentPolicyRevision(ctx)
+	policy, err := s.state.LoadCurrentPolicy(ctx)
 	if err != nil {
-		return Result{}, fmt.Errorf("read current policy revision: %w", err)
+		return Result{}, fmt.Errorf("read current durable policy state: %w", err)
+	}
+	if policy.Status != policystate.StatusActive {
+		return Result{}, fmt.Errorf("%w: revision=%s epoch=%d", statestore.ErrPolicyRevoked, policy.Revision, policy.Epoch)
 	}
 	if err := verified.Revalidate(placementverify.Current{
 		Task:           task,
 		AttemptID:      attempt.ID,
 		WorkerIdentity: attempt.WorkerIdentity,
-		PolicyRevision: policyRevision,
+		PolicyRevision: policy.Revision,
 		Now:            now,
 	}); err != nil {
 		return Result{}, err
@@ -187,6 +183,7 @@ func (s *Service) Reserve(ctx context.Context, req Request) (Result, error) {
 		PlacementPayloadDigest:      verified.PayloadDigest(),
 		PlacementExpiresAt:          approval.ExpiresAt(),
 		PolicyRevision:              approval.PolicyRevision(),
+		ExpectedPolicyEpoch:         policy.Epoch,
 		IssuedAt:                    now,
 		ExpiresAt:                   expiresAt,
 	}
@@ -197,7 +194,7 @@ func (s *Service) Reserve(ctx context.Context, req Request) (Result, error) {
 	if !reservation.MatchesReservedPlacement(stored.Lease) {
 		return Result{}, ErrStoreInvariant
 	}
-	if stored.Lease.ID == "" || stored.Lease.FenceEpoch == 0 {
+	if stored.Lease.ID == "" || stored.Lease.FenceEpoch == 0 || !stored.Lease.PolicyFenced() {
 		return Result{}, ErrStoreInvariant
 	}
 	if stored.Replayed && !stored.Lease.ActiveAt(now) {

@@ -66,3 +66,10 @@ func TestLeaseBypassContract(t *testing.T) {
 		},
 	})
 }
+
+func TestPolicyStoreContract(t *testing.T) {
+	statestoretest.RunPolicyStoreContract(t, func(t testing.TB) statestore.PolicyStore {
+		t.Helper()
+		return New()
+	})
+}

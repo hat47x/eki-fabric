@@ -13,6 +13,7 @@ import (
 	"github.com/hat47x/eki-fabric/internal/core/contract"
 	"github.com/hat47x/eki-fabric/internal/core/ids"
 	"github.com/hat47x/eki-fabric/internal/core/leasestate"
+	"github.com/hat47x/eki-fabric/internal/core/policystate"
 	"github.com/hat47x/eki-fabric/internal/core/taskstate"
 	"github.com/hat47x/eki-fabric/internal/spi/statestore"
 )
@@ -21,6 +22,7 @@ type TaskLeaseStore interface {
 	statestore.TaskStore
 	statestore.AttemptStore
 	statestore.LeaseStore
+	statestore.PolicyStore
 }
 
 type LeaseFactory func(t testing.TB) TaskLeaseStore
@@ -686,6 +688,77 @@ func RunLeaseStoreContract(t *testing.T, newStore LeaseFactory) {
 		assertLeaseNotReserved(t, store, reservation.LeaseID)
 	})
 
+	t.Run("policy-epoch-drift-fails-before-fence-allocation", func(t *testing.T) {
+		store := newStore(t)
+		task := readyTask(t, store, "policy-drift")
+		stale := leaseReservation(t, store, task, "placement-old-policy", leaseNow, leaseNow.Add(time.Minute))
+
+		current, err := store.LoadCurrentPolicy(context.Background())
+		if err != nil {
+			t.Fatal(err)
+		}
+		revoked, err := policystate.Revoke(current, current.Epoch+1, leaseNow.Add(time.Second), "emergency revoke")
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := store.CompareAndSwapPolicy(context.Background(), current.Epoch, revoked); err != nil {
+			t.Fatal(err)
+		}
+
+		if _, err := store.ReserveLease(context.Background(), stale); !errors.Is(err, statestore.ErrPolicyChanged) {
+			t.Fatalf("stale policy reservation error = %v, want ErrPolicyChanged", err)
+		}
+
+		next, err := policystate.NewActive(revoked.Epoch+1, "policy-43", leaseNow.Add(2*time.Second))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := store.CompareAndSwapPolicy(context.Background(), revoked.Epoch, next); err != nil {
+			t.Fatal(err)
+		}
+		fresh := stale
+		fresh.PolicyRevision = next.Revision
+		fresh.ExpectedPolicyEpoch = next.Epoch
+		fresh.PlacementDecisionID = "placement-new-policy"
+		fresh.PlacementPayloadDigest = contract.SHA256([]byte("payload:placement-new-policy"))
+		result, err := store.ReserveLease(context.Background(), fresh)
+		if err != nil {
+			t.Fatalf("fresh policy reservation error = %v", err)
+		}
+		if result.Lease.FenceEpoch != 1 {
+			t.Fatalf("failed stale reservation consumed fence: got=%d want=1", result.Lease.FenceEpoch)
+		}
+		if result.Lease.PolicyEpoch != next.Epoch || !result.Lease.PolicyFenced() {
+			t.Fatalf("Lease policy binding = revision %q epoch %d", result.Lease.PolicyRevision, result.Lease.PolicyEpoch)
+		}
+	})
+
+	t.Run("policy-revoke-blocks-exact-replay", func(t *testing.T) {
+		store := newStore(t)
+		task := readyTask(t, store, "policy-replay")
+		reservation := leaseReservation(t, store, task, "placement-1", leaseNow, leaseNow.Add(time.Minute))
+		if _, err := store.ReserveLease(context.Background(), reservation); err != nil {
+			t.Fatal(err)
+		}
+		current, err := store.LoadCurrentPolicy(context.Background())
+		if err != nil {
+			t.Fatal(err)
+		}
+		revoked, err := policystate.Revoke(current, current.Epoch+1, leaseNow.Add(time.Second), "revoke before replay")
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := store.CompareAndSwapPolicy(context.Background(), current.Epoch, revoked); err != nil {
+			t.Fatal(err)
+		}
+
+		replay := reservation
+		replay.LeaseID = mustLeaseID(t)
+		if _, err := store.ReserveLease(context.Background(), replay); !errors.Is(err, statestore.ErrPolicyChanged) {
+			t.Fatalf("replay after policy revoke error = %v, want ErrPolicyChanged", err)
+		}
+	})
+
 	t.Run("concurrent-placements-have-one-winner", func(t *testing.T) {
 		store := newStore(t)
 		task := readyTask(t, store, "concurrent-lease")
@@ -929,8 +1002,9 @@ func RunLeaseBypassContract(t *testing.T, factory LeaseBypassFactory) {
 
 var leaseNow = time.Date(2026, 10, 6, 12, 0, 0, 0, time.UTC)
 
-func readyTask(t testing.TB, store statestore.TaskStore, seed string) taskstate.TaskRecord {
+func readyTask(t testing.TB, store TaskLeaseStore, seed string) taskstate.TaskRecord {
 	t.Helper()
+	ensurePolicy(t, store)
 	id := mustTaskID(t)
 	record, err := taskstate.NewTask(id, contract.SHA256([]byte(seed)), leaseNow)
 	if err != nil {
@@ -996,8 +1070,27 @@ func unbackedLeaseReservation(t testing.TB, task taskstate.TaskRecord, decisionI
 		PlacementPayloadDigest:      contract.SHA256([]byte("payload:" + decisionID)),
 		PlacementExpiresAt:          expires.Add(time.Minute),
 		PolicyRevision:              "policy-42",
+		ExpectedPolicyEpoch:         1,
 		IssuedAt:                    issued,
 		ExpiresAt:                   expires,
+	}
+}
+
+func ensurePolicy(t testing.TB, store statestore.PolicyStore) {
+	t.Helper()
+	_, err := store.LoadCurrentPolicy(context.Background())
+	if err == nil {
+		return
+	}
+	if !errors.Is(err, statestore.ErrPolicyUnavailable) {
+		t.Fatal(err)
+	}
+	initial, err := policystate.NewActive(1, "policy-42", leaseNow.Add(-time.Minute))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := store.CompareAndSwapPolicy(context.Background(), 0, initial); err != nil {
+		t.Fatal(err)
 	}
 }
 
@@ -1041,6 +1134,7 @@ func assertLeaseEqual(t testing.TB, got, want leasestate.LeaseRecord) {
 		got.PlacementPayloadDigest != want.PlacementPayloadDigest ||
 		!got.PlacementExpiresAt.Equal(want.PlacementExpiresAt) ||
 		got.PolicyRevision != want.PolicyRevision ||
+		got.PolicyEpoch != want.PolicyEpoch ||
 		got.FenceEpoch != want.FenceEpoch ||
 		got.RenewalSequence != want.RenewalSequence ||
 		!got.IssuedAt.Equal(want.IssuedAt) ||
