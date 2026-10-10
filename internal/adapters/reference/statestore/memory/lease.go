@@ -7,6 +7,7 @@ import (
 
 	"github.com/hat47x/eki-fabric/internal/core/attemptstate"
 	"github.com/hat47x/eki-fabric/internal/core/ids"
+	"github.com/hat47x/eki-fabric/internal/core/leaseemission"
 	"github.com/hat47x/eki-fabric/internal/core/leasestate"
 	"github.com/hat47x/eki-fabric/internal/core/policystate"
 	"github.com/hat47x/eki-fabric/internal/core/taskstate"
@@ -116,6 +117,9 @@ func (s *Store) ReserveLease(ctx context.Context, reservation statestore.LeaseRe
 	}
 
 	for _, lease := range s.leases {
+		if emission, ok := s.leaseEmissions[lease.ID]; ok && emission.Status() == leaseemission.StatusAborted {
+			continue
+		}
 		if lease.TaskID == reservation.TaskID && lease.ExpiresAt.After(reservation.IssuedAt.UTC()) {
 			return statestore.LeaseReservationResult{}, fmt.Errorf(
 				"%w: task %s fence=%d",

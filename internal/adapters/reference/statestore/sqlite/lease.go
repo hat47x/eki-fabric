@@ -169,10 +169,13 @@ FROM attempts WHERE attempt_id = ?`, reservation.AttemptID.String()))
 
 	var activeID string
 	err = tx.QueryRowContext(ctx, `
-SELECT lease_id
-FROM leases
-WHERE task_id = ? AND expires_at_ns > ?
-ORDER BY fence_epoch DESC
+SELECT l.lease_id
+FROM leases l
+LEFT JOIN lease_emissions e ON e.lease_id = l.lease_id
+WHERE l.task_id = ?
+  AND l.expires_at_ns > ?
+  AND (e.status IS NULL OR e.status <> 'aborted')
+ORDER BY l.fence_epoch DESC
 LIMIT 1`, reservation.TaskID.String(), reservation.IssuedAt.UTC().UnixNano()).Scan(&activeID)
 	switch {
 	case err == nil:
