@@ -381,13 +381,13 @@ func TestSuitabilityNotJustifiedIsCountedAsNormalOutcome(t *testing.T) {
 	if !slices.Equal(p.SuitabilityOutcomes.NotJustified, []string{"suit-2", "suit-3"}) {
 		t.Errorf("NotJustified = %v", p.SuitabilityOutcomes.NotJustified)
 	}
-	if got := p.SuitabilityOutcomes.Count("PRICE_BASED"); got != 0 {
+	if got := p.SuitabilityOutcomes.Count("UNKNOWN_OUTCOME"); got != 0 {
 		t.Errorf("Count(unknown) = %d, want 0", got)
 	}
 }
 
 func TestUnknownSuitabilityOutcomeIsRejected(t *testing.T) {
-	_, err := DerivePrimary([]Observation{suitability("suit-1", "PRICE_BASED")})
+	_, err := DerivePrimary([]Observation{suitability("suit-1", "UNKNOWN_OUTCOME")})
 	if !errors.Is(err, ErrInvalidObservation) {
 		t.Fatalf("error = %v, want ErrInvalidObservation", err)
 	}
@@ -445,7 +445,7 @@ func TestRetriesWithoutAuthorityGrowthHoldTheInvariant(t *testing.T) {
 // causes. A retry with no cause or an unknown cause cannot be attributed, so the
 // derivation rejects it instead of counting it as "other".
 func TestRetryCauseIsRequiredAndClosed(t *testing.T) {
-	for _, bad := range []RetryCause{"", "PRICE_BASED", "reclaim"} {
+	for _, bad := range []RetryCause{"", "UNKNOWN_OUTCOME", "reclaim"} {
 		_, err := DerivePrimary([]Observation{RetryEvent{ID: "rty-1", Cause: bad}})
 		if !errors.Is(err, ErrInvalidObservation) {
 			t.Errorf("cause %q: error = %v, want ErrInvalidObservation", bad, err)
@@ -701,8 +701,28 @@ func TestIdentifierBoundsAreEnforced(t *testing.T) {
 	}
 }
 
-// TestDerivationIsOrderIndependentAndDoesNotMutateInput checks two properties. The
-// log is read but not changed, and the output does not depend on record order.
+// TestFormatCharactersAreRejectedInIdentifiers checks that an identifier cannot hide a
+// format character (Unicode category Cf). A zero-width space is invisible, and a bidi
+// override reorders the text after it, so two different IDs could look the same to a
+// reader. Neither character is a control character, so both must be rejected by the
+// format-character rule itself.
+func TestFormatCharactersAreRejectedInIdentifiers(t *testing.T) {
+	cases := map[string]string{
+		"zero-width space": "obs​x",
+		"bidi override":    "obs‮gnp",
+	}
+	for name, id := range cases {
+		_, err := DerivePrimary([]Observation{retry(id, false)})
+		if !errors.Is(err, ErrInvalidObservation) {
+			t.Errorf("%s: error = %v, want ErrInvalidObservation", name, err)
+		}
+	}
+}
+
+// TestDerivationIsOrderIndependentAndDoesNotMutateInput checks two properties. The log is
+// read but not changed, including the SupportingFactIDs slices inside it, and the output
+// does not depend on record order. The facts of con-2 are deliberately out of order, so a
+// derivation that sorts them in place would change the input.
 func TestDerivationIsOrderIndependentAndDoesNotMutateInput(t *testing.T) {
 	log := []Observation{
 		completedReclaim("rec-1", "wkr-a", 0, 3),
@@ -712,14 +732,15 @@ func TestDerivationIsOrderIndependentAndDoesNotMutateInput(t *testing.T) {
 		suitability("suit-1", SuitabilityFabricNotJustified),
 		retry("rty-1", false),
 		contribution("con-1", "wkr-a", true),
+		ContributionRecord{ID: "con-2", WorkerID: "wkr-b", Verified: true, SupportingFactIDs: []string{"fact-z", "fact-a"}},
 	}
-	snapshot := slices.Clone(log)
+	snapshot := copyLog(log)
 	first := mustDerive(t, log)
 
 	if !reflect.DeepEqual(log, snapshot) {
 		t.Fatalf("DerivePrimary modified its input")
 	}
-	reversed := slices.Clone(log)
+	reversed := copyLog(log)
 	slices.Reverse(reversed)
 	second := mustDerive(t, reversed)
 	if !reflect.DeepEqual(first, second) {
@@ -727,11 +748,27 @@ func TestDerivationIsOrderIndependentAndDoesNotMutateInput(t *testing.T) {
 	}
 }
 
-// TestEverySourceIDTracesBackToTheInput is the traceability check. Each metric's IDs
-// must exist in the log, and each counted subset must be inside its SourceIDs. Every
-// SourceIDs list is checked against the input, so no metric can cite an ID the log
-// never recorded. The containment check runs even when a SourceIDs list is empty, so a
-// deleted append cannot make the check pass by skipping.
+// copyLog returns a copy of log that shares no slice with it. slices.Clone copies only the
+// outer slice, so an in-place write to a SupportingFactIDs slice would go unseen.
+func copyLog(log []Observation) []Observation {
+	out := make([]Observation, len(log))
+	for i, o := range log {
+		if c, ok := o.(ContributionRecord); ok {
+			c.SupportingFactIDs = slices.Clone(c.SupportingFactIDs)
+			o = c
+		}
+		out[i] = o
+	}
+	return out
+}
+
+// TestEverySourceIDTracesBackToTheInput is the traceability check. Every list that the
+// output reports must cite only IDs that the log supplies, and every counted subset must
+// lie inside the SourceIDs of its metric. Containment alone cannot see an ID that was
+// dropped from a list, so each list is also compared with the IDs that the log selects for
+// it, in ascending order. The log holds at least one example of each list, so no
+// comparison is vacuous. The containment check runs even when a SourceIDs list is empty,
+// so a deleted append cannot make the check pass by skipping.
 func TestEverySourceIDTracesBackToTheInput(t *testing.T) {
 	log := []Observation{
 		completedReclaim("rec-1", "wkr-a", 0, 3),
@@ -741,13 +778,21 @@ func TestEverySourceIDTracesBackToTheInput(t *testing.T) {
 		decision("res-obs-3", "result-c", false, true),
 		suitability("suit-1", SuitabilityFabricJustified),
 		suitability("suit-2", SuitabilityNeedsMeasurement),
+		suitability("suit-3", SuitabilityFabricNotJustified),
 		retry("rty-1", true),
 		RetryEvent{ID: "rty-2", Cause: RetryCauseWorkerDeparture, DuplicateExecution: true},
+		RetryEvent{ID: "rty-3", Cause: RetryCauseOther},
 		contribution("con-1", "wkr-a", true),
 		contribution("con-2", "wkr-c", false),
 	}
 	input := knownIDs(log)
 	p := mustDerive(t, log)
+	secondary, err := DeriveSecondary(log)
+	if err != nil {
+		t.Fatalf("DeriveSecondary() error = %v", err)
+	}
+	rl, vr, su := p.ReclaimLatency, p.VerifiedResults, p.SuitabilityOutcomes
+	rg, vc := p.RetryAuthorityGrowth, p.VerifiedContributions
 
 	assertTraced := func(name string, ids []string, source []string) {
 		t.Helper()
@@ -760,6 +805,22 @@ func TestEverySourceIDTracesBackToTheInput(t *testing.T) {
 			}
 		}
 	}
+	// assertLinks checks both ends of each link. The observation must be one that the list
+	// counts, and the evidence must be an ID that the log supplies and that SourceIDs lists.
+	assertLinks := func(name string, links []EvidenceLink, counted []string, source []string) {
+		t.Helper()
+		for _, l := range links {
+			if !slices.Contains(counted, l.ObservationID) {
+				t.Errorf("%s links %q, which is not counted", name, l.ObservationID)
+			}
+			if !input[l.EvidenceID] {
+				t.Errorf("%s links evidence %q, which is not in the input", name, l.EvidenceID)
+			}
+			if !slices.Contains(source, l.EvidenceID) {
+				t.Errorf("%s links evidence %q, which is outside its SourceIDs", name, l.EvidenceID)
+			}
+		}
+	}
 	assertSourced := func(name string, source []string) {
 		t.Helper()
 		for _, id := range source {
@@ -768,29 +829,76 @@ func TestEverySourceIDTracesBackToTheInput(t *testing.T) {
 			}
 		}
 	}
-	assertTraced("reclaim sample", sampleIDs(p.ReclaimLatency.Samples), p.ReclaimLatency.SourceIDs)
-	assertTraced("reclaim pending", p.ReclaimLatency.Pending, p.ReclaimLatency.SourceIDs)
-	assertTraced("verified results", p.VerifiedResults.Verified, p.VerifiedResults.SourceIDs)
-	assertTraced("accepted results", p.VerifiedResults.Accepted, p.VerifiedResults.SourceIDs)
-	assertTraced("suitability justified", p.SuitabilityOutcomes.Justified, p.SuitabilityOutcomes.SourceIDs)
-	assertTraced("suitability needs measurement", p.SuitabilityOutcomes.NeedsMeasurement, p.SuitabilityOutcomes.SourceIDs)
-	assertTraced("retry growth", p.RetryAuthorityGrowth.AuthorityGrew, p.RetryAuthorityGrowth.SourceIDs)
-	assertTraced("retry duplicate execution", p.RetryAuthorityGrowth.DuplicateExecution, p.RetryAuthorityGrowth.SourceIDs)
-	assertTraced("retry harmful", p.RetryAuthorityGrowth.Harmful, p.RetryAuthorityGrowth.SourceIDs)
-	assertTraced("retry by cause", p.RetryAuthorityGrowth.ByCause.WorkerDeparture, p.RetryAuthorityGrowth.SourceIDs)
-	assertTraced("verified contributions", p.VerifiedContributions.Verified, p.VerifiedContributions.SourceIDs)
-
-	assertSourced("reclaim latency", p.ReclaimLatency.SourceIDs)
-	assertSourced("verified results", p.VerifiedResults.SourceIDs)
-	assertSourced("suitability", p.SuitabilityOutcomes.SourceIDs)
-	assertSourced("retry", p.RetryAuthorityGrowth.SourceIDs)
-	assertSourced("verified contributions", p.VerifiedContributions.SourceIDs)
-
-	secondary, err := DeriveSecondary(log)
-	if err != nil {
-		t.Fatalf("DeriveSecondary() error = %v", err)
+	// sameIDs requires a list to hold exactly the IDs that the log selects for it, in
+	// ascending order. A list that drops one of them fails here, even though containment passes.
+	sameIDs := func(name string, got, want []string) {
+		t.Helper()
+		if len(want) == 0 {
+			t.Fatalf("%s: the log selects nothing for this list, so the check would be vacuous", name)
+		}
+		if !slices.Equal(got, want) {
+			t.Errorf("%s = %v, want %v", name, got, want)
+		}
 	}
+
+	// Containment: every counted subset lies inside the SourceIDs of its metric.
+	assertTraced("reclaim sample", sampleIDs(rl.Samples), rl.SourceIDs)
+	assertTraced("reclaim pending", rl.Pending, rl.SourceIDs)
+	assertTraced("accepted results", vr.Accepted, vr.SourceIDs)
+	assertTraced("verified results", vr.Verified, vr.SourceIDs)
+	assertTraced("unverified accepted results", vr.UnverifiedAccepted, vr.SourceIDs)
+	assertLinks("verification records", vr.VerificationRecords, vr.Verified, vr.SourceIDs)
+	assertTraced("suitability justified", su.Justified, su.SourceIDs)
+	assertTraced("suitability not justified", su.NotJustified, su.SourceIDs)
+	assertTraced("suitability needs measurement", su.NeedsMeasurement, su.SourceIDs)
+	assertTraced("retry growth", rg.AuthorityGrew, rg.SourceIDs)
+	assertTraced("retry duplicate execution", rg.DuplicateExecution, rg.SourceIDs)
+	assertTraced("retry harmful", rg.Harmful, rg.SourceIDs)
+	assertTraced("retry by cause: reclaim", rg.ByCause.Reclaim, rg.SourceIDs)
+	assertTraced("retry by cause: worker departure", rg.ByCause.WorkerDeparture, rg.SourceIDs)
+	assertTraced("retry by cause: other", rg.ByCause.Other, rg.SourceIDs)
+	assertTraced("verified contributions", vc.Verified, vc.SourceIDs)
+	assertLinks("supporting facts", vc.SupportingFacts, vc.Verified, vc.SourceIDs)
+
+	// Every SourceIDs list cites only IDs that the log supplies.
+	assertSourced("reclaim latency", rl.SourceIDs)
+	assertSourced("verified results", vr.SourceIDs)
+	assertSourced("suitability", su.SourceIDs)
+	assertSourced("retry", rg.SourceIDs)
+	assertSourced("verified contributions", vc.SourceIDs)
 	assertSourced("secondary", secondary.SourceIDs)
+
+	// Completeness: every list holds exactly the IDs that the log selects for it.
+	sameIDs("reclaim SourceIDs", rl.SourceIDs, []string{"rec-1", "rec-2"})
+	sameIDs("reclaim samples", sampleIDs(rl.Samples), []string{"rec-1"})
+	sameIDs("reclaim pending", rl.Pending, []string{"rec-2"})
+	sameIDs("results SourceIDs", vr.SourceIDs, []string{"rec-res-obs-1", "rec-res-obs-3", "res-obs-1", "res-obs-2", "res-obs-3"})
+	sameIDs("accepted results", vr.Accepted, []string{"res-obs-1", "res-obs-2"})
+	sameIDs("verified results", vr.Verified, []string{"res-obs-1"})
+	sameIDs("unverified accepted results", vr.UnverifiedAccepted, []string{"res-obs-2"})
+	sameIDs("suitability SourceIDs", su.SourceIDs, []string{"suit-1", "suit-2", "suit-3"})
+	sameIDs("suitability justified", su.Justified, []string{"suit-1"})
+	sameIDs("suitability not justified", su.NotJustified, []string{"suit-3"})
+	sameIDs("suitability needs measurement", su.NeedsMeasurement, []string{"suit-2"})
+	sameIDs("retry SourceIDs", rg.SourceIDs, []string{"rty-1", "rty-2", "rty-3"})
+	sameIDs("retry authority growth", rg.AuthorityGrew, []string{"rty-1"})
+	sameIDs("retry duplicate execution", rg.DuplicateExecution, []string{"rty-2"})
+	sameIDs("retry harmful", rg.Harmful, []string{"rty-1", "rty-2"})
+	sameIDs("retry by cause: reclaim", rg.ByCause.Reclaim, []string{"rty-1"})
+	sameIDs("retry by cause: worker departure", rg.ByCause.WorkerDeparture, []string{"rty-2"})
+	sameIDs("retry by cause: other", rg.ByCause.Other, []string{"rty-3"})
+	sameIDs("contribution SourceIDs", vc.SourceIDs, []string{"con-1", "con-2", "fact-con-1"})
+	sameIDs("verified contributions", vc.Verified, []string{"con-1"})
+	sameIDs("secondary SourceIDs", secondary.SourceIDs, []string{"con-1", "con-2", "fact-con-1", "rec-1", "rec-2"})
+
+	wantRecords := []EvidenceLink{{ObservationID: "res-obs-1", EvidenceID: "rec-res-obs-1"}}
+	if !reflect.DeepEqual(vr.VerificationRecords, wantRecords) {
+		t.Errorf("VerificationRecords = %+v, want %+v", vr.VerificationRecords, wantRecords)
+	}
+	wantFacts := []EvidenceLink{{ObservationID: "con-1", EvidenceID: "fact-con-1"}}
+	if !reflect.DeepEqual(vc.SupportingFacts, wantFacts) {
+		t.Errorf("SupportingFacts = %+v, want %+v", vc.SupportingFacts, wantFacts)
+	}
 }
 
 // TestSuitabilitySourceIDsAreExactlyTheDecisionIDs pins the SourceIDs of the suitability
