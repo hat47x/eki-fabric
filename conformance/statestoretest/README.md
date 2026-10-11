@@ -80,7 +80,7 @@ LSE-1がWorkerへLeaseを発行する前に、State Storeへ新しいLeaseを予
 - `A-CREATED`、`A-ASSIGNED`以降、`A-CLOSED`のAttemptからは新しいLeaseを作らない
 - 成功時は、FenceEpochを一つ進め、Lease保存とAttemptの`A-PLACING -> A-ASSIGNED`（Current Lease ref設定とrevisionの前進）を同時に確定する
 
-同じPlacement Decisionの再送は、既存のLeaseへ収束させ、FenceEpochもAttempt revisionも増やしません。ただし、現在のAttemptがその同じLeaseを`A-ASSIGNED`で保持している場合に限ります。Attemptが閉じられた後は、保存済みLeaseを返すことも許しません。Attemptのcloseと新しいLeaseの予約が競合した場合は、どちらか一方だけが成功します。
+同じPlacement Decisionの再送は、既存のLeaseへ収束させ、FenceEpochもAttempt revisionも増やしません。ただし、現在のAttemptがその同じLeaseを保持している場合に限ります。保持とみなすのは`A-ASSIGNED`、`A-DISPATCHED`、`A-CLAIMED`、`A-VERIFYING`の四つの段階です。close理由によらず、Attemptが`A-CLOSED`になった後は、保存済みLeaseを返すことも許しません。Attemptのcloseと新しいLeaseの予約が競合した場合は、どちらか一方だけが成功します。
 
 `RunLeaseBypassContract`は、SPIの通常の経路では作れない状態を確かめます。通常の経路では、TaskのTaskIR digestは`CompareAndSwapTask`で変更できません（`RunTaskStoreContract`の`taskir-digest-is-immutable`）。Store外からの書き換えに備えて、次の二つを確認します。
 

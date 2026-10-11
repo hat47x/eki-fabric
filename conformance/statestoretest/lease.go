@@ -480,6 +480,68 @@ func RunLeaseStoreContract(t *testing.T, newStore LeaseFactory) {
 		}
 	})
 
+	t.Run("replay-after-superseded-close-fails-closed", func(t *testing.T) {
+		// Supersession closes the Attempt that a newer Attempt replaces. The
+		// Lease stored on that closed Attempt must not come back on replay.
+		store := newStore(t)
+		task := readyTask(t, store, "replay-superseded")
+		reservation := leaseReservation(t, store, task, "placement-1", leaseNow, leaseNow.Add(time.Minute))
+		if _, err := store.ReserveLease(context.Background(), reservation); err != nil {
+			t.Fatal(err)
+		}
+		closeAttemptWith(t, store, reservation.AttemptID, attemptstate.CloseReasonSuperseded)
+
+		replay := reservation
+		replay.LeaseID = mustLeaseID(t)
+		if _, err := store.ReserveLease(context.Background(), replay); !errors.Is(err, statestore.ErrConflict) {
+			t.Fatalf("superseded Attempt replay error = %v, want ErrConflict", err)
+		}
+		assertLeaseNotReserved(t, store, replay.LeaseID)
+	})
+
+	t.Run("exact-replay-succeeds-in-each-held-phase", func(t *testing.T) {
+		// A Lease is held from A-ASSIGNED through A-VERIFYING. In each of these
+		// phases the same Placement Decision must converge to the stored Lease
+		// without minting a new FenceEpoch, and only a close may stop it.
+		for _, phase := range []attemptstate.AttemptPhase{
+			attemptstate.AttemptPhaseAssigned,
+			attemptstate.AttemptPhaseDispatched,
+			attemptstate.AttemptPhaseClaimed,
+			attemptstate.AttemptPhaseVerifying,
+		} {
+			t.Run(string(phase), func(t *testing.T) {
+				store := newStore(t)
+				task := readyTask(t, store, "replay-held-"+string(phase))
+				reservation := leaseReservation(t, store, task, "placement-1", leaseNow, leaseNow.Add(time.Minute))
+				first, err := store.ReserveLease(context.Background(), reservation)
+				if err != nil {
+					t.Fatal(err)
+				}
+				advanceAttemptTo(t, store, reservation.AttemptID, phase)
+
+				replay := reservation
+				replay.LeaseID = mustLeaseID(t)
+				again, err := store.ReserveLease(context.Background(), replay)
+				if err != nil {
+					t.Fatalf("exact replay in %s error = %v", phase, err)
+				}
+				if !again.Replayed || again.Lease.ID != first.Lease.ID || again.Lease.FenceEpoch != first.Lease.FenceEpoch {
+					t.Fatalf("exact replay in %s = %#v, want stored Lease at FenceEpoch %d", phase, again, first.Lease.FenceEpoch)
+				}
+				assertLeaseNotReserved(t, store, replay.LeaseID)
+
+				closeAttemptWith(t, store, reservation.AttemptID, attemptstate.CloseReasonReclaimed)
+
+				afterClose := reservation
+				afterClose.LeaseID = mustLeaseID(t)
+				if _, err := store.ReserveLease(context.Background(), afterClose); !errors.Is(err, statestore.ErrConflict) {
+					t.Fatalf("exact replay after close from %s error = %v, want ErrConflict", phase, err)
+				}
+				assertLeaseNotReserved(t, store, afterClose.LeaseID)
+			})
+		}
+	})
+
 	t.Run("attempt-close-races-lease-reservation-with-one-winner", func(t *testing.T) {
 		store := newStore(t)
 		task := readyTask(t, store, "attempt-close-race")
@@ -1118,6 +1180,56 @@ func assertLeaseNotReserved(t testing.TB, store TaskLeaseStore, id ids.LeaseID) 
 	t.Helper()
 	if _, err := store.LoadLease(context.Background(), id); !errors.Is(err, statestore.ErrNotFound) {
 		t.Fatalf("rejected reservation left Lease %s: LoadLease() error = %v, want ErrNotFound", id, err)
+	}
+}
+
+// advanceAttemptTo moves a held Attempt along the dispatch path one legal
+// transition at a time until it reaches target. Each step is a compare-and-swap
+// on the Attempt revision, the same way a Worker exchange advances it.
+func advanceAttemptTo(t testing.TB, store TaskLeaseStore, id ids.AttemptID, target attemptstate.AttemptPhase) {
+	t.Helper()
+	for {
+		current, err := store.LoadAttempt(context.Background(), id)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if current.Phase == target {
+			return
+		}
+		next := current
+		switch current.Phase {
+		case attemptstate.AttemptPhaseAssigned:
+			next.Phase = attemptstate.AttemptPhaseDispatched
+		case attemptstate.AttemptPhaseDispatched:
+			next.Phase = attemptstate.AttemptPhaseClaimed
+		case attemptstate.AttemptPhaseClaimed:
+			next.Phase = attemptstate.AttemptPhaseVerifying
+		default:
+			t.Fatalf("cannot advance Attempt from %s to %s", current.Phase, target)
+		}
+		next.Revision++
+		next.UpdatedAt = current.UpdatedAt.Add(time.Second)
+		if err := store.CompareAndSwapAttempt(context.Background(), id, current.Revision, next); err != nil {
+			t.Fatalf("advance Attempt %s -> %s: %v", current.Phase, next.Phase, err)
+		}
+	}
+}
+
+// closeAttemptWith closes an Attempt from its current phase. The Attempt keeps
+// its Lease binding, which is the state the replay check must reject.
+func closeAttemptWith(t testing.TB, store TaskLeaseStore, id ids.AttemptID, reason attemptstate.CloseReason) {
+	t.Helper()
+	current, err := store.LoadAttempt(context.Background(), id)
+	if err != nil {
+		t.Fatal(err)
+	}
+	closed := current
+	closed.Phase = attemptstate.AttemptPhaseClosed
+	closed.CloseReason = reason
+	closed.Revision++
+	closed.UpdatedAt = current.UpdatedAt.Add(time.Second)
+	if err := store.CompareAndSwapAttempt(context.Background(), id, current.Revision, closed); err != nil {
+		t.Fatalf("close Attempt with %s: %v", reason, err)
 	}
 }
 
