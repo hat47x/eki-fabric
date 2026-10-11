@@ -1,4 +1,4 @@
-# EKI Fabric Protocol Specifications
+# EKI Fabricの通信仕様（Protocol Specifications）
 
 このディレクトリは、Architectureで確定したContract semanticsをmachine-readable protocolへ落とす正本です。
 

@@ -1,10 +1,10 @@
-# EKI Fabric Product Requirements
+# EKI Fabric 製品要求（Product Requirements）
 
 ## この文書の役割
 
 この文書は、EKI Fabricが満たすべきProduct Requirementの正本です。
 
-現在は、Architectureを選ぶ前の上流工程にあります。ここで定めるのは「何を満たす必要があるか」です。NATS、WASM、SPIFFE、特定のSandbox製品のように「何を使って実現するか」は、Requirementとしてどうしても必要な場合を除き、固定しません。
+Architecture Baselineは定めていますが、製品要求は具体的な実装方式から独立させます。ここで定めるのは「何を満たす必要があるか」です。NATS、WASM、SPIFFE、特定のSandbox製品など「何を使って実現するか」は、Requirementに必要な場合を除き固定しません。
 
 初めて読む場合は、先に[要求文書の読み方](README.md)と[はじめてEKI Fabricを読む方へ](../docs/for-readers.md)を読んでください。
 

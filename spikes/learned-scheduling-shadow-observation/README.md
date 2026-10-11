@@ -1,4 +1,4 @@
-# Learned Scheduling Shadow Observation Spike
+# 学習型Schedulerを影響のない観測で評価する（Shadow Observation Spike）
 
 ## Purpose
 

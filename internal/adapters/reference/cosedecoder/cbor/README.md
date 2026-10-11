@@ -1,4 +1,4 @@
-# Strict COSE_Sign1 reference codec
+# 厳格なCOSE_Sign1参照コーデック
 
 Reference Go実装で、raw `COSE_Sign1` bytesをEKI Fabricのsigned-decision profile（ADR-0005）へ変換するadapterです。`internal/spi/cosedecoder.Codec`を実装します。
 

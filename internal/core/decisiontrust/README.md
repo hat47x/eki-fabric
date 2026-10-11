@@ -1,4 +1,4 @@
-# Signed Decision Trust Registry
+# 署名付き判断の信頼レジストリ（Trust Registry）
 
 このpackageは、EKI Fabricの**署名付きAuthority Decisionを検証・署名するときに使うkey metadataとlifecycle semantics**を扱います。
 

@@ -1,4 +1,4 @@
-# EKI Fabric Quality Attributes
+# EKI Fabricの品質特性（Quality Attributes）
 
 ## この文書の役割
 

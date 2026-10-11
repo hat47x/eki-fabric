@@ -1,4 +1,4 @@
-# Local Governor Feasibility Spike
+# Local Governorの実現可能性を確かめる（Feasibility Spike）
 
 ## このSpikeの役割
 

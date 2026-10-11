@@ -1,4 +1,4 @@
-# State Store Conformance
+# State Storeの適合性試験（Conformance）
 
 このpackageは、`internal/spi/statestore.TaskStore`を実装するAdapterが共通して満たすべき挙動をblack-boxで確認するTest Harnessです。
 

@@ -1,4 +1,4 @@
-# Remote Attestation Abstraction Spike
+# 遠隔証明の仕組みを抽象化する（Remote Attestation Abstraction Spike）
 
 ## このSpikeの役割
 

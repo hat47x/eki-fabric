@@ -1,4 +1,4 @@
-# Executor Provenance / Content Admission Spike
+# Executorの来歴と内容の受け入れを確かめる（Provenance / Content Admission Spike）
 
 ## このSpikeの役割
 

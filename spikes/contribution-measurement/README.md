@@ -1,4 +1,4 @@
-# Contribution Measurement Spike
+# 資源提供実績の測定を確かめる（Contribution Measurement Spike）
 
 ## このSpikeの役割
 

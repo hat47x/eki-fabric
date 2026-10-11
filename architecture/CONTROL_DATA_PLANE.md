@@ -1,12 +1,12 @@
-# Control Plane / Data Plane Architecture
+# 制御層とデータ層の構成（Control Plane / Data Plane Architecture）
 
 Status: **Baseline 0.1 — 2026-09-21**
 
 ## 1. この文書の目的
 
-EKI Fabricでは、Taskの受け付け、Policyの判断、Placement、Lease、WorkOrderの発行などの制御の情報と、Model、Dataset、Document、Result、Checkpointなどの大きなbyte列とを、同じ経路に集約しません。
+Taskの受け付け、Policy判断、Placement、Lease、WorkOrderの発行は制御情報です。一方、Model、Dataset、Document、Result、Checkpointは大きなデータ（byte列）です。EKIでは、これらを同じ経路に集約しません。
 
-この文書では、次のことをArchitecture Baselineとして定義します。
+この文書では、制御情報とデータの境界を設計基準として定めます。主な内容は次のとおりです。
 
 - Control Planeが何を扱うか
 - Data Planeが何を扱うか

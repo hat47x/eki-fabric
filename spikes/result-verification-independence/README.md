@@ -1,4 +1,4 @@
-# Result Verification Independence Spike
+# Result検証の独立性を確かめる（Verification Independence Spike）
 
 ## このSpikeの役割
 

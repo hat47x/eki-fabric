@@ -1,12 +1,12 @@
-# Extension SPI Architecture
+# 拡張用SPIの設計（Extension SPI Architecture）
 
 Status: **Baseline 0.1 — 2026-09-21**
 
 ## 1. この文書の目的
 
-EKI Fabricは、現在存在するSEI、SUI、TEIだけでなく、将来現れる未知のソフトウェアや、異なるInfrastructureにも接続できる、用途に依存しないdistributed compute fabricを、めざします。
+EKI Fabricは、SEI、SUI、TEIに加え、今後現れるソフトウェアや異なる基盤にも接続できる、用途を限定しない分散計算基盤を目指します。
 
-そのため、次のものを、差し替えられるようにします。
+そのため、次の機能を差し替えられる境界を設けます。
 
 - Queue
 - State Store
@@ -20,7 +20,7 @@ EKI Fabricは、現在存在するSEI、SUI、TEIだけでなく、将来現れ�
 - Contribution Measurement
 - Telemetry
 
-一方で、ExtensionがCoreのsemanticsを変更できるようにすると、次のような、Authorityの崩壊が起きます。
+一方、拡張機能がCoreの意味や権限を変えられると、次のように権限境界が崩れます。
 
 - Scheduler pluginが、Authorizationを作る。
 - Queue adapterが、勝手にAttemptを増やす。
@@ -28,7 +28,7 @@ EKI Fabricは、現在存在するSEI、SUI、TEIだけでなく、将来現れ�
 - Verification pluginが、Resultを直接Acceptedにする。
 - Worker Runtimeが、Capabilityを自己拡張する。
 
-この文書では、何を差し替えてよく、何をCoreの不変条件として固定するかを、定義します。
+この文書では、差し替え可能な機能と、Coreが守る不変条件を分けて定めます。
 
 関連する文書は、次のとおりです。
 

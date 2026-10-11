@@ -1,4 +1,4 @@
-# Signed Decision COSE conformance vectors
+# 署名付き権限判断のCOSE適合ベクトル（Conformance vectors）
 
 このdirectoryは、EKI FabricのP2 signed Authority Decisionを運ぶstrict COSE_Sign1 profileについて、Concrete decoder / verifier Adapterが満たすべき入力例を保持します。
 

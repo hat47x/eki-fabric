@@ -1,4 +1,4 @@
-# Durable Policy Epoch
+# Policy Epochの永続化（Durable Policy Epoch）
 
 LSE-1が新しいLease Authorityへ進む直前に使う、永続的なpolicy snapshotです。
 

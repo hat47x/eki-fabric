@@ -1,4 +1,4 @@
-# Federation Trust Binding Spike
+# Federationで信頼関係を結び付ける方法を確かめる（Trust Binding Spike）
 
 ## このSpikeの役割
 

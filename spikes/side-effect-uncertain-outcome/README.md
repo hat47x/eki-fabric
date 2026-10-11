@@ -1,4 +1,4 @@
-# Side-effect Task Uncertain Outcome Spike
+# 外部副作用を伴うTaskの結果が不明な場合を調べる（Uncertain Outcome Spike）
 
 ## このSpikeの役割
 

@@ -1,4 +1,4 @@
-# P2 Decision payload semantics
+# P2判断ペイロードの意味（Decision payload semantics）
 
 このpackageは、署名対象となるP2 Decision payloadをGoの型として表します。
 

@@ -1,4 +1,4 @@
-# Contribution Accountingと価値交換の境界
+# 資源提供実績の集計と価値交換の境界（Contribution Accounting）
 
 ## 役割
 

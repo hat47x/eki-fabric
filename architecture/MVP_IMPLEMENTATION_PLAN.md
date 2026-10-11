@@ -1,14 +1,14 @@
-# MVP Implementation Plan — Architecture Baseline 0.1
+# 最小実装計画（MVP Implementation Plan）— Architecture Baseline 0.1
 
 Status: **Planning Baseline — 2026-09-21**
 
 ## 1. 目的
 
-この文書は、Architecture Baseline 0.1を実装に移すときの、最初のMVPの切り出しを定義します。
+この文書では、Architecture Baseline 0.1を参照実装へ移すため、最初のMVPに含める範囲を定めます。
 
 MVPの目的は、機能の数を増やすことではありません。
 
-最小のvertical sliceで、EKI Fabricの中心となるInvariantが、実際に成り立つことを確認します。
+最小の一連の処理を通し、EKI Fabricが守る中心的な不変条件（Invariant）が実際に成り立つかを確かめます。
 
 中心となるE2E Goalは、次のとおりです。
 

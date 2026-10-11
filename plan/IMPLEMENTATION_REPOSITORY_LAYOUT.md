@@ -1,4 +1,4 @@
-# Implementation Repository Layout
+# 実装リポジトリの構成
 
 Status: **Baseline 0.1 — 2026-09-21**
 

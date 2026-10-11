@@ -1,4 +1,4 @@
-# EKI Fabric 上流Acceptance Scenarios
+# EKI Fabricの受け入れシナリオ（Acceptance Scenarios）
 
 ## この文書の役割
 

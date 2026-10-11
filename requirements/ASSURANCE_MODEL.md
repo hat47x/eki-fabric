@@ -1,4 +1,4 @@
-# EKI Fabric Worker Assurance Model
+# EKI Fabric Worker保証モデル（Worker Assurance Model）
 
 ## この文書の役割
 

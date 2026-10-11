@@ -1,4 +1,4 @@
-# Architecture Baseline 0.1 横断レビュー — 2026-09-21
+# Architecture Baseline 0.1の横断レビュー — 2026-09-21
 
 Status: **Reviewed / Implementation Planning Ready**
 

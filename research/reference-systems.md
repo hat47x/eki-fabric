@@ -1,4 +1,4 @@
-# Reference Systems Research
+# 参考システムの調査（Reference Systems Research）
 
 ## 役割
 

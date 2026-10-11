@@ -1,4 +1,4 @@
-# Placement Approval verification pipeline
+# Placement Approvalの検証手順（Verification pipeline）
 
 このpackageは、署名付きPlacement Approvalを検証する各段階を決まった順序でつなぎます。各段階の実装は別packageにあり、ここでは順序を固定し、段階を飛ばせないようにするだけです。
 

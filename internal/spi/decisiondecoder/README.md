@@ -1,4 +1,4 @@
-# Decision payload decoder SPI
+# Decision payloadのデコーダSPI
 
 P2のdeterministic CBOR payloadを、Coreの型付きDecisionへ変換する境界です。
 

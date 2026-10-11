@@ -1,8 +1,8 @@
 # EKI Fabric 要求文書の読み方
 
-このディレクトリには、EKI Fabricの製品要求、安全上の前提、実行端末（Worker）に求める保証、全体構成の候補を比較するための品質特性をまとめています。
+このディレクトリは、EKI Fabricが満たす製品要求と、安全性を検討するための正本です。脅威モデル、Workerに求める保証、構成案を比べる品質特性もここにまとめています。
 
-ここにある文書は、単なるアイデアの一覧ではありません。最初の全体構成はすでに設計基準として定めています。それでも、ここで扱う要求は具体的な実装方式と切り離して考えます。特に、次の点を引き続き確かめます。
+ここにあるのは、アイデアの一覧ではありません。EKI Fabricは最初の全体構成を設計基準として定めましたが、要求は具体的な実装方式から独立して扱います。要求文書では、次の点を確かめます。
 
 - 何を守る必要があるか
 - どのような失敗や攻撃に耐える必要があるか
@@ -13,15 +13,15 @@
 
 要求文書に入る前に、[はじめてEKI Fabricを読む方へ](../docs/for-readers.md)を読むことをおすすめします。
 
-業務端末の余剰資源を使う理由、依頼元（Client）や実行端末（Worker）を無条件には信用しない理由、悪意のある参加者を想定しながら随時参加する善意の人を受け入れる理由を、背景から説明しています。
+この案内では、業務端末の余剰資源を使う理由を説明しています。また、ClientやWorkerを無条件には信用しないことと、悪意ある参加者を想定しながら一時参加者を受け入れることの両立も、背景から説明しています。
 
 ## 文書ごとの役割
 
 ### 製品要求
 
-[PRODUCT_REQUIREMENTS.md](PRODUCT_REQUIREMENTS.md)は、EKIが満たすべき性質の正本です。
+[PRODUCT_REQUIREMENTS.md](PRODUCT_REQUIREMENTS.md)が、EKIの製品要求を定める正本です。
 
-現在の製品要求には、たとえば次の内容が含まれます。
+製品要求では、たとえば次の性質を定めています。
 
 - 特定のOSSや言語に依存しないこと
 - 業務端末では、利用者を最優先すること
@@ -42,7 +42,7 @@
 
 ### 脅威の想定
 
-[THREAT_MODEL.md](THREAT_MODEL.md)は、どのような攻撃者を想定し、どの性質を安全上の不変条件として守るかの正本です。
+[THREAT_MODEL.md](THREAT_MODEL.md)は、想定する攻撃者と、安全上の不変条件を定める正本です。
 
 匿名の攻撃者に限らず、次のような主体や状況も想定します。
 
@@ -54,7 +54,7 @@
 - 侵害されたControl Planeのcomponent
 - Federationの設定のすり替え
 
-脅威モデルを読む際は「あらゆる攻撃を完全に防げるか」ではなく、次の点を確認してください。
+脅威モデルでは、あらゆる攻撃を防げると仮定せず、次の点を確認してください。
 
 1. どこまでを、EKIの保護の対象にしているか
 2. 何を、明示的な信頼基盤として置いているか
@@ -63,7 +63,7 @@
 
 ### 実行端末に求める保証
 
-[ASSURANCE_MODEL.md](ASSURANCE_MODEL.md)は、Workerを単純に`trusted / untrusted`へ二分しないための、要求の解釈をまとめた文書です。
+[ASSURANCE_MODEL.md](ASSURANCE_MODEL.md)は、Workerを`trusted / untrusted`の二択にせず、観点ごとに保証を読み分けるための文書です。
 
 「企業が管理する端末だから安全」「匿名だから危険」とだけ判断すると、確認できていることと未確認のことを取り違えます。
 
@@ -83,15 +83,15 @@
 
 ### 受け入れ場面
 
-[ACCEPTANCE_SCENARIOS.md](ACCEPTANCE_SCENARIOS.md)は、要求を具体的な利用、攻撃、離脱の場面に当てはめて、矛盾や不足を探すための文書です。
+[ACCEPTANCE_SCENARIOS.md](ACCEPTANCE_SCENARIOS.md)では、具体的な利用、攻撃、離脱の場面に要求を当てはめ、矛盾や不足を探します。
 
 新しい要求を増やすためだけの確認項目ではありません。具体的な場面に当てはめ、現在の要求だけで必要な判断ができるかを確かめます。
 
-現在は、次のような場面を扱っています。社内のEndpoint pool、悪意のあるClientやWorker、Sybil、Browser Worker、Federation、Compute Grant、非決定的なAI、Artifactの展開、Control Planeの部分的な侵害、大規模なreclaim。
+扱う場面には、社内のEndpoint pool、悪意あるClientやWorker、Sybil、Browser Worker、Federation、Compute Grant、非決定的なAI、Artifactの展開、Control Planeの部分的な侵害、大規模なreclaimがあります。
 
 ### 品質特性
 
-[QUALITY_ATTRIBUTES.md](QUALITY_ATTRIBUTES.md)は、Requirementを満たす複数のArchitecture候補を比べるための、品質特性をまとめた文書です。
+[QUALITY_ATTRIBUTES.md](QUALITY_ATTRIBUTES.md)は、Requirementを満たすArchitecture候補を比較するための品質特性を定めています。
 
 セキュリティか処理能力の一方だけを最大にする案は選びません。Endpointの利用者への影響、ネットワークの効率、回復のしやすさ、相互運用性、運用のしやすさ、電力と機器の安全などを並べて、両立しにくい条件の関係を確かめます。
 

@@ -1,4 +1,4 @@
-# Artifact Locality / Transfer Cost Spike
+# Artifactの局所性と転送費用を調べる（Locality / Transfer Cost Spike）
 
 ## このSpikeの役割
 
