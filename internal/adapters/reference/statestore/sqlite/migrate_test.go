@@ -5,6 +5,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/hat47x/eki-fabric/internal/core/contract"
 	"github.com/hat47x/eki-fabric/internal/core/ids"
@@ -187,5 +188,111 @@ func TestVersion4DatabaseGainsTaskDigestGuardWithoutLosingTask(t *testing.T) {
 	_, err = upgraded.db.Exec(`UPDATE tasks SET task_ir_digest = ? WHERE task_id = ?`, rebound, task.ID.String())
 	if err == nil || !strings.Contains(err.Error(), "TaskIR digest is immutable") {
 		t.Fatalf("rebind after v5 migration error = %v, want immutable digest failure", err)
+	}
+}
+
+// revisionTimeCase is one direct row write for the revision and time CHECK
+// constraints. Each reject case violates exactly one of them, and each accepted
+// case is a valid row, so the outcome comes from the value under test alone.
+type revisionTimeCase struct {
+	name     string
+	revision int64
+	updated  int64
+	reject   bool
+}
+
+// assertCheckOutcome requires a rejected row to fail on a CHECK constraint, and
+// an accepted row to insert without error.
+func assertCheckOutcome(t testing.TB, err error, reject bool) {
+	t.Helper()
+	switch {
+	case reject && (err == nil || !strings.Contains(err.Error(), "CHECK constraint failed")):
+		t.Fatalf("insert error = %v, want a CHECK constraint failure", err)
+	case !reject && err != nil:
+		t.Fatalf("insert error = %v, want the row to be accepted", err)
+	}
+}
+
+// TestRevisionAndTimeChecksRejectDirectTaskRows checks the tasks table CHECKs
+// that require revision >= 1 and updated_at not earlier than created_at. No
+// trigger guards tasks inserts, so only these CHECKs can refuse the row.
+func TestRevisionAndTimeChecksRejectDirectTaskRows(t *testing.T) {
+	store := openStore(t, filepath.Join(t.TempDir(), "state.db"))
+	defer store.Close()
+
+	created := time.Date(2026, 10, 6, 0, 0, 0, 0, time.UTC).UnixNano()
+	cases := []revisionTimeCase{
+		{name: "revision 1 with updated after created is accepted", revision: 1, updated: created + 1},
+		{name: "revision 1 with updated equal to created is accepted", revision: 1, updated: created},
+		{name: "revision 0 is rejected", revision: 0, updated: created, reject: true},
+		{name: "updated before created is rejected", revision: 1, updated: created - 1, reject: true},
+	}
+	for _, tc := range cases {
+		tc := tc
+		t.Run(tc.name, func(t *testing.T) {
+			id, err := ids.NewTaskID()
+			if err != nil {
+				t.Fatal(err)
+			}
+			_, err = store.db.Exec(`
+INSERT INTO tasks (
+	task_id, task_ir_digest, phase, terminal_outcome, cancellation_requested,
+	revision, created_at_ns, updated_at_ns
+) VALUES (?, ?, 'ready', '', 0, ?, ?, ?)`,
+				id.String(),
+				contract.SHA256([]byte("task-check-"+tc.name)).Hex(),
+				tc.revision,
+				created,
+				tc.updated,
+			)
+			assertCheckOutcome(t, err, tc.reject)
+		})
+	}
+}
+
+// TestRevisionAndTimeChecksRejectDirectAttemptRows checks the same two CHECKs on
+// the attempts table. The insert guard only admits a first Attempt at revision
+// 1, so it is dropped here and the CHECK constraints decide each row.
+func TestRevisionAndTimeChecksRejectDirectAttemptRows(t *testing.T) {
+	store := openStore(t, filepath.Join(t.TempDir(), "state.db"))
+	defer store.Close()
+
+	task := newTaskRecord(t, "attempt-revision-time")
+	task.Phase = taskstate.TaskPhaseReady
+	if err := store.CreateTask(context.Background(), task); err != nil {
+		t.Fatalf("CreateTask() error = %v", err)
+	}
+	dropAttemptGuardTriggers(t, store)
+
+	created := task.CreatedAt.UnixNano()
+	cases := []revisionTimeCase{
+		{name: "revision 1 with updated after created is accepted", revision: 1, updated: created + 1},
+		{name: "revision 1 with updated equal to created is accepted", revision: 1, updated: created},
+		{name: "revision 0 is rejected", revision: 0, updated: created, reject: true},
+		{name: "updated before created is rejected", revision: 1, updated: created - 1, reject: true},
+	}
+	for i, tc := range cases {
+		tc := tc
+		number := int64(i + 1)
+		t.Run(tc.name, func(t *testing.T) {
+			attemptID, err := ids.NewAttemptID()
+			if err != nil {
+				t.Fatal(err)
+			}
+			_, err = store.db.Exec(`
+INSERT INTO attempts (
+	attempt_id, task_id, task_ir_digest, attempt_number, phase,
+	worker_identity, lease_id, close_reason, revision, created_at_ns, updated_at_ns
+) VALUES (?, ?, ?, ?, 'created', '', NULL, '', ?, ?, ?)`,
+				attemptID.String(),
+				task.ID.String(),
+				task.TaskIRDigest.Hex(),
+				number,
+				tc.revision,
+				created,
+				tc.updated,
+			)
+			assertCheckOutcome(t, err, tc.reject)
+		})
 	}
 }
