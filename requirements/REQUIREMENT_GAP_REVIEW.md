@@ -4,11 +4,11 @@
 
 この文書は、Architectureに進む前に、まだ残っている要求の抜けを確認するための、レビューの記録です。Product Requirements、Threat Model、Worker Assurance Model、Acceptance Scenariosを横断して確認しました。
 
-ここでの結論は、Requirementそのものではありません。追加が必要と判断した項目は、`PRODUCT_REQUIREMENTS.md`や`THREAT_MODEL.md`に反映されて、はじめて正式な要求になります。
+ここでの結論自体はRequirementではありません。追加が必要と判断した項目は、`PRODUCT_REQUIREMENTS.md`や`THREAT_MODEL.md`へ反映した時点で、正式な要求になります。
 
-第二巡目では、次の項目を追加しました。Browserの参加の可視性。悪意のあるWorkerに渡したDataを、あとから削除したとは保証できないこと。Validator / Verifierの信頼の境界。非決定的なAIのResultの、保証の上限。副作用を持つTaskのretryの境界。
+第二巡目では、Browser参加を利用者に見える状態にすること、悪意あるWorkerに渡したDataの削除を保証できないこと、Validator / Verifierの信頼境界、非決定的なAIのResultに対する保証の上限、副作用を持つTaskの再試行の境界を扱いました。
 
-第三巡目では、それらを前提にして、より運用に近い境界を確認します。複数の組織、大量のArtifact、Control Plane内部、大規模なResource Reclaim、Endpointの保護です。
+第三巡目では、これらを踏まえ、複数組織間の連携、大量のArtifact、Control Plane内部の権限、大規模なResource reclaim、Endpointの保護など、運用に近い境界を確認します。
 
 ---
 
@@ -18,9 +18,9 @@
 
 RQ-031では、複数のTrust Domainの限定的なFederationを要求しています。しかし、「外部のIdentityを検証できること」と、「どのAuthorityが発行したIdentityかを取り違えないこと」とは、さらに明示的に分けたほうが安全です。
 
-複数のTrust Domainの公開鍵やBundleを、単純に一つの集合に混ぜるとします。そして、どれかの鍵で署名を検証できればよいとします。すると、異なるDomainの間でIdentityを取り違える可能性があります。
+複数のTrust Domainの公開鍵やBundleを一つの集合に混ぜ、「どれかの鍵で署名を検証できればよい」とすると、異なるDomainのIdentityを取り違えるおそれがあります。
 
-SPIFFE Federationでも、Trust Domainの名前とBundleのbindingを保つことが求められています。また、Federationの設定そのものを改変されることが、大きなSecurity riskになることも、明示されています。
+SPIFFE Federationでも、Trust Domain名とBundleの対応を保つよう求めています。また、Federation設定そのものの改変が大きなSecurity riskになることも明示しています。
 
 ### 結論
 

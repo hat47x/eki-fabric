@@ -8,11 +8,11 @@ Product RequirementやArchitectureの正本ではありません。Browser Worke
 
 ## 結論
 
-Browser Workerには、専用のクライアントと同じ可用性を、期待すべきではありません。
+Browser Workerに、専用クライアントと同じ可用性を期待することはできません。
 
 ブラウザは、利用者の端末を守るために、非表示のタブやバックグラウンドのページの処理を抑制します。さらに、タブの終了、ブラウザの終了、OSによるプロセスの停止など、EKI側から制御できない理由で、Workerが消えることがあります。
 
-したがって、Browser Workerは、少なくとも初期の段階では、次の性質を持つ**一時的なWorker**として扱うのが、妥当です。
+そのため、少なくとも初期段階では、Browser Workerを次のような**一時的なWorker**として扱うのが妥当です。
 
 - 離脱しても再実行できるTaskを優先する。
 - 長時間の占有を前提にしない。
@@ -23,11 +23,11 @@ Browser Workerには、専用のクライアントと同じ可用性を、期待
 
 ## 背景: Browserはバックグラウンドの処理を抑制する
 
-MDNのPage Visibility APIと`setTimeout()`の説明では、多くのブラウザが、バックグラウンドまたは非表示のタブについて、timerの遅延と実行頻度を抑制することが、説明されています。
+MDNのPage Visibility APIと`setTimeout()`の説明によると、多くのブラウザは、バックグラウンドや非表示のタブでtimerの遅延を増やし、実行頻度を下げます。
 
-Chromeでは、タブの状態に応じて、段階的にtimerをthrottlingします。条件によっては、timerの確認が、大きく間引かれます。Firefoxでも、非アクティブなタブには最低の待ち時間があります。Androidでは、タブを完全にアンロードする可能性も、説明されています。
+Chromeでは、タブの状態に応じてtimerの実行頻度が段階的に下がり、条件によっては実行間隔が大きく延びます。Firefoxでも、非アクティブなタブには最低待ち時間が設けられています。Androidでは、タブが完全にアンロードされる場合もあります。
 
-参考は、次のとおりです。
+参考資料:
 
 - MDN, Page Visibility API  
   https://developer.mozilla.org/en-US/docs/Web/API/Page_Visibility_API
@@ -40,13 +40,13 @@ EKIのRequirementでは、ブラウザの実装の細部に依存するのでは
 
 ## `requestIdleCallback()`は、分散計算の予約枠ではない
 
-Background Tasks APIの説明では、idle callbackは、短い空き時間を利用するための仕組みです。予測できない長時間の処理を避けることが、推奨されています。
+Background Tasks APIでは、idle callbackを短い空き時間に使い、時間の読めない長時間処理には使わないよう案内しています。
 
 これは、EKIにとって重要です。
 
 Browserが「いまはidleである」と通知しても、数分後までCPU時間が保証されたわけではありません。EKIのTask Leaseやcheckpointの設計を、Browserのidle callbackに直接対応させるべきではありません。
 
-参考は、次のとおりです。
+参考資料:
 
 - MDN, Background Tasks API  
   https://developer.mozilla.org/en-US/docs/Web/API/Background_Tasks_API
@@ -57,7 +57,7 @@ Browserが「いまはidleである」と通知しても、数分後までCPU時
 
 一方、Browser Workerは、通常のWebページと同じ実行環境にあります。利用者が意図しないまま、CPUやGPUを消費する実装は、技術的には可能です。しかし、EKIのhuman-firstの原則とは、整合しません。
 
-そのため、Browser Workerを利用する場合は、少なくとも次のことを、上流の要件として検討する必要があります。
+そのため、Browser Workerを利用する場合は、少なくとも次の点を上流の要件として検討します。
 
 - 資源の提供を開始することが、利用者にとって明確である。
 - 停止の方法が、分かりやすい。
