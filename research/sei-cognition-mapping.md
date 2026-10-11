@@ -12,9 +12,9 @@ Product Requirement、Architecture、External Contractの正本ではありま�
 
 SEI Cognitionは、組織の遊休計算資源を、前景の作業を邪魔しない背景の認知処理に使うことを検討しています。ある仮説について別の説明を探す、反例を探す、夜間に記録を読み直して古くなった前提を探す、複数のモデルに互いの出力を批評させる、といった処理です（SEI `EMERGENT_COGNITIVE_ARCHITECTURE.md` §10〜§11）。
 
-こうした処理は、計算量が大きい一方で、失敗しても再実行でき、急ぎではないことが多いため、EKIの利用場面とよく重なります。
+こうした処理は計算量が大きい一方、失敗後も再実行でき、急ぎでない場合が多いため、EKIの想定する利用場面と重なります。
 
-SEIはその際、処理に必要な意味と制約をCognitive Envelopeという束にまとめる案を持っています（同 §4）。単純に考えれば、このEnvelopeをそのままEKIへ渡せばよさそうに見えます。しかし、それには二つの問題があります。
+SEIはその際、処理の目的や制約をCognitive Envelopeという一つのデータ構造にまとめる案を持っています（同 §4）。このEnvelopeをそのままEKIへ渡せばよさそうに見えますが、二つの問題があります。
 
 1. EKI CoreがSEIの意味（目的、未解決の問い、判断の重さなど）を読むようになると、EKIはSEI専用の基盤へ近づいていきます。これはRQ-001とProduct Principles §7に反します。
 2. `stakes`（判断の重さ）のような項目をEKIが解釈すると、「重要な判断だから優先度を上げる」「重要だから端末の安全上限を超えてもよい」といった、Clientの入力による権限拡張の入口になります（RQ-016）。
@@ -85,7 +85,7 @@ Client側のAdapterは、これを次のようなTaskRequestへ投影します�
 
 - 入力：対象となる記録の書き出しをArtifactとしてingestし、`requested_data_class`に、社内限定に相当する組織のData Classを指定する
 - `deadline`：翌朝の始業前
-- `priority`：`background`は次のとおりです。
+- `priority`：`background`
 - `reliability`：`retryable = true`、`preemptible = true`、`effect_mode = none`
 - `resources`：CPU、メモリ、wall timeの上限
 - `result_profile`：出力が所定の形式に従うかを確かめるValidator
