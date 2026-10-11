@@ -1,4 +1,4 @@
-# Strict P2 CBOR decision decoder
+# P2署名付き判断を厳格に読むCBORデコーダ
 
 Reference Go実装でP2 Placement Approval payloadを読むadapterです。
 

@@ -1,4 +1,4 @@
-# Control Plane Authority Separation Spike
+# Control Planeの権限分離を確かめる（Authority Separation Spike）
 
 ## このSpikeの役割
 

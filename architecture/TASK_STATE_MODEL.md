@@ -1,10 +1,10 @@
-# Task / Attempt / Lease / Recovery State Model
+# Task・Attempt・Lease・Recoveryの状態モデル（State Model）
 
 Status: **Baseline 0.1 — 2026-09-21**
 
 ## 1. この文書の目的
 
-EKI Fabricでは、Workerが、sleep、shutdown、network loss、Browserのdiscard、user opt-out、Providerのreclaimなどによって、頻繁に消えることを、通常の状態として扱います。
+EKI Fabricでは、Workerがスリープや停止、通信断、ブラウザの破棄、利用者の参加停止、Providerによる回収で離脱することを、通常の状態として扱います。
 
 そのため、次のような事実だけから、
 
@@ -18,7 +18,7 @@ EKI Fabricでは、Workerが、sleep、shutdown、network loss、Browserのdisca
 
 と判断することはできません。
 
-この文書では、Task、Attempt、Lease、Result、External Effect、Recoveryを分離します。そして、at-least-onceの配送やWorkerのchurnがあっても、Security、Safety、Auditの上での意味を失わない状態モデルを、定義します。
+応答がないだけでは、処理が失敗したのか、副作用が起きなかったのか、再実行してよいのかは分かりません。この文書ではTask、Attempt、Lease、Result、副作用、復旧を分け、メッセージの再配送やWorkerの頻繁な離脱があっても、安全性と監査に必要な意味を保つ状態モデルを定めます。
 
 関連する文書は、次のとおりです。
 

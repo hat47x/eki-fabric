@@ -1,4 +1,4 @@
-# LSE-1 verified Placement service
+# LSE-1検証済みPlacementサービス
 
 このpackageは、署名済みPlacement Approvalからdurable Lease reservationへ進むpre-signing境界です。#78のpolicy currentness linearizationが成立するまでは、productionのsigned Lease発行経路が完成したとは扱いません。
 

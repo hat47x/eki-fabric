@@ -1,4 +1,4 @@
-# Core authority-chain conformance
+# Coreの権限経路を確かめる適合性試験（Authority-chain conformance）
 
 This package fixes the first product-value boundary from RQ-014 Suitability
 through SCH-1 planning and PLC-1 Placement Authorization.

@@ -1,4 +1,4 @@
-# Signed Decision COSE Decoder SPI
+# 署名付き判断のCOSE Decoder SPI
 
 このpackageは、raw `COSE_Sign1` bytesをEKI Fabricのstrict signed-decision profileへ変換するConcrete codecと、Core側の間に置く**小さな内部Adapter interface**です。
 

@@ -2,7 +2,7 @@
 
 ## このディレクトリの役割
 
-このディレクトリでは、設計工程へ進むための条件を満たした後に採用した設計を、正本として管理します。
+Architecture Entry Gateを通過して採用した設計は、このディレクトリで正本として管理します。
 
 ここにある設計は、製品価値や製品要求に代わるものではありません。
 
@@ -44,11 +44,11 @@ implementation
 
 zkVMの実測に基づく性能比較、学習を用いた処理の配置、匿名参加者によるなりすまし（Sybil）への耐性、複数の構成要素にまたがる機密計算（Confidential Computing）、答えが一つに決まらないAI処理の検証などは、引き続き研究します。
 
-これらの研究が未解決である間は、特定の実装方式を前提として固定しないことが、設計工程へ進むための条件です。
+これらの研究が未解決でも、特定の実装方式を中核の前提にはしません。必要に応じて接続できる拡張点として扱います。
 
 ## 最初に固定するもの
 
-全体構成では、採用する製品やプロセス数に先立って、次の境界を定めます。
+全体構成では、製品やプロセスの数を決める前に、次の責務境界を定めます。
 
 1. 権限と信頼の境界（Authority / Trust Boundary）
 2. 外部・内部の契約の境界（External / Internal Contract Boundary）
@@ -66,7 +66,7 @@ zkVMの実測に基づく性能比較、学習を用いた処理の配置、匿�
 5. `TASK_STATE_MODEL.md`: Task、Attempt、Lease、Result、外部への副作用、回復の状態機械
 6. `EXTENSION_SPI.md`: Queue、State、Storage、Identity、Runtime、Verificationなどを差し替える境界
 
-設計基準0.1では、六つの主要領域にまたがる関係も点検しました。`BASELINE_REVIEW_2026-09-21.md`には、責務に関する重大な矛盾が見つからなかったことを記録しています。`MVP_IMPLEMENTATION_PLAN.md`には、設計基準の安全上の境界と状態の意味を守りながら、一連の処理を最小構成で通す実装、M0からM5の段階、各段階の完了条件を定めています。
+設計基準0.1では、六つの領域が互いに矛盾しないかも点検しました。`BASELINE_REVIEW_2026-09-21.md`に、その結果を記録しています。`MVP_IMPLEMENTATION_PLAN.md`では、安全上の境界と状態の意味を守りながら一連の処理を通す最小構成を示し、M0からM5までの段階と完了条件を定めています。
 
 `plan/adr/0001-protocol-surfaces-and-canonical-encoding.md`では、通信に使う技術を、接続先ごとに決めました。外部の依頼元との接続（External Client Plane）には、HTTPS、JSON、OpenAPIを使います。実行端末との通信（Worker Plane）と、別プロセスで動く接続部との通信（Adapter Plane）には、Protobuf IDLとConnectを組み合わせた参照方式を使います。署名付きの権限判断（Authority Decision）には、決定論的なCBOR、CDDL、COSE_Sign1を使います。Protobufで符号化したバイト列は、署名や汎用的な内容の指紋値を作る際の正規のバイト列には使いません。
 
@@ -74,13 +74,13 @@ P1の実行端末との通信は`spec/worker/v1/worker.proto`に、P2の署名�
 
 `plan/adr/0004-signed-decision-cryptographic-profile.md`では、権限上の役割ごとに鍵を分けること、Ed25519によるソフトウェア上の参照実装、ES256による企業システムとの相互運用、鍵の登録・交換・失効、COSEの保護されたヘッダーの検証を定めています。署名が正しいことだけを理由に操作は許可しません。権限上の役割、判断の種類、対象、現在の規則まで確認します。
 
-参照実装のGoによる中核部分では、`internal/core/authority`と`internal/core/decisiontrust`で、この境界の最小限の実装を始めています。判断の種類を考慮しない鍵の解決APIは、外部に公開していません。鍵の有効化と使用終了の時刻を含む管理周期も、検証条件に含めています。
+Goによる参照実装では、`internal/core/authority`と`internal/core/decisiontrust`に、この境界の最小限の処理を実装しています。判断の種類を考慮しない鍵の解決APIは外部に公開していません。鍵の有効化から使用終了までの期間も検証します。
 
 `spec/external/openapi.json`には、P0の外部接続向けに機械可読なスキーマを追加しました。固定したのは、Taskのsubmit、status、cancel、resultと、Artifactのingest、upload、descriptorだけです。Worker、Lease、WorkOrder、ArtifactGrantのtokenなど、内部の概念は露出していません。`spec/external/README.md`と、否定的なfixtureで、悪意ある入力に対する境界も明文化しています。
 
 `plan/adr/0002-reference-implementation-language.md`で、Reference Implementationの言語にGoを採用しました。`plan/IMPLEMENTATION_REPOSITORY_LAYOUT.md`では、`cmd/`、`internal/core`、`internal/control`、`internal/agent`、`internal/spi`、`internal/adapters`、`spec`、`conformance`のそれぞれの責務を定めました。Goのパッケージ自体を外部向けの契約の正本にはしません。最初のCore実装は、原則として`internal/`の中にとどめます。
 
-当初の計画では、この実装構成を`main`へ統合した後、M0の実行可能な最小構成へ進むこととしていました。
+当初は、この実装構成を`main`へ統合してから、M0の実行可能な最小構成へ進む計画でした。
 
 ## 論理上の権限とプロセスを分ける
 

@@ -1,10 +1,10 @@
-# External / Internal Contract Boundaries
+# 外部・内部の契約境界（External / Internal Contract Boundaries）
 
 Status: **Baseline 0.1 — 2026-09-21**
 
 ## 1. この文書の目的
 
-この文書は、EKI Fabricで情報が境界を越えるときに、次のことを定義します。
+この文書では、EKI Fabricで情報が境界を越えるときに確認する点を定めます。
 
 - 誰が、その値を作れるか
 - どの値を、untrustedな入力として扱うか
@@ -13,9 +13,9 @@ Status: **Baseline 0.1 — 2026-09-21**
 - replay、古い情報、downgradeを、どう防ぐか
 - どの情報を、ClientやWorkerに見せないか
 
-対象は、特定のJSON schema、HTTP endpoint、gRPC service、Goのstructではありません。
+特定のJSON schema、HTTP endpoint、gRPC service、Goのstructは、この文書では選びません。
 
-Wire formatを決める前に、論理的なContractを確定します。
+通信形式（Wire format）を決める前に、境界を越えて受け渡す情報の意味と責任を定めます。
 
 関連する文書は、次のとおりです。
 

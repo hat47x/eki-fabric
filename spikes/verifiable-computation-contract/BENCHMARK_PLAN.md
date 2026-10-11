@@ -1,4 +1,4 @@
-# Verifiable Computation Benchmark Plan
+# 検証可能計算のベンチマーク計画
 
 ## 目的
 

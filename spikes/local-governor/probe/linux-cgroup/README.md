@@ -1,4 +1,4 @@
-# Linux cgroup v2 capability probe
+# Linux cgroup v2の利用可能な機能を調べる（Capability probe）
 
 この小さなProgramは、EKI FabricのLocal Governorを実装するものではありません。
 

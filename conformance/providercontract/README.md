@@ -1,4 +1,4 @@
-# providercontract
+# Provider Contractの適合性試験
 
 Resource Provider（ADR-0009）のアダプタが満たすべき契約を、共通の試験群として定めるパッケージです。対象は `internal/core/resourceprovider` の `ProviderAdapter` と、五つの規則（a）〜（e）、そして期限切れから枠の回収までの時間を求める関数（RQ-048）です。
 

@@ -1,4 +1,4 @@
-# FederationとIdentity namespaceの安全性
+# Federationで識別情報の名前空間を守る（Identity namespace safety）
 
 ## この文書の役割
 

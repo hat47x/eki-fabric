@@ -1,4 +1,4 @@
-# Linux cgroup v2 enforcement harness
+# Linux cgroup v2による制御を試すハーネス（Enforcement harness）
 
 このProgramは、EKI Fabricの正式なWorker Agentではありません。
 

@@ -1,4 +1,4 @@
-# Artifact Ingest Safety Spike
+# Artifactの安全な取り込みを確かめる（Ingest Safety Spike）
 
 ## このSpikeの役割
 

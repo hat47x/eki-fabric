@@ -1,4 +1,4 @@
-# Architecture Entry Gate Review — 2026-09-21
+# Architecture Entry Gateの審査記録 — 2026-09-21
 
 ## 役割
 

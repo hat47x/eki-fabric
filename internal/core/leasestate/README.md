@@ -1,4 +1,4 @@
-# Durable Lease state
+# Lease状態の永続化（Durable Lease state）
 
 `leasestate.LeaseRecord`はLSE-1が保持する永続的なfencing stateです。
 

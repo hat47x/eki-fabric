@@ -1,4 +1,4 @@
-# Learned Scheduling Residual Simulation Spike
+# 学習型Schedulerの残差をシミュレーションで調べる（Residual Simulation Spike）
 
 ## Purpose
 

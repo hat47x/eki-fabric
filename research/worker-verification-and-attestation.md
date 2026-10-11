@@ -1,4 +1,4 @@
-# Worker Verification and Attestation Research
+# Workerの検証と遠隔証明の調査（Verification and Attestation Research）
 
 ## 役割
 

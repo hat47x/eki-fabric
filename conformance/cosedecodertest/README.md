@@ -1,4 +1,4 @@
-# COSE Decoder Conformance Harness
+# COSEデコーダの適合性試験（Decoder Conformance Harness）
 
 このpackageは、EKI Fabricのstrict signed-decision COSE profileを実装するConcrete Adapterへ、repository共通fixtureを適用するためのtest harnessです。
 

@@ -1,12 +1,12 @@
-# Deployment Profiles
+# 配備形態（Deployment Profiles）
 
 Status: **Baseline 0.1 — 2026-09-21**
 
 ## 1. この文書の目的
 
-EKI Fabricは、10〜30台ほどの社内Endpointから、Browserを含むアドホックな参加、複数の組織のFederation、Cloud Providerなどによる公益のCompute Grantまで、同じCore Principleで扱うことを、めざします。
+EKI Fabricは、10〜30台ほどの社内端末から、ブラウザを使った一時参加、複数組織の連携、Cloud Providerによる公益向けCompute Grantまでを、共通の原則で扱うことを目指します。
 
-一方で、すべての利用の形態に、同じ数のService、同じPKI、同じDatabase、同じNetworkの構成を強制すると、小規模な利用では、導入の負荷が過剰になります。
+ただし、どの利用形態にも同じ数のService、同じPKIやDatabaseを求めると、小規模な導入には負担が大きすぎます。
 
 この文書では、次の方針で、Deployment Profileを定義します。
 

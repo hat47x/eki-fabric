@@ -1,4 +1,4 @@
-# Browser Worker Lifecycle Spike
+# Browser Workerのライフサイクルを調べる（Lifecycle Spike）
 
 ## このSpikeの役割
 

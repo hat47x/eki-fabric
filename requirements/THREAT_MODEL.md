@@ -1,10 +1,10 @@
-# EKI Fabric Threat Model
+# EKI Fabric 脅威モデル（Threat Model）
 
 ## この文書の役割
 
 この文書は、EKI Fabricがどのような攻撃者を想定し、何を安全上の不変条件として守るかを定める、Threat Modelの正本です。
 
-現在は、Architectureを選ぶ前の段階にあります。そのため、具体的な暗号方式、通信方式、Sandboxの製品、Identityの製品は、ここでは決めません。
+Architecture Baselineは定めていますが、この文書では具体的な暗号方式、通信方式、SandboxやIdentityの製品を固定しません。脅威モデルでは、攻撃者と守る性質を先に定めます。
 
 ## 基本姿勢
 

@@ -1,4 +1,4 @@
-# Verifiable Computation Contract Spike
+# 検証可能計算の契約を確かめる（Verifiable Computation Spike）
 
 ## このSpikeの役割
 

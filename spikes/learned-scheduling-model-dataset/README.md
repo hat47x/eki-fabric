@@ -1,4 +1,4 @@
-# Learned Scheduling Model Dataset Freeze
+# 学習型Schedulerのモデルとデータセットを固定する（Dataset Freeze）
 
 ## Purpose
 

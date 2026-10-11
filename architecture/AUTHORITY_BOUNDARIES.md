@@ -1,14 +1,14 @@
-# Authority / Trust Boundary Map
+# 権限と信頼の境界（Authority / Trust Boundary Map）
 
 Status: **Baseline 0.1 — 2026-09-21**
 
 ## 1. この文書の目的
 
-EKI Fabricでは、Client、Worker、Control Planeのどれについても、「同じSystemの一部だから信頼する」とは考えません。
+EKI Fabricでは、Client、Worker、Control Planeのどれも、同じシステムの一部だからという理由だけで信頼しません。
 
-特にControl Plane内部を、一つの巨大な完全信頼領域として扱うと、危険があります。SchedulerやParserのような複雑なComponentが侵害されたときに、Artifactの読み出し、Executorの承認、Federationの設定の変更、WorkOrderの発行まで、一度に奪われてしまうからです。
+Control Plane内部を一つの大きな信頼領域にまとめると、SchedulerやParserが侵害された際に、Artifactの読み出し、Executorの承認、Federationの設定変更、WorkOrderの発行まで権限を奪われる危険があります。
 
-そこで、Architectureの最初に、Processの数や採用する製品よりも先に、次のことを定義します。
+そのため、この文書では、プロセスの数や採用製品を決める前に、次の役割を定義します。
 
 - 誰が事実を検証するか
 - 誰がSecurity上の判断を下すか

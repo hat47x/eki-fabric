@@ -2,13 +2,13 @@
 
 ## 目的
 
-EKI Fabricでは、実装しやすい技術を先に選び、その制約へRequirementを合わせる進め方を避けます。
+EKI Fabricでは、実装しやすい技術を先に選び、その制約に合わせて要求を変える進め方を避けます。
 
-Product Value、利用形態、Threat Model、Product Requirements、Acceptance Scenario、Assurance Model、Quality Attributeを十分に具体化し、特にリスクの高い点だけを小さな実証で確認してからArchitectureへ入ります。
+製品価値、利用形態、脅威モデル、製品要求、受け入れシナリオ、保証モデル、品質特性を具体化します。リスクの高い点は小さな実現可能性検証（Spike）で確かめてから、設計へ進みます。
 
-期限は設けません。各Phaseの終了条件とArchitecture Entry Gateの成立をもって進みます。
+期限は設けません。各段階の終了条件を満たし、Architecture Entry Gateを通過した時点で次へ進みます。
 
-## Phase 0 — Product framing
+## Phase 0 — 製品の価値と対象を定める（Product framing）
 
 ### 成果物
 
@@ -28,7 +28,7 @@ Product Value、利用形態、Threat Model、Product Requirements、Acceptance 
 
 `docs/for-readers.md`、`docs/glossary.md`、`requirements/README.md`を用意し、参画に必要な前提知識を文書側で補う導線を整備済みです。
 
-## Phase 1 — Requirements & threat discovery
+## Phase 1 — 要求と脅威を洗い出す（Requirements and threat discovery）
 
 ### 成果物
 
@@ -56,7 +56,7 @@ Product Value、利用形態、Threat Model、Product Requirements、Acceptance 
 
 今後はRequirement数を増やすこと自体を目的にせず、残るOpen QuestionがArchitecture比較へ必要な粒度まで具体化されているかを確認します。
 
-## Phase 2 — Acceptance Scenarios
+## Phase 2 — 受け入れシナリオを具体化する（Acceptance Scenarios）
 
 抽象的なRequirementを、実利用、攻撃、離脱、組織間協力の具体場面へ当てはめます。
 
@@ -102,7 +102,7 @@ Product Value、利用形態、Threat Model、Product Requirements、Acceptance 
 
 今後はScenarioを機械的に増やすより、既存27 ScenarioをPhase 3のQuality AttributeとPhase 4のSpikeへ接続します。
 
-## Phase 3 — Quality attributes / assurance model
+## Phase 3 — 品質特性と保証モデルを定める（Quality attributes / assurance model）
 
 ### 成果物
 
@@ -139,7 +139,7 @@ Quality Attributeでは、Securityだけでなく次を比較対象にします�
 
 状態: **Quality Attribute初版成立 / 定量化・Spike接続を継続**
 
-## Phase 4 — Feasibility research / spikes
+## Phase 4 — 実現可能性を調べる（Feasibility research / spikes）
 
 Architecture採用前に、Requirement上のリスクが高く、文書検討だけでは判断できない点を小さなSpikeで確認します。
 

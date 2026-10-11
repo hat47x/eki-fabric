@@ -1,4 +1,4 @@
-# Mass Reclaim Recovery Spike
+# 大量回収後の復旧を確かめる（Mass Reclaim Recovery Spike）
 
 ## このSpikeの役割
 
