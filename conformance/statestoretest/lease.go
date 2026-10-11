@@ -795,6 +795,54 @@ func RunLeaseStoreContract(t *testing.T, newStore LeaseFactory) {
 		}
 	})
 
+	t.Run("stale-epoch-only-reservation-fails-closed", func(t *testing.T) {
+		store := newStore(t)
+		task := readyTask(t, store, "stale-epoch-only")
+		stale := leaseReservation(t, store, task, "placement-stale-epoch", leaseNow, leaseNow.Add(time.Minute))
+
+		current, err := store.LoadCurrentPolicy(context.Background())
+		if err != nil {
+			t.Fatal(err)
+		}
+		revoked, err := policystate.Revoke(current, current.Epoch+1, leaseNow.Add(time.Second), "rotate policy")
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := store.CompareAndSwapPolicy(context.Background(), current.Epoch, revoked); err != nil {
+			t.Fatal(err)
+		}
+		next, err := policystate.NewActive(revoked.Epoch+1, "policy-43", leaseNow.Add(2*time.Second))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := store.CompareAndSwapPolicy(context.Background(), revoked.Epoch, next); err != nil {
+			t.Fatal(err)
+		}
+
+		// The revision named here is active at the current epoch, so the only
+		// stale field is ExpectedPolicyEpoch. The reservation must still fail.
+		stale.PolicyRevision = next.Revision
+		if _, err := store.ReserveLease(context.Background(), stale); !errors.Is(err, statestore.ErrPolicyChanged) {
+			t.Fatalf("stale-epoch reservation error = %v, want ErrPolicyChanged", err)
+		}
+		assertLeaseNotReserved(t, store, stale.LeaseID)
+
+		// The same revision presented at the current epoch is accepted, so the
+		// refusal above came from the epoch and not from the revision.
+		fresh := stale
+		fresh.LeaseID = mustLeaseID(t)
+		fresh.ExpectedPolicyEpoch = next.Epoch
+		fresh.PlacementDecisionID = "placement-current-epoch"
+		fresh.PlacementPayloadDigest = contract.SHA256([]byte("payload:placement-current-epoch"))
+		result, err := store.ReserveLease(context.Background(), fresh)
+		if err != nil {
+			t.Fatalf("current-epoch reservation error = %v", err)
+		}
+		if result.Lease.FenceEpoch != 1 {
+			t.Fatalf("refused stale-epoch reservation consumed fence: got=%d want=1", result.Lease.FenceEpoch)
+		}
+	})
+
 	t.Run("policy-revoke-blocks-exact-replay", func(t *testing.T) {
 		store := newStore(t)
 		task := readyTask(t, store, "policy-replay")
