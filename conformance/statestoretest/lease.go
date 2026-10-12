@@ -169,9 +169,9 @@ func RunLeaseStoreContract(t *testing.T, newStore LeaseFactory) {
 				r.TaskIRDigest = otherTask.TaskIRDigest
 				r.ExpectedTaskRevision = otherTask.Revision
 			}},
-			"attempt": {want: statestore.ErrPlacementDecisionConflict, mutate: func(r *statestore.LeaseReservation) { r.AttemptID = mustAttemptID(t) }},
-			"worker": {want: statestore.ErrPlacementDecisionConflict, mutate: func(r *statestore.LeaseReservation) { r.WorkerIdentity = "worker-b" }},
-			"policy": {want: statestore.ErrPolicyChanged, mutate: func(r *statestore.LeaseReservation) { r.PolicyRevision = "policy-43" }},
+			"attempt":          {want: statestore.ErrPlacementDecisionConflict, mutate: func(r *statestore.LeaseReservation) { r.AttemptID = mustAttemptID(t) }},
+			"worker":           {want: statestore.ErrPlacementDecisionConflict, mutate: func(r *statestore.LeaseReservation) { r.WorkerIdentity = "worker-b" }},
+			"policy":           {want: statestore.ErrPolicyChanged, mutate: func(r *statestore.LeaseReservation) { r.PolicyRevision = "policy-43" }},
 			"placement-expiry": {want: statestore.ErrPlacementDecisionConflict, mutate: func(r *statestore.LeaseReservation) { r.PlacementExpiresAt = r.PlacementExpiresAt.Add(time.Second) }},
 		}
 		for name, tc := range tests {
