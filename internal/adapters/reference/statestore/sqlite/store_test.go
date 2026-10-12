@@ -100,10 +100,10 @@ func TestLeaseBypassContract(t *testing.T) {
 		},
 		RebindTaskIRDigest: func(t testing.TB, store statestoretest.TaskLeaseStore, id ids.TaskID, digest contract.Digest) {
 			t.Helper()
-			// Version 5 of the schema refuses this write. The bypass contract checks
-			// the Attempt binding behind that guard, so the guard is removed here to
-			// simulate a repair that bypasses the schema. The guard itself is tested
-			// in migrate_test.go.
+			// From schema version 7 on, the schema refuses this write. The bypass
+			// contract checks the Attempt binding behind that guard, so the guard
+			// is removed here to simulate a repair that bypasses the schema. The
+			// guard itself is tested in migrate_test.go.
 			s := store.(*Store)
 			if _, err := s.db.Exec(`DROP TRIGGER tasks_task_ir_digest_immutable`); err != nil {
 				t.Fatalf("drop TaskIR digest guard: %v", err)

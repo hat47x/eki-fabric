@@ -159,7 +159,74 @@ func TestTaskIRDigestGuardRejectsDirectRebind(t *testing.T) {
 	}
 }
 
-func TestVersion4DatabaseGainsTaskDigestGuardWithoutLosingTask(t *testing.T) {
+// taskDigestGuard is the trigger that refuses a changed tasks.task_ir_digest.
+const taskDigestGuard = "tasks_task_ir_digest_immutable"
+
+// taskDigestGuardFromEarlierBuild is the guard exactly as a build between the
+// branch consolidation (PR #98) and migration 7 created it: a plain CREATE
+// TRIGGER inside migration 5. It is frozen here on purpose. Migration 7 may be
+// reworded later, but a database those builds wrote keeps this text.
+const taskDigestGuardFromEarlierBuild = `CREATE TRIGGER tasks_task_ir_digest_immutable
+BEFORE UPDATE OF task_ir_digest ON tasks
+WHEN OLD.task_ir_digest <> NEW.task_ir_digest
+BEGIN
+	SELECT RAISE(ABORT, 'task TaskIR digest is immutable');
+END`
+
+// userVersion reads PRAGMA user_version of an open store.
+func userVersion(t testing.TB, store *Store) int {
+	t.Helper()
+	var version int
+	if err := store.db.QueryRow(`PRAGMA user_version`).Scan(&version); err != nil {
+		t.Fatalf("read user_version: %v", err)
+	}
+	return version
+}
+
+// countTriggers returns how many triggers named name the database holds.
+func countTriggers(t testing.TB, store *Store, name string) int {
+	t.Helper()
+	var n int
+	if err := store.db.QueryRow(`SELECT count(*) FROM sqlite_master WHERE type = 'trigger' AND name = ?`, name).Scan(&n); err != nil {
+		t.Fatalf("count trigger %s: %v", name, err)
+	}
+	return n
+}
+
+// requireTaskUnchanged loads the Task and requires every field to equal want.
+// when says which step the load follows, for the failure message.
+func requireTaskUnchanged(t testing.TB, store *Store, want taskstate.TaskRecord, when string) {
+	t.Helper()
+	got, err := store.LoadTask(context.Background(), want.ID)
+	if err != nil {
+		t.Fatalf("LoadTask() %s error = %v", when, err)
+	}
+	if got.ID != want.ID ||
+		got.TaskIRDigest != want.TaskIRDigest ||
+		got.Phase != want.Phase ||
+		got.TerminalOutcome != want.TerminalOutcome ||
+		got.CancellationRequested != want.CancellationRequested ||
+		got.Revision != want.Revision ||
+		!got.CreatedAt.Equal(want.CreatedAt) ||
+		!got.UpdatedAt.Equal(want.UpdatedAt) {
+		t.Fatalf("Task changed %s: got=%#v want=%#v", when, got, want)
+	}
+}
+
+// requireDigestRebindRefused writes a different TaskIR digest straight into
+// the Task row, bypassing the adapter, and requires the schema to refuse it
+// and the stored digest to stay as it was.
+func requireDigestRebindRefused(t testing.TB, store *Store, task taskstate.TaskRecord, when string) {
+	t.Helper()
+	rebound := contract.SHA256([]byte("rebound:" + task.ID.String())).Hex()
+	_, err := store.db.Exec(`UPDATE tasks SET task_ir_digest = ? WHERE task_id = ?`, rebound, task.ID.String())
+	if err == nil || !strings.Contains(err.Error(), "TaskIR digest is immutable") {
+		t.Fatalf("direct TaskIR digest rebind %s error = %v, want immutable digest failure", when, err)
+	}
+	requireTaskUnchanged(t, store, task, "after the refused rebind "+when)
+}
+
+func TestVersion4DatabaseUpgradesToTheTaskDigestGuard(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "state.db")
 	old, err := openWithMigrations(context.Background(), path, migrations[:4])
 	if err != nil {
@@ -176,19 +243,92 @@ func TestVersion4DatabaseGainsTaskDigestGuardWithoutLosingTask(t *testing.T) {
 
 	upgraded := openStore(t, path)
 	defer upgraded.Close()
-	got, err := upgraded.LoadTask(context.Background(), task.ID)
-	if err != nil {
-		t.Fatalf("LoadTask() after v5 migration error = %v", err)
+	if got := userVersion(t, upgraded); got != len(migrations) {
+		t.Fatalf("user_version after upgrade from v4 = %d, want %d (latest)", got, len(migrations))
 	}
-	if got.ID != task.ID || got.TaskIRDigest != task.TaskIRDigest || got.Phase != task.Phase {
-		t.Fatalf("Task changed across v4 -> v5 migration: got=%#v want=%#v", got, task)
+	requireTaskUnchanged(t, upgraded, task, "across the v4 -> latest migration")
+	requireDigestRebindRefused(t, upgraded, task, "after the v4 -> latest migration")
+}
+
+// TestVersion5DatabaseUpgradesToTheTaskDigestGuard covers the database that
+// the shipped version 5 produced: it records the policy epoch and has no digest
+// guard. Migration 5 must stay as it shipped, so the guard has to arrive in a
+// later migration that this database has not applied yet.
+func TestVersion5DatabaseUpgradesToTheTaskDigestGuard(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "state.db")
+	old := openStoreWithMigrations(t, path, migrations[:5])
+	if got := userVersion(t, old); got != 5 {
+		t.Fatalf("fixture user_version = %d, want 5", got)
+	}
+	// Without this check the fixture could already carry the guard, and the
+	// test would pass without any migration adding it.
+	if n := countTriggers(t, old, taskDigestGuard); n != 0 {
+		t.Fatalf("version 5 fixture has %d %s trigger(s), want 0: it must be the shipped schema", n, taskDigestGuard)
+	}
+	task := newTaskRecord(t, "v5-digest-guard")
+	task.Phase = taskstate.TaskPhaseReady
+	if err := old.CreateTask(context.Background(), task); err != nil {
+		t.Fatalf("CreateTask() on v5 error = %v", err)
+	}
+	if err := old.Close(); err != nil {
+		t.Fatalf("close v5 store: %v", err)
 	}
 
-	rebound := contract.SHA256([]byte("v4-digest-guard-rebound")).Hex()
-	_, err = upgraded.db.Exec(`UPDATE tasks SET task_ir_digest = ? WHERE task_id = ?`, rebound, task.ID.String())
-	if err == nil || !strings.Contains(err.Error(), "TaskIR digest is immutable") {
-		t.Fatalf("rebind after v5 migration error = %v, want immutable digest failure", err)
+	upgraded := openStore(t, path)
+	defer upgraded.Close()
+	if got := userVersion(t, upgraded); got != len(migrations) {
+		t.Fatalf("user_version after upgrade from v5 = %d, want %d (latest)", got, len(migrations))
 	}
+	requireTaskUnchanged(t, upgraded, task, "across the v5 -> latest migration")
+	if n := countTriggers(t, upgraded, taskDigestGuard); n != 1 {
+		t.Fatalf("%s trigger count after upgrade from v5 = %d, want 1", taskDigestGuard, n)
+	}
+	requireDigestRebindRefused(t, upgraded, task, "after the v5 -> latest migration")
+}
+
+// TestVersion6DatabaseThatAlreadyHasTheDigestGuardUpgrades covers the database
+// a build with the guard inside migration 5 created: it is at version 6 and
+// already holds the trigger. Migration 7 adds the same trigger, so it must not
+// fail on the existing one and must leave exactly one.
+func TestVersion6DatabaseThatAlreadyHasTheDigestGuardUpgrades(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "state.db")
+	old := openStoreWithMigrations(t, path, migrations[:6])
+	if got := userVersion(t, old); got != 6 {
+		t.Fatalf("fixture user_version = %d, want 6", got)
+	}
+	// The guard is created by hand below; a fixture that already has it would
+	// not simulate the earlier build.
+	if n := countTriggers(t, old, taskDigestGuard); n != 0 {
+		t.Fatalf("version 6 fixture has %d %s trigger(s) before the hand-made one, want 0", n, taskDigestGuard)
+	}
+	if _, err := old.db.Exec(taskDigestGuardFromEarlierBuild); err != nil {
+		t.Fatalf("create the digest guard as the earlier build did: %v", err)
+	}
+	if n := countTriggers(t, old, taskDigestGuard); n != 1 {
+		t.Fatalf("fixture %s trigger count = %d, want 1", taskDigestGuard, n)
+	}
+	task := newTaskRecord(t, "v6-digest-guard")
+	task.Phase = taskstate.TaskPhaseReady
+	if err := old.CreateTask(context.Background(), task); err != nil {
+		t.Fatalf("CreateTask() on v6 error = %v", err)
+	}
+	if err := old.Close(); err != nil {
+		t.Fatalf("close v6 store: %v", err)
+	}
+
+	upgraded, err := Open(context.Background(), path)
+	if err != nil {
+		t.Fatalf("Open() of a v6 database that already has the digest guard error = %v, want success", err)
+	}
+	defer upgraded.Close()
+	if got := userVersion(t, upgraded); got != len(migrations) {
+		t.Fatalf("user_version after upgrade from v6 = %d, want %d (latest)", got, len(migrations))
+	}
+	requireTaskUnchanged(t, upgraded, task, "across the v6 -> latest migration")
+	if n := countTriggers(t, upgraded, taskDigestGuard); n != 1 {
+		t.Fatalf("%s trigger count after upgrade from v6 = %d, want exactly 1", taskDigestGuard, n)
+	}
+	requireDigestRebindRefused(t, upgraded, task, "after the v6 -> latest migration")
 }
 
 // revisionTimeCase is one direct row write for the revision and time CHECK
