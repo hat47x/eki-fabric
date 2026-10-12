@@ -167,18 +167,8 @@ WHEN NEW.revision <> OLD.revision + 1
 BEGIN
 	SELECT RAISE(ABORT, 'invalid attempt transition');
 END`,
-	// 5: the TaskIR digest of a Task is immutable at the schema level. The
-	// adapter's CompareAndSwapTask never writes the column, so this only
-	// refuses writes that bypass the adapter. Attempts and Leases copy the
-	// digest at creation, and a rebinding would make them describe another
-	// TaskIR.
-	`CREATE TRIGGER tasks_task_ir_digest_immutable
-BEFORE UPDATE OF task_ir_digest ON tasks
-WHEN OLD.task_ir_digest <> NEW.task_ir_digest
-BEGIN
-	SELECT RAISE(ABORT, 'task TaskIR digest is immutable');
-END;
-ALTER TABLE leases ADD COLUMN policy_epoch INTEGER NOT NULL DEFAULT 0 CHECK (policy_epoch >= 0);
+	// 5: durable Policy Epoch / revision status for Lease issuance fencing
+	`ALTER TABLE leases ADD COLUMN policy_epoch INTEGER NOT NULL DEFAULT 0 CHECK (policy_epoch >= 0);
 CREATE TABLE policy_history (
 	epoch           INTEGER NOT NULL PRIMARY KEY CHECK (epoch >= 1),
 	revision        TEXT    NOT NULL CHECK (length(revision) BETWEEN 1 AND 128),
@@ -432,7 +422,20 @@ BEFORE DELETE ON lease_emissions
 BEGIN
 	SELECT RAISE(ABORT, 'Lease emission state is immutable');
 END`,
-
+	// 7: the TaskIR digest of a Task is immutable at the schema level. The
+	// adapter's CompareAndSwapTask never writes the column, so this only
+	// refuses writes that bypass the adapter. Attempts and Leases copy the
+	// digest at creation, and a rebinding would make them describe another
+	// TaskIR. This is its own migration because a database that already
+	// applied version 5 never runs version 5 again, so a trigger added there
+	// would not reach it. IF NOT EXISTS is required because a database created
+	// by a build that carried this trigger inside migration 5 already has it.
+	`CREATE TRIGGER IF NOT EXISTS tasks_task_ir_digest_immutable
+BEFORE UPDATE OF task_ir_digest ON tasks
+WHEN OLD.task_ir_digest <> NEW.task_ir_digest
+BEGIN
+	SELECT RAISE(ABORT, 'task TaskIR digest is immutable');
+END`,
 }
 
 // migrate brings the database to the latest version. It is idempotent, rejects
