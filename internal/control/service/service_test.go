@@ -61,6 +61,22 @@ func testConfig(t testing.TB, dir string) Config {
 
 func quietLogger() *slog.Logger { return slog.New(slog.NewTextHandler(io.Discard, nil)) }
 
+// listenSignal is a log destination that reports when Start has logged that the
+// server is listening. A test that must stop a running server waits on it
+// instead of sleeping, because opening the store applies migrations and takes
+// a load-dependent amount of time.
+type listenSignal struct{ ready chan struct{} }
+
+func (w *listenSignal) Write(p []byte) (int, error) {
+	if bytes.Contains(p, []byte("control plane listening")) {
+		select {
+		case w.ready <- struct{}{}:
+		default:
+		}
+	}
+	return len(p), nil
+}
+
 func start(t *testing.T, cfg Config) *Server {
 	t.Helper()
 	s, err := Start(context.Background(), cfg, quietLogger())
@@ -213,9 +229,22 @@ func TestShutdownIsIdempotent(t *testing.T) {
 
 func TestRunStopsWhenTheContextEnds(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	listening := &listenSignal{ready: make(chan struct{}, 1)}
+	cfg := testConfig(t, t.TempDir())
 	errc := make(chan error, 1)
-	go func() { errc <- Run(ctx, testConfig(t, t.TempDir()), quietLogger()) }()
-	time.Sleep(200 * time.Millisecond)
+	go func() { errc <- Run(ctx, cfg, slog.New(slog.NewTextHandler(listening, nil))) }()
+
+	// Cancel only once the server is serving. Cancelling after a fixed sleep
+	// raced with the store migrations, and a cancellation that landed during
+	// them made Run return the cancelled context instead of stopping cleanly.
+	select {
+	case <-listening.ready:
+	case err := <-errc:
+		t.Fatalf("Run() returned before the server was listening: %v", err)
+	case <-time.After(10 * time.Second):
+		t.Fatal("Run() did not start listening")
+	}
 	cancel()
 	select {
 	case err := <-errc:
