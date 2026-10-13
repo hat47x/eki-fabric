@@ -84,7 +84,7 @@ LSE-1がWorkerへLeaseを発行する前に、State Storeへ新しいLeaseを予
 
 `RunLeaseBypassContract`は、SPIの通常の経路では作れない状態を確かめます。通常の経路では、TaskのTaskIR digestは`CompareAndSwapTask`で変更できません（`RunTaskStoreContract`の`taskir-digest-is-immutable`）。Store外からの書き換えに備えて、次の二つを確認します。
 
-- Task行のTaskIR digestが書き換えられても、Attemptの作成時のTaskIR bindingが単独で予約を拒否すること（`RebindTaskIRDigest`）。SQLite Adapterは、schema version 6でTask行のdigest変更もtriggerで拒否します。この試験では、そのtriggerを外したうえで、Attempt側の確認だけを見ます。
+- Task行のTaskIR digestが書き換えられても、Attemptの作成時のTaskIR bindingが単独で予約を拒否すること（`RebindTaskIRDigest`）。SQLite Adapterは、schema version 7以降のデータベースで、Task行のdigest変更もtriggerで拒否します。この試験では、そのtriggerを外したうえで、Attempt側の確認だけを見ます。
 - 同じPlacement Decisionの再送が、保存済みLeaseと照合を通ったあとで、Attemptの結び付け（LeaseID、Worker identity、Task ID、TaskIR digest）の一つでも食い違うと拒否されること（`OverwriteAttempt`）。食い違いのない同じ再送は、拒否の前に成功することを確かめます。そのため、拒否の原因はAttemptの結び付けだけになります。
 
 Store implementationは、これらの予約に対する拒否をErrConflictまたはErrNotFoundとして返してください。Backend固有errorへ置き換えないでください。
