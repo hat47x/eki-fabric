@@ -1,0 +1,8 @@
+{"cases":[
+{"name":"validate-reference","command":"tei validate -workspace reference/workspace -json","exit_a":0,"exit_b":0,"ms_a":8,"ms_b":9,"bytes_a":721,"same_path_rerun_equal":true,"cross_path_equal":true,"lines_with_checkout_path":0},
+{"name":"validate-first","command":"tei validate -workspace examples/first-workspace -json","exit_a":0,"exit_b":0,"ms_a":5,"ms_b":5,"bytes_a":67,"same_path_rerun_equal":true,"cross_path_equal":true,"lines_with_checkout_path":0},
+{"name":"world-reference","command":"tei world -workspace reference/workspace","exit_a":0,"exit_b":0,"ms_a":11,"ms_b":9,"bytes_a":41704,"same_path_rerun_equal":true,"cross_path_equal":true,"lines_with_checkout_path":0},
+{"name":"source-index-first","command":"tei source-index -workspace examples/first-workspace -subject-kind semantic-data -subject-id intake.request","exit_a":0,"exit_b":0,"ms_a":6,"ms_b":6,"bytes_a":701,"same_path_rerun_equal":true,"cross_path_equal":true,"lines_with_checkout_path":0},
+{"name":"scenario-verify","command":"tei scenario verify -scenario reference/driver-scenarios/order-entry-pattern-smoke.json -workspace reference/workspace","exit_a":0,"exit_b":0,"ms_a":9,"ms_b":10,"bytes_a":1325,"same_path_rerun_equal":true,"cross_path_equal":true,"lines_with_checkout_path":0},
+{"name":"scenario-run","command":"tei scenario run -scenario reference/driver-scenarios/order-entry-pattern-smoke.json -workspace reference/workspace","exit_a":0,"exit_b":0,"ms_a":10,"ms_b":10,"bytes_a":1716,"same_path_rerun_equal":true,"cross_path_equal":true,"lines_with_checkout_path":0}
+]}

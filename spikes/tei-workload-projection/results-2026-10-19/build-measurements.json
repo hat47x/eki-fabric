@@ -1,0 +1,7 @@
+{"source_revision":"1f69562b8c689c0de424e3e628e6abf5fe06fdba","go":"go version go1.26.9 linux/amd64","builds":[
+{"name":"plain-a","flags":"-buildvcs=false","ms":5194,"sha256":"97477cb7d9b077b5d5f4f698e844db26fd2f7b8aaee9e3e301425afaa452e3f0"},
+{"name":"plain-b","flags":"-buildvcs=false","ms":4534,"sha256":"f45e165ea9a08fa78e63402bd1e9b7300105ea5c62b167d9e2999f0ddfe955b5"},
+{"name":"trimpath-a","flags":"-trimpath -buildvcs=false","ms":12520,"sha256":"b2679e8f0f6eb7946e2d4fb113e0dc2b08bf4a7d210bde73024a58b728bc2f0c"},
+{"name":"trimpath-b","flags":"-trimpath -buildvcs=false","ms":814,"sha256":"b2679e8f0f6eb7946e2d4fb113e0dc2b08bf4a7d210bde73024a58b728bc2f0c"},
+{"name":"trimpath-a-coldcache","flags":"-trimpath -buildvcs=false","ms":12764,"sha256":"b2679e8f0f6eb7946e2d4fb113e0dc2b08bf4a7d210bde73024a58b728bc2f0c"}
+]}

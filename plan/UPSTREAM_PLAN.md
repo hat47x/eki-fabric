@@ -515,3 +515,20 @@ current main `9e990e7c89924fb4005264e7556b41e0e3fb62b1` を計画と再照合し
 - 失効台帳（Compute Grant）とFederation Registryの永続化。プロセスの再起動で状態が失われると、失効した Grant の再受理や、失効した Domain の再 Federationが起きる。ADR-0012に従い、別の作業で進めている。
 - 上記coreのAdapterへの接続。具体的には、Compute Grantの発行、Federationの取り込み、Local Governorの実行への組み込み。
 - Compute Grant、Federation、Local Governorの上流要件の確定。業務フローに依存する判断は、ADRで暫定として記録する。
+
+### 2026-10-19 TEIからの利用による要件の問い直し
+
+TEIがEKIを実行基盤として使う場面から、EKIの要件と設計を問い直した。検討は[TEIから使う分散基盤としてのEKI](../research/tei-usage-requirements-review.md)、実測は[TEIの仕事の投影Spike](../spikes/tei-workload-projection/README.md)、評価は[TEI利用からの圧力の評価](TEI_USAGE_STRESS_EVALUATION_2026-10-19.md)にある。候補Scenario PAS-CAND-17〜23を[Acceptance Scenarios](../requirements/ACCEPTANCE_SCENARIOS.md)へ登録した（評価待ち）。
+
+分かったこと:
+
+- TEIの決定的な操作は5〜11ミリ秒で終わり、EKIへ一件投げる往復（受理の永続化だけ）と同じ大きさだった。小さな仕事を続けて流す形態（RQ-055草案）が要る。
+- TEIの意味のある仕事は、Artifactの経路が未実装のため、現在は一件も受理されない。
+- 二経路での照合は、EKIの検証より先に、実行体の設定（`-trimpath`など）で一致・不一致が決まる。
+
+決めていないこと:
+
+- RQ-055〜RQ-058の草案と、RQ-026・RQ-011への追記案のレビュー。正本には入れていない。
+- 「つなぐ」形態、資源プール、等級を、M1以降のどの段階で扱うか。
+
+この見直しは、mainline priority guardの順位を変えない。

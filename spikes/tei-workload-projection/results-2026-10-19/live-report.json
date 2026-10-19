@@ -1,0 +1,213 @@
+{
+  "probes": [
+    {
+      "workload": "W1-validate-one",
+      "http": 422,
+      "code": "ARTIFACT_NOT_AVAILABLE",
+      "ms": 24.2,
+      "name": "L1-submit-as-projected"
+    },
+    {
+      "workload": "W2-validate-release-sweep",
+      "http": 422,
+      "code": "ARTIFACT_NOT_AVAILABLE",
+      "ms": 1.6,
+      "name": "L1-submit-as-projected"
+    },
+    {
+      "workload": "W3-scenario-run",
+      "http": 422,
+      "code": "ARTIFACT_NOT_AVAILABLE",
+      "ms": 1.2,
+      "name": "L1-submit-as-projected"
+    },
+    {
+      "workload": "W4-reproducible-build-two-paths",
+      "http": 422,
+      "code": "ARTIFACT_NOT_AVAILABLE",
+      "ms": 1.2,
+      "name": "L1-submit-as-projected"
+    },
+    {
+      "workload": "W5-generator-candidates-fanout",
+      "http": 422,
+      "code": "ARTIFACT_NOT_AVAILABLE",
+      "ms": 1.2,
+      "name": "L1-submit-as-projected"
+    },
+    {
+      "workload": "W6-visual-evaluators",
+      "http": 422,
+      "code": "ARTIFACT_NOT_AVAILABLE",
+      "ms": 1.0,
+      "name": "L1-submit-as-projected"
+    },
+    {
+      "workload": "W7-must-complete-release-evidence",
+      "http": 422,
+      "code": "ARTIFACT_NOT_AVAILABLE",
+      "ms": 1.0,
+      "name": "L1-submit-as-projected"
+    },
+    {
+      "workload": "W8-gate-c-evidence",
+      "http": 422,
+      "code": "ARTIFACT_NOT_AVAILABLE",
+      "ms": 0.8,
+      "name": "L1-submit-as-projected"
+    },
+    {
+      "workload": "W9-deployment-action",
+      "http": 422,
+      "code": "ARTIFACT_NOT_AVAILABLE",
+      "ms": 0.8,
+      "name": "L1-submit-as-projected"
+    },
+    {
+      "workload": "W1-validate-one",
+      "http": 202,
+      "code": null,
+      "ms": 13.4,
+      "name": "L1-submit-without-inputs"
+    },
+    {
+      "workload": "W2-validate-release-sweep",
+      "http": 202,
+      "code": null,
+      "ms": 9.8,
+      "name": "L1-submit-without-inputs"
+    },
+    {
+      "workload": "W3-scenario-run",
+      "http": 202,
+      "code": null,
+      "ms": 10.2,
+      "name": "L1-submit-without-inputs"
+    },
+    {
+      "workload": "W4-reproducible-build-two-paths",
+      "http": 202,
+      "code": null,
+      "ms": 10.2,
+      "name": "L1-submit-without-inputs"
+    },
+    {
+      "workload": "W5-generator-candidates-fanout",
+      "http": 202,
+      "code": null,
+      "ms": 9.0,
+      "name": "L1-submit-without-inputs"
+    },
+    {
+      "workload": "W6-visual-evaluators",
+      "http": 422,
+      "code": "RESOURCE_BUDGET_EXCEEDED",
+      "ms": 0.9,
+      "name": "L1-submit-without-inputs"
+    },
+    {
+      "workload": "W7-must-complete-release-evidence",
+      "http": 202,
+      "code": null,
+      "ms": 9.5,
+      "name": "L1-submit-without-inputs"
+    },
+    {
+      "workload": "W8-gate-c-evidence",
+      "http": 202,
+      "code": null,
+      "ms": 8.0,
+      "name": "L1-submit-without-inputs"
+    },
+    {
+      "workload": "W9-deployment-action",
+      "http": 202,
+      "code": null,
+      "ms": 8.8,
+      "name": "L1-submit-without-inputs"
+    },
+    {
+      "http": 400,
+      "code": "INVALID_TASK_REQUEST",
+      "name": "L2-digest-pin-as-field"
+    },
+    {
+      "http": 422,
+      "code": "EXTENSION_NOT_SUPPORTED",
+      "name": "L2-digest-pin-as-critical-extension"
+    },
+    {
+      "first": 202,
+      "replay": 202,
+      "same_task": true,
+      "different_body_same_key": 409,
+      "code": "IDEMPOTENCY_KEY_CONFLICT",
+      "name": "L3-idempotency"
+    },
+    {
+      "http": 202,
+      "code": null,
+      "name": "L4-submit-with-3s-deadline"
+    },
+    {
+      "http": 200,
+      "status": "queued",
+      "terminal_code": null,
+      "tei_outcome": "pending",
+      "name": "L4-status-after-deadline-passed"
+    },
+    {
+      "http": 200,
+      "status": "queued",
+      "assurance": null,
+      "tei_outcome": "pending",
+      "ms": 0.6,
+      "name": "L4-status"
+    },
+    {
+      "http": 501,
+      "code": "NOT_IMPLEMENTED",
+      "name": "L4-result"
+    },
+    {
+      "http": 501,
+      "code": "NOT_IMPLEMENTED",
+      "name": "L4-artifact-ingest-intent"
+    },
+    {
+      "http_codes": [
+        202,
+        202,
+        202,
+        202,
+        202,
+        202,
+        202,
+        202,
+        202,
+        202,
+        429,
+        429
+      ],
+      "accepted": 10,
+      "throttled": 2,
+      "submit_ms_median": 8.2,
+      "submit_ms_max": 9.2,
+      "name": "L5-fanout-12-candidates"
+    },
+    {
+      "http": 202,
+      "status": "cancelled",
+      "terminal_code": "CANCELLED",
+      "tei_outcome": "rejected",
+      "name": "L6-cancel"
+    },
+    {
+      "ok": 30,
+      "median_ms": 10.2,
+      "p90_ms": 13.2,
+      "tei_validate_local_ms": 8,
+      "name": "L7-burst-30-submit-status-roundtrip"
+    }
+  ]
+}

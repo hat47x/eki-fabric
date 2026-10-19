@@ -1,0 +1,287 @@
+{
+  "workloads": [
+    {
+      "id": "W1-validate-one",
+      "tei": "tei validate -workspace reference/workspace -json",
+      "observed": "実測 8〜9 ms、出力721 bytes、置き場所を変えても完全一致",
+      "fabric_value": "単独ではない（RQ-014）。EKIの往復の方が遅い",
+      "schema_errors": [],
+      "wanted_form_schema_errors": [
+        "$.executor: unknown property 'digest'"
+      ],
+      "needs": [
+        {
+          "key": "digest-pin",
+          "why": "実行体のdigestをClient側から安全側へ固定する場所（TEIはplugin lockでdigestまで固定する）"
+        },
+        {
+          "key": "workspace-input",
+          "why": "ワークスペース一式を内容digestで渡す経路（Artifact取り込みは501）"
+        },
+        {
+          "key": "result-fetch",
+          "why": "結果のArtifactと来歴を受け取る経路（/resultは501）"
+        },
+        {
+          "key": "resource-defaults",
+          "why": "必須の資源量5つを、等級の既定値で省略すること"
+        }
+      ]
+    },
+    {
+      "id": "W2-validate-release-sweep",
+      "tei": "全リリース版×全ワークスペースの一括検証（W1を数百件）",
+      "observed": "一件 5〜11 ms。件数で初めて意味が出る",
+      "fabric_value": "一件ずつのTaskでは往復の費用が勝つ。まとめた一件か、枠（session）が要る",
+      "schema_errors": [],
+      "wanted_form_schema_errors": [
+        "$.executor: unknown property 'digest'"
+      ],
+      "needs": [
+        {
+          "key": "workspace-input",
+          "why": "ワークスペース一式を内容digestで渡す経路（Artifact取り込みは501）"
+        },
+        {
+          "key": "result-fetch",
+          "why": "結果のArtifactと来歴を受け取る経路（/resultは501）"
+        },
+        {
+          "key": "session",
+          "why": "枠を開いて小さな依頼を続けて流す形態（つなぐ）"
+        },
+        {
+          "key": "partial-collection",
+          "why": "一群の依頼のうち期限内に終わった分だけを集める単位"
+        }
+      ]
+    },
+    {
+      "id": "W3-scenario-run",
+      "tei": "tei scenario run -scenario reference/driver-scenarios/order-entry-pattern-smoke.json -workspace reference/workspace",
+      "observed": "実測 10 ms、出力1716 bytes、置き場所を変えても完全一致",
+      "fabric_value": "シナリオ数が多い場合だけ",
+      "schema_errors": [],
+      "wanted_form_schema_errors": [
+        "$.executor: unknown property 'digest'"
+      ],
+      "needs": [
+        {
+          "key": "digest-pin",
+          "why": "実行体のdigestをClient側から安全側へ固定する場所（TEIはplugin lockでdigestまで固定する）"
+        },
+        {
+          "key": "workspace-input",
+          "why": "ワークスペース一式を内容digestで渡す経路（Artifact取り込みは501）"
+        },
+        {
+          "key": "result-fetch",
+          "why": "結果のArtifactと来歴を受け取る経路（/resultは501）"
+        },
+        {
+          "key": "equivalence",
+          "why": "「同等」の判定方法（digest一致、正規化後の一致、Validator）"
+        }
+      ]
+    },
+    {
+      "id": "W4-reproducible-build-two-paths",
+      "tei": "プラグイン/実行体の再現ビルドを、運営者の異なる二つのプールで行いdigestを比べる",
+      "observed": "-trimpathなしでは置き場所だけでdigestが不一致。-trimpathありで一致。キャッシュ温 0.8 s / 冷 12.5 s",
+      "fabric_value": "高い。二経路の比較が意味を持つ代表例",
+      "schema_errors": [],
+      "wanted_form_schema_errors": [
+        "$.executor: unknown property 'digest'"
+      ],
+      "needs": [
+        {
+          "key": "digest-pin",
+          "why": "実行体のdigestをClient側から安全側へ固定する場所（TEIはplugin lockでdigestまで固定する）"
+        },
+        {
+          "key": "workspace-input",
+          "why": "ワークスペース一式を内容digestで渡す経路（Artifact取り込みは501）"
+        },
+        {
+          "key": "result-fetch",
+          "why": "結果のArtifactと来歴を受け取る経路（/resultは501）"
+        },
+        {
+          "key": "assurance-request",
+          "why": "保証の要求（RA、経路の数、独立性の次元）"
+        },
+        {
+          "key": "equivalence",
+          "why": "「同等」の判定方法（digest一致、正規化後の一致、Validator）"
+        },
+        {
+          "key": "runtime-class",
+          "why": "結果の来歴としての実行環境の区分（OS、arch、toolchainの版）"
+        },
+        {
+          "key": "cache-affinity",
+          "why": "ビルドキャッシュやモジュールキャッシュの局所性の希望（実測で約15倍の差）"
+        },
+        {
+          "key": "toolchain-provisioning",
+          "why": "toolchainと依存モジュールを事前配置し、Worker内での取得を禁じる宣言"
+        }
+      ]
+    },
+    {
+      "id": "W5-generator-candidates-fanout",
+      "tei": "設計の場で生成器の候補12件を並列にビルドし、fixtureで30秒以内に実行して選ぶ（人が待っている）",
+      "observed": "候補ごとに go build（キャッシュ温で約1 s、冷で十数秒）＋実行（上限30 s）",
+      "fabric_value": "高い。ただし人が待つので最初の結果までの時間が効く",
+      "schema_errors": [],
+      "wanted_form_schema_errors": [
+        "$.executor: unknown property 'digest'"
+      ],
+      "needs": [
+        {
+          "key": "workspace-input",
+          "why": "ワークスペース一式を内容digestで渡す経路（Artifact取り込みは501）"
+        },
+        {
+          "key": "result-fetch",
+          "why": "結果のArtifactと来歴を受け取る経路（/resultは501）"
+        },
+        {
+          "key": "service-class",
+          "why": "応答の速さの等級（priorityは順番の希望で、応答時間の見込みを表さない）"
+        },
+        {
+          "key": "partial-collection",
+          "why": "一群の依頼のうち期限内に終わった分だけを集める単位"
+        },
+        {
+          "key": "cache-affinity",
+          "why": "ビルドキャッシュやモジュールキャッシュの局所性の希望（実測で約15倍の差）"
+        },
+        {
+          "key": "session",
+          "why": "枠を開いて小さな依頼を続けて流す形態（つなぐ）"
+        }
+      ]
+    },
+    {
+      "id": "W6-visual-evaluators",
+      "tei": "画面の見た目を、系統の異なる3つの評価者で評価し、結果を並べて残す",
+      "observed": "評価者の枠は manifest の evaluator identity/version/method で一つ",
+      "fabric_value": "評価者を別資源で動かし、来歴を残す",
+      "schema_errors": [],
+      "wanted_form_schema_errors": [
+        "$.executor: unknown property 'digest'"
+      ],
+      "needs": [
+        {
+          "key": "workspace-input",
+          "why": "ワークスペース一式を内容digestで渡す経路（Artifact取り込みは501）"
+        },
+        {
+          "key": "result-fetch",
+          "why": "結果のArtifactと来歴を受け取る経路（/resultは501）"
+        },
+        {
+          "key": "model-lineage",
+          "why": "評価者ごとのmodel lineageを来歴に残し、一致で一つにまとめない指定"
+        },
+        {
+          "key": "assurance-request",
+          "why": "保証の要求（RA、経路の数、独立性の次元）"
+        }
+      ]
+    },
+    {
+      "id": "W7-must-complete-release-evidence",
+      "tei": "リリース前夜に全証拠を翌朝までに必ず揃える。遊休PCが足りなければクラウドへ",
+      "observed": "deadline は書けるが、間に合わせるための引き上げは書けない",
+      "fabric_value": "高い（遊休資源と管理資源の統合の主目的）",
+      "schema_errors": [],
+      "wanted_form_schema_errors": [
+        "$.executor: unknown property 'digest'"
+      ],
+      "needs": [
+        {
+          "key": "escalation-budget",
+          "why": "期限に向けて保証された容量へ移す予算の権限（必達）"
+        },
+        {
+          "key": "service-class",
+          "why": "応答の速さの等級（priorityは順番の希望で、応答時間の見込みを表さない）"
+        },
+        {
+          "key": "partial-collection",
+          "why": "一群の依頼のうち期限内に終わった分だけを集める単位"
+        },
+        {
+          "key": "workspace-input",
+          "why": "ワークスペース一式を内容digestで渡す経路（Artifact取り込みは501）"
+        }
+      ]
+    },
+    {
+      "id": "W8-gate-c-evidence",
+      "tei": "tools/run-first-web-target-gate-c-evidence.sh（対象を127.0.0.1で起動しcurlで確かめる）",
+      "observed": "Worker内でのサーバ起動とloopback通信が要る",
+      "fabric_value": "中。network profileが決まるまで載らない",
+      "schema_errors": [],
+      "wanted_form_schema_errors": [
+        "$.executor: unknown property 'digest'"
+      ],
+      "needs": [
+        {
+          "key": "loopback-network",
+          "why": "Worker内でのloopback通信とサーバ起動を許すnetwork profile"
+        },
+        {
+          "key": "workspace-input",
+          "why": "ワークスペース一式を内容digestで渡す経路（Artifact取り込みは501）"
+        },
+        {
+          "key": "result-fetch",
+          "why": "結果のArtifactと来歴を受け取る経路（/resultは501）"
+        },
+        {
+          "key": "runtime-class",
+          "why": "結果の来歴としての実行環境の区分（OS、arch、toolchainの版）"
+        }
+      ]
+    },
+    {
+      "id": "W9-deployment-action",
+      "tei": "配備Executor（IdempotencyKeyつき、accepted/rejected/unknown、TEI側で照合）",
+      "observed": "外部への副作用がある",
+      "fabric_value": "未決（業務Applicationの配置に近づく）",
+      "schema_errors": [],
+      "wanted_form_schema_errors": [
+        "$.executor: unknown property 'digest'",
+        "$.reliability.effect_mode: 'client-reconciled' not in ['none']"
+      ],
+      "needs": [
+        {
+          "key": "effect-profile",
+          "why": "外部への副作用と冪等キー、照合を利用者側で行う宣言（effect_modeはnoneのみ）"
+        }
+      ]
+    }
+  ],
+  "need_frequency": {
+    "workspace-input": 8,
+    "result-fetch": 7,
+    "digest-pin": 3,
+    "partial-collection": 3,
+    "session": 2,
+    "equivalence": 2,
+    "assurance-request": 2,
+    "runtime-class": 2,
+    "cache-affinity": 2,
+    "service-class": 2,
+    "resource-defaults": 1,
+    "toolchain-provisioning": 1,
+    "model-lineage": 1,
+    "escalation-budget": 1,
+    "loopback-network": 1,
+    "effect-profile": 1
+  }
+}
