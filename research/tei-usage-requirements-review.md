@@ -10,7 +10,7 @@ TEIがEKIを実行基盤の一つとして使う場面を具体的に想定し�
 - クラウドの自動拡張する資源（用途によってはAPI GatewayやLambdaも）を資源プールに結び付け、遊休資源で足りず計算を必ず終えたい場合に使う。コストも監視したいが、権限との兼ね合いがある。
 - 高い信頼性が必要な場合は、一つの計算を複数の経路で実行し、同等の結果が得られるかを確かめる。
 
-Requirement・Architectureの正本ではありません。ここから正本を直接変えず、Requirementへ戻す論点は[TEI利用からの圧力の評価](../plan/TEI_USAGE_STRESS_EVALUATION_2026-10-19.md)で草案として扱います。TEI側の設計の正本はtei-platformリポジトリにあり、本書はEKI側で成り立つべき条件の記録に留めます（[既存オーケストレータとの接続](orchestrator-integration-and-layering.md) §7.6と同じ立場です）。
+Requirement・Architectureの正本ではありません。ここから正本を直接変えず、Requirementへ戻す論点は、GitHub Issue [#113](https://github.com/hat47x/eki-fabric/issues/113)とその子Issueで草案として整理します。TEI側の設計の正本はtei-platformリポジトリにあり、本書はEKI側で成り立つべき条件の記録に留めます（[既存オーケストレータとの接続](orchestrator-integration-and-layering.md) §7.6と同じ立場です）。
 
 TEIの記述は、2026-10-19時点のtei-platformの`main`（`1f69562b8`）のコードと文書を読んだ結果です。EKIの実装状況は、本リポジトリの`main`（`65cdd63`）時点のものです。
 
@@ -319,21 +319,21 @@ TEIの決定的な操作は、どれも5〜11ミリ秒で終わりました。�
 
 ## 6. Requirement側へ戻す論点
 
-本書から、次の論点を[TEI利用からの圧力の評価](../plan/TEI_USAGE_STRESS_EVALUATION_2026-10-19.md)で評価します。新しいRequirementの草案は、そこに置きます。
+本書から、次の論点をGitHub Issue [#113](https://github.com/hat47x/eki-fabric/issues/113)で評価します。新しいRequirementの草案と追記案は、子Issueに置きます。整理し切ったものからADRに起こします。
 
-1. 「つなぐ」形態（期限と予算のある枠の中での、小さな依頼の連続）を、要件として認めるか。
-2. 管理者が定義する資源プールと、Control Planeの観測による予実を、要件に置くか。
-3. 管理者が定義する等級を、利用者の選択の単位にするか。必須の資源量を等級の既定値で置き換えるか。
-4. 期限に向けた段階的な引き上げ（保証された容量への移動）と、その予算の権限。
-5. 費用を物理量で記録し、換算をCoreの外に置くこと。
-6. Taskの側から保証の要求（RA、経路の数、独立性の次元、同等の判定方法）を書けること。
-7. Client側から、実行体のdigestを安全側へ固定できること。
-8. Resultの来歴として、Runtime Classを返せること。
-9. 公開状態の`terminal_code`で、「実行されていないことが確か」と「分からない」を区別すること。
-10. 権限の状態と観測情報の保存先を分け、管理画面をEKIの外に置くこと。
-11. 期限を過ぎて実行されなかったTaskの公開状態を約束すること。
-12. 副作用の有無、決定性、再現性に関わる設定を、Clientの申告ではなく、管理者が登録するExecutorの属性として持つこと。
-13. ビルドキャッシュや依存モジュールのキャッシュを、局所性（RQ-008）の対象に含めること。toolchainと依存を事前に配置した実行環境を、Runtime Classとして扱うこと。
+1. 「つなぐ」形態（期限と予算のある枠の中での、小さな依頼の連続）を、要件として認めるか（[#106](https://github.com/hat47x/eki-fabric/issues/106)）。
+2. 管理者が定義する資源プールと、Control Planeの観測による予実を、要件に置くか（[#109](https://github.com/hat47x/eki-fabric/issues/109)）。
+3. 管理者が定義する等級を、利用者の選択の単位にするか。必須の資源量を等級の既定値で置き換えるか（[#107](https://github.com/hat47x/eki-fabric/issues/107)）。
+4. 期限に向けた段階的な引き上げ（保証された容量への移動）と、その予算の権限（[#108](https://github.com/hat47x/eki-fabric/issues/108)）。
+5. 費用を物理量で記録し、換算をCoreの外に置くこと（[#108](https://github.com/hat47x/eki-fabric/issues/108)）。
+6. Taskの側から保証の要求（RA、経路の数、独立性の次元、同等の判定方法）を書けること（[#112](https://github.com/hat47x/eki-fabric/issues/112)）。
+7. Client側から、実行体のdigestを安全側へ固定できること（[#112](https://github.com/hat47x/eki-fabric/issues/112)）。
+8. Resultの来歴として、Runtime Classを返せること（[#112](https://github.com/hat47x/eki-fabric/issues/112)）。
+9. 公開状態の`terminal_code`で、「実行されていないことが確か」と「分からない」を区別すること（[#111](https://github.com/hat47x/eki-fabric/issues/111)）。
+10. 権限の状態と観測情報の保存先を分け、管理画面をEKIの外に置くこと（[#109](https://github.com/hat47x/eki-fabric/issues/109)）。
+11. 期限を過ぎて実行されなかったTaskの公開状態を約束すること（[#111](https://github.com/hat47x/eki-fabric/issues/111)）。
+12. 副作用の有無、決定性、再現性に関わる設定を、Clientの申告ではなく、管理者が登録するExecutorの属性として持つこと（[#110](https://github.com/hat47x/eki-fabric/issues/110)、[#112](https://github.com/hat47x/eki-fabric/issues/112)）。
+13. ビルドキャッシュや依存モジュールのキャッシュを、局所性（RQ-008）の対象に含めること。toolchainと依存を事前に配置した実行環境を、Runtime Classとして扱うこと（[#112](https://github.com/hat47x/eki-fabric/issues/112)）。
 
 ## 7. Open Question
 
@@ -354,4 +354,4 @@ TEIの決定的な操作は、どれも5〜11ミリ秒で終わりました。�
 - [Product Requirements](../requirements/PRODUCT_REQUIREMENTS.md)
 - [Acceptance Scenarios](../requirements/ACCEPTANCE_SCENARIOS.md)のPAS-CAND-17〜23
 - [TEIの仕事の投影Spike](../spikes/tei-workload-projection/README.md)
-- [TEI利用からの圧力の評価](../plan/TEI_USAGE_STRESS_EVALUATION_2026-10-19.md)
+- GitHub Issue [#113](https://github.com/hat47x/eki-fabric/issues/113)（TEI利用から出た候補Scenarioの評価）

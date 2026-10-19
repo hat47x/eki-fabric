@@ -11,7 +11,7 @@ TEIがEKIを実行基盤として使う場面を、文書上の想定ではな�
 3. TEIの仕事を、現在のTaskRequest（`eki.task-request/v1`）にどこまで書けるか。書けないものは何か（RQ-002、RQ-011、RQ-016）。
 4. 実際の`eki-control`に投げたとき、TEI側のAdapterは何を観測し、どこで止まるか。
 
-背景と問い直しの全体は[TEIから使う分散基盤としてのEKI](../../research/tei-usage-requirements-review.md)にあります。ここで見つけた論点の評価は[TEI利用からの圧力の評価](../../plan/TEI_USAGE_STRESS_EVALUATION_2026-10-19.md)で行います。このSpikeだけを根拠に、Product RequirementやArchitectureを変えません。
+背景と問い直しの全体は[TEIから使う分散基盤としてのEKI](../../research/tei-usage-requirements-review.md)にあります。ここで見つけた論点の評価は、GitHub Issue [#113](https://github.com/hat47x/eki-fabric/issues/113)で行います。このSpikeだけを根拠に、Product RequirementやArchitectureを変えません。
 
 ## 構成
 
