@@ -819,7 +819,7 @@ Trace: RQ-015, RQ-016, RQ-028, RQ-051
 
 この節のScenarioも、評価待ちの候補です。PAS番号を付けず、PAS-01〜PAS-27にも数えません。
 
-TEIがEKIを実行基盤として使う場面と、そこから出てくる次の構想を扱います。応答の速さが要る仕事と長時間・大容量の仕事を一つの基盤で扱うこと、資源プールごとの予実、利用者が等級を選ぶこと、クラウドへの引き上げ、複数経路での実行です。背景と問い直しは、[TEIから使う分散基盤としてのEKI](../research/tei-usage-requirements-review.md)にあります。実際のTEIのコマンドと`eki-control`で試した結果は、[TEIの仕事の投影Spike](../spikes/tei-workload-projection/README.md)にあります。評価はGitHub Issue [#113](https://github.com/hat47x/eki-fabric/issues/113)で行います。
+TEIがEKIを実行基盤として使う場面と、そこから出てくる次の構想を扱います。応答の速さが要る仕事と長時間・大容量の仕事を一つの基盤で扱うこと、資源プールごとの予実、利用者が等級を選ぶこと、クラウドへの引き上げ、複数経路での実行です。背景と問い直しは、[TEIから使う分散基盤としてのEKI](../research/integration/tei-usage-requirements-review.md)にあります。実際のTEIのコマンドと`eki-control`で試した結果は、[TEIの仕事の投影Spike](../spikes/tei-workload-projection/README.md)にあります。評価はGitHub Issue [#113](https://github.com/hat47x/eki-fabric/issues/113)で行います。
 
 ここから新しいRequirementは作りません。TEIの意味は状況の説明にとどめ、workload contractの性質だけで書きます。どれも、M0とMVPが成り立つための条件ではありません。
 

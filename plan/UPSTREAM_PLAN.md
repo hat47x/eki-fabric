@@ -518,7 +518,7 @@ current main `9e990e7c89924fb4005264e7556b41e0e3fb62b1` を計画と再照合し
 
 ### 2026-10-19 TEIからの利用による要件の問い直し
 
-TEIがEKIを実行基盤として使う場面から、EKIの要件と設計を問い直した。検討は[TEIから使う分散基盤としてのEKI](../research/tei-usage-requirements-review.md)、実測は[TEIの仕事の投影Spike](../spikes/tei-workload-projection/README.md)、評価はGitHub Issue [#113](https://github.com/hat47x/eki-fabric/issues/113)とその子Issueで行う。候補Scenario PAS-CAND-17〜23を[Acceptance Scenarios](../requirements/ACCEPTANCE_SCENARIOS.md)へ登録した（評価待ち）。
+TEIがEKIを実行基盤として使う場面から、EKIの要件と設計を問い直した。検討は[TEIから使う分散基盤としてのEKI](../research/integration/tei-usage-requirements-review.md)、実測は[TEIの仕事の投影Spike](../spikes/tei-workload-projection/README.md)、評価はGitHub Issue [#113](https://github.com/hat47x/eki-fabric/issues/113)とその子Issueで行う。候補Scenario PAS-CAND-17〜23を[Acceptance Scenarios](../requirements/ACCEPTANCE_SCENARIOS.md)へ登録した（評価待ち）。
 
 分かったこと:
 

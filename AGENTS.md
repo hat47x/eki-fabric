@@ -5,19 +5,40 @@ EKI Fabricの文書構成と上流工程の管理ルールです。
 ## 文書構成
 
 ```text
-product/          守る価値・Vision・原則
-requirements/     満たすべきProduct RequirementとThreat Model
-research/         外部事例・標準・比較調査。要求や設計の正本ではない
-spikes/           Architecture採用前の小さな実現可能性検証。仮説・条件・観測・限界を記録する
-architecture/     Gate通過後に採用する論理構造・責務境界・Contractの設計正本
-plan/             上流工程、Acceptance Scenario、Gate、ADR、作業計画
-  adr/            長く残る設計判断（設計段階以降）
-docs/             初見の読者、利用者、実装者向けの説明と用語整理
+product/                    守る価値・Vision・原則
+requirements/               要求の正本。Product Requirement、Threat Model、Assurance Model、
+                            Quality Attribute、Acceptance Scenario（評価待ちの候補を含む）
+research/                   調査メモ。要求や設計の正本ではない
+  topics/                   技術領域ごとの外部事例・標準・比較調査
+  integration/              隣接製品（SEI、SUI、TEIなど）や既存基盤との接続・層構造の検討
+spikes/<名前>/              Architecture採用前の小さな実現可能性検証
+  README.md                 役割、構成、実行方法、限界
+  RESULTS_YYYY-MM-DD.md     その日の実行の条件、観測、一般化できる範囲
+  evidence/YYYY-MM-DD/      その日の実行の生の出力（測定値、レポートのJSONなど）
+architecture/               Gate通過後に採用する論理構造・責務境界・Contractの設計正本
+plan/                       上流工程、Gate、判断の記録
+  UPSTREAM_PLAN.md          工程と判断の履歴。日付付きの節を追記する
+  adr/                      長く残る設計判断（設計段階以降）
+  reviews/                  Gate判定など、日付で内容を固定するレビュー記録
+docs/                       初見の読者、利用者、実装者向けの説明と用語整理
+spec/                       言語中立の外部契約（OpenAPI、Protobuf、CDDL）と例
 ```
+
+## 置き場所の決め方
+
+ファイルが増えても一覧の読みやすさを保つため、次の順で置き場所を決めます。
+
+1. 評価、Requirementの草案、未決の論点、作業の残りは、ファイルではなくGitHub Issueで整理する。まとまったテーマは、まとめのIssueと、判断の単位ごとの子Issueに分ける。
+2. Issueで整理し切った設計判断はADR（`plan/adr/`）に起こす。要求の変更は`requirements/`の正本へ反映する。
+3. 日付付きの文書を、どのディレクトリの直下にも新しく置かない。日付で内容を固定する必要がある記録は、Spikeの結果なら`spikes/<名前>/RESULTS_YYYY-MM-DD.md`、Gate判定などのレビューなら`plan/reviews/`に置く。
+4. 調査メモは`research/topics/`か`research/integration/`に置き、`research/`の直下には新しく置かない。
+5. Acceptance Scenarioの候補（PAS-CAND）は`requirements/ACCEPTANCE_SCENARIOS.md`の候補の節に書き、評価はIssueで行う。
+
+既存の文書のうち上の構成に合わないものは、[#114](https://github.com/hat47x/eki-fabric/issues/114)で移します。移すまでの間は、既存の場所とリンクを壊しません。
 
 ## 正本ルール
 
-- 価値判断は`product/`、要求は`requirements/`、外部調査は`research/`、実現可能性検証は`spikes/`、工程・Gate・判断履歴は`plan/`を正本とする。
+- 価値判断は`product/`、要求は`requirements/`、調査は`research/`、実現可能性検証は`spikes/`、工程・Gate・判断履歴は`plan/`を正本とする。検討中の評価と未決の論点は、GitHub Issueを正本とする。
 - `spikes/`の結果は、その実験条件で観測した事実と一般化可能な範囲を分けて記す。Spikeだけを根拠にProduct RequirementやArchitectureを暗黙に変更しない。
 - 同じ要求を複数文書へ複製しない。説明文書は要求IDや正本文書を参照する。
 - `docs/`は理解を助けるための説明層であり、Product RequirementやSecurity Invariantの第二正本にしない。

@@ -10,7 +10,7 @@ TEIがEKIを実行基盤の一つとして使う場面を具体的に想定し�
 - クラウドの自動拡張する資源（用途によってはAPI GatewayやLambdaも）を資源プールに結び付け、遊休資源で足りず計算を必ず終えたい場合に使う。コストも監視したいが、権限との兼ね合いがある。
 - 高い信頼性が必要な場合は、一つの計算を複数の経路で実行し、同等の結果が得られるかを確かめる。
 
-Requirement・Architectureの正本ではありません。ここから正本を直接変えず、Requirementへ戻す論点は、GitHub Issue [#113](https://github.com/hat47x/eki-fabric/issues/113)とその子Issueで草案として整理します。TEI側の設計の正本はtei-platformリポジトリにあり、本書はEKI側で成り立つべき条件の記録に留めます（[既存オーケストレータとの接続](orchestrator-integration-and-layering.md) §7.6と同じ立場です）。
+Requirement・Architectureの正本ではありません。ここから正本を直接変えず、Requirementへ戻す論点は、GitHub Issue [#113](https://github.com/hat47x/eki-fabric/issues/113)とその子Issueで草案として整理します。TEI側の設計の正本はtei-platformリポジトリにあり、本書はEKI側で成り立つべき条件の記録に留めます（[既存オーケストレータとの接続](../orchestrator-integration-and-layering.md) §7.6と同じ立場です）。
 
 TEIの記述は、2026-10-19時点のtei-platformの`main`（`1f69562b8`）のコードと文書を読んだ結果です。EKIの実装状況は、本リポジトリの`main`（`65cdd63`）時点のものです。
 
@@ -24,7 +24,7 @@ TEIの記述は、2026-10-19時点のtei-platformの`main`（`1f69562b8`）の�
 6. コストは、EKI Coreでは**物理量**（vCPU秒、呼び出し回数、転送量など）で記録し、金額への換算はCoreの外に置きます。これでADR-0010（Coreに価格や通貨の語彙を持ち込まない）と両立できます。支出の上限は、クラウド側の予算設定と、EKIの管理者権限（予算の付与）の二重で守ります（§4.4）。
 7. 複数経路での実行は、「同等」の判定方法と、経路の独立性をTaskの側から指定できなければ意味がありません。TEIでは、**再現可能なビルドの成果物のdigestを二つの経路で比べる**用途が最もよく合います。生成AIの評価では、一致は正しさの根拠になりません（§4.5）。
 8. TEIから見た最大の欠落は、次の四つです。(a) 実行体のdigestをClient側から固定（安全側へ制限）できない。(b) 入力と出力のArtifactを渡す経路が未実装。(c) Resultの来歴として、実行環境の区分（OS、CPUアーキテクチャ、ツールチェーンなど）が返らない。(d) TEIの実行結果の三値（accepted / rejected / unknown）へ、EKIの公開状態を対応づける約束がない（§5）。
-9. 実際のTEIのコマンドと`eki-control`で試したところ、TEIの決定的な操作は5〜11ミリ秒で終わり、EKIへ一件投げる往復（受理の永続化だけ）とほぼ同じでした。TEIの意味のある仕事は、Artifactの経路が未実装のため一件も受理されません。ビルドの二経路比較は、`-trimpath`の有無で一致・不一致が分かれ、キャッシュの有無で約15倍の時間差が出ました（§5.6、[Spike](../spikes/tei-workload-projection/README.md)）。
+9. 実際のTEIのコマンドと`eki-control`で試したところ、TEIの決定的な操作は5〜11ミリ秒で終わり、EKIへ一件投げる往復（受理の永続化だけ）とほぼ同じでした。TEIの意味のある仕事は、Artifactの経路が未実装のため一件も受理されません。ビルドの二経路比較は、`-trimpath`の有無で一致・不一致が分かれ、キャッシュの有無で約15倍の時間差が出ました（§5.6、[Spike](../../spikes/tei-workload-projection/README.md)）。
 10. 中央のコントロールノードは、EKIの設計にすでにあります（Control Plane）。ただし、**権限の状態**と、**管理画面のための観測情報**は、同じ保存先に置かない方がよいと考えます。管理画面はEKIの外で動かし、EKIが止まっても最小の運用手段が残る構成にします（§4.6）。
 
 ## 2. TEIが実際にEKIへ持ち込む仕事
@@ -58,7 +58,7 @@ TEIには、外部の実行先へ処理を渡せる箇所が二つあります�
 
 EKIのTaskは、このどちらにも対応づけられます。TEIから見れば、EKIの`task_id`が「意味を持たない永続的な参照」です。EKIの公開状態は、TEIの三値に写す必要があります（§5.3）。
 
-依存の向きは、[既存オーケストレータとの接続](orchestrator-integration-and-layering.md) §7のとおり、TEI → EKIの一方向です。EKIはTEIの語彙を持ち込みません（`conformance/productboundary`で検査されています）。
+依存の向きは、[既存オーケストレータとの接続](../orchestrator-integration-and-layering.md) §7のとおり、TEI → EKIの一方向です。EKIはTEIの語彙を持ち込みません（`conformance/productboundary`で検査されています）。
 
 ## 4. 構想の問い直し
 
@@ -96,7 +96,7 @@ SEIの背景の認知処理も似た形をとります。小さな問い合わ�
 
 #### 守る境界
 
-- 「つなぐ」は、常時動き続けるサービスの運用ではありません。枠には期限があり、期限が来れば閉じます。[既存オーケストレータとの接続](orchestrator-integration-and-layering.md) §5.9で、常駐サービスをEKIの外に置くとした判断は変えません。
+- 「つなぐ」は、常時動き続けるサービスの運用ではありません。枠には期限があり、期限が来れば閉じます。[既存オーケストレータとの接続](../orchestrator-integration-and-layering.md) §5.9で、常駐サービスをEKIの外に置くとした判断は変えません。
 - 枠を開いたことは、特定のWorkerを使い続ける権利ではありません。EKIは枠の途中で資源を入れ替えられます。
 
 #### 未決
@@ -123,7 +123,7 @@ SEIの背景の認知処理も似た形をとります。小さな問い合わ�
 
 - 資源プールを、管理者権限（Administrative Plane）で定義する単位として要件に置きます。プールは、Worker Class、管理主体、Data Classの上限、Assuranceの上限、資源の上限を持ちます。Workerは、管理者の設定と検証済みの根拠によってプールに属します。Workerの自己申告では属しません（RQ-047）。
 - 予実の値は、Control Planeが自分で観測できる時刻と出来事だけから作ります。たとえば、受理から配置までの時間、配置からResult Claimまでの時間、Leaseの失効やreclaimの回数、検証の不一致の回数です。Workerが申告するCPU時間は、Axis Gの`self-reported`として別に扱い、予実の中心にはしません。
-- 予実は、配置判断の入力（Authorityを持たないObservation、[Control/Data Plane](../architecture/CONTROL_DATA_PLANE.md) §42）として使います。予実が良いことを理由に、検証を省いたり、高いData Classを置いたりはしません。
+- 予実は、配置判断の入力（Authorityを持たないObservation、[Control/Data Plane](../../architecture/CONTROL_DATA_PLANE.md) §42）として使います。予実が良いことを理由に、検証を省いたり、高いData Classを置いたりはしません。
 
 #### 開示の段階
 
@@ -149,7 +149,7 @@ SEIの背景の認知処理も似た形をとります。小さな問い合わ�
 
 現在のTaskRequestは、`cpu_millis`、`memory_bytes`、`wall_time_seconds`、`output_bytes_max`、`network_bytes_max`の五つが**必須**です。TEIから`tei validate`を一件投げるだけでも、利用者はこれらの値を決めなければなりません。適切な値を知らない利用者は、大きめの値を書き、予算を無駄に確保します。
 
-受理の側にも問題があります。現在の受理の上限は、全Taskで共通の一組しかありません。[Spike](../spikes/tei-workload-projection/README.md)では、メモリ8GiBを要する画面の評価だけが`RESOURCE_BUDGET_EXCEEDED`で拒否されました。これを通すには、すべての利用者、すべての仕事の上限を一緒に上げるしかありません。仕事の種類ごとに上限を分ける単位がないのです。
+受理の側にも問題があります。現在の受理の上限は、全Taskで共通の一組しかありません。[Spike](../../spikes/tei-workload-projection/README.md)では、メモリ8GiBを要する画面の評価だけが`RESOURCE_BUDGET_EXCEEDED`で拒否されました。これを通すには、すべての利用者、すべての仕事の上限を一緒に上げるしかありません。仕事の種類ごとに上限を分ける単位がないのです。
 
 #### 提案
 
@@ -214,7 +214,7 @@ RA-2（複製）、RA-3（管理下での再計算や抜き取り）、Axis E（
 | シナリオ試験 | 証拠JSONのうち、時刻やパスを除いた部分の一致 | 試験の結果が環境に依存しない | 試験の網羅性 |
 | 画面の見た目の評価 | 一致させない。評価者ごとの結果を並べて返す | どの評価者が何を出したかの来歴 | 見た目が業務上正しいこと（RQ-045） |
 
-Spikeで確かめたところ、TEIの決定的なCLI操作6種は、ワークスペースを相対パスで渡せば、置き場所を変えても出力が完全に一致しました。一方、TEIの実行体のビルドは、`-trimpath`を付けないと置き場所の名前だけでdigestが変わりました（[Spike](../spikes/tei-workload-projection/README.md)の観測2）。二経路での一致は、EKIの検証の仕組みより先に、**実行体の作り方**で決まります。
+Spikeで確かめたところ、TEIの決定的なCLI操作6種は、ワークスペースを相対パスで渡せば、置き場所を変えても出力が完全に一致しました。一方、TEIの実行体のビルドは、`-trimpath`を付けないと置き場所の名前だけでdigestが変わりました（[Spike](../../spikes/tei-workload-projection/README.md)の観測2）。二経路での一致は、EKIの検証の仕組みより先に、**実行体の作り方**で決まります。
 
 ここから二つのことが言えます。
 
@@ -234,7 +234,7 @@ EKIは、中央のControl Plane（`eki-control`）を前提にしています。
 #### 問い直すべき点
 
 - **権限の状態と、観測情報を同じ場所に置かない**。Taskの状態、Lease、Fence、Policyの版は、権限の判断に使う状態です。管理画面のための予実、ジョブの一覧、資源の使用量は、観測情報です。観測情報は量が多く、集計の負荷も高い一方で、使えなくなっても権限の判断に影響してはなりません。観測情報は、Control Planeから一方向に書き出し、別の保存先（OTLPを受ける観測基盤など）に置く構成を推します。
-- **管理画面はEKIの外で動かす**。EKIの管理画面をTEIで作る方針（[Upstream Plan](../plan/UPSTREAM_PLAN.md)）と、TEIがEKI上で動く方針を同時に採ると、循環が生じます（[既存オーケストレータとの接続](orchestrator-integration-and-layering.md) §7.4）。管理画面は、観測基盤を読むだけのアプリケーションとして、EKIに依存しない場所で動かします。EKIが止まった場合のために、CLIによる最小の運用手段を残します。
+- **管理画面はEKIの外で動かす**。EKIの管理画面をTEIで作る方針（[Upstream Plan](../../plan/UPSTREAM_PLAN.md)）と、TEIがEKI上で動く方針を同時に採ると、循環が生じます（[既存オーケストレータとの接続](../orchestrator-integration-and-layering.md) §7.4）。管理画面は、観測基盤を読むだけのアプリケーションとして、EKIに依存しない場所で動かします。EKIが止まった場合のために、CLIによる最小の運用手段を残します。
 - **管理画面から権限の操作をするかどうか**。閲覧だけなら、観測基盤を読むだけで済みます。予算の付与やプールの停止を管理画面から行う場合、その操作は管理者権限（ADM-1）の経路を通り、署名と監査の対象になります。閲覧と操作は、別の権限として分けます。
 - 現在の実装には、メトリクスの出力も、ヘルスチェックの入口もありません（1要求ごとに一行のログだけです）。予実の管理を始める前に、まず観測情報の出口を作る必要があります。
 
@@ -301,7 +301,7 @@ TEIの配備Executorは、accepted / rejected / unknownの三値で結果を受�
 
 TEIの配備の実行は、外部への副作用を伴う操作です。EKIの`effect_mode`は現在`none`だけです。TEIは、冪等キーと照合（reconciliation）によって、自分で完了を確かめる仕組みを持っています。これは、RQ-046が求める「実行済みかどうか分からない状態を、回復の判断に渡す」相手として、そのまま使えます。
 
-ただし、EKIが配備を動かすことは、[既存オーケストレータとの接続](orchestrator-integration-and-layering.md) §7.3で未決としている「業務Applicationの配置」に近づきます。副作用を持つ仕事をEKIの主要な用途にするかどうか（Product Requirementsの未決事項10）を決めるまで、TEIの配備はEKIに載せない方がよいと考えます。
+ただし、EKIが配備を動かすことは、[既存オーケストレータとの接続](../orchestrator-integration-and-layering.md) §7.3で未決としている「業務Applicationの配置」に近づきます。副作用を持つ仕事をEKIの主要な用途にするかどうか（Product Requirementsの未決事項10）を決めるまで、TEIの配備はEKIに載せない方がよいと考えます。
 
 ### 5.5 必須の資源量
 
@@ -309,7 +309,7 @@ TEIの配備の実行は、外部への副作用を伴う操作です。EKIの`e
 
 ### 5.6 Spikeで見つかった追加の欠落
 
-[Spike](../spikes/tei-workload-projection/README.md)で実際の`eki-control`に投げたところ、文書を読むだけでは見えなかった点が三つありました。
+[Spike](../../spikes/tei-workload-projection/README.md)で実際の`eki-control`に投げたところ、文書を読むだけでは見えなかった点が三つありました。
 
 - **期限を過ぎても`queued`のまま変わらない**。3秒の期限を付けたTaskが、5秒後も`queued`で、`terminal_code`もありませんでした。現在はスケジューラがないので当然の振る舞いです。しかし、「期限を過ぎて実行されなかったTaskが、いつ、どの状態になるか」は、契約にも書かれていません。TEIのAdapterは、待ち続けるか、自分で諦めるかを決められません。期限切れを公開状態として約束する必要があります（PAS-CAND-01の「終わらなかったTaskを、成功とも結果が空とも取り違えない」とも関わります）。
 - **副作用のある仕事も、Clientが`effect_mode: "none"`と書けば受理される**。Clientの申告を信用しない前提（RQ-015）からは、驚くことではありません。ただし、副作用の有無を安全の根拠に使う（再実行してよいかを決める）なら、その情報はClientの申告ではなく、管理者が登録するExecutorの属性として持つ必要があります。現在の受理の方針は、Executorを`id`の許可リストで持つだけで、属性を持ちません。
@@ -347,11 +347,11 @@ TEIの決定的な操作は、どれも5〜11ミリ秒で終わりました。�
 
 ## 関連文書
 
-- [既存オーケストレータとの接続、およびSEI・TEIとの層構造](orchestrator-integration-and-layering.md)
-- [AI時代の価値と位置づけ](ai-era-value-positioning.md)
-- [SEI Cognitionとの対応ノート](sei-cognition-mapping.md)
-- [Worker Assurance Model](../requirements/ASSURANCE_MODEL.md)
-- [Product Requirements](../requirements/PRODUCT_REQUIREMENTS.md)
-- [Acceptance Scenarios](../requirements/ACCEPTANCE_SCENARIOS.md)のPAS-CAND-17〜23
-- [TEIの仕事の投影Spike](../spikes/tei-workload-projection/README.md)
+- [既存オーケストレータとの接続、およびSEI・TEIとの層構造](../orchestrator-integration-and-layering.md)
+- [AI時代の価値と位置づけ](../ai-era-value-positioning.md)
+- [SEI Cognitionとの対応ノート](../sei-cognition-mapping.md)
+- [Worker Assurance Model](../../requirements/ASSURANCE_MODEL.md)
+- [Product Requirements](../../requirements/PRODUCT_REQUIREMENTS.md)
+- [Acceptance Scenarios](../../requirements/ACCEPTANCE_SCENARIOS.md)のPAS-CAND-17〜23
+- [TEIの仕事の投影Spike](../../spikes/tei-workload-projection/README.md)
 - GitHub Issue [#113](https://github.com/hat47x/eki-fabric/issues/113)（TEI利用から出た候補Scenarioの評価）
