@@ -37,7 +37,7 @@ implementation
 
 詳細は次の文書にあります。
 
-- ../plan/ARCHITECTURE_ENTRY_REVIEW_2026-09-21.md
+- ../plan/reviews/ARCHITECTURE_ENTRY_REVIEW_2026-09-21.md
 - ../plan/UPSTREAM_PLAN.md
 
 ただし、これは条件付きの合格です。
@@ -66,7 +66,7 @@ zkVMの実測に基づく性能比較、学習を用いた処理の配置、匿�
 5. `TASK_STATE_MODEL.md`: Task、Attempt、Lease、Result、外部への副作用、回復の状態機械
 6. `EXTENSION_SPI.md`: Queue、State、Storage、Identity、Runtime、Verificationなどを差し替える境界
 
-設計基準0.1では、六つの領域が互いに矛盾しないかも点検しました。`BASELINE_REVIEW_2026-09-21.md`に、その結果を記録しています。`MVP_IMPLEMENTATION_PLAN.md`では、安全上の境界と状態の意味を守りながら一連の処理を通す最小構成を示し、M0からM5までの段階と完了条件を定めています。
+設計基準0.1では、六つの領域が互いに矛盾しないかも点検しました。[`plan/reviews/BASELINE_REVIEW_2026-09-21.md`](../plan/reviews/BASELINE_REVIEW_2026-09-21.md)に、その結果を記録しています。`MVP_IMPLEMENTATION_PLAN.md`では、安全上の境界と状態の意味を守りながら一連の処理を通す最小構成を示し、M0からM5までの段階と完了条件を定めています。
 
 `plan/adr/0001-protocol-surfaces-and-canonical-encoding.md`では、通信に使う技術を、接続先ごとに決めました。外部の依頼元との接続（External Client Plane）には、HTTPS、JSON、OpenAPIを使います。実行端末との通信（Worker Plane）と、別プロセスで動く接続部との通信（Adapter Plane）には、Protobuf IDLとConnectを組み合わせた参照方式を使います。署名付きの権限判断（Authority Decision）には、決定論的なCBOR、CDDL、COSE_Sign1を使います。Protobufで符号化したバイト列は、署名や汎用的な内容の指紋値を作る際の正規のバイト列には使いません。
 

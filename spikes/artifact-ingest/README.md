@@ -165,4 +165,4 @@ approved Artifact
 - Go `archive/zip`
   - https://pkg.go.dev/archive/zip
 - EKI調査メモ
-  - `../../research/artifact-ingest-safety.md`
+  - `../../research/topics/artifact-ingest-safety.md`

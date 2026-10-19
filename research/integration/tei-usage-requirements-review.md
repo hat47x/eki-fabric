@@ -10,7 +10,7 @@ TEIがEKIを実行基盤の一つとして使う場面を具体的に想定し�
 - クラウドの自動拡張する資源（用途によってはAPI GatewayやLambdaも）を資源プールに結び付け、遊休資源で足りず計算を必ず終えたい場合に使う。コストも監視したいが、権限との兼ね合いがある。
 - 高い信頼性が必要な場合は、一つの計算を複数の経路で実行し、同等の結果が得られるかを確かめる。
 
-Requirement・Architectureの正本ではありません。ここから正本を直接変えず、Requirementへ戻す論点は、GitHub Issue [#113](https://github.com/hat47x/eki-fabric/issues/113)とその子Issueで草案として整理します。TEI側の設計の正本はtei-platformリポジトリにあり、本書はEKI側で成り立つべき条件の記録に留めます（[既存オーケストレータとの接続](../orchestrator-integration-and-layering.md) §7.6と同じ立場です）。
+Requirement・Architectureの正本ではありません。ここから正本を直接変えず、Requirementへ戻す論点は、GitHub Issue [#113](https://github.com/hat47x/eki-fabric/issues/113)とその子Issueで草案として整理します。TEI側の設計の正本はtei-platformリポジトリにあり、本書はEKI側で成り立つべき条件の記録に留めます（[既存オーケストレータとの接続](orchestrator-integration-and-layering.md) §7.6と同じ立場です）。
 
 TEIの記述は、2026-10-19時点のtei-platformの`main`（`1f69562b8`）のコードと文書を読んだ結果です。EKIの実装状況は、本リポジトリの`main`（`65cdd63`）時点のものです。
 
@@ -58,7 +58,7 @@ TEIには、外部の実行先へ処理を渡せる箇所が二つあります�
 
 EKIのTaskは、このどちらにも対応づけられます。TEIから見れば、EKIの`task_id`が「意味を持たない永続的な参照」です。EKIの公開状態は、TEIの三値に写す必要があります（§5.3）。
 
-依存の向きは、[既存オーケストレータとの接続](../orchestrator-integration-and-layering.md) §7のとおり、TEI → EKIの一方向です。EKIはTEIの語彙を持ち込みません（`conformance/productboundary`で検査されています）。
+依存の向きは、[既存オーケストレータとの接続](orchestrator-integration-and-layering.md) §7のとおり、TEI → EKIの一方向です。EKIはTEIの語彙を持ち込みません（`conformance/productboundary`で検査されています）。
 
 ## 4. 構想の問い直し
 
@@ -96,7 +96,7 @@ SEIの背景の認知処理も似た形をとります。小さな問い合わ�
 
 #### 守る境界
 
-- 「つなぐ」は、常時動き続けるサービスの運用ではありません。枠には期限があり、期限が来れば閉じます。[既存オーケストレータとの接続](../orchestrator-integration-and-layering.md) §5.9で、常駐サービスをEKIの外に置くとした判断は変えません。
+- 「つなぐ」は、常時動き続けるサービスの運用ではありません。枠には期限があり、期限が来れば閉じます。[既存オーケストレータとの接続](orchestrator-integration-and-layering.md) §5.9で、常駐サービスをEKIの外に置くとした判断は変えません。
 - 枠を開いたことは、特定のWorkerを使い続ける権利ではありません。EKIは枠の途中で資源を入れ替えられます。
 
 #### 未決
@@ -234,7 +234,7 @@ EKIは、中央のControl Plane（`eki-control`）を前提にしています。
 #### 問い直すべき点
 
 - **権限の状態と、観測情報を同じ場所に置かない**。Taskの状態、Lease、Fence、Policyの版は、権限の判断に使う状態です。管理画面のための予実、ジョブの一覧、資源の使用量は、観測情報です。観測情報は量が多く、集計の負荷も高い一方で、使えなくなっても権限の判断に影響してはなりません。観測情報は、Control Planeから一方向に書き出し、別の保存先（OTLPを受ける観測基盤など）に置く構成を推します。
-- **管理画面はEKIの外で動かす**。EKIの管理画面をTEIで作る方針（[Upstream Plan](../../plan/UPSTREAM_PLAN.md)）と、TEIがEKI上で動く方針を同時に採ると、循環が生じます（[既存オーケストレータとの接続](../orchestrator-integration-and-layering.md) §7.4）。管理画面は、観測基盤を読むだけのアプリケーションとして、EKIに依存しない場所で動かします。EKIが止まった場合のために、CLIによる最小の運用手段を残します。
+- **管理画面はEKIの外で動かす**。EKIの管理画面をTEIで作る方針（[Upstream Plan](../../plan/UPSTREAM_PLAN.md)）と、TEIがEKI上で動く方針を同時に採ると、循環が生じます（[既存オーケストレータとの接続](orchestrator-integration-and-layering.md) §7.4）。管理画面は、観測基盤を読むだけのアプリケーションとして、EKIに依存しない場所で動かします。EKIが止まった場合のために、CLIによる最小の運用手段を残します。
 - **管理画面から権限の操作をするかどうか**。閲覧だけなら、観測基盤を読むだけで済みます。予算の付与やプールの停止を管理画面から行う場合、その操作は管理者権限（ADM-1）の経路を通り、署名と監査の対象になります。閲覧と操作は、別の権限として分けます。
 - 現在の実装には、メトリクスの出力も、ヘルスチェックの入口もありません（1要求ごとに一行のログだけです）。予実の管理を始める前に、まず観測情報の出口を作る必要があります。
 
@@ -301,7 +301,7 @@ TEIの配備Executorは、accepted / rejected / unknownの三値で結果を受�
 
 TEIの配備の実行は、外部への副作用を伴う操作です。EKIの`effect_mode`は現在`none`だけです。TEIは、冪等キーと照合（reconciliation）によって、自分で完了を確かめる仕組みを持っています。これは、RQ-046が求める「実行済みかどうか分からない状態を、回復の判断に渡す」相手として、そのまま使えます。
 
-ただし、EKIが配備を動かすことは、[既存オーケストレータとの接続](../orchestrator-integration-and-layering.md) §7.3で未決としている「業務Applicationの配置」に近づきます。副作用を持つ仕事をEKIの主要な用途にするかどうか（Product Requirementsの未決事項10）を決めるまで、TEIの配備はEKIに載せない方がよいと考えます。
+ただし、EKIが配備を動かすことは、[既存オーケストレータとの接続](orchestrator-integration-and-layering.md) §7.3で未決としている「業務Applicationの配置」に近づきます。副作用を持つ仕事をEKIの主要な用途にするかどうか（Product Requirementsの未決事項10）を決めるまで、TEIの配備はEKIに載せない方がよいと考えます。
 
 ### 5.5 必須の資源量
 
@@ -347,9 +347,9 @@ TEIの決定的な操作は、どれも5〜11ミリ秒で終わりました。�
 
 ## 関連文書
 
-- [既存オーケストレータとの接続、およびSEI・TEIとの層構造](../orchestrator-integration-and-layering.md)
-- [AI時代の価値と位置づけ](../ai-era-value-positioning.md)
-- [SEI Cognitionとの対応ノート](../sei-cognition-mapping.md)
+- [既存オーケストレータとの接続、およびSEI・TEIとの層構造](orchestrator-integration-and-layering.md)
+- [AI時代の価値と位置づけ](../topics/ai-era-value-positioning.md)
+- [SEI Cognitionとの対応ノート](sei-cognition-mapping.md)
 - [Worker Assurance Model](../../requirements/ASSURANCE_MODEL.md)
 - [Product Requirements](../../requirements/PRODUCT_REQUIREMENTS.md)
 - [Acceptance Scenarios](../../requirements/ACCEPTANCE_SCENARIOS.md)のPAS-CAND-17〜23

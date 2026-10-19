@@ -34,7 +34,7 @@ EKI Fabricでは、実装しやすい技術を先に選び、その制約に合�
 
 - `requirements/PRODUCT_REQUIREMENTS.md`
 - `requirements/THREAT_MODEL.md`
-- `requirements/REQUIREMENT_GAP_REVIEW.md`
+- `plan/reviews/REQUIREMENT_GAP_REVIEW.md`
 - 利用主体、保護対象、攻撃者、Security Invariant一覧
 - Open Questions
 
@@ -292,7 +292,7 @@ Verifiable computationについては、`spikes/verifiable-computation-contract/
 
 状態: **条件付きPASS — 2026-09-21**
 
-判定根拠は `plan/ARCHITECTURE_ENTRY_REVIEW_2026-09-21.md` にまとめました。Phase 0〜3の主要成果物と、Phase 4の主要高リスクSpikeについて、Architecture候補を比較するための境界・失敗条件・保証上限が説明可能な状態です。
+判定根拠は `plan/reviews/ARCHITECTURE_ENTRY_REVIEW_2026-09-21.md` にまとめました。Phase 0〜3の主要成果物と、Phase 4の主要高リスクSpikeについて、Architecture候補を比較するための境界・失敗条件・保証上限が説明可能な状態です。
 
 Issue #19（learned scheduling / resource prediction）とIssue #23（実zkVM prover benchmark）は継続研究として残します。ただし、前者はSecurity / Authorization / Data localityのhard filter後段でshadow modeから扱い、後者はoptional Result Assurance extensionの実測です。いずれも未解決部分をBaselineへ先取りして固定しないことを条件に、Architecture baselineの作成開始を妨げないと判断しました。
 
@@ -320,7 +320,7 @@ P0 External Schemaは `spec/external/openapi.json` でmachine-readable化しま�
 
 Protocol Technologyは `plan/adr/0001-protocol-surfaces-and-canonical-encoding.md` で初期選定しました。External Client PlaneはHTTPS + JSON + OpenAPI、Worker / out-of-process Adapter PlaneはProtobuf IDL + Connect reference transport、Authority署名対象はdeterministic CBOR + CDDL + COSE_Sign1とします。Raw JSON / raw Protobuf bytesをidempotencyやAuthority fingerprintのcanonical bytesへ使わず、strict parse / validation後のsemantic projectionをdeterministic CBORへencodeしてhashする方針です。
 
-Architecture Baseline横断レビューでは、Authority / Contract / Control-Data Plane / Deployment / State / Extension SPIの間に重大な矛盾がないことを確認しました。`architecture/BASELINE_REVIEW_2026-09-21.md` でArtifactGrantとData Grant、Result Verification / Acceptance / Task State、generic declassification非搭載等のcanonical解釈を整理しています。`architecture/MVP_IMPLEMENTATION_PLAN.md` では、malicious Client→Admission→Placement→signed WorkOrder→2+ Native Worker→ArtifactGrant→Result Verification / Acceptance→reclaim / bounded retryというE2E vertical sliceをMVPの中心に置き、Federation / Browser / TEE / zkVM / learned scheduler等は初回MVP必須から外しています。
+Architecture Baseline横断レビューでは、Authority / Contract / Control-Data Plane / Deployment / State / Extension SPIの間に重大な矛盾がないことを確認しました。`plan/reviews/BASELINE_REVIEW_2026-09-21.md` でArtifactGrantとData Grant、Result Verification / Acceptance / Task State、generic declassification非搭載等のcanonical解釈を整理しています。`architecture/MVP_IMPLEMENTATION_PLAN.md` では、malicious Client→Admission→Placement→signed WorkOrder→2+ Native Worker→ArtifactGrant→Result Verification / Acceptance→reclaim / bounded retryというE2E vertical sliceをMVPの中心に置き、Federation / Browser / TEE / zkVM / learned scheduler等は初回MVP必須から外しています。
 
 この段階でも未解決研究を先取りして特定実装へ固定しません。Architectureの各作業単位は最新`main`から開始し、PR / merge後に履歴を収束させます。
 
@@ -451,7 +451,7 @@ current main `9e990e7c89924fb4005264e7556b41e0e3fb62b1` を計画と再照合し
 
 ### 2026-10-06 位置づけの見直し — 管理クラスタとの統合とTEIの稼働基盤
 
-今後2〜5年の生成AI・AI Agentの普及を想定し、Product Valueの位置づけを見直した。検討は [AI時代の価値と位置づけ](../research/ai-era-value-positioning.md) と [既存オーケストレータとの接続、およびSEI・TEIとの層構造](../research/orchestrator-integration-and-layering.md) にある。
+今後2〜5年の生成AI・AI Agentの普及を想定し、Product Valueの位置づけを見直した。検討は [AI時代の価値と位置づけ](../research/topics/ai-era-value-positioning.md) と [既存オーケストレータとの接続、およびSEI・TEIとの層構造](../research/integration/orchestrator-integration-and-layering.md) にある。
 
 決めたこと（正本は[Product Value](../product/value.md)）:
 
@@ -464,7 +464,7 @@ current main `9e990e7c89924fb4005264e7556b41e0e3fb62b1` を計画と再照合し
 
 - 最初のResource Provider Adapterの参照実装の範囲。調査メモではKubernetes + Kueue、次にSlurm、次にNomadを推奨しているが、利用組織の実環境の確認が必要。
 - Resource Provider Adapterの契約の語彙、管理クラスタの信頼ドメインの扱い、選択肢B・C（調査メモ§3）の扱い。
-- 候補Scenario PAS-CAND-07〜16の評価は完了した（[評価記録](PAS_CAND_07_16_EVALUATION_2026-10-06.md)）。RQ-054の草案のレビューと、Open Questionの解決が残る。
+- 候補Scenario PAS-CAND-07〜16の評価は完了した（[評価記録](reviews/PAS_CAND_07_16_EVALUATION_2026-10-06.md)）。RQ-054の草案のレビューと、Open Questionの解決が残る（[#120](https://github.com/hat47x/eki-fabric/issues/120)で追う）。
 
 この見直しは、上のmainline priority guardの順位を変えない。Resource Provider Adapterの検討は、M0 vertical sliceの成立後に、Spikeとして始める。
 

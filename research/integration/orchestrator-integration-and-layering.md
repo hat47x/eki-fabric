@@ -8,7 +8,7 @@ EKI Fabricを「管理されたクラスタと遊休資源を一つの基盤で�
 2. 下位のオーケストレータとEKIの間で、既存のTask / Attempt / Lease状態モデルや権限分離がどこで衝突するか
 3. SEI・TEIをどの層に置くか
 
-Requirement・Architectureの正本ではありません。[AI時代の価値と位置づけ](ai-era-value-positioning.md)の続きにあたります。製品の採用状況や既定値は、2026年10月時点の検索結果と一般的な知識に基づく見立てです。採用判断の前に、一次情報と利用組織の実環境で確認してください。
+Requirement・Architectureの正本ではありません。[AI時代の価値と位置づけ](../topics/ai-era-value-positioning.md)の続きにあたります。製品の採用状況や既定値は、2026年10月時点の検索結果と一般的な知識に基づく見立てです。採用判断の前に、一次情報と利用組織の実環境で確認してください。
 
 ## 1. 先に結論
 
@@ -30,9 +30,9 @@ Requirement・Architectureの正本ではありません。[AI時代の価値と
 
 置換する上位を目指すと、最小公倍数の機能しか使えなくなるか、各製品の機能を全部作り直すことになります。成熟した製品との正面からの競合にもなります。
 
-そこで、EKIが所有するのは、既存のEKI設計がすでに定めている範囲に限ります。Task Admission（ADM-2）、Placement（SCH-1、PLC-1）、Lease（LSE-1）、Result受理（RVR-1、RAC-1）、予算と回復の規則です（[Authority Boundaries](../architecture/AUTHORITY_BOUNDARIES.md)）。下位固有の機能は、**能力として宣言させ、そのまま通す**方式を基本とします（[Extension SPI](../architecture/EXTENSION_SPI.md)のCapability Negotiation）。
+そこで、EKIが所有するのは、既存のEKI設計がすでに定めている範囲に限ります。Task Admission（ADM-2）、Placement（SCH-1、PLC-1）、Lease（LSE-1）、Result受理（RVR-1、RAC-1）、予算と回復の規則です（[Authority Boundaries](../../architecture/AUTHORITY_BOUNDARIES.md)）。下位固有の機能は、**能力として宣言させ、そのまま通す**方式を基本とします（[Extension SPI](../../architecture/EXTENSION_SPI.md)のCapability Negotiation）。
 
-複数対応が必要という見立てには同意します。一つの下位製品にしか対応しない「上位」は、その製品の拡張機能と区別がつかず、利用者を固定しないという価値（[Product Value](../product/value.md)の「Interoperability before ecosystem lock-in」）とも合いません。少なくとも二系統で契約が成立することを確かめて、初めて「上位の契約」と呼べます。
+複数対応が必要という見立てには同意します。一つの下位製品にしか対応しない「上位」は、その製品の拡張機能と区別がつかず、利用者を固定しないという価値（[Product Value](../../product/value.md)の「Interoperability before ecosystem lock-in」）とも合いません。少なくとも二系統で契約が成立することを確かめて、初めて「上位の契約」と呼べます。
 
 ## 3. 接続の構造：三つの選択肢
 
@@ -81,7 +81,7 @@ Kueue / SkyPilot / Temporal ──▶ EKI ──▶ Kubernetes / Slurm / Nomad /
 | コンテナ・クラウドネイティブ | Kubernetes。バッチ向けにKueue、Volcano、YuniKorn | 企業内で最も接続需要が高いと見込まれる。GPU・AI用途が多い。Kueueは複数チームの割当てと公平分配に強く、Volcanoは同時起動が必要な分散バッチ（gang scheduling）に強いとされる | 最優先で接続。Kueueを前提にする |
 | マルチクラスタ | Kueue MultiKueue、Karmada、Open Cluster Management | 複数のKubernetesクラスタを束ねる。Karmadaは2026年9月にCNCFのgraduated projectになったと報じられている | 個別接続はせず、Kubernetes接続の先として扱う |
 | HPC・バッチ | Slurm | 研究機関・大規模AI学習の現場で多い。gang schedulingや公平分配が成熟している | 第二に接続 |
-| 軽量な混在基盤 | Nomad | Kubernetes以外のworkload（コンテナ、VM、バイナリ）を同じ基盤で扱える。EKIの調査（[Reference Systems](reference-systems.md)）でもControl Planeとexecution nodeの分離で参考にしている | 第三に接続 |
+| 軽量な混在基盤 | Nomad | Kubernetes以外のworkload（コンテナ、VM、バイナリ）を同じ基盤で扱える。EKIの調査（[Reference Systems](../topics/reference-systems.md)）でもControl Planeとexecution nodeの分離で参考にしている | 第三に接続 |
 | 遊休・機会的資源 | HTCondor、BOINC | HTCondorは、キーボードやマウスが止まった端末だけを使い、使い始めたら中断して別の端末へ移すcycle scavengingの先行事例。資源と依頼の双方が条件を出して照合するClassAdを持つ | 設計の参照元。大学等の既存HTCondor資源を公益目的のCompute Grantで使う場合は、将来の接続先にもなり得る |
 | マルチクラウドのAI資源仲介 | SkyPilot | Kubernetes、Slurm、20以上のクラウドを一つのインタフェースで扱う。2026年にはLLM生成コードを実行するSandbox機能も告知されている | 目的が一部重なる。選択肢Cで、EKIを供給元として裏側に入れる関係を検討する |
 | Workflow / durable execution | Temporal、Argo Workflows、Airflow等 | 長い業務フローの状態管理。EKIのTaskは、その一ステップとして呼ばれる関係になりやすい | 置換せず、上位の呼び出し元として共存 |
@@ -106,7 +106,7 @@ HTCondorは遊休端末の利用で長い実績があります。EKIの遊休資
 
 ## 5. 二層スケジューリングで生じる衝突
 
-選択肢Aでは、EKIが「どの資源提供者へ置くか」を決め、下位のオーケストレータが「その中のどのノードで動かすか」を決めます。この二層構造は、EKIの既存の状態モデル（[Task State Model](../architecture/TASK_STATE_MODEL.md)）と、次の点で衝突します。
+選択肢Aでは、EKIが「どの資源提供者へ置くか」を決め、下位のオーケストレータが「その中のどのノードで動かすか」を決めます。この二層構造は、EKIの既存の状態モデル（[Task State Model](../../architecture/TASK_STATE_MODEL.md)）と、次の点で衝突します。
 
 ### 5.1 下位の自動再試行が、見えない再実行になる
 
@@ -191,7 +191,7 @@ EKIのLeaseは「このAttemptをこの時間範囲で割り当てる」一時�
 
 ### 提供者をまたぐ再計算は、独立性の一つの軸になる
 
-[AI時代の価値と位置づけ](ai-era-value-positioning.md)のV2で述べたとおり、同じモデルを同じ環境で複数回動かしても、独立した確認にはなりません。異なる運営者の資源提供者（社内クラスタと組織間の提供枠など）で再計算することは、「運営者」という軸での独立性を与えます。管理クラスタと遊休資源を同じ基盤で扱うことは、この独立性の選択肢を増やすという利点も持ちます。
+[AI時代の価値と位置づけ](../topics/ai-era-value-positioning.md)のV2で述べたとおり、同じモデルを同じ環境で複数回動かしても、独立した確認にはなりません。異なる運営者の資源提供者（社内クラスタと組織間の提供枠など）で再計算することは、「運営者」という軸での独立性を与えます。管理クラスタと遊休資源を同じ基盤で扱うことは、この独立性の選択肢を増やすという利点も持ちます。
 
 ## 7. TEIはEKI上で稼働する
 
@@ -237,7 +237,7 @@ TEIが「EKIを参照・操作する」のではなく「EKI上で稼働する�
 
 ### 7.4 依存の循環を作らない
 
-EKIの管理画面や運用画面をTEIで作る方針（[Upstream Plan](../plan/UPSTREAM_PLAN.md)のTEI適用方針）と、TEIがEKI上で稼働する方針を同時に採ると、「EKIの運用画面が、EKI上のTEIで動く」循環が生じます。EKIが故障したときに、EKIを直す画面が動かない状態は避けなければなりません。
+EKIの管理画面や運用画面をTEIで作る方針（[Upstream Plan](../../plan/UPSTREAM_PLAN.md)のTEI適用方針）と、TEIがEKI上で稼働する方針を同時に採ると、「EKIの運用画面が、EKI上のTEIで動く」循環が生じます。EKIが故障したときに、EKIを直す画面が動かない状態は避けなければなりません。
 
 - EKI Kernel、Local Governor、署名権限は、TEIにも、EKI自身による配置にも依存させない。native-firstの領域を維持する。
 - EKIの管理画面をTEIで作る場合、その画面はEKIの外（EKIに依存しない実行環境）で動かす。または、EKIが停止しても使える最小の運用手段（CLI等）を残す。
@@ -290,7 +290,7 @@ MVPのvertical slice（悪意あるClientから受理し、2台以上のNative W
 
 ### 反映候補のAcceptance Scenario
 
-`ORC-n`は本書内の番号です。2026-10-06に、ORC-1〜ORC-5をそれぞれ`PAS-CAND-12`〜`PAS-CAND-16`として[Acceptance Scenarios](../requirements/ACCEPTANCE_SCENARIOS.md)へ登録しました（評価待ち）。
+`ORC-n`は本書内の番号です。2026-10-06に、ORC-1〜ORC-5をそれぞれ`PAS-CAND-12`〜`PAS-CAND-16`として[Acceptance Scenarios](../../requirements/ACCEPTANCE_SCENARIOS.md)へ登録しました（評価待ち）。
 
 | 候補 | 状況 | 既存との関係 |
 |---|---|---|
@@ -322,11 +322,11 @@ MVPのvertical slice（悪意あるClientから受理し、2台以上のNative W
 
 ## 関連文書
 
-- [AI時代の価値と位置づけ](ai-era-value-positioning.md)
+- [AI時代の価値と位置づけ](../topics/ai-era-value-positioning.md)
 - [SEI Cognitionとの対応ノート](sei-cognition-mapping.md)
-- [Reference Systems Research](reference-systems.md)
-- [Authority Boundaries](../architecture/AUTHORITY_BOUNDARIES.md)
-- [Task State Model](../architecture/TASK_STATE_MODEL.md)
-- [Extension SPI](../architecture/EXTENSION_SPI.md)
-- [Deployment Profiles](../architecture/DEPLOYMENT_PROFILES.md)
-- [Upstream Plan](../plan/UPSTREAM_PLAN.md)
+- [Reference Systems Research](../topics/reference-systems.md)
+- [Authority Boundaries](../../architecture/AUTHORITY_BOUNDARIES.md)
+- [Task State Model](../../architecture/TASK_STATE_MODEL.md)
+- [Extension SPI](../../architecture/EXTENSION_SPI.md)
+- [Deployment Profiles](../../architecture/DEPLOYMENT_PROFILES.md)
+- [Upstream Plan](../../plan/UPSTREAM_PLAN.md)

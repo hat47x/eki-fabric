@@ -166,7 +166,7 @@ SEIがEKIのContribution Recordを受け取るとすれば、「どの資源が�
 
 もう一つ注意が必要なのは、業務端末のContributionを時刻付きで細かく渡すと、端末利用者がいつ席を外していたかを読み取れてしまうことです。外部へ渡す粒度は、RQ-040（不要な開示をしない監査）とRQ-018の範囲で決める必要があります。
 
-この対応はSEIへの依存を作るものではありません。EKIは、Contribution RecordをSEIへ送らなくても成り立ちます。SEIとの対応の全体像は [SEI Cognitionとの対応ノート](sei-cognition-mapping.md) にまとめています。
+この対応はSEIへの依存を作るものではありません。EKIは、Contribution RecordをSEIへ送らなくても成り立ちます。SEIとの対応の全体像は [SEI Cognitionとの対応ノート](../integration/sei-cognition-mapping.md) にまとめています。
 
 ## Requirementへの反映
 

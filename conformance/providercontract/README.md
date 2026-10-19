@@ -127,7 +127,7 @@ slurm.conf と sbatch の版は固定していません。上の既定値は取�
 
 1. **既定で再試行が無効だが、投入ごとに無効化できない提供者。** 現在は副作用のあるタスクを拒否する（`PlaceWithRetryRule`）。理由は、管理者の設定で再試行が有効になり得て、EKIは投入の時点でそれを見ることも防ぐこともできないためである。受け入れる場合に必要な実行時の確認は未決である。
 2. **冪等性の根拠がないが、副作用もないタスク。** 現在は再試行に敏感として扱う（`TaskProfile.RetrySensitive`）。ADR-0007 は副作用のない純粋計算を予算内で再実行してよいとしている。この差をどう埋めるか（純粋計算を区別する入力を足すか）は未決である。
-3. **先取りと下層の再試行。** フィクスチャは先取りを EKI から見た reclaim として報告し、Lease を終える。既定設定の Kubernetes では、中断された Pod の置換が同じ Job 内で起き得る。Slurm でも PreemptMode=REQUEUE の場合は、先取りされたジョブが再キューされ得る。これらを実クラスタでどう観測し、Lease Authority へどう渡すかは未決である（research/orchestrator-integration-and-layering.md 5.1、5.2、RQ-046、RQ-052）。
+3. **先取りと下層の再試行。** フィクスチャは先取りを EKI から見た reclaim として報告し、Lease を終える。既定設定の Kubernetes では、中断された Pod の置換が同じ Job 内で起き得る。Slurm でも PreemptMode=REQUEUE の場合は、先取りされたジョブが再キューされ得る。これらを実クラスタでどう観測し、Lease Authority へどう渡すかは未決である（research/integration/orchestrator-integration-and-layering.md 5.1、5.2、RQ-046、RQ-052）。
 4. **上流の既定値の版。** 確認はページの公開版に対するもので、版は固定していない。接続するクラスタの実際の版で、既定値を改めて確かめる必要がある。
 5. **未確認の値。** 残る未確認は backoffLimit 0 の実際の動作だけである。2026-10-09 に次を確認した。Slurm の PreemptMode の既定値は OFF（「Is the default value and disables job preemption and gang scheduling.」、出典 https://slurm.schedmd.com/slurm.conf.html）。自動再キューの上限 MaxBatchRequeue の既定値は 5（「The default value is 5.」、同じ出典）。ただし、フィクスチャがこの上限を再試行として扱うかは未決である。
 6. **管理された状態の宣言（DeclaredManaged）。** `ManagedForPlacement` は管理者のポリシーだけを読み、`Declaration.DeclaredManaged` は読まない。`DeclaredManaged` を読む箇所はリポジトリにない。`ManagedForPlacement` を呼ぶのは本パッケージの試験と共通試験（`suite.go`）だけで、本番コードからの呼び出しはない。今回は実装しない。決めるべきことは、フィールドを監査用の記録として残すか削除するか、管理者ポリシーをどの権限主体（Policy authority）から得るか、である。
@@ -139,5 +139,5 @@ slurm.conf と sbatch の版は固定していません。上の既定値は取�
 
 - [ADR-0009 管理された資源は資源プロバイダとして接続する](../../plan/adr/0009-managed-resources-as-providers.md)
 - [ADR-0007 外部副作用の再実行規則（暫定）](../../plan/adr/0007-provisional-side-effect-retry-policy.md)
-- [既存オーケストレータとの接続と層構造](../../research/orchestrator-integration-and-layering.md)（5.1 から 5.3、5.8）
+- [既存オーケストレータとの接続と層構造](../../research/integration/orchestrator-integration-and-layering.md)（5.1 から 5.3、5.8）
 - 要求: RQ-018、RQ-019、RQ-046、RQ-047、RQ-048、RQ-051、RQ-052（[requirements/PRODUCT_REQUIREMENTS.md](../../requirements/PRODUCT_REQUIREMENTS.md)）

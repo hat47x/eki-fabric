@@ -8,12 +8,12 @@ Status: **Reviewed / Implementation Planning Ready**
 
 対象は、次のとおりです。
 
-- `AUTHORITY_BOUNDARIES.md`
-- `CONTRACT_BOUNDARIES.md`
-- `CONTROL_DATA_PLANE.md`
-- `DEPLOYMENT_PROFILES.md`
-- `TASK_STATE_MODEL.md`
-- `EXTENSION_SPI.md`
+- `architecture/AUTHORITY_BOUNDARIES.md`
+- `architecture/CONTRACT_BOUNDARIES.md`
+- `architecture/CONTROL_DATA_PLANE.md`
+- `architecture/DEPLOYMENT_PROFILES.md`
+- `architecture/TASK_STATE_MODEL.md`
+- `architecture/EXTENSION_SPI.md`
 
 RequirementやArchitectureの、第二の正本を作ることが目的ではありません。各正本の文書の関係を確認し、曖昧な箇所は、実装の前の解釈として固定します。
 
@@ -341,7 +341,7 @@ MVPは、「Architectureのすべての機能を縮小したもの」ではあ�
 - site cache
 - 特定のcloudに依存した統合
 
-詳細は、`MVP_IMPLEMENTATION_PLAN.md`で定義します。
+詳細は、`architecture/MVP_IMPLEMENTATION_PLAN.md`で定義します。
 
 ---
 

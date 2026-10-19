@@ -34,7 +34,7 @@ spec/                       言語中立の外部契約（OpenAPI、Protobuf、C
 4. 調査メモは`research/topics/`か`research/integration/`に置き、`research/`の直下には新しく置かない。
 5. Acceptance Scenarioの候補（PAS-CAND）は`requirements/ACCEPTANCE_SCENARIOS.md`の候補の節に書き、評価はIssueで行う。
 
-既存の文書のうち上の構成に合わないものは、[#114](https://github.com/hat47x/eki-fabric/issues/114)で移します。移すまでの間は、既存の場所とリンクを壊しません。
+文書を移すときは、リポジトリ内の参照（相対リンクとパスの言及）をすべて新しい場所に直し、古い場所に転送用の文書を残しません。
 
 ## 正本ルール
 

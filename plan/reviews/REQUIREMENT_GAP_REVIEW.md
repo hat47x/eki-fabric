@@ -4,7 +4,7 @@
 
 この文書は、Architectureに進む前に、まだ残っている要求の抜けを確認するための、レビューの記録です。Product Requirements、Threat Model、Worker Assurance Model、Acceptance Scenariosを横断して確認しました。
 
-ここでの結論自体はRequirementではありません。追加が必要と判断した項目は、`PRODUCT_REQUIREMENTS.md`や`THREAT_MODEL.md`へ反映した時点で、正式な要求になります。
+ここでの結論自体はRequirementではありません。追加が必要と判断した項目は、`requirements/PRODUCT_REQUIREMENTS.md`や`requirements/THREAT_MODEL.md`へ反映した時点で、正式な要求になります。
 
 第二巡目では、Browser参加を利用者に見える状態にすること、悪意あるWorkerに渡したDataの削除を保証できないこと、Validator / Verifierの信頼境界、非決定的なAIのResultに対する保証の上限、副作用を持つTaskの再試行の境界を扱いました。
 
@@ -36,7 +36,7 @@ SPIFFE Federationでも、Trust Domain名とBundleの対応を保つよう求め
 
 関連: RQ-031, RQ-039, SEC-010
 
-調査: `research/federation-namespace-safety.md`
+調査: `research/topics/federation-namespace-safety.md`
 
 ---
 
@@ -62,7 +62,7 @@ RQ-017は、ClientによるResource Exhaustionを扱っています。RQ-027は�
 
 関連: RQ-009, RQ-017, RQ-027, RQ-029
 
-調査: `research/artifact-ingest-safety.md`
+調査: `research/topics/artifact-ingest-safety.md`
 
 ---
 
@@ -91,7 +91,7 @@ Threat Modelでは、Control Planeのroot signing authorityなどまで侵害さ
 
 関連: RQ-016, RQ-039〜RQ-041, RQ-044
 
-調査: `research/control-plane-compromise.md`
+調査: `research/topics/control-plane-compromise.md`
 
 ---
 
@@ -118,7 +118,7 @@ backoff、jitter、queueの規律の具体的な内容は、Architectureで決�
 
 関連: RQ-006, RQ-010, RQ-013, RQ-017, RQ-035
 
-調査: `research/reclaim-energy-and-endpoint-safety.md`
+調査: `research/topics/reclaim-energy-and-endpoint-safety.md`
 
 ---
 
@@ -145,7 +145,7 @@ Compute GrantやContributionが普及すると、Creditの獲得などの外部�
 
 関連: RQ-005〜RQ-007, RQ-036〜RQ-038
 
-調査: `research/reclaim-energy-and-endpoint-safety.md`
+調査: `research/topics/reclaim-energy-and-endpoint-safety.md`
 
 ---
 

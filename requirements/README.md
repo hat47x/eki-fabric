@@ -99,7 +99,7 @@
 
 ### 要求の不足に関する点検
 
-[REQUIREMENT_GAP_REVIEW.md](REQUIREMENT_GAP_REVIEW.md)は、要求全体を横断して不足を洗い出した、レビューの記録です。
+[REQUIREMENT_GAP_REVIEW.md](../plan/reviews/REQUIREMENT_GAP_REVIEW.md)は、要求全体を横断して不足を洗い出した、レビューの記録です。
 
 点検は第三巡まで進みました。組織間連携（Federation）の名前空間、成果物（Artifact）の解析と展開、制御系（Control Plane）の権限分離、大規模な資源回収（reclaim）、電力と発熱に関する境界を確認しています。
 

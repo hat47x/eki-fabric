@@ -2,7 +2,9 @@
 
 ## 役割
 
-[Acceptance Scenarios](../requirements/ACCEPTANCE_SCENARIOS.md)に登録した候補Scenario 10件を、既存のRequirement・Assurance Model・Architecture Baselineで扱えるかという観点で評価した記録です。
+[Acceptance Scenarios](../../requirements/ACCEPTANCE_SCENARIOS.md)に登録した候補Scenario 10件を、既存のRequirement・Assurance Model・Architecture Baselineで扱えるかという観点で評価した記録です。
+
+この記録の未決事項と次の手順は、GitHub Issue [#120](https://github.com/hat47x/eki-fabric/issues/120)で追っています。
 
 AGENTS.mdの方針どおり、Requirementの数を増やすこと自体は目的にしません。既存の要求で扱える候補は、そのまま扱えると結論します。本質的な不足がある点だけを、Requirementへ戻します。
 
@@ -23,7 +25,7 @@ AGENTS.mdの方針どおり、Requirementの数を増やすこと自体は目的
 
 - 既存の根拠：RQ-015、RQ-016、RQ-017、SEC-007（retryとfan-outは有限の予算を消費する）、SEC-023。
 - 不足：RQ-017はfan-outとretry amplificationを扱うが、「認証済みの自動主体が、別の主体へ委譲して連鎖させる」場合に、予算と権限が縮小することを明示していなかった。
-- 措置：[RQ-017](../requirements/PRODUCT_REQUIREMENTS.md)に、委譲の連鎖でも同じ制限が及び、委譲された側が委譲した側を超えないことを追記した。新しいRequirementは作らない。
+- 措置：[RQ-017](../../requirements/PRODUCT_REQUIREMENTS.md)に、委譲の連鎖でも同じ制限が及び、委譲された側が委譲した側を超えないことを追記した。新しいRequirementは作らない。
 - 残る課題：委譲の連鎖を、Client Authorityのどの構造（予算の継承、権限の縮小）で表すかはArchitecture側の決定。Task Admission（ADM-2）の設計で扱う。
 
 ### PAS-CAND-08 — 相関した確認の一致
@@ -77,7 +79,7 @@ AGENTS.mdの方針どおり、Requirementの数を増やすこと自体は目的
 
 ### PAS-CAND-16 — 統治基盤を名乗るClientからの方針の注入
 
-- 既存の根拠：RQ-015、RQ-016（予算拡張、security classificationの低下をClientの記述だけで成立させない）、RQ-051、ADM-1とADM-2の分離（[Authority Boundaries](../architecture/AUTHORITY_BOUNDARIES.md)）。
+- 既存の根拠：RQ-015、RQ-016（予算拡張、security classificationの低下をClientの記述だけで成立させない）、RQ-051、ADM-1とADM-2の分離（[Authority Boundaries](../../architecture/AUTHORITY_BOUNDARIES.md)）。
 - 評価：方針の注入そのものは、RQ-016で禁じられている。残る問いは、**一つの製品が、利用者（Client）と管理者（Administrative）の両方の権限を持つ構成を許すか**であり、これはRequirementではなく、Deployment ProfileとAuthority設計の決定事項である。
 - 措置：Open Questionとして残す（下記）。
 
@@ -103,7 +105,7 @@ AGENTS.mdの方針どおり、Requirementの数を増やすこと自体は目的
 
 ### 草案の論点
 
-- 名称の衝突：本書の「委譲先」は、Compute Grantの「Provider」（資源を提供する主体）と別の概念です。同じ「Provider」を使うと混同するため、用語を整理する必要がある。調査メモ（[既存オーケストレータとの接続](../research/orchestrator-integration-and-layering.md)）の「Resource Provider」も同様に見直す。
+- 名称の衝突：本書の「委譲先」は、Compute Grantの「Provider」（資源を提供する主体）と別の概念です。同じ「Provider」を使うと混同するため、用語を整理する必要がある。調査メモ（[既存オーケストレータとの接続](../../research/integration/orchestrator-integration-and-layering.md)）の「Resource Provider」も同様に見直す。
 - ステータス：「Needs research」とする。実際の下位オーケストレータの既定の挙動を確認し、一つのAdapter契約で制御できるかを、Spikeで確かめる前に、Baselineへ昇格させない。
 
 ## Open Question
@@ -118,12 +120,12 @@ AGENTS.mdの方針どおり、Requirementの数を増やすこと自体は目的
 
 1. RQ-054の草案をレビューし、採用するなら、PRODUCT_REQUIREMENTS.md、THREAT_MODEL.md（SEC対応）、REQUIREMENT_GAP_REVIEW.mdへ反映する。その際、「53 Requirement」と書かれている箇所（UPSTREAM_PLAN.md、README等）も更新する。
 2. 候補10件のうち、評価を終えたものを、PAS番号へ昇格するかを判断する。昇格は、Acceptance Scenariosの方針どおりレビューを経て行う。
-3. Open Questionのうち、実装前に確認が要るもの（4）は、M0のvertical sliceの成立後にSpikeとして扱う。M0の優先順位（[Upstream Plan](UPSTREAM_PLAN.md)のmainline priority guard）は変えない。
+3. Open Questionのうち、実装前に確認が要るもの（4）は、M0のvertical sliceの成立後にSpikeとして扱う。M0の優先順位（[Upstream Plan](../UPSTREAM_PLAN.md)のmainline priority guard）は変えない。
 
 ## 関連文書
 
-- [Acceptance Scenarios](../requirements/ACCEPTANCE_SCENARIOS.md)
-- [Product Requirements](../requirements/PRODUCT_REQUIREMENTS.md)
-- [Worker Assurance Model](../requirements/ASSURANCE_MODEL.md)
-- [AI時代の価値と位置づけ](../research/ai-era-value-positioning.md)
-- [既存オーケストレータとの接続、およびSEI・TEIとの層構造](../research/orchestrator-integration-and-layering.md)
+- [Acceptance Scenarios](../../requirements/ACCEPTANCE_SCENARIOS.md)
+- [Product Requirements](../../requirements/PRODUCT_REQUIREMENTS.md)
+- [Worker Assurance Model](../../requirements/ASSURANCE_MODEL.md)
+- [AI時代の価値と位置づけ](../../research/topics/ai-era-value-positioning.md)
+- [既存オーケストレータとの接続、およびSEI・TEIとの層構造](../../research/integration/orchestrator-integration-and-layering.md)

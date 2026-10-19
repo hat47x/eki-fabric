@@ -64,7 +64,7 @@ type ProviderID string
 // RetryDeclaration is the provider's statement about automatic retry. This is a
 // retry the provider performs on its own, without a new request from EKI. Such a
 // retry can repeat a side effect, because EKI does not see it as a new Attempt
-// (research/orchestrator-integration-and-layering.md section 5.1, RQ-046).
+// (research/integration/orchestrator-integration-and-layering.md section 5.1, RQ-046).
 //
 // The declaration is a claim. Conformance checks it against the observed
 // behaviour of the adapter.

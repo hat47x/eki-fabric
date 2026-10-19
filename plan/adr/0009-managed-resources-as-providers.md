@@ -2,7 +2,7 @@
 
 - 状態: **提案中**
 - 日付: 2026-10-06
-- 関連: Issue #67, RQ-001, RQ-003, RQ-004, RQ-019, RQ-030, [orchestrator-integration-and-layering](../../research/orchestrator-integration-and-layering.md)
+- 関連: Issue #67, RQ-001, RQ-003, RQ-004, RQ-019, RQ-030, [orchestrator-integration-and-layering](../../research/integration/orchestrator-integration-and-layering.md)
 
 ## 1. 背景
 

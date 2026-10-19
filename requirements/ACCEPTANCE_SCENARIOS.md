@@ -490,7 +490,7 @@ Architecture Entry Gateに向けて残る主な論点は、Scenarioの数を増�
 
 候補は2種類あります。
 
-- **PAS-CAND-01〜04**: SEI Cognitionがバックグラウンドで行う、認知処理です。SEI側でも、まだ評価の段階にある設計の仮説に位置づけられています（`hat47x/sei-cognition:evaluation/sei-cognition-orchestration/EMERGENT_COGNITIVE_ARCHITECTURE.md` §10〜§11）。SEIのCognitive Envelopeからの投影は、[SEI Cognitionとの対応ノート](../research/sei-cognition-mapping.md)を参照してください。
+- **PAS-CAND-01〜04**: SEI Cognitionがバックグラウンドで行う、認知処理です。SEI側でも、まだ評価の段階にある設計の仮説に位置づけられています（`hat47x/sei-cognition:evaluation/sei-cognition-orchestration/EMERGENT_COGNITIVE_ARCHITECTURE.md` §10〜§11）。SEIのCognitive Envelopeからの投影は、[SEI Cognitionとの対応ノート](../research/integration/sei-cognition-mapping.md)を参照してください。
 - **PAS-CAND-05〜06**: SEIの認知処理ではない、兄弟の製品のworkloadです。EKIが、初期の利用者である認知系の製品だけに合わせ込まれていないかを、確かめます（Product Valueの「Interoperability before ecosystem lock-in」）。
 
 どちらも、M0とMVPが成り立つための条件ではありません。`plan/UPSTREAM_PLAN.md`の優先順位も変えません。
@@ -649,10 +649,10 @@ Trace: RQ-001, RQ-003, RQ-009, RQ-011, RQ-014, RQ-019, RQ-024, RQ-047
 
 前の節が「製品ファミリーから来るworkload」を扱うのに対して、この節は、2つの状況の変化から来る圧力を扱います。
 
-- **PAS-CAND-07〜11**: 生成AIとAI Agentが普及して、Clientが機械になり、生成物の実行と確認が増える状況です。背景は、[AI時代の価値と位置づけ](../research/ai-era-value-positioning.md)にあります。
-- **PAS-CAND-12〜16**: KubernetesやSlurmのような既存のオーケストレータが管理するクラスタを、資源の供給元として、EKIに接続する状況です（[Product Value](../product/value.md)の「Managed and opportunistic resources on one fabric」）。背景は、[既存オーケストレータとの接続、およびSEI・TEIとの層構造](../research/orchestrator-integration-and-layering.md)にあります。
+- **PAS-CAND-07〜11**: 生成AIとAI Agentが普及して、Clientが機械になり、生成物の実行と確認が増える状況です。背景は、[AI時代の価値と位置づけ](../research/topics/ai-era-value-positioning.md)にあります。
+- **PAS-CAND-12〜16**: KubernetesやSlurmのような既存のオーケストレータが管理するクラスタを、資源の供給元として、EKIに接続する状況です（[Product Value](../product/value.md)の「Managed and opportunistic resources on one fabric」）。背景は、[既存オーケストレータとの接続、およびSEI・TEIとの層構造](../research/integration/orchestrator-integration-and-layering.md)にあります。
 
-評価の結果は、[PAS-CAND-07〜16の評価](../plan/PAS_CAND_07_16_EVALUATION_2026-10-06.md)にあります。10件のうち、5件は既存の要求で扱えます。3件は、既存の要求の文言を補います。1件には、新しいRequirementの草案があります。1件は、設計の判断として残しました。
+評価の結果は、[PAS-CAND-07〜16の評価](../plan/reviews/PAS_CAND_07_16_EVALUATION_2026-10-06.md)にあります。10件のうち、5件は既存の要求で扱えます。3件は、既存の要求の文言を補います。1件には、新しいRequirementの草案があります。1件は、設計の判断として残しました。
 
 ここから、新しいRequirementは作りません。既存のRequirementで扱えない点は、「Requirement側へ戻す論点」として記します。レビューを経て、Product RequirementsかThreat Modelに反映します。どれも、M0とMVPが成り立つための条件ではありません。`plan/UPSTREAM_PLAN.md`の優先順位も変えません。
 

@@ -87,7 +87,7 @@ Local Governorの、delegatedなhost上でのhard enforcementの実測なども�
 
 **PASS**
 
-`research/reference-systems.md`では、BOINC、Nomad、SPIFFE / SPIRE、Sigstore / Cosign、TEIの文書の運用を、取り入れる部分、そのまま取り入れない部分、EKI固有のRequirementに分けています。「似ているから採用する」のではなく、Propertyの単位で比べられます。
+`research/topics/reference-systems.md`では、BOINC、Nomad、SPIFFE / SPIRE、Sigstore / Cosign、TEIの文書の運用を、取り入れる部分、そのまま取り入れない部分、EKI固有のRequirementに分けています。「似ているから採用する」のではなく、Propertyの単位で比べられます。
 
 ### G-6 — Workerの違いを、単一のTrust Levelに押し込めない
 

@@ -142,7 +142,7 @@ P0 External Contractは、WorkOrder、Lease、Placement ApprovalなどのInterna
 
 ## 7. 資源提供の記録（Contribution）の対応
 
-Contribution RecordとSEIのCapability Observationの対応は、[Contribution Accountingと価値交換の境界](contribution-accounting.md) の「SEIのCapability Observationとの対応」にまとめています。
+Contribution RecordとSEIのCapability Observationの対応は、[Contribution Accountingと価値交換の境界](../topics/contribution-accounting.md) の「SEIのCapability Observationとの対応」にまとめています。
 
 ## 8. 比喩から出た問い — 内受容
 
@@ -167,14 +167,14 @@ SEI側の分析では、神経系の比喩を使い、EKIが持つ計算資源�
 
 EKI Fabric:
 
-- [Product Value](../product/value.md) — 隣接Productとの境界
-- [Product Principles](../product/principles.md) — §4、§7
-- [Product Requirements](../requirements/PRODUCT_REQUIREMENTS.md)
-- [Acceptance Scenarios](../requirements/ACCEPTANCE_SCENARIOS.md) — 候補Scenario（評価待ち）
-- [Contract Boundaries](../architecture/CONTRACT_BOUNDARIES.md) — §6〜§7
-- [ADR-0004 Signed Decision cryptographic profile](../plan/adr/0004-signed-decision-cryptographic-profile.md)
-- [P0 External Protocol](../spec/external/README.md)
-- [Contribution Accountingと価値交換の境界](contribution-accounting.md)
+- [Product Value](../../product/value.md) — 隣接Productとの境界
+- [Product Principles](../../product/principles.md) — §4、§7
+- [Product Requirements](../../requirements/PRODUCT_REQUIREMENTS.md)
+- [Acceptance Scenarios](../../requirements/ACCEPTANCE_SCENARIOS.md) — 候補Scenario（評価待ち）
+- [Contract Boundaries](../../architecture/CONTRACT_BOUNDARIES.md) — §6〜§7
+- [ADR-0004 Signed Decision cryptographic profile](../../plan/adr/0004-signed-decision-cryptographic-profile.md)
+- [P0 External Protocol](../../spec/external/README.md)
+- [Contribution Accountingと価値交換の境界](../topics/contribution-accounting.md)
 
 SEI Cognition（`hat47x/sei-cognition`。特記がなければ`main`に存在します）:
 

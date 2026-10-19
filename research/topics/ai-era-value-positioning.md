@@ -45,7 +45,7 @@ Product ValueやRequirementの正本ではありません。ここで挙げる�
 1. 採用の入口が広がる。遊休資源の活用だけを掲げると、導入側は「端末へAgentを入れる」判断が先に必要になる。管理クラスタの運用基盤として使い始め、成熟後に遊休資源を足せるほうが、導入の障壁が低い。
 2. H2〜H3の不確実性に強い。§7のシナリオB（潤沢）やD（端末の閉鎖）では遊休資源の価値が下がるが、管理クラスタ側の価値は残る。遊休資源の有無に価値が依存しない。
 3. 価値の中心である「配置の統治」が、資源の種類をまたいで一つの仕組みで成立する。例えば、機密Taskは管理GPUへ、再実行可能な検証Taskは端末へ、という判断が同じPolicyで書ける。
-4. 既存の設計とも整合する。DP-6（Dedicated / Server Pool）は専用資源を扱い、「dedicated=trueを自動的にtrusted=trueへ変換しない」としている（[DEPLOYMENT_PROFILES](../architecture/DEPLOYMENT_PROFILES.md)）。管理クラスタを「信頼度の高い資源の一種」として同じモデルに載せる素地はすでにある。
+4. 既存の設計とも整合する。DP-6（Dedicated / Server Pool）は専用資源を扱い、「dedicated=trueを自動的にtrusted=trueへ変換しない」としている（[DEPLOYMENT_PROFILES](../../architecture/DEPLOYMENT_PROFILES.md)）。管理クラスタを「信頼度の高い資源の一種」として同じモデルに載せる素地はすでにある。
 
 **注意点**
 
@@ -62,7 +62,7 @@ Product ValueやRequirementの正本ではありません。ここで挙げる�
 | AI Agent開発者 | 機械Clientの暴走防止と予算管理 | 安価な背景検証・再索引の置き場 | 同じAPIで、重要度に応じて置き場が変わる |
 | 研究機関・公益団体 | 割当て枠の管理と証跡 | 外部の余剰資源の限定受け入れ | 資源の出所を問わない共通の記録 |
 
-「管理クラスタの運用支援」の具体的な範囲（資源の登録、割当て、予算、監査の共通化など）は、Requirementとしてまだ定義していません。§6.2にOpen Questionとして追加します。どの既存オーケストレータをどの構造で接続するか、SEI・TEIとの層構造は、[既存オーケストレータとの接続、およびSEI・TEIとの層構造](orchestrator-integration-and-layering.md)で検討しています。
+「管理クラスタの運用支援」の具体的な範囲（資源の登録、割当て、予算、監査の共通化など）は、Requirementとしてまだ定義していません。§6.2にOpen Questionとして追加します。どの既存オーケストレータをどの構造で接続するか、SEI・TEIとの層構造は、[既存オーケストレータとの接続、およびSEI・TEIとの層構造](../integration/orchestrator-integration-and-layering.md)で検討しています。
 
 ## 2. 2〜5年後の仮説
 
@@ -151,7 +151,7 @@ H2のとおり、供給が逼迫する時期には、組織間の余剰共有に
 
 ### 6.1 Acceptance Scenario候補
 
-以下の`AI-n`は本書内の番号です。2026-10-06に、AI-1〜AI-5をそれぞれ`PAS-CAND-07`〜`PAS-CAND-11`として[Acceptance Scenarios](../requirements/ACCEPTANCE_SCENARIOS.md)へ登録しました（評価待ち）。
+以下の`AI-n`は本書内の番号です。2026-10-06に、AI-1〜AI-5をそれぞれ`PAS-CAND-07`〜`PAS-CAND-11`として[Acceptance Scenarios](../../requirements/ACCEPTANCE_SCENARIOS.md)へ登録しました（評価待ち）。
 
 | 候補 | 状況 | 既存との関係 |
 |---|---|---|
@@ -208,7 +208,7 @@ H2のとおり、供給が逼迫する時期には、組織間の余剰共有に
 
 ## 8. 次の手順の提案
 
-1. ~~`product/value.md`への追記（§6.3）の要否をレビューする。~~ 2026-10-06に、§1.1の位置づけとあわせて[Product Value](../product/value.md)へ反映した。
+1. ~~`product/value.md`への追記（§6.3）の要否をレビューする。~~ 2026-10-06に、§1.1の位置づけとあわせて[Product Value](../../product/value.md)へ反映した。
 2. PAS-CAND-07〜11（AI-1〜AI-5）のうち、既存要求の拡張で足りるものと、新しいRequirementが必要なものを分ける。
 3. Open Question（§6.2）の扱いを`plan/UPSTREAM_PLAN.md`の2026-10-06の記録から辿れるようにした。個別の解決は今後の評価で行う。
 4. Spike候補は、MVPの優先度（`plan/UPSTREAM_PLAN.md`のmainline priority guard）を損なわない範囲で選ぶ。MVPのvertical sliceは変えない。
@@ -223,10 +223,10 @@ H2のとおり、供給が逼迫する時期には、組織間の余剰共有に
 
 ## 関連文書
 
-- [Product Value](../product/value.md)
-- [Product Principles](../product/principles.md)
-- [Product Requirements](../requirements/PRODUCT_REQUIREMENTS.md)
-- [Acceptance Scenarios](../requirements/ACCEPTANCE_SCENARIOS.md)
+- [Product Value](../../product/value.md)
+- [Product Principles](../../product/principles.md)
+- [Product Requirements](../../requirements/PRODUCT_REQUIREMENTS.md)
+- [Acceptance Scenarios](../../requirements/ACCEPTANCE_SCENARIOS.md)
 - [Reference Systems Research](reference-systems.md)
-- [既存オーケストレータとの接続、およびSEI・TEIとの層構造](orchestrator-integration-and-layering.md)
+- [既存オーケストレータとの接続、およびSEI・TEIとの層構造](../integration/orchestrator-integration-and-layering.md)
 - [Worker Verification and Attestation Research](worker-verification-and-attestation.md)

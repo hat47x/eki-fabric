@@ -24,7 +24,7 @@ Control Plane内部を一つの大きな信頼領域にまとめると、Schedul
 - ../requirements/THREAT_MODEL.md
 - ../requirements/ASSURANCE_MODEL.md
 - ../requirements/QUALITY_ATTRIBUTES.md
-- ../plan/ARCHITECTURE_ENTRY_REVIEW_2026-09-21.md
+- ../plan/reviews/ARCHITECTURE_ENTRY_REVIEW_2026-09-21.md
 
 ## 2. AuthorityはServiceの数ではない
 
