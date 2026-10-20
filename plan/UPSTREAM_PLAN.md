@@ -758,3 +758,16 @@ Claimの記録とAttemptの遷移を、同じtransactionで確定できるよう
 Testでは、ClaimとAttemptの同時commit、stale revisionでのrollback（Claimが残らない）、二重記録と異なるClaimの拒否、不正な遷移のrollback、SQLiteのclose/reopenを跨いだClaimの復元を固定しました。
 
 残りは、Worker Planeのtransport（Claim送信の実体）、報告が届かないAttemptのLease期限からの確定、Runnerの種類の拡張です。
+
+### 2026-10-21 申告の入口で、認証されたWorkerを確かめる
+
+Worker Planeのtransportが認証したprincipalと、Claimが名乗るWorkerを照合する`internal/control/claimplane`を追加しました。
+
+- transportはWorkerを認証し、`Principal{WorkerIdentity, TrustDomain}`を渡します。認証そのものはtransportの責務です。
+- `Submit`は、Claimの`WorkerIdentity`がprincipalと一致しなければ`ErrNotClaimOwner`で拒否し、`claimaccept`を呼びません。
+- これがなければ、認証されたWorkerが別のWorkerの名前を書いたClaimを送り、Attemptの名前と一致させることができました。`claimaccept`の束縛だけでは、送信者のidentityを確かめられません。
+- Claimの内容の正しさ、Trust Domainの一致、Attemptごとの重複と競合は、それぞれ別の境界の責務です。
+
+Testでは、正しいprincipalの受理、別Workerの拒否（acceptorを呼ばない）、不正なprincipalとzero Claim、nil context、acceptorのエラー伝播を固定しました。
+
+残りは、Worker Planeのtransport実装（認証とClaimの運搬）、報告が届かないAttemptのLease期限からの確定、Runnerの種類の拡張です。
