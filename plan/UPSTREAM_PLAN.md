@@ -784,3 +784,14 @@ Testでは、正しいprincipalの受理、別Workerの拒否（acceptorを呼�
 Testでは、closed / claimed、期限前とgrace内、grace境界とその後、外部副作用あり、不正入力（zero now、負のgrace、期限なし）を固定しました。
 
 残りは、Worker Planeのtransport実装（認証とClaimの運搬）、`Reconcile`からReceiptを得た後の状態遷移、Runnerの種類の拡張です。
+
+### 2026-10-21 Worker PlaneのClaim送受信の継ぎ目
+
+Protobuf / Connectの生成コードをまだ入れずに、その両側を接続できる継ぎ目を実装しました。
+
+- `internal/spi/workerplane`に、`Principal`、`ClaimAck`、`ClaimClient`を定義しました。wire protocolは`spec/worker/v1/worker.proto`のままで、この層は接続の意味だけを持ちます。
+- `internal/control/workerplane.Server`が、認証済みprincipalとClaimを`claimplane`へ渡し、`ClaimAck{Decision, AttemptPhase, VerificationRequired}`へ写像します。認証とframingはConnect handlerの責務です。
+- `internal/agent/claimclient.Client`が、`claimqueue`の`Sender`としてClaimを送ります。Agentのprincipalと一致しないClaimは送らず、queueへエラーを返します。
+- 統合Testでは、claimqueue → claimclient → workerplane.Server → claimplane → acceptorを実配線し、成功時の削除と、失敗時の保持・backoff後の再送を確認しました。
+
+残りは、Connect serviceのhandlerと生成コード、認証情報の更新、タイムアウトと流量制限です。
