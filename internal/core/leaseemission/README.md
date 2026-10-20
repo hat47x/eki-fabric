@@ -51,6 +51,8 @@ Lease reservationに対応する発行状態は、次の三つです。
 
 `LeaseEmissionCommit`のmetadataを呼出側が埋めただけでは、このAuthority条件を満たしたことにはしません。今回のState Store境界は、上位で検証されたexact bytesを二重発行せず耐久化するための基盤です。
 
+この上位の境界は`leaseissue.Emitter`です（`internal/core/leaseissue/README.md`）。
+
 ## 耐久性
 
 Reference State Storeでは、次を共通conformanceとして確認します。

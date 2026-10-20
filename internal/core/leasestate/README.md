@@ -10,6 +10,7 @@ verified Placement Approval
   -> durable Lease reservation / FenceEpoch
   -> canonical P2 Lease payload
   -> LSE-1 signing
+  -> durable EMITTED commit（leaseissue.Emitter）
   -> Worker-side verification
 ```
 
