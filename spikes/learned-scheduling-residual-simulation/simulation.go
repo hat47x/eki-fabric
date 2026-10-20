@@ -11,13 +11,13 @@ import (
 )
 
 const (
-	DatasetSchema       = "eki.learned-scheduling-residual-dataset/v1"
-	ScenarioSetVersion  = "eki-ml-0b-scenarios-v1"
-	GeneratorVersion    = "eki-ml-0b-generator-v1"
+	DatasetSchema        = "eki.learned-scheduling-residual-dataset/v1"
+	ScenarioSetVersion   = "eki-ml-0b-scenarios-v1"
+	GeneratorVersion     = "eki-ml-0b-generator-v1"
 	EvaluationAxesSchema = "eki.learned-scheduling-evaluation-axes/v0"
-	EvaluatorVersion    = "eki-ml-0b-baseline-evaluator-v0"
-	FeatureSchema       = "eki.learned-scheduling-features/v0"
-	ResultSchema        = "eki.learned-scheduling-baseline-evaluation/v0"
+	EvaluatorVersion     = "eki-ml-0b-baseline-evaluator-v0"
+	FeatureSchema        = "eki.learned-scheduling-features/v0"
+	ResultSchema         = "eki.learned-scheduling-baseline-evaluation/v0"
 )
 
 type GeneralizationAxes struct {
@@ -28,12 +28,12 @@ type GeneralizationAxes struct {
 }
 
 type Dataset struct {
-	Schema             string                         `json:"schema"`
-	ScenarioSetVersion string                         `json:"scenario_set_version"`
-	GeneratorVersion   string                         `json:"generator_version"`
-	Seed               uint64                         `json:"seed"`
-	Observations       []shadowsched.Observation      `json:"observations"`
-	EvaluationAxes     map[string]GeneralizationAxes  `json:"evaluation_axes"`
+	Schema             string                        `json:"schema"`
+	ScenarioSetVersion string                        `json:"scenario_set_version"`
+	GeneratorVersion   string                        `json:"generator_version"`
+	Seed               uint64                        `json:"seed"`
+	Observations       []shadowsched.Observation     `json:"observations"`
+	EvaluationAxes     map[string]GeneralizationAxes `json:"evaluation_axes"`
 }
 
 type ScenarioSpec struct {
@@ -78,14 +78,14 @@ type DurationMetrics struct {
 }
 
 type CompletionMetrics struct {
-	KnownTargets              int     `json:"known_targets"`
-	TotalEligible             int     `json:"total_eligible"`
-	CensoredEligible          int     `json:"censored_eligible"`
-	KnownTargetCoverage       float64 `json:"known_target_coverage"`
-	CensoredFraction          float64 `json:"censored_fraction"`
+	KnownTargets             int     `json:"known_targets"`
+	TotalEligible            int     `json:"total_eligible"`
+	CensoredEligible         int     `json:"censored_eligible"`
+	KnownTargetCoverage      float64 `json:"known_target_coverage"`
+	CensoredFraction         float64 `json:"censored_fraction"`
 	UnconditionalProbability float64 `json:"unconditional_probability"`
-	UnconditionalBrier        float64 `json:"unconditional_brier"`
-	GroupedBrier              float64 `json:"grouped_brier"`
+	UnconditionalBrier       float64 `json:"unconditional_brier"`
+	GroupedBrier             float64 `json:"grouped_brier"`
 }
 
 type EvaluationResult struct {
@@ -615,14 +615,14 @@ func evaluateCompletion(train, eval []shadowsched.Observation) (CompletionMetric
 		return CompletionMetrics{}, errors.New("no known completion targets in evaluation data")
 	}
 	return CompletionMetrics{
-		KnownTargets:              known,
-		TotalEligible:             eligible,
-		CensoredEligible:          censored,
-		KnownTargetCoverage:       float64(known) / float64(eligible),
-		CensoredFraction:          float64(censored) / float64(eligible),
+		KnownTargets:             known,
+		TotalEligible:            eligible,
+		CensoredEligible:         censored,
+		KnownTargetCoverage:      float64(known) / float64(eligible),
+		CensoredFraction:         float64(censored) / float64(eligible),
 		UnconditionalProbability: globalP,
-		UnconditionalBrier:        globalLoss / float64(known),
-		GroupedBrier:              groupedLoss / float64(known),
+		UnconditionalBrier:       globalLoss / float64(known),
+		GroupedBrier:             groupedLoss / float64(known),
 	}, nil
 }
 

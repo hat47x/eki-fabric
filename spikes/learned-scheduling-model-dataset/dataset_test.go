@@ -76,17 +76,17 @@ func TestFeatureProjectionExcludesProvenanceTargetsAndAuthority(t *testing.T) {
 		t.Fatal(err)
 	}
 	expected := map[string]bool{
-		"task_class": true,
-		"worker_class": true,
-		"total_input_bytes": true,
-		"local_input_bytes": true,
-		"transfer_input_bytes": true,
+		"task_class":            true,
+		"worker_class":          true,
+		"total_input_bytes":     true,
+		"local_input_bytes":     true,
+		"transfer_input_bytes":  true,
 		"transfer_output_bytes": true,
-		"transfer_bytes": true,
-		"transfer_millis": true,
-		"compute_millis": true,
-		"estimated_millis": true,
-		"local_input_fraction": true,
+		"transfer_bytes":        true,
+		"transfer_millis":       true,
+		"compute_millis":        true,
+		"estimated_millis":      true,
+		"local_input_fraction":  true,
 		"deadline_slack_millis": true,
 	}
 	if len(fields) != len(expected) {
@@ -249,9 +249,9 @@ func TestValidationOnlyShiftDoesNotSatisfyFinalTestReadiness(t *testing.T) {
 				TimeRegime:       "time-train-concrete",
 			},
 			EvaluationAxes: residualsim.GeneralizationAxes{
-				Schema: residualsim.EvaluationAxesSchema,
+				Schema:                 residualsim.EvaluationAxesSchema,
 				WorkerPopulationFamily: "worker-known",
-				TimeRegimeFamily: "time-known",
+				TimeRegimeFamily:       "time-known",
 			},
 		},
 		{
@@ -263,10 +263,10 @@ func TestValidationOnlyShiftDoesNotSatisfyFinalTestReadiness(t *testing.T) {
 				TimeRegime:       "time-valid-a",
 			},
 			EvaluationAxes: residualsim.GeneralizationAxes{
-				Schema: residualsim.EvaluationAxesSchema,
+				Schema:                 residualsim.EvaluationAxesSchema,
 				WorkerPopulationFamily: "worker-known",
-				TimeRegimeFamily: "time-unseen",
-				ShiftAxes: []string{"time_regime"},
+				TimeRegimeFamily:       "time-unseen",
+				ShiftAxes:              []string{"time_regime"},
 			},
 		},
 		{
@@ -278,10 +278,10 @@ func TestValidationOnlyShiftDoesNotSatisfyFinalTestReadiness(t *testing.T) {
 				TimeRegime:       "time-valid-b",
 			},
 			EvaluationAxes: residualsim.GeneralizationAxes{
-				Schema: residualsim.EvaluationAxesSchema,
+				Schema:                 residualsim.EvaluationAxesSchema,
 				WorkerPopulationFamily: "worker-unseen",
-				TimeRegimeFamily: "time-known",
-				ShiftAxes: []string{"worker_population"},
+				TimeRegimeFamily:       "time-known",
+				ShiftAxes:              []string{"worker_population"},
 			},
 		},
 		{
@@ -293,10 +293,10 @@ func TestValidationOnlyShiftDoesNotSatisfyFinalTestReadiness(t *testing.T) {
 				TimeRegime:       "time-test-c",
 			},
 			EvaluationAxes: residualsim.GeneralizationAxes{
-				Schema: residualsim.EvaluationAxesSchema,
+				Schema:                 residualsim.EvaluationAxesSchema,
 				WorkerPopulationFamily: "worker-unseen",
-				TimeRegimeFamily: "time-unseen",
-				ShiftAxes: []string{"worker_population", "time_regime", "compound"},
+				TimeRegimeFamily:       "time-unseen",
+				ShiftAxes:              []string{"worker_population", "time_regime", "compound"},
 			},
 		},
 	}
@@ -329,9 +329,9 @@ func TestHeldOutSliceWithoutKnownTargetsDoesNotUnlockReadiness(t *testing.T) {
 				TimeRegime:       "time-train-concrete",
 			},
 			EvaluationAxes: residualsim.GeneralizationAxes{
-				Schema: residualsim.EvaluationAxesSchema,
+				Schema:                 residualsim.EvaluationAxesSchema,
 				WorkerPopulationFamily: "worker-known",
-				TimeRegimeFamily: "time-known",
+				TimeRegimeFamily:       "time-known",
 			},
 			Targets: TargetView{
 				DurationResidualMillis:   &duration,
@@ -347,10 +347,10 @@ func TestHeldOutSliceWithoutKnownTargetsDoesNotUnlockReadiness(t *testing.T) {
 				TimeRegime:       "time-test-a",
 			},
 			EvaluationAxes: residualsim.GeneralizationAxes{
-				Schema: residualsim.EvaluationAxesSchema,
+				Schema:                 residualsim.EvaluationAxesSchema,
 				WorkerPopulationFamily: "worker-known",
-				TimeRegimeFamily: "time-unseen",
-				ShiftAxes: []string{"time_regime"},
+				TimeRegimeFamily:       "time-unseen",
+				ShiftAxes:              []string{"time_regime"},
 			},
 		},
 		{
@@ -362,10 +362,10 @@ func TestHeldOutSliceWithoutKnownTargetsDoesNotUnlockReadiness(t *testing.T) {
 				TimeRegime:       "time-test-b",
 			},
 			EvaluationAxes: residualsim.GeneralizationAxes{
-				Schema: residualsim.EvaluationAxesSchema,
+				Schema:                 residualsim.EvaluationAxesSchema,
 				WorkerPopulationFamily: "worker-unseen",
-				TimeRegimeFamily: "time-known",
-				ShiftAxes: []string{"worker_population"},
+				TimeRegimeFamily:       "time-known",
+				ShiftAxes:              []string{"worker_population"},
 			},
 		},
 		{
@@ -377,10 +377,10 @@ func TestHeldOutSliceWithoutKnownTargetsDoesNotUnlockReadiness(t *testing.T) {
 				TimeRegime:       "time-test-c",
 			},
 			EvaluationAxes: residualsim.GeneralizationAxes{
-				Schema: residualsim.EvaluationAxesSchema,
+				Schema:                 residualsim.EvaluationAxesSchema,
 				WorkerPopulationFamily: "worker-unseen",
-				TimeRegimeFamily: "time-unseen",
-				ShiftAxes: []string{"worker_population", "time_regime", "compound"},
+				TimeRegimeFamily:       "time-unseen",
+				ShiftAxes:              []string{"worker_population", "time_regime", "compound"},
 			},
 			Targets: TargetView{
 				DurationResidualMillis:   &duration,
@@ -421,9 +421,9 @@ func TestReadinessIgnoresTargetsOnPolicyIneligibleRows(t *testing.T) {
 				TimeRegime:       "time-train-concrete",
 			},
 			EvaluationAxes: residualsim.GeneralizationAxes{
-				Schema: residualsim.EvaluationAxesSchema,
+				Schema:                 residualsim.EvaluationAxesSchema,
 				WorkerPopulationFamily: "worker-known",
-				TimeRegimeFamily: "time-known",
+				TimeRegimeFamily:       "time-known",
 			},
 			PolicyEligible: true,
 		},
@@ -436,10 +436,10 @@ func TestReadinessIgnoresTargetsOnPolicyIneligibleRows(t *testing.T) {
 				TimeRegime:       "time-test-a",
 			},
 			EvaluationAxes: residualsim.GeneralizationAxes{
-				Schema: residualsim.EvaluationAxesSchema,
+				Schema:                 residualsim.EvaluationAxesSchema,
 				WorkerPopulationFamily: "worker-known",
-				TimeRegimeFamily: "time-unseen",
-				ShiftAxes: []string{"time_regime"},
+				TimeRegimeFamily:       "time-unseen",
+				ShiftAxes:              []string{"time_regime"},
 			},
 			Targets: TargetView{
 				DurationResidualMillis:   &duration,
@@ -456,10 +456,10 @@ func TestReadinessIgnoresTargetsOnPolicyIneligibleRows(t *testing.T) {
 				TimeRegime:       "time-test-b",
 			},
 			EvaluationAxes: residualsim.GeneralizationAxes{
-				Schema: residualsim.EvaluationAxesSchema,
+				Schema:                 residualsim.EvaluationAxesSchema,
 				WorkerPopulationFamily: "worker-unseen",
-				TimeRegimeFamily: "time-known",
-				ShiftAxes: []string{"worker_population"},
+				TimeRegimeFamily:       "time-known",
+				ShiftAxes:              []string{"worker_population"},
 			},
 			Targets: TargetView{
 				DurationResidualMillis:   &duration,
@@ -476,10 +476,10 @@ func TestReadinessIgnoresTargetsOnPolicyIneligibleRows(t *testing.T) {
 				TimeRegime:       "time-test-c",
 			},
 			EvaluationAxes: residualsim.GeneralizationAxes{
-				Schema: residualsim.EvaluationAxesSchema,
+				Schema:                 residualsim.EvaluationAxesSchema,
 				WorkerPopulationFamily: "worker-unseen",
-				TimeRegimeFamily: "time-unseen",
-				ShiftAxes: []string{"worker_population", "time_regime", "compound"},
+				TimeRegimeFamily:       "time-unseen",
+				ShiftAxes:              []string{"worker_population", "time_regime", "compound"},
 			},
 			Targets: TargetView{
 				DurationResidualMillis:   &duration,

@@ -151,7 +151,7 @@ func newCryptoFixture(t *testing.T) *cryptoFixture {
 	}
 	return &cryptoFixture{
 		t: t, registry: registry, signer: signer, codec: codec, payload: payload, enc: enc,
-		bundle: decisiontrust.TrustBundleMetadata{Revision: 3, ValidatedAt: testNow.Add(-time.Minute)},
+		bundle:   decisiontrust.TrustBundleMetadata{Revision: 3, ValidatedAt: testNow.Add(-time.Minute)},
 		verifier: verifier,
 	}
 }
@@ -383,11 +383,11 @@ func TestReserveFailsClosedWhenPolicyStateIsUnavailable(t *testing.T) {
 	base := readyPlacingState(t, testWorkerID)
 	state := unavailablePolicyState{Store: base}
 	service, err := leaseissue.New(leaseissue.Config{
-		Verifier:      fx.verifier,
-		State:         state,
-		TrustBundle:   staticTrustBundle{value: fx.bundle},
-		Clock:         &testClock{now: testNow},
-		MaxLifetime:   time.Minute,
+		Verifier:    fx.verifier,
+		State:       state,
+		TrustBundle: staticTrustBundle{value: fx.bundle},
+		Clock:       &testClock{now: testNow},
+		MaxLifetime: time.Minute,
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -415,11 +415,11 @@ func TestReservePolicyRevokeBetweenReadAndCommitFailsClosed(t *testing.T) {
 	base := readyPlacingState(t, testWorkerID)
 	state := &revokeBeforeReserveState{Store: base}
 	service, err := leaseissue.New(leaseissue.Config{
-		Verifier:      fx.verifier,
-		State:         state,
-		TrustBundle:   staticTrustBundle{value: fx.bundle},
-		Clock:         &testClock{now: testNow},
-		MaxLifetime:   time.Minute,
+		Verifier:    fx.verifier,
+		State:       state,
+		TrustBundle: staticTrustBundle{value: fx.bundle},
+		Clock:       &testClock{now: testNow},
+		MaxLifetime: time.Minute,
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -493,9 +493,9 @@ func TestReserveUsesCurrentTrustBundleOnEveryCall(t *testing.T) {
 	store := readyPlacingState(t, testWorkerID)
 	service, err := leaseissue.New(leaseissue.Config{
 		Verifier: fx.verifier,
-		State: store,
+		State:    store,
 		TrustBundle: staticTrustBundle{value: decisiontrust.TrustBundleMetadata{
-			Revision: 4,
+			Revision:    4,
 			ValidatedAt: testNow.Add(-2 * time.Hour),
 		}},
 		Clock:       &testClock{now: testNow},
@@ -567,7 +567,7 @@ func TestReserveCapsLeaseAtPlacementExpiry(t *testing.T) {
 	service := newService(t, fx, store, 10*time.Minute, testPolicyRev, clock)
 
 	result, err := service.Reserve(context.Background(), leaseissue.Request{
-		SignedPlacement: fx.signedPlacement(),
+		SignedPlacement:   fx.signedPlacement(),
 		RequestedLifetime: 10 * time.Minute,
 	})
 	if err != nil {
@@ -582,11 +582,11 @@ func newService(t *testing.T, fx *cryptoFixture, store *memory.Store, maxLifetim
 	t.Helper()
 	setPolicy(t, store, policy)
 	service, err := leaseissue.New(leaseissue.Config{
-		Verifier:      fx.verifier,
-		State:         store,
-		TrustBundle:   staticTrustBundle{value: fx.bundle},
-		Clock:         clock,
-		MaxLifetime:   maxLifetime,
+		Verifier:    fx.verifier,
+		State:       store,
+		TrustBundle: staticTrustBundle{value: fx.bundle},
+		Clock:       clock,
+		MaxLifetime: maxLifetime,
 	})
 	if err != nil {
 		t.Fatal(err)

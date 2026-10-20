@@ -86,16 +86,16 @@ type ComponentExclusion struct {
 // Every Fabric path component must be either estimated or explicitly excluded.
 // Absence is unresolved and must not be interpreted as zero cost.
 type Input struct {
-	TaskID                ids.TaskID
-	TaskIRDigest          contract.Digest
-	WorkloadDigest        contract.Digest
-	PolicyRevision        uint64
-	EvaluatorVersion      string
-	FeasibilityConfirmed  bool
-	Baseline              *DurationEvidence
-	Components            []ComponentEstimate
-	Excluded              []ComponentExclusion
-	MinimumBenefitMillis  uint64
+	TaskID               ids.TaskID
+	TaskIRDigest         contract.Digest
+	WorkloadDigest       contract.Digest
+	PolicyRevision       uint64
+	EvaluatorVersion     string
+	FeasibilityConfirmed bool
+	Baseline             *DurationEvidence
+	Components           []ComponentEstimate
+	Excluded             []ComponentExclusion
+	MinimumBenefitMillis uint64
 }
 
 type DecisionReceipt struct {
@@ -125,7 +125,7 @@ type FabricEntry struct {
 	evaluatorVersion string
 }
 
-func (e FabricEntry) TaskID() ids.TaskID             { return e.taskID }
+func (e FabricEntry) TaskID() ids.TaskID              { return e.taskID }
 func (e FabricEntry) TaskIRDigest() contract.Digest   { return e.taskIRDigest }
 func (e FabricEntry) WorkloadDigest() contract.Digest { return e.workloadDigest }
 func (e FabricEntry) BasisDigest() contract.Digest    { return e.basisDigest }

@@ -53,8 +53,8 @@ func (a testAuthority) link(t testing.TB, purposes ...federation.Purpose) federa
 }
 
 var (
-	k1Pub, k1Priv = testKey(0x11)
-	k2Pub, k2Priv = testKey(0x12)
+	k1Pub, k1Priv  = testKey(0x11)
+	k2Pub, k2Priv  = testKey(0x12)
 	outsiderPub, _ = testKey(0x13)
 )
 

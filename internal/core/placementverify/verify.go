@@ -91,8 +91,8 @@ type Verified struct {
 }
 
 func (v Verified) Approval() decisionpayload.PlacementApproval { return v.approval }
-func (v Verified) PayloadDigest() contract.Digest               { return v.approval.PayloadDigest() }
-func (v Verified) KeyID() decisiontrust.KeyID                   { return v.keyID }
+func (v Verified) PayloadDigest() contract.Digest              { return v.approval.PayloadDigest() }
+func (v Verified) KeyID() decisiontrust.KeyID                  { return v.keyID }
 func (v Verified) TrustDomain() string                         { return v.trustDomain }
 func (v Verified) TrustBundleRevision() uint64                 { return v.trustBundleRevision }
 func (v Verified) VerifiedAt() time.Time                       { return v.verifiedAt }

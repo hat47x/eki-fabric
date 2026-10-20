@@ -50,9 +50,9 @@ type LeaseRecord struct {
 	PolicyRevision              string
 	PolicyEpoch                 uint64
 	FenceEpoch                  uint64
-	RenewalSequence        uint64
-	IssuedAt               time.Time
-	ExpiresAt              time.Time
+	RenewalSequence             uint64
+	IssuedAt                    time.Time
+	ExpiresAt                   time.Time
 }
 
 func New(cfg Config) (LeaseRecord, error) {

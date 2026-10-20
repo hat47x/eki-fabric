@@ -111,7 +111,35 @@ External Client Planeは、`spec/external/openapi.json`を基準にします。
 
 変更するときは、少なくとも、ローカルで再現できる`go test ./...`と`go vet ./...`の結果を残してください。
 
-M0 skeletonを作った際には、リポジトリが要求するバージョンより古いGo 1.23.2でも、同じソースの互換性の簡易テストが通ることを確認しました。ただし、これは、対応するバージョンを1.23まで下げるという意味ではありません。
+### 検証スクリプト
+
+整形、静的検査、Testを一度に確かめるには、リポジトリのルートで次を実行します。
+
+~~~bash
+./scripts/verify.sh          # gofmt / go vet / go test
+./scripts/verify.sh --quick  # gofmt / go vet だけ
+~~~
+
+Windowsでは、`scripts\verify.ps1`を使います。Windowsの既定の実行ポリシーでは、スクリプトを直接起動できない場合があります。その場合は、次のように実行ポリシーを明示的に緩めて起動します。
+
+~~~powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File scripts\verify.ps1
+powershell -NoProfile -ExecutionPolicy Bypass -File scripts\verify.ps1 -Quick
+~~~
+
+どちらのスクリプトも、最後に`VERIFY: PASS`または`VERIFY: FAIL`を出力します。PRには、この行と、失敗した場合の差分を貼ってください。
+
+`gofmt`の判定は、CRLFの作業ツリーでもLFと同じ結果になるようにしています。改行コードの違いを整形の差分として扱いません。
+
+### 検証の記録として残すもの
+
+PRの本文には、次の3点を残します。
+
+1. 実行したコマンド（`scripts/verify.sh`など）と、Goのバージョン
+2. `VERIFY: PASS`、または失敗したTest名と差分
+3. 実行していない検証と、その理由
+
+「実行環境がないため未検証」と書く場合も、どのコマンドを実行できなかったのかを具体的に書いてください。未検証の依存関係やlockファイルを、検証済みとしてcommitしないでください。
 
 ## Branchの運用
 

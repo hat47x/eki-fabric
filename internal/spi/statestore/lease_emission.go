@@ -107,9 +107,9 @@ func (a LeaseEmissionAbort) Validate() error {
 		return fmt.Errorf("Lease abort: close reason %q is not valid before Authority emission", a.CloseReason)
 	}
 	record, err := leaseemission.NewAborted(leaseemission.AbortedConfig{
-		LeaseID: a.LeaseID,
+		LeaseID:     a.LeaseID,
 		CloseReason: string(a.CloseReason),
-		Reason: a.Reason,
+		Reason:      a.Reason,
 		CommittedAt: a.CommittedAt,
 	})
 	if err != nil || record.IsZero() {

@@ -260,10 +260,10 @@ func (a ArtifactAuthority) Grant(admission Signed[AdmissionApproval], placement 
 	}
 
 	return sign(a.key, ArtifactGrant{
-		TaskID: task.TaskID,
+		TaskID:   task.TaskID,
 		WorkerID: pp.WorkerID,
-		Digest: digest,
-		Expires: expires,
+		Digest:   digest,
+		Expires:  expires,
 	})
 }
 

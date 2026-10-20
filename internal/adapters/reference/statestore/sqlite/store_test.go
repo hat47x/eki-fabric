@@ -4,9 +4,11 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"net/url"
 	"os"
 	"path/filepath"
 	"runtime"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -1015,7 +1017,15 @@ func TestPathWithReservedCharacters(t *testing.T) {
 	if err := os.MkdirAll(dir, 0o700); err != nil {
 		t.Fatalf("MkdirAll() error = %v", err)
 	}
-	path := filepath.Join(dir, "state#1?.db")
+	// "?" is legal in a POSIX file name but not on Windows, where the file
+	// system rejects it before the driver ever sees the DSN. Use characters
+	// that are legal on the running platform while still requiring URI
+	// escaping; TestDSNEscapesReservedCharacters covers "?" everywhere.
+	name := "state#1?.db"
+	if runtime.GOOS == "windows" {
+		name = "state#1%.db"
+	}
+	path := filepath.Join(dir, name)
 
 	record := newTaskRecord(t, "reserved-path")
 	store := openStore(t, path)
@@ -1033,6 +1043,48 @@ func TestPathWithReservedCharacters(t *testing.T) {
 	defer reopened.Close()
 	if _, err := reopened.LoadTask(context.Background(), record.ID); err != nil {
 		t.Fatalf("LoadTask() error = %v", err)
+	}
+}
+
+// TestDSNEscapesReservedCharacters checks the escaping rule independently of
+// the host file system. A file name can contain "?" or "#" on POSIX platforms,
+// and SQLite reads an unescaped "?" as the start of the query string. The test
+// therefore asserts on the generated DSN for paths that no single platform
+// needs to be able to create.
+func TestDSNEscapesReservedCharacters(t *testing.T) {
+	paths := []string{
+		"/var/lib/eki/state#1?.db",
+		`C:\work\eki\state#1?.db`,
+		`relative dir/state%201#2?.db`,
+	}
+	for _, path := range paths {
+		t.Run(path, func(t *testing.T) {
+			u, err := url.Parse(dsn(path))
+			if err != nil {
+				t.Fatalf("url.Parse(dsn(%q)) error = %v", path, err)
+			}
+			if u.Scheme != "file" {
+				t.Fatalf("scheme = %q, want file", u.Scheme)
+			}
+			opaque := u.Opaque
+			if opaque == "" {
+				opaque = u.Path
+			}
+			got, err := url.PathUnescape(opaque)
+			if err != nil {
+				t.Fatalf("PathUnescape(%q) error = %v", opaque, err)
+			}
+			want := strings.ReplaceAll(path, `\`, "/")
+			if len(want) >= 2 && want[1] == ':' {
+				want = "/" + want
+			}
+			if got != want {
+				t.Fatalf("opaque path = %q, want %q", got, want)
+			}
+			if q := u.Query(); q.Get("_txlock") != "immediate" {
+				t.Fatalf("_txlock = %q, want immediate", q.Get("_txlock"))
+			}
+		})
 	}
 }
 

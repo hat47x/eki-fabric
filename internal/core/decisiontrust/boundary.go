@@ -45,13 +45,13 @@ func (r SigningRequest) scope() signingScope {
 }
 
 type VerificationRequest struct {
-	KeyID               KeyID
-	TrustDomain         string
-	AuthorityRole       authority.Role
-	AuthorityPrincipal  string
-	DecisionKind        authority.DecisionKind
-	ProtectedAlgorithm  Algorithm
-	IssuedAt            time.Time
+	KeyID              KeyID
+	TrustDomain        string
+	AuthorityRole      authority.Role
+	AuthorityPrincipal string
+	DecisionKind       authority.DecisionKind
+	ProtectedAlgorithm Algorithm
+	IssuedAt           time.Time
 }
 
 func (r VerificationRequest) Validate() error {

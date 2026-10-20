@@ -14,7 +14,7 @@ import (
 )
 
 const (
-	FrozenDatasetSchema = "eki.learned-scheduling-model-comparison-dataset/v1"
+	FrozenDatasetSchema  = "eki.learned-scheduling-model-comparison-dataset/v1"
 	FreezeBundleSchema   = "eki.learned-scheduling-model-comparison-freeze/v1"
 	BaselineBundleSchema = "eki.learned-scheduling-model-comparison-baselines/v1"
 	ReadinessSchema      = "eki.learned-scheduling-model-fit-readiness/v1"
@@ -23,23 +23,23 @@ const (
 )
 
 type ModelFeatures struct {
-	TaskClass             string   `json:"task_class"`
-	WorkerClass           string   `json:"worker_class"`
-	TotalInputBytes       uint64   `json:"total_input_bytes"`
-	LocalInputBytes       uint64   `json:"local_input_bytes"`
-	TransferInputBytes    uint64   `json:"transfer_input_bytes"`
-	TransferOutputBytes   uint64   `json:"transfer_output_bytes"`
-	TransferBytes         uint64   `json:"transfer_bytes"`
-	TransferMillis        uint64   `json:"transfer_millis"`
-	ComputeMillis         uint64   `json:"compute_millis"`
-	EstimatedMillis       uint64   `json:"estimated_millis"`
-	LocalInputFraction    *float64 `json:"local_input_fraction"`
-	DeadlineSlackMillis   *int64   `json:"deadline_slack_millis"`
+	TaskClass           string   `json:"task_class"`
+	WorkerClass         string   `json:"worker_class"`
+	TotalInputBytes     uint64   `json:"total_input_bytes"`
+	LocalInputBytes     uint64   `json:"local_input_bytes"`
+	TransferInputBytes  uint64   `json:"transfer_input_bytes"`
+	TransferOutputBytes uint64   `json:"transfer_output_bytes"`
+	TransferBytes       uint64   `json:"transfer_bytes"`
+	TransferMillis      uint64   `json:"transfer_millis"`
+	ComputeMillis       uint64   `json:"compute_millis"`
+	EstimatedMillis     uint64   `json:"estimated_millis"`
+	LocalInputFraction  *float64 `json:"local_input_fraction"`
+	DeadlineSlackMillis *int64   `json:"deadline_slack_millis"`
 }
 
 type TargetView struct {
-	DurationResidualMillis     *float64 `json:"duration_residual_millis"`
-	CompletionBeforeDeadline   *bool    `json:"completion_before_deadline"`
+	DurationResidualMillis   *float64 `json:"duration_residual_millis"`
+	CompletionBeforeDeadline *bool    `json:"completion_before_deadline"`
 }
 
 type Grouping struct {
@@ -49,25 +49,25 @@ type Grouping struct {
 }
 
 type ComparisonRow struct {
-	ObservationID       string                         `json:"observation_id"`
-	Split               string                         `json:"split"`
-	Grouping            Grouping                       `json:"grouping"`
-	EvaluationAxes      residualsim.GeneralizationAxes `json:"evaluation_axes"`
-	Features            ModelFeatures                  `json:"features"`
-	Targets             TargetView    `json:"targets"`
-	PolicyEligible       bool         `json:"policy_eligible"`
+	ObservationID  string                         `json:"observation_id"`
+	Split          string                         `json:"split"`
+	Grouping       Grouping                       `json:"grouping"`
+	EvaluationAxes residualsim.GeneralizationAxes `json:"evaluation_axes"`
+	Features       ModelFeatures                  `json:"features"`
+	Targets        TargetView                     `json:"targets"`
+	PolicyEligible bool                           `json:"policy_eligible"`
 }
 
 type FrozenDataset struct {
-	Schema                  string          `json:"schema"`
-	FreezeVersion           string          `json:"freeze_version"`
-	ProjectionVersion       string          `json:"projection_version"`
-	SourceDatasetSchema     string          `json:"source_dataset_schema"`
-	ScenarioSetVersion      string          `json:"scenario_set_version"`
-	GeneratorVersion        string          `json:"generator_version"`
-	SourceFeatureSchema     string          `json:"source_feature_schema"`
-	Seed                    uint64          `json:"seed"`
-	Rows                    []ComparisonRow `json:"rows"`
+	Schema              string          `json:"schema"`
+	FreezeVersion       string          `json:"freeze_version"`
+	ProjectionVersion   string          `json:"projection_version"`
+	SourceDatasetSchema string          `json:"source_dataset_schema"`
+	ScenarioSetVersion  string          `json:"scenario_set_version"`
+	GeneratorVersion    string          `json:"generator_version"`
+	SourceFeatureSchema string          `json:"source_feature_schema"`
+	Seed                uint64          `json:"seed"`
+	Rows                []ComparisonRow `json:"rows"`
 }
 
 type BaselineBundle struct {
@@ -77,15 +77,15 @@ type BaselineBundle struct {
 }
 
 type SliceReadiness struct {
-	TestAUnseenTimeOnly          int `json:"test_a_unseen_time_only"`
-	TestADurationTargets         int `json:"test_a_duration_targets"`
-	TestACompletionTargets       int `json:"test_a_completion_targets"`
-	TestBUnseenWorkerOnly        int `json:"test_b_unseen_worker_only"`
-	TestBDurationTargets         int `json:"test_b_duration_targets"`
-	TestBCompletionTargets       int `json:"test_b_completion_targets"`
-	TestCCompound                int `json:"test_c_compound"`
-	TestCDurationTargets         int `json:"test_c_duration_targets"`
-	TestCCompletionTargets       int `json:"test_c_completion_targets"`
+	TestAUnseenTimeOnly    int `json:"test_a_unseen_time_only"`
+	TestADurationTargets   int `json:"test_a_duration_targets"`
+	TestACompletionTargets int `json:"test_a_completion_targets"`
+	TestBUnseenWorkerOnly  int `json:"test_b_unseen_worker_only"`
+	TestBDurationTargets   int `json:"test_b_duration_targets"`
+	TestBCompletionTargets int `json:"test_b_completion_targets"`
+	TestCCompound          int `json:"test_c_compound"`
+	TestCDurationTargets   int `json:"test_c_duration_targets"`
+	TestCCompletionTargets int `json:"test_c_completion_targets"`
 }
 
 type ModelFitReadiness struct {
@@ -290,7 +290,7 @@ func projectObservation(
 			LocalInputFraction:  localFraction,
 			DeadlineSlackMillis: deadlineSlack,
 		},
-		Targets:              targets,
+		Targets:        targets,
 		PolicyEligible: observation.PolicyEligible,
 	}, nil
 }

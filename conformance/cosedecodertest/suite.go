@@ -20,8 +20,8 @@ const manifestMaxBytes = 64 * 1024
 type Factory func(t testing.TB) cosedecoder.Codec
 
 type manifest struct {
-	Profile string  `json:"profile"`
-	TestKey testKey `json:"test_key"`
+	Profile string   `json:"profile"`
+	TestKey testKey  `json:"test_key"`
 	Vectors []vector `json:"vectors"`
 }
 
