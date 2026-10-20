@@ -89,6 +89,23 @@ LSE-1がWorkerへLeaseを発行する前に、State Storeへ新しいLeaseを予
 
 Store implementationは、これらの予約に対する拒否をErrConflictまたはErrNotFoundとして返してください。Backend固有errorへ置き換えないでください。
 
+## `RunLeaseSigningContract` / `RunLeaseSigningDurabilityContract`
+
+LSE-1の署名境界（`leaseissue.Emitter`）を、実際のState Storeに対して動かす契約です。署名側はReferenceのCOSE / CBOR codecとEd25519 keyを使います。どのStore Adapterも同じbytesで判定されます。
+
+確認する行は次のとおりです（#78）。
+
+- 署名中にPolicyを取り消すと、EMITTEDにならずABORTED（`policy_revoked`）になり、Attemptが閉じる。次の再配置のFenceEpochは前より大きい
+- Emitterの最後の確認とcommitの間にPolicyを取り消しても、State Storeがcommitを拒否し、ABORTEDになる
+- 署名後にLSE-1 keyを失効させると、自己検証で拒否されABORTEDになる。commit直前の確認でkeyの侵害を検出した場合も同じ
+- commit前にcrashすると、何も耐久化されずRESERVEDのまま残る。再試行は一度だけEMITTEDを作り、その後の再送は再署名せず同じbytesを返す
+- commit後に応答が失われても、再試行は保存済みのbytesを返す。Policyを取り消した後でも同じ
+- Policyの取消をまたいで残ったreservationは、signerに届かずABORTEDになり、同じPlacementからLeaseを作り直せない
+- Taskの取消はABORTED（`cancelled`）になる
+- Policyを読めない場合、Trust Bundleが古い場合は、何も記録せずerrorを返す。Trust Bundleを更新すれば再試行で発行できる
+- 複数のEmitterが同時に同じreservationを処理しても、全員が同じEMITTED bytesを返す
+- SQLiteを再起動しても、commit前crashからの再試行、EMITTEDの再送、ABORTEDの再送が同じ結果になる
+
 ## 未決事項（Open Question）
 
 - `A-ASSIGNED`で保持されたLeaseへの同じPlacement Decisionの再送を許すかどうかは未決です。現在の契約（`reserve-load-replay`、`exact-replay-keeps-attempt-revision-and-fence`）と両Adapterは、この再送が既存のLeaseへ収束することを確認しています。ただし、これは「配送前の段階でも再送を許す」という設計判断を確定したものではありません。Leaseをまだ配送していない段階で再送を許してよいかは、後続の設計判断で決めます。それまで、この挙動は暫定です。

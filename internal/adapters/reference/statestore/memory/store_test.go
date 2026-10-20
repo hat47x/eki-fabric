@@ -80,3 +80,10 @@ func TestLeaseEmissionStoreContract(t *testing.T) {
 		return New()
 	})
 }
+
+func TestLeaseSigningContract(t *testing.T) {
+	statestoretest.RunLeaseSigningContract(t, func(t testing.TB) statestoretest.LeaseEmissionTestStore {
+		t.Helper()
+		return New()
+	})
+}
