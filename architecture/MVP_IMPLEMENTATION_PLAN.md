@@ -400,7 +400,9 @@ Reference State Storeでは、Lease reservationに対して次の状態を区別
 
 `ABORTED`では、対応するAttemptを同じ保存境界で`closed`へ進めます。新しいPlacementへ進むことはできますが、消費済みのFenceEpochは戻しません。同じPlacement DecisionからLeaseを作り直すことも許しません。
 
-このState Store境界は、署名済みbytesとmetadataの暗号学的な対応を、それ自体で証明するものではありません。後続のLSE-1 compositionでは、canonical Lease payloadの生成、LSE-1 keyでの署名、signed envelopeの再decodeと検証、Trust Bundleとkeyのcurrentness確認を行った型付き結果だけを、emission commitへ渡します。呼出側の自己申告fieldをAuthority証明として扱いません。
+このState Store境界は、署名済みbytesとmetadataの暗号学的な対応を、それ自体で証明するものではありません。LSE-1 composition（`leaseissue.Emitter`）では、canonical Lease payloadの生成、LSE-1 keyでの署名、signed envelopeの再decodeと検証、Trust Bundleとkeyのcurrentness確認を行った型付き結果だけを、emission commitへ渡します。呼出側の自己申告fieldをAuthority証明として扱いません。
+
+`leaseissue.Emitter`は、RESERVEDのLeaseから`eki.lease/v1`のpayloadを作り、署名し、自分で検証し直してからEMITTEDをcommitします。前提を失った場合（Policyの取消や差し替え、LSE-1 keyの失効、Taskの取消、期限切れ）はABORTEDを記録します。Policyを読めない、Trust Bundleが古いなどの一時的な失敗では、何も記録せずRESERVEDのまま残し、再試行で同じpayloadに署名します。keyとTrust Bundleの状態はState Storeの外にあるため、commit直前の確認とcommitの間に起きたkey失効は、Worker側の検証で拒否します。Worker側でPolicyのcurrentnessをどこまで確認するかは未決です（#78）。
 
 ## 3.6 WorkOrder
 
@@ -1065,7 +1067,8 @@ Section 20の最初の列挙は、すでに一部が完了しています。そ�
 3. 永続的なstateを前提に、M0のE2Eを、Task submitとstatus -> Workerの登録 -> 一つのWorkerでのローカルな実行まで接続する。
    - Task submit、status、cancelは実装済みです。再起動後も、Task、冪等性、未完了Task数の上限を保持します。
    - Attempt、Lease reservation、FenceEpoch、Policy Epoch、検証済みPlacementからLease reservationへ進むLSE-1の前半は実装済みです。
-   - 次の中心作業は、canonical Lease payloadの署名、署名済みbytesの耐久的な発行確定、Worker deliveryとWorker側検証、一つのWorkerでのローカル実行です。
+   - canonical Lease payloadの署名と、署名済みbytesの耐久的な発行確定（LSE-1の後半、`leaseissue.Emitter`）は実装済みです。
+   - 次の中心作業は、Worker deliveryとWorker側検証、一つのWorkerでのローカル実行です。
 
 `learned scheduler`は、Section 4と11で定義したとおり、MVPの必須ではありません。Researchの実装がmainに存在しても、上記のM0とM1のgateの優先順位を変更しません。
 

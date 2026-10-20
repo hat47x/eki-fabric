@@ -1,8 +1,10 @@
-// Package leaseissue composes the LSE-1 pre-signing boundary.
+// Package leaseissue composes the LSE-1 Lease issuance boundaries.
 //
-// The service accepts signed Placement Approval bytes, not a caller-built
-// LeaseReservation. Authority and subject fields are derived only from the
-// cryptographically verified Placement Approval and current durable state.
+// Service reserves a Lease: it accepts signed Placement Approval bytes, not a
+// caller-built LeaseReservation. Authority and subject fields are derived only
+// from the cryptographically verified Placement Approval and current durable
+// state. Emitter then signs a RESERVED Lease and durably commits it as EMITTED
+// or ABORTED; only EMITTED bytes are worker-facing Authority.
 package leaseissue
 
 import (

@@ -136,3 +136,21 @@ type Codec interface {
 	Decoder
 	Signature1Encoder
 }
+
+// Sign1Encoder builds the protected header and the final COSE_Sign1 bytes for
+// a signed decision that the local Authority has just signed.
+//
+// It is framing, not signing: the signature comes from a decisiontrust signer
+// over the Signature1 bytes from Signature1Encoder. Output must decode with
+// Decoder under the same strict EKI profile.
+type Sign1Encoder interface {
+	EncodeProtectedHeader(algorithm decisiontrust.Algorithm, keyID decisiontrust.KeyID) ([]byte, error)
+	EncodeSign1(protectedHeader, payload, signature []byte) ([]byte, error)
+}
+
+// SigningCodec is the COSE capability an issuing Authority needs: build the
+// envelope, then strictly decode it again before committing it.
+type SigningCodec interface {
+	Codec
+	Sign1Encoder
+}

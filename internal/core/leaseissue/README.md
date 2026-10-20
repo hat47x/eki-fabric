@@ -1,6 +1,11 @@
-# LSE-1検証済みPlacementサービス
+# LSE-1のLease発行サービス
 
-このpackageは、署名済みPlacement Approvalからdurable Lease reservationへ進むpre-signing境界です。#78のpolicy currentness linearizationが成立するまでは、productionのsigned Lease発行経路が完成したとは扱いません。
+このpackageは、LSE-1がLeaseを発行する二つの段階を持ちます。
+
+1. `Service.Reserve`: 署名済みPlacement Approvalを検証し、durable Lease reservation（RESERVED）とFenceEpochを確定する。
+2. `Emitter.Emit`: RESERVEDのLeaseに`eki.lease/v1`の署名を付け、EMITTEDとして耐久的に確定する。前提が失われていればABORTEDを確定する。
+
+Workerへ渡してよいのは、2.でEMITTEDとして保存されたbytesだけです。
 
 低層の`statestore.LeaseReservation`は保存契約として公開されていますが、production callerがAuthority fieldを自由に組み立てるためのAPIではありません。
 
@@ -12,7 +17,7 @@ signed Placement Approval bytes
   -> current-state revalidation
   -> Authority fieldsをVerifiedから一方向に導出
   -> durable Lease reservation / FenceEpoch
-  -> future canonical Lease payload / LSE-1 signing
+  -> Emitter: canonical Lease payload / LSE-1 signing / EMITTED commit
 ```
 
 callerがRequestで指定できるのは次だけです。
@@ -42,35 +47,56 @@ Lease expiryは次の最小値です。
 
 ただし既存Leaseがすでに期限切れなら、serviceは`ErrPlacementConsumed`を返します。同じPlacementを再送して新しいLease Authorityを復活させることはできません。再配置には新しいPlacement Decisionが必要です。
 
-## Authority境界
+## 署名と発行（`Emitter.Emit`）
 
-このserviceの成功結果も、まだWorkerへ提示できる署名済みP2 Leaseではありません。
+### 何が問題か
 
-次段で必要です。
+reservationを確定してから実際に署名するまでの間にも、Policyの取消、署名keyの失効、Taskの取消は起こり得ます。署名関数が成功した時点でLeaseを発行済みとみなすと、取消の直後でも古い前提で署名したLeaseが外へ出てしまいます。逆に、署名の途中でprocessが落ちたときに「署名したかもしれないので別のDecisionとして署名し直す」と、一つのreservationから二つのLease Decisionが生まれます。
 
-- canonical `eki.lease/v1` payload
-- LSE-1 signing key / role
-- COSE envelope
-- Worker側のstrict decode / key / role / subject / FenceEpoch / expiry verification
+### どう扱うか
 
-durable reservation commit前に署名済みLeaseを外へ出しません。
+`Emitter.Emit`は、Lease IDだけを受け取ります。署名対象の値はすべてdurableなreservationから導きます。
 
-また、durable reservationが成功したことだけを後続signing authorityにしません。reservation後にkey state、Trust Bundle、policy、Task / Attempt stateが変わる可能性があるため、将来のLSE-1 signing境界は**署名直前のcurrent key / trust / policy / subject stateを再確認**し、失効・取消・supersedeをfail closedにする必要があります。
+```text
+EMITTED / ABORTEDが既にある
+  -> EMITTEDなら保存済みbytesをそのまま返す（再署名しない）
+  -> ABORTEDならErrLeaseAborted
+RESERVED
+  -> Task / Attempt / PolicyStateを読み直す
+  -> canonical eki.lease/v1 payloadを作る
+       Decision IDはLease IDから決まる（再試行しても同じDecision）
+       期間はreservationの内側へミリ秒単位で丸める
+  -> 現在のprimary LSE-1 keyで署名
+  -> 署名済みenvelopeをstrict decodeし、現在のTrust Bundleで検証し直す
+  -> keyとTask / Attempt / PolicyStateを最後にもう一度確認
+  -> State StoreへEMITTEDをcommit（ここが線形化点）
+```
 
-このserviceは「署名可能なLeaseを確定した」のではなく、「現在検証したPlacementを、Authorityを増幅させずdurable fencing stateへ予約した」ところまでを保証します。
+EMITTEDのcommitでは、State Storeが同じtransactionの中でPolicy Epoch、Task revision、Attempt revisionを照合します。最後の確認とcommitの間にPolicyが取り消された場合も、State Storeがcommitを拒否します。その場合、Emitterは署名済みbytesを捨て、ABORTEDを記録します。
 
-## reservation後のdrift
+### 結果の分け方
 
-verificationとdurable reservationの後、実際にLeaseをsignする前にkey、Trust Bundle、policy、Task / Attempt stateが変わるraceは残ります。
+| 状況 | 結果 |
+| --- | --- |
+| EMITTEDが既にある（Policy取消の後でも） | 保存済みbytesを返す。再署名しない |
+| Policyの取消または差し替え | ABORTED（`policy_revoked`） |
+| LSE-1 keyの失効、侵害、primaryの変更 | ABORTED（`policy_revoked`） |
+| Taskの取消 | ABORTED（`cancelled`） |
+| Taskがready / active以外、TaskIRの不一致 | ABORTED（`stale_attempt`） |
+| Leaseの期限切れ | ABORTED（`lease_expired`） |
+| Policyを読めない、Trust Bundleが古い、signerが一時的に使えない | errorを返し、RESERVEDのまま残す |
+| commit前のcrash | RESERVEDのまま残る。再試行は同じpayloadに署名する |
+| commit後に応答が失われた | 再試行は保存済みbytesを返す |
 
-Security上はsigningをfail closedにすればAuthorityを外へ出さずに済みます。ただし、signingを拒否したreservation / fenceをそのままexpiryまで残すと、新しいPlacementを一時的に妨げる可用性問題になります。
+ABORTEDは、Attemptのcloseと同じ保存境界で記録します。FenceEpochは戻しません。再配置には新しいPlacement Decision、Attempt、Lease、FenceEpochを使います。ABORTEDになったreservationと同じPlacementから、Leaseを作り直すことはできません。
 
-そのため後続のsigning work unitでは、少なくとも次を同時に設計します。
+### 保証しないこと
 
-- signing直前のcurrent authority再検証
-- signing失敗・policy revoke・key compromise時のreservation revoke / close
-- stale reservationを新Authorityへ再利用しない
-- cleanupがFenceEpochを巻き戻さない
-- Worker / Local Governor currentnessをAuthority sourceへ接続するまでは、Worker向けsigned Leaseを完成扱いしない
+- keyとTrust Bundleの状態はState Storeの外にあります。commit直前に確認しても、確認とcommitの間に起きたkey失効は検出できません。この隙間は、Worker側の検証が現在のkey状態を確認することで閉じます。
+- `PolicyEpoch`は`eki.lease/v1`のwireに載せません。wire上のPolicyの識別子は`policy_revision`で、PolicyStoreは一度currentになったrevisionを再利用しません（#78）。PolicyEpochはEMITTED記録に残ります。
+- EMITTEDの後にPolicyを取り消しても、既に発行したLeaseは無効になりません。発行済みLeaseの停止は、Lease revoke、renewal停止、Worker側の検証やLocal Governorの役割です。
+- AttemptがEmitterの外で既にcloseされた場合、Emitterは何も記録せずerrorを返します。State StoreはそのreservationからEMITTEDを作りません。
 
-現在のserviceはこのraceを「安全に解決済み」とは主張しません。
+### 未決事項
+
+Worker側の検証で、Policyのcurrentnessをどこまで確認させるかは未決です（#78）。Workerは現在、Lease bytesから`policy_revision`を読めますが、そのrevisionが今も有効かを確かめる経路を持ちません。

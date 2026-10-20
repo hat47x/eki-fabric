@@ -45,7 +45,7 @@ type Codec struct {
 	encode    fxcbor.EncMode
 }
 
-var _ cosedecoder.Codec = (*Codec)(nil)
+var _ cosedecoder.SigningCodec = (*Codec)(nil)
 
 // New returns a Codec. Construction fails only if the CBOR library rejects an
 // option set, which would be a programming error.
@@ -276,6 +276,64 @@ func (c *Codec) EncodeSignature1(protectedHeader, payload []byte) ([]byte, error
 	out, err := c.encode.Marshal([]any{signature1Context, protectedHeader, []byte{}, payload})
 	if err != nil {
 		return nil, fmt.Errorf("encode Signature1: %w", err)
+	}
+	return out, nil
+}
+
+// EncodeProtectedHeader builds the canonical EKI signed-decision protected
+// header for one signing key: alg, crit = [EKI profile], kid, and the profile.
+func (c *Codec) EncodeProtectedHeader(algorithm decisiontrust.Algorithm, keyID decisiontrust.KeyID) ([]byte, error) {
+	if c == nil || c.encode == nil {
+		return nil, errors.New("COSE codec is not initialized")
+	}
+	identifier, ok := algorithm.COSEIdentifier()
+	if !ok {
+		return nil, fmt.Errorf("unsupported algorithm %q", algorithm)
+	}
+	critical := []int64{decisiontrust.COSEHeaderLabelEKIProfile}
+	kid := []byte(string(keyID))
+	profile := decisiontrust.SignedDecisionProfileV1
+	if _, _, err := (decisiontrust.ProtectedHeaderProfile{
+		AlgorithmIdentifier: identifier,
+		CriticalLabels:      critical,
+		KeyID:               kid,
+		Profile:             profile,
+	}).Validate(); err != nil {
+		return nil, err
+	}
+	out, err := c.encode.Marshal(protectedHeader{
+		Algorithm: &identifier,
+		Critical:  &critical,
+		KeyID:     &kid,
+		Profile:   &profile,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("encode protected header: %w", err)
+	}
+	if len(out) > decisiontrust.MaxProtectedHeaderBytes {
+		return nil, fmt.Errorf("protected header exceeds %d bytes", decisiontrust.MaxProtectedHeaderBytes)
+	}
+	return out, nil
+}
+
+// EncodeSign1 assembles tag 18 [protected, {}, payload, signature] with an
+// attached payload and an empty unprotected header, then checks that the
+// result passes the strict decoder. A value this codec would reject on the
+// relying side is never returned to an issuer.
+func (c *Codec) EncodeSign1(protected, payload, signature []byte) ([]byte, error) {
+	if c == nil || c.encode == nil {
+		return nil, errors.New("COSE codec is not initialized")
+	}
+	if payload == nil {
+		return nil, errors.New("detached payload is prohibited")
+	}
+	body, err := c.encode.Marshal([]any{protected, map[int64]any{}, payload, signature})
+	if err != nil {
+		return nil, fmt.Errorf("encode COSE_Sign1: %w", err)
+	}
+	out := append([]byte{cborTag18}, body...)
+	if _, err := c.decodeSign1(out); err != nil {
+		return nil, fmt.Errorf("encoded COSE_Sign1 violates the EKI profile: %w", err)
 	}
 	return out, nil
 }
