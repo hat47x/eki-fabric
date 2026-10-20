@@ -588,3 +588,16 @@ M0とMVPは0.1の権限の上で進めてよく、新しい権限はADR-0013の�
 - 単体で窓の予算を超えるTaskの扱い。
 
 この作業は、mainline priority guardの順位を変えません。M0 vertical sliceの次の単位は、引き続きWorker Planeとone-Worker executionの接続です。
+
+### 2026-10-20 委任の等級の表し方
+
+ADR-0013で残した「信頼の水準を、Assurance Modelの軸の組み合わせで表すか、名前を付けた段階で表すか」という問いに、[ADR-0016](adr/0016-delegation-class-as-registered-profile.md)で答えました。
+
+- 信頼の水準を、管理者が登録する名前付きで版を持つ等級（Delegation Class）として表します。名前は組織が決め、EKI Coreは普遍的な信頼の順位表を同梱しません。
+- 等級は単一のスコアではありません。認めるProfile（RA・CA）、検証の強さ、Data Classの上限、仕事の型、Leaseの寿命、予算と容量の上限、Evidenceの鮮度と失効を明示し、Assurance Modelの軸へ対応づけます。
+- 実効の条件は、Taskの要求と等級の範囲のうち厳しい方で決めます。等級は「ここまで任せてよい」という上限であり、Taskの要求を下げる権限ではありません。
+- 等級は委任先の自己申告から決めません。未登録は委任不可とし、判断は使った等級の版へbindingします。
+
+M0とMVPは、等級が一つだけの状態として今の方針を移せます。新しい権限と同様、S1以降で実装します。この判断はmainline priority guardの順位を変えません。
+
+実装と運用に残る問いは、[#138](https://github.com/hat47x/eki-fabric/issues/138)で続けます。
