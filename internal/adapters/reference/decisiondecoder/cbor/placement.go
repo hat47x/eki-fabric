@@ -25,8 +25,9 @@ var (
 )
 
 type Decoder struct {
-	decode fxcbor.DecMode
-	encode fxcbor.EncMode
+	decode          fxcbor.DecMode
+	workOrderDecode fxcbor.DecMode
+	encode          fxcbor.EncMode
 }
 
 var _ decisiondecoder.PlacementApprovalDecoder = (*Decoder)(nil)
@@ -44,11 +45,26 @@ func New() (*Decoder, error) {
 	if err != nil {
 		return nil, fmt.Errorf("create strict P2 decoder: %w", err)
 	}
+	// A WorkOrder carries up to 64 read grants in one body array, so it needs a
+	// wider array limit than the other P2 payloads. The nesting and map limits
+	// stay the same.
+	workOrderDecode, err := fxcbor.DecOptions{
+		DupMapKey:         fxcbor.DupMapKeyEnforcedAPF,
+		MaxNestedLevels:   8,
+		MaxArrayElements:  80,
+		MaxMapPairs:       16,
+		IndefLength:       fxcbor.IndefLengthForbidden,
+		TagsMd:            fxcbor.TagsForbidden,
+		ExtraReturnErrors: fxcbor.ExtraDecErrorUnknownField,
+	}.DecMode()
+	if err != nil {
+		return nil, fmt.Errorf("create strict P2 WorkOrder decoder: %w", err)
+	}
 	encode, err := fxcbor.CoreDetEncOptions().EncMode()
 	if err != nil {
 		return nil, fmt.Errorf("create deterministic P2 encoder: %w", err)
 	}
-	return &Decoder{decode: decode, encode: encode}, nil
+	return &Decoder{decode: decode, workOrderDecode: workOrderDecode, encode: encode}, nil
 }
 
 type digestWire struct {
