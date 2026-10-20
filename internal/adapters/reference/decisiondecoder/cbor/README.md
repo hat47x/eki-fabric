@@ -1,6 +1,6 @@
 # P2署名付き判断を厳格に読むCBORデコーダ
 
-Reference Go実装でP2 Placement Approval payloadを読むadapterです。
+Reference Go実装でP2 Placement Approvalと`eki.lease/v1`のpayloadを読むadapterです。Leaseについては、LSE-1が署名するbytesを作るencoder（`EncodeLease`）も持ちます。encoderはRFC 8949 Core Deterministic Encodingで出力し、同じLeaseからは常に同じbytesを作ります。
 
 `fxamacker/cbor/v2`を使い、次をfail closedにします。
 

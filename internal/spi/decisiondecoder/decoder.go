@@ -11,3 +11,15 @@ import "github.com/hat47x/eki-fabric/internal/core/decisionpayload"
 type PlacementApprovalDecoder interface {
 	DecodePlacementApproval(payload []byte) (decisionpayload.PlacementApproval, error)
 }
+
+// LeaseCodec converts between the closed P2 `eki.lease/v1` semantic shape and
+// its RFC 8949 Core Deterministic Encoding.
+//
+// EncodeLease is used only by LSE-1 to build the bytes it signs. DecodeLease
+// treats its input as hostile. Neither operation authorizes a Lease: the
+// signed envelope, key, Trust Bundle, and current Lease state must still be
+// verified.
+type LeaseCodec interface {
+	EncodeLease(lease decisionpayload.Lease) ([]byte, error)
+	DecodeLease(payload []byte) (decisionpayload.Lease, error)
+}

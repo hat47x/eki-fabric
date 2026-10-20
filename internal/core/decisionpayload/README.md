@@ -2,7 +2,7 @@
 
 このpackageは、署名対象となるP2 Decision payloadをGoの型として表します。
 
-最初のReferenceはPlacement Approvalです。ここで保持するのは、CDDLから読み取った意味とpayload digestであり、署名検証済みAuthorityではありません。
+最初のReferenceはPlacement Approvalです。二つ目はLSE-1が署名する`eki.lease/v1`の`Lease`です。`Lease`はwireのミリ秒単位の時刻に揃えた値だけを受け付け、encodeとdecodeで値が変わらないようにします。ここで保持するのは、CDDLから読み取った意味とpayload digestであり、署名検証済みAuthorityではありません。
 
 ```text
 strict CBOR decode
