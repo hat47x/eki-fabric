@@ -771,3 +771,16 @@ Worker Planeのtransportが認証したprincipalと、Claimが名乗るWorkerを
 Testでは、正しいprincipalの受理、別Workerの拒否（acceptorを呼ばない）、不正なprincipalとzero Claim、nil context、acceptorのエラー伝播を固定しました。
 
 残りは、Worker Planeのtransport実装（認証とClaimの運搬）、報告が届かないAttemptのLease期限からの確定、Runnerの種類の拡張です。
+
+### 2026-10-21 申告が届かないAttemptの扱い
+
+`internal/control/claimreconcile`を追加し、Claimが届かないAttemptを、期限だけで失敗や再実行へ丸めないようにしました。
+
+- Leaseの期限後もgraceの間は`AwaitClaim`とし、遅れて届くClaimを待ちます。claimqueueはat-least-onceなので、直後に閉じると正しいClaimが`late`になります。
+- graceの後、外部副作用の可能性がなければ`CloseLeaseExpired`とし、Attemptを閉じます。再実行してよいかは`recovery`がTaskの契約とattempt budgetで決めます。
+- 外部副作用の可能性があれば`Reconcile`とし、Attemptを閉じません。Receiptなしに閉じて再実行すると、二重の副作用になり得ます。
+- 開いていないAttemptと、Claimが既にあるAttemptは`NoAction`です。
+
+Testでは、closed / claimed、期限前とgrace内、grace境界とその後、外部副作用あり、不正入力（zero now、負のgrace、期限なし）を固定しました。
+
+残りは、Worker Planeのtransport実装（認証とClaimの運搬）、`Reconcile`からReceiptを得た後の状態遷移、Runnerの種類の拡張です。
