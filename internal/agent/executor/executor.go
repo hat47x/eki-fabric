@@ -217,14 +217,14 @@ func (s *Supervisor) finish(run runResult, spec Spec, startedAt time.Time, reaso
 		outcome.Failure = run.err
 		return outcome
 	}
-	if run.result.ExitCode != 0 {
-		outcome.Status = StatusFailed
-		outcome.Failure = fmt.Errorf("runner exited with code %d", run.result.ExitCode)
-		return outcome
-	}
 	if run.result.OutputBytes > spec.Limits.OutputBytesMaximum {
 		outcome.Status = StatusOutputExceeded
 		outcome.Failure = fmt.Errorf("output %d bytes exceeds the limit %d", run.result.OutputBytes, spec.Limits.OutputBytesMaximum)
+		return outcome
+	}
+	if run.result.ExitCode != 0 {
+		outcome.Status = StatusFailed
+		outcome.Failure = fmt.Errorf("runner exited with code %d", run.result.ExitCode)
 		return outcome
 	}
 	outcome.Status = StatusCompleted

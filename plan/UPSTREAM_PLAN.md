@@ -681,3 +681,14 @@ Testでは、完了、非ゼロ終了、Runnerのエラー、出力上限超過�
 - Taskの契約（retryable、max attempts）は、WorkOrderやOutcomeではなく、耐久化されたTaskの状態から読みます。
 
 これで、回収から再投入までの経路がCoreとして一続きになりました。残るのは、Runnerの実装、OutcomeのResultClaimとしての報告、Lockedな状態（`workorderaccept`の`Admission`やnonce記録）の耐久化です。
+
+最初のRunnerとして、`internal/adapters/reference/executor/native`を追加しました。
+
+- WorkOrderはパスも引数も指定しません。承認された実行体のdigestだけを運びます。
+- 運用者がローカルに登録したdigest → パス・引数・環境変数の対応を使い、起動のたびにファイルを再ハッシュします。未登録、または内容が変わった実行体は起動しません。
+- 期限はcontextの取消しで止めます。出力が上限を超えたら止め、`ExitCode=-1`と観測したbyte数を返します。非ゼロ終了は`Result`として返し、Agentは`failed`として扱います。
+- OSレベルのsandbox、子プロセスの強制停止、環境変数の最小化は、このRunnerの責務にしません。
+
+Testでは、テストバイナリ自身を子プロセスとして起動し、正常終了、非ゼロ終了、出力上限超過、未登録digest、起動前の改ざん、context取消しを固定しました。
+
+残りは、Container / WASM / BrowserのRunner、ResultClaimの報告経路、`Admission`・nonce・`Outcome`の耐久化です。
