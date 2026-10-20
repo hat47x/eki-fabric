@@ -672,6 +672,46 @@ Testでは、完了、非ゼロ終了、Runnerのエラー、出力上限超過�
 
 残りは、Runnerの実装（Native / Container / WASM / Browser）、checkpointと再開、`Outcome`をResultClaimとしてControl Planeへ報告する経路です。
 
+実行の終わり方を回復へ渡す写像も追加しました（`internal/agent/reclaim`）。
+
+- `reclaimed`、`failed`、`deadline_exceeded`は`recovery.Interruption`へ変換し、`recovery.Classify`でattempt budget、deadline、時間窓の予算を判定します。
+- `cancelled`は意図的な停止として自動retryしません。
+- `runner_stuck`は、先に端末側で止める必要があるため自動retryしません。
+- `completed`と`output_exceeded`は回復へ渡しません。
+- Taskの契約（retryable、max attempts）は、WorkOrderやOutcomeではなく、耐久化されたTaskの状態から読みます。
+
+これで、回収から再投入までの経路がCoreとして一続きになりました。残るのは、Runnerの実装、OutcomeのResultClaimとしての報告、Lockedな状態（`workorderaccept`の`Admission`やnonce記録）の耐久化です。
+
+最初のRunnerとして、`internal/adapters/reference/executor/native`を追加しました。
+
+- WorkOrderはパスも引数も指定しません。承認された実行体のdigestだけを運びます。
+- 運用者がローカルに登録したdigest → パス・引数・環境変数の対応を使い、起動のたびにファイルを再ハッシュします。未登録、または内容が変わった実行体は起動しません。
+- 期限はcontextの取消しで止めます。出力が上限を超えたら止め、`ExitCode=-1`と観測したbyte数を返します。非ゼロ終了は`Result`として返し、Agentは`failed`として扱います。
+- OSレベルのsandbox、子プロセスの強制停止、環境変数の最小化は、このRunnerの責務にしません。
+
+Testでは、テストバイナリ自身を子プロセスとして起動し、正常終了、非ゼロ終了、出力上限超過、未登録digest、起動前の改ざん、context取消しを固定しました。
+
+残りは、Container / WASM / BrowserのRunner、ResultClaimの報告経路、`Admission`・nonce・`Outcome`の耐久化です。
+
+Workerの実行結果をControl Planeへ戻す最初の境界として、`internal/core/resultclaim`を追加しました。
+
+- Claimは、Task / TaskIR / Attempt / Worker / Lease / fence / WorkOrder Decision / executor digest / nonce / status / exit code / output bytes / 開始・終了時刻を持ちます。
+- `Decide`は、Claimと、Control Planeが同じ操作で読んだ現在の状態（Attemptの存在と開閉、現在のfence、記録済みのClaim）だけを比べます。
+- 初回は記録してAttemptを閉じ、同じ申告の再送は何も変えず、fenceが古い申告と閉じた後の申告は記録だけ残します。同じAttemptに異なる申告が届いた場合は、最初の申告を採り、後のものを拒否します。
+- `completed`はResult Verificationへ送りますが、Accepted Resultにはしません。`runner_stuck`ではAttemptを閉じません。
+
+Testでは、正常な初回、再送、競合、stale、late、別Attempt、zero Claim、statusごとのcloseとverificationの扱いを固定しました。
+
+残りは、Claimの耐久化とWorker Planeのtransport、Attempt / Lease / Taskへの原子的な反映、報告が届かない場合のLease期限からの確定です。
+
+Worker側では、`internal/agent/claim`が`executor.Outcome`を`resultclaim.Claim`へ写像します。
+
+- statusの写像を明示し、未知のstatusは`ErrUnknownStatus`で止めます。黙って`failed`や`completed`へ丸めません。
+- `Attempt`のbindingはAdmissionとローカルLease記録から作り、Outcomeから作り直しません。
+- `completed`に非ゼロの終了コードが入っている場合などは、`resultclaim`の検証で拒否し、builderは値を直しません。
+
+Testでは、全statusの写像、未知のstatus、bindingの不足、時刻の欠落、`completed`と終了コードの矛盾を固定しました。次は、Claimを送るtransportと、Control Plane側での耐久化です。
+
 ### 2026-10-20 要件の正本へのADR-0013〜0016の反映
 
 ADR-0013、0014、0016で定めた方向を、[Product Requirements](../requirements/PRODUCT_REQUIREMENTS.md)へ反映した。新しい節「K. 委任の核、仕事の型、組織の判断との連動」に、RQ-054〜RQ-063の10件を加え、53 Requirementから63 Requirementになった。RQ-011、RQ-016、RQ-026に追記し、非目標（L節）を見直した。
