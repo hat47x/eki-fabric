@@ -31,6 +31,9 @@ import (
 // in-process Ed25519 key, so every Store adapter is judged on the same bytes.
 func RunLeaseSigningContract(t *testing.T, newStore LeaseEmissionFactory) {
 	t.Helper()
+	t.Run("worker-lease-verification", func(t *testing.T) {
+		runLeaseVerificationContract(t, newStore)
+	})
 
 	t.Run("emits-verifiable-lease-bound-to-reservation", func(t *testing.T) {
 		store := newStore(t)

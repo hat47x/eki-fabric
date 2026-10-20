@@ -12,14 +12,15 @@ type PlacementApprovalDecoder interface {
 	DecodePlacementApproval(payload []byte) (decisionpayload.PlacementApproval, error)
 }
 
-// LeaseCodec converts between the closed P2 `eki.lease/v1` semantic shape and
-// its RFC 8949 Core Deterministic Encoding.
-//
-// EncodeLease is used only by LSE-1 to build the bytes it signs. DecodeLease
-// treats its input as hostile. Neither operation authorizes a Lease: the
-// signed envelope, key, Trust Bundle, and current Lease state must still be
-// verified.
-type LeaseCodec interface {
-	EncodeLease(lease decisionpayload.Lease) ([]byte, error)
+// LeaseDecoder decodes hostile P2 eki.lease/v1 payload bytes. Successful
+// decoding does not authenticate the signature or authorize execution.
+type LeaseDecoder interface {
 	DecodeLease(payload []byte) (decisionpayload.Lease, error)
+}
+
+// LeaseCodec adds canonical encoding for the LSE-1 producer. Workers only
+// need LeaseDecoder. Neither operation proves current Lease authority.
+type LeaseCodec interface {
+	LeaseDecoder
+	EncodeLease(lease decisionpayload.Lease) ([]byte, error)
 }
