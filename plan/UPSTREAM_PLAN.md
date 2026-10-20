@@ -601,3 +601,15 @@ ADR-0013で残した「信頼の水準を、Assurance Modelの軸の組み合わ
 M0とMVPは、等級が一つだけの状態として今の方針を移せます。新しい権限と同様、S1以降で実装します。この判断はmainline priority guardの順位を変えません。
 
 実装と運用に残る問いは、[#138](https://github.com/hat47x/eki-fabric/issues/138)で続けます。
+
+### 2026-10-20 WorkOrderのP2 payload
+
+one-Worker executionへ進む前提として、WOR-1が署名する`eki.work-order/v1`の意味と、strictなCBOR codecを追加しました。
+
+- `decisionpayload.WorkOrder`は、Task、TaskIR、Attempt、Worker、Placement Approval、Lease、Executor Approval、read / writeのArtifact Grant、resource limits、sandbox policy、外部副作用のmode、nonceを一つのpayloadへbindingします。
+- 参照は型付きの`DecisionRef`とし、期待するDecision kindと一致しない参照、重複したGrant、上限を超えるGrant数を拒否します。
+- `v1`では外部副作用のmodeを`none`に限定します。副作用のある仕事は、別の契約と検証が要るためです。
+- Reference adapterは、`work-order-v1`のcanonical encodeとstrict decodeを実装しました。非決定的なmap順、未知のfield、上限超過、切り詰めを拒否します。
+- `WorkOrder.Valid()`やdecodeの成功は、署名検証でも、参照先のPlacement Approval / Lease / Executor Approvalがcurrentであることの証明でもありません。
+
+次の単位は、Worker側でWorkOrderを検証する境界です。署名、参照先Decisionのcurrentness、nonceの使い捨て、resource limitsとLocal Governorの突き合わせを、Leaseの検証とは別に扱います。
