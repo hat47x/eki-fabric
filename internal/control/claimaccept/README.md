@@ -24,11 +24,11 @@ Claim
 
 ## 再送とcrash
 
-同じClaimの再送は、Claimを二度記録しません。ただし、前回の処理が「Claimを記録した後、Attemptを進める前」に落ちている場合があります。その場合は`duplicate`のまま、状態の遷移だけをやり直します。
+同じClaimの再送は、Claimを二度記録しません。前回の処理が「Claimを記録した後、Attemptを進める前」に落ちた場合も、`duplicate`のまま状態の遷移だけをやり直します。
 
-## まだ原子的ではない
+## 原子性
 
-Claimの記録とAttemptのCASは、別々の操作です。間にcrashが入ると「ClaimはあるがAttemptは開いたまま」になり得ます。再送で回復できますが、厳密な原子性は、Claim StoreとAttempt Storeを同じtransactionへ置く作業（#173）で確保します。
+Claimの記録とAttemptの遷移は、`ResultClaimStore.ApplyResultClaim`の一つのtransactionで行います。どちらかだけが残ることはありません。`completed`をA-DISPATCHEDからA-VERIFYINGへ進めるときだけ、A-CLAIMEDへの最初の一歩を別のCASで行います。その間に落ちても、AttemptはA-CLAIMEDで残り、再送でClaimの記録と検証への遷移をやり直せます。
 
 ## 何を確定しないか
 
