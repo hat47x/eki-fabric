@@ -658,3 +658,16 @@ Testでは、按分の計算、WorkOrderの上限が小さい場合、停止・�
 残りは、実行環境への上限の適用、実行中のGovernor再評価と停止、Lease更新時の再受理です。
 
 この判断を[ADR-0017](adr/0017-start-and-stop-authority.md)として整理しました。実行の開始は「WorkOrderの受理」と「Local Governorの現在の判断」の両方を要し、実効上限は厳しい方で決めること、停止の判断は常に端末側にあり、停止は実行権限の失効として回復の境界へ渡すことを定めています。`Admission`（受理）、`Plan`（開始）、Runtime（実行）、Governor（停止）を別の型として保ちます。
+
+このADRに沿って、実行中の監督を`internal/agent/executor`へ追加しました。
+
+- `SpecFromPlan`が、`Plan`の実効上限、sandbox、期限、WorkOrderの識別子とnonceを`Spec`へ写します。`Spec`は認可の根拠ではありません。
+- `Supervisor.Execute`は、期限つきのcontextで`Runner`を実行し、Local Governorの`StopRunning`、期限、呼出し側のcancelを監視します。
+- 終了は`Outcome`として、`completed`、`failed`、`reclaimed`、`deadline_exceeded`、`cancelled`、`runner_stuck`のいずれかに分類します。
+- `reclaimed`は、Runnerが直前に完了していた場合でも停止の観測を優先します。利用者の復帰や熱の上昇による停止を、完了として消さないためです。
+- 出力byte数は上限と比べます。内容の検証はしません。
+- 猶予内にRunnerが止まらない場合は`runner_stuck`とし、強制停止はプラットフォーム側の境界に残します。
+
+Testでは、完了、非ゼロ終了、Runnerのエラー、出力上限超過、Governorによる停止、期限、呼出し側のcancel、停止しないRunner、不正な入力と設定を固定しました。
+
+残りは、Runnerの実装（Native / Container / WASM / Browser）、checkpointと再開、`Outcome`をResultClaimとしてControl Planeへ報告する経路です。

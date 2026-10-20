@@ -18,6 +18,7 @@ import (
 	"time"
 
 	"github.com/hat47x/eki-fabric/internal/agent/governor"
+	"github.com/hat47x/eki-fabric/internal/core/contract"
 	"github.com/hat47x/eki-fabric/internal/core/decisionpayload"
 	"github.com/hat47x/eki-fabric/internal/core/ids"
 	"github.com/hat47x/eki-fabric/internal/core/workorderaccept"
@@ -68,18 +69,24 @@ type Request struct {
 // smaller of the WorkOrder grant and the governor ceiling, and the deadline is
 // no later than the Admission expiry.
 type Plan struct {
-	taskID       ids.TaskID
-	attemptID    ids.AttemptID
-	limits       decisionpayload.ResourceLimits
-	sandbox      decisionpayload.SandboxPolicy
-	plannedAt    time.Time
-	deadline     time.Time
-	reasons      []governor.Reason
-	notEnforceab []governor.Resource
+	taskID          ids.TaskID
+	attemptID       ids.AttemptID
+	orderDecisionID string
+	executorDigest  contract.Digest
+	nonce           []byte
+	limits          decisionpayload.ResourceLimits
+	sandbox         decisionpayload.SandboxPolicy
+	plannedAt       time.Time
+	deadline        time.Time
+	reasons         []governor.Reason
+	notEnforceab    []governor.Resource
 }
 
 func (p Plan) TaskID() ids.TaskID                     { return p.taskID }
 func (p Plan) AttemptID() ids.AttemptID               { return p.attemptID }
+func (p Plan) OrderDecisionID() string                { return p.orderDecisionID }
+func (p Plan) ExecutorDigest() contract.Digest        { return p.executorDigest }
+func (p Plan) Nonce() []byte                          { return append([]byte(nil), p.nonce...) }
 func (p Plan) Limits() decisionpayload.ResourceLimits { return p.limits }
 func (p Plan) Sandbox() decisionpayload.SandboxPolicy { return p.sandbox }
 func (p Plan) PlannedAt() time.Time                   { return p.plannedAt }
@@ -152,14 +159,17 @@ func (g *Gate) Check(req Request) (Plan, error) {
 		deadline = now.Add(wall)
 	}
 	return Plan{
-		taskID:       req.Admission.TaskID(),
-		attemptID:    req.Admission.AttemptID(),
-		limits:       limits,
-		sandbox:      sandbox,
-		plannedAt:    now,
-		deadline:     deadline.UTC(),
-		reasons:      req.Governor.Reasons,
-		notEnforceab: req.Governor.NotEnforceable,
+		taskID:          req.Admission.TaskID(),
+		attemptID:       req.Admission.AttemptID(),
+		orderDecisionID: req.Admission.OrderDecisionID(),
+		executorDigest:  req.Admission.ExecutorDigest(),
+		nonce:           req.Admission.Nonce(),
+		limits:          limits,
+		sandbox:         sandbox,
+		plannedAt:       now,
+		deadline:        deadline.UTC(),
+		reasons:         req.Governor.Reasons,
+		notEnforceab:    req.Governor.NotEnforceable,
 	}, nil
 }
 
