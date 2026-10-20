@@ -17,7 +17,7 @@ WorkerのOutcome
 
 | Status | Attemptを閉じる | Result Verificationへ |
 |---|---|---|
-| `completed` | はい | はい（確定ではない） |
+| `completed` | いいえ（Verifyingへ） | はい（確定ではない） |
 | `failed` | はい | いいえ |
 | `reclaimed` | はい | いいえ。回復の境界へ |
 | `deadline_exceeded` | はい | いいえ |

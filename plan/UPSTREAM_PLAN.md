@@ -711,3 +711,15 @@ Worker側では、`internal/agent/claim`が`executor.Outcome`を`resultclaim.Cla
 - `completed`に非ゼロの終了コードが入っている場合などは、`resultclaim`の検証で拒否し、builderは値を直しません。
 
 Testでは、全statusの写像、未知のstatus、bindingの不足、時刻の欠落、`completed`と終了コードの矛盾を固定しました。次は、Claimを送るtransportと、Control Plane側での耐久化です。
+
+Control Plane側では、`internal/control/claimaccept`がClaimをAttemptの状態へ反映します。
+
+- Attempt、Lease（現在のfence）、記録済みのClaimを読み、`resultclaim.Decide`の結果に従います。
+- `completed`はA-DISPATCHEDからA-CLAIMEDを経てA-VERIFYINGへ進めます。ほかの終端statusはA-CLOSEDへ進め、close reasonを対応づけます。`runner_stuck`は状態を変えません。
+- 適用できない段階で`completed`が届いた場合は、Claimを記録する前に`ErrWrongPhase`で拒否します。
+- 同じClaimの再送は記録を増やさず、記録後にcrashした場合の状態遷移だけをやり直します。
+- Claimの記録とAttemptのCASはまだ別の操作です。同じtransactionへ置く作業を残しています（#173）。
+
+Testでは、completedの検証への遷移（CLAIMED / DISPATCHED）、reclaimedのclose、runner_stuckの非変更、再送によるcloseのやり直し、競合、stale、ClaimのfenceがLeaseより先の場合、別Worker、late、早すぎる段階、CAS競合、設定不足を固定しました。
+
+残りは、Claimの耐久StoreとWorker Planeのtransport、ClaimとAttemptの原子的な反映、報告が届かない場合のLease期限からの確定です。
