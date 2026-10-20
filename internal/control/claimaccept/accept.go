@@ -21,6 +21,7 @@ import (
 	"github.com/hat47x/eki-fabric/internal/core/ids"
 	"github.com/hat47x/eki-fabric/internal/core/leasestate"
 	"github.com/hat47x/eki-fabric/internal/core/resultclaim"
+	"github.com/hat47x/eki-fabric/internal/spi/statestore"
 )
 
 var (
@@ -39,26 +40,19 @@ type LeaseStore interface {
 	LoadLease(ctx context.Context, id ids.LeaseID) (leasestate.LeaseRecord, error)
 }
 
-// ClaimStore records one immutable claim per Attempt. LoadResultClaim reports
-// whether a claim exists; an absent claim is not an error.
-type ClaimStore interface {
-	LoadResultClaim(ctx context.Context, id ids.AttemptID) (resultclaim.Claim, bool, error)
-	AppendResultClaim(ctx context.Context, claim resultclaim.Claim) error
-}
-
 type Clock interface{ Now() time.Time }
 
 type Config struct {
 	Attempts AttemptStore
 	Leases   LeaseStore
-	Claims   ClaimStore
+	Claims   statestore.ResultClaimStore
 	Clock    Clock
 }
 
 type Service struct {
 	attempts AttemptStore
 	leases   LeaseStore
-	claims   ClaimStore
+	claims   statestore.ResultClaimStore
 	clock    Clock
 }
 
@@ -141,31 +135,64 @@ func (s *Service) Accept(ctx context.Context, claim resultclaim.Claim) (Result, 
 	verification := claim.Status().NeedsVerification()
 	applyTransition := attempt.Phase != attemptstate.AttemptPhaseClosed &&
 		decision.Kind != resultclaim.KindLate && decision.Kind != resultclaim.KindStale
-	if applyTransition && verification {
+	var (
+		next            attemptstate.AttemptRecord
+		needsTransition bool
+	)
+	switch {
+	case applyTransition && verification:
 		if err := checkVerificationPhase(attempt.Phase); err != nil {
 			return Result{}, err
 		}
+		// A completed claim from DISPATCHED needs two transitions. The first
+		// one (CLAIMED) carries no claim, so it is a plain CAS; the second one
+		// commits together with the claim below.
+		if attempt.Phase == attemptstate.AttemptPhaseDispatched {
+			claimed := attempt
+			claimed.Phase = attemptstate.AttemptPhaseClaimed
+			claimed.Revision++
+			claimed.UpdatedAt = now
+			if err := s.attempts.CompareAndSwapAttempt(ctx, attempt.ID, attempt.Revision, claimed); err != nil {
+				return Result{}, err
+			}
+			attempt = claimed
+		}
+		if attempt.Phase == attemptstate.AttemptPhaseClaimed {
+			next = attempt
+			next.Phase = attemptstate.AttemptPhaseVerifying
+			next.Revision++
+			next.UpdatedAt = now
+			needsTransition = true
+		}
+	case decision.CloseAttempt && attempt.Phase != attemptstate.AttemptPhaseClosed:
+		next = attempt
+		next.Phase = attemptstate.AttemptPhaseClosed
+		next.CloseReason = closeReason(claim.Status())
+		next.Revision++
+		next.UpdatedAt = now
+		needsTransition = true
 	}
-	if decision.Record {
-		if err := s.claims.AppendResultClaim(ctx, claim); err != nil {
+
+	if decision.Record || needsTransition {
+		acceptance := statestore.ResultClaimAcceptance{
+			Claim:                   claim,
+			Record:                  decision.Record,
+			ApplyTransition:         needsTransition,
+			ExpectedAttemptRevision: attempt.Revision,
+			NextAttempt:             next,
+		}
+		if err := s.claims.ApplyResultClaim(ctx, acceptance); err != nil {
 			return Result{}, fmt.Errorf("%w: %v", ErrClaimStore, err)
 		}
 	}
-
-	next := attempt
-	switch {
-	case applyTransition && verification:
-		next, err = s.advanceToVerifying(ctx, attempt, now)
-	case decision.CloseAttempt:
-		next, err = s.closeAttempt(ctx, attempt, claim.Status(), now)
-	}
-	if err != nil {
-		return Result{}, err
+	resultAttempt := attempt
+	if needsTransition {
+		resultAttempt = next
 	}
 	return Result{
 		Decision:             decision,
-		Attempt:              next,
-		VerificationRequired: applyTransition && next.Phase == attemptstate.AttemptPhaseVerifying,
+		Attempt:              resultAttempt,
+		VerificationRequired: resultAttempt.Phase == attemptstate.AttemptPhaseVerifying,
 	}, nil
 }
 
@@ -189,47 +216,6 @@ func checkVerificationPhase(phase attemptstate.AttemptPhase) error {
 		return nil
 	}
 	return fmt.Errorf("%w: phase %q cannot move to verifying", ErrWrongPhase, phase)
-}
-
-// advanceToVerifying takes at most two transitions: DISPATCHED -> CLAIMED, then
-// CLAIMED -> VERIFYING. An Attempt already at VERIFYING is left as it is.
-func (s *Service) advanceToVerifying(ctx context.Context, attempt attemptstate.AttemptRecord, now time.Time) (attemptstate.AttemptRecord, error) {
-	if attempt.Phase == attemptstate.AttemptPhaseVerifying {
-		return attempt, nil
-	}
-	if attempt.Phase == attemptstate.AttemptPhaseDispatched {
-		claimed := attempt
-		claimed.Phase = attemptstate.AttemptPhaseClaimed
-		claimed.Revision++
-		claimed.UpdatedAt = now
-		if err := s.attempts.CompareAndSwapAttempt(ctx, attempt.ID, attempt.Revision, claimed); err != nil {
-			return attemptstate.AttemptRecord{}, err
-		}
-		attempt = claimed
-	}
-	verifying := attempt
-	verifying.Phase = attemptstate.AttemptPhaseVerifying
-	verifying.Revision++
-	verifying.UpdatedAt = now
-	if err := s.attempts.CompareAndSwapAttempt(ctx, attempt.ID, attempt.Revision, verifying); err != nil {
-		return attemptstate.AttemptRecord{}, err
-	}
-	return verifying, nil
-}
-
-func (s *Service) closeAttempt(ctx context.Context, attempt attemptstate.AttemptRecord, status resultclaim.Status, now time.Time) (attemptstate.AttemptRecord, error) {
-	if attempt.Phase == attemptstate.AttemptPhaseClosed {
-		return attempt, nil
-	}
-	closed := attempt
-	closed.Phase = attemptstate.AttemptPhaseClosed
-	closed.CloseReason = closeReason(status)
-	closed.Revision++
-	closed.UpdatedAt = now
-	if err := s.attempts.CompareAndSwapAttempt(ctx, attempt.ID, attempt.Revision, closed); err != nil {
-		return attemptstate.AttemptRecord{}, err
-	}
-	return closed, nil
 }
 
 func closeReason(status resultclaim.Status) attemptstate.CloseReason {

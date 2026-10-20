@@ -745,3 +745,16 @@ WorkerがControl Planeへ届く前に止まる場合に備え、`internal/agent/
 Testでは、同一Claimの冪等なenqueue、異なるClaimの衝突、成功時の削除、失敗時の再予約とbackoff後の再送、件数上限、Storeの期限順・digest照合削除・不正entryを固定しました。
 
 次は、Claimのdurable Store（SQLite）と、ClaimとAttempt CASの同一transaction化です。
+
+### 2026-10-21 Claimの耐久化と原子的な受理
+
+Claimの記録とAttemptの遷移を、同じtransactionで確定できるようにしました。
+
+- `internal/spi/statestore/claim.go`に`ResultClaimStore`と`ResultClaimAcceptance`を追加しました。`ApplyResultClaim`は、Claimの記録とAttemptの更新を一つのcommitにまとめます。片方だけが残ることはありません。
+- memoryとSQLiteの両Adapterが実装しました。SQLiteはmigration 8で`result_claims`を追加し、Claimを不変の行として保存します。
+- `claimaccept`は、Claimの記録とAttemptのCASを別々に行うのをやめ、`ApplyResultClaim`を一度だけ呼ぶようにしました。`completed`をA-DISPATCHEDから進める場合だけ、A-CLAIMEDへの最初の一歩を別のCASで行います。その間に落ちても、A-CLAIMEDから再送でやり直せます。
+- 新しいClaimの二重記録は`ErrAlreadyExists`、同じAttemptの異なるClaimは`ErrConflict`、古いAttempt revisionは`ErrConflict`として、transactionごと拒否します。
+
+Testでは、ClaimとAttemptの同時commit、stale revisionでのrollback（Claimが残らない）、二重記録と異なるClaimの拒否、不正な遷移のrollback、SQLiteのclose/reopenを跨いだClaimの復元を固定しました。
+
+残りは、Worker Planeのtransport（Claim送信の実体）、報告が届かないAttemptのLease期限からの確定、Runnerの種類の拡張です。

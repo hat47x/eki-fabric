@@ -436,6 +436,39 @@ WHEN OLD.task_ir_digest <> NEW.task_ir_digest
 BEGIN
 	SELECT RAISE(ABORT, 'task TaskIR digest is immutable');
 END`,
+	// 8: durable ResultClaims. A claim is recorded together with the Attempt
+	// transition it justifies, in one transaction, so a crash cannot leave a
+	// claim without its transition or a transition without its claim. Claims
+	// are immutable; a differing claim for the same Attempt is refused by the
+	// adapter before the insert.
+	`CREATE TABLE result_claims (
+	attempt_id            TEXT    NOT NULL PRIMARY KEY,
+	task_id               TEXT    NOT NULL,
+	task_ir_digest        TEXT    NOT NULL CHECK (length(task_ir_digest) = 64),
+	worker_identity       TEXT    NOT NULL,
+	lease_id              TEXT    NOT NULL,
+	fence_epoch           INTEGER NOT NULL CHECK (fence_epoch > 0),
+	work_order_decision   TEXT    NOT NULL,
+	executor_digest       TEXT    NOT NULL CHECK (length(executor_digest) = 64),
+	nonce                 BLOB    NOT NULL CHECK (length(nonce) BETWEEN 16 AND 32),
+	status                TEXT    NOT NULL,
+	exit_code             INTEGER NOT NULL,
+	output_bytes          INTEGER NOT NULL CHECK (output_bytes >= 0),
+	started_at_ns         INTEGER NOT NULL,
+	ended_at_ns           INTEGER NOT NULL,
+	claim_digest          TEXT    NOT NULL CHECK (length(claim_digest) = 64),
+	recorded_at_ns        INTEGER NOT NULL
+);
+CREATE TRIGGER result_claims_immutable_update
+BEFORE UPDATE ON result_claims
+BEGIN
+	SELECT RAISE(ABORT, 'ResultClaim is immutable');
+END;
+CREATE TRIGGER result_claims_immutable_delete
+BEFORE DELETE ON result_claims
+BEGIN
+	SELECT RAISE(ABORT, 'ResultClaim is immutable');
+END`,
 }
 
 // migrate brings the database to the latest version. It is idempotent, rejects

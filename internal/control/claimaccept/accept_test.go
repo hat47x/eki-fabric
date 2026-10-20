@@ -3,6 +3,7 @@ package claimaccept
 import (
 	"context"
 	"errors"
+	"fmt"
 	"testing"
 	"time"
 
@@ -11,6 +12,7 @@ import (
 	"github.com/hat47x/eki-fabric/internal/core/ids"
 	"github.com/hat47x/eki-fabric/internal/core/leasestate"
 	"github.com/hat47x/eki-fabric/internal/core/resultclaim"
+	"github.com/hat47x/eki-fabric/internal/spi/statestore"
 )
 
 var (
@@ -53,6 +55,7 @@ func (f fakeLeases) LoadLease(context.Context, ids.LeaseID) (leasestate.LeaseRec
 }
 
 type fakeClaims struct {
+	attempts  *fakeAttempts
 	claim     resultclaim.Claim
 	found     bool
 	appendErr error
@@ -63,13 +66,29 @@ func (f *fakeClaims) LoadResultClaim(context.Context, ids.AttemptID) (resultclai
 	return f.claim, f.found, nil
 }
 
-func (f *fakeClaims) AppendResultClaim(_ context.Context, claim resultclaim.Claim) error {
+func (f *fakeClaims) ApplyResultClaim(ctx context.Context, acceptance statestore.ResultClaimAcceptance) error {
 	if f.appendErr != nil {
 		return f.appendErr
 	}
-	f.claim = claim
-	f.found = true
-	f.appends++
+	if acceptance.Record && f.found {
+		if f.claim.Equal(acceptance.Claim) {
+			return fmt.Errorf("%w: claim", statestore.ErrAlreadyExists)
+		}
+		return fmt.Errorf("%w: claim", statestore.ErrConflict)
+	}
+	if acceptance.ApplyTransition {
+		if f.attempts == nil {
+			return errors.New("fake has no attempt store")
+		}
+		if err := f.attempts.CompareAndSwapAttempt(ctx, acceptance.NextAttempt.ID, acceptance.ExpectedAttemptRevision, acceptance.NextAttempt); err != nil {
+			return err
+		}
+	}
+	if acceptance.Record {
+		f.claim = acceptance.Claim
+		f.found = true
+		f.appends++
+	}
 	return nil
 }
 
@@ -122,6 +141,7 @@ func claim(t *testing.T, status resultclaim.Status, exit int) resultclaim.Claim 
 
 func newService(t *testing.T, attempts *fakeAttempts, claims *fakeClaims) *Service {
 	t.Helper()
+	claims.attempts = attempts
 	service, err := New(Config{
 		Attempts: attempts, Leases: fakeLeases{record: lease(t)}, Claims: claims,
 		Clock: &fakeClock{now: baseTime},
@@ -314,6 +334,7 @@ func TestNewRejectsIncompleteConfig(t *testing.T) {
 // newServiceWithFence builds a service whose Lease reports the given fence.
 func newServiceWithFence(t *testing.T, attempts *fakeAttempts, claims *fakeClaims, fence uint64) *Service {
 	t.Helper()
+	claims.attempts = attempts
 	record := leaseWithFence(t, fence)
 	service, err := New(Config{
 		Attempts: attempts, Leases: fakeLeases{record: record}, Claims: claims,
