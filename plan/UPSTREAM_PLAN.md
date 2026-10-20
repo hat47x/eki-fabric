@@ -671,3 +671,13 @@ Testでは、按分の計算、WorkOrderの上限が小さい場合、停止・�
 Testでは、完了、非ゼロ終了、Runnerのエラー、出力上限超過、Governorによる停止、期限、呼出し側のcancel、停止しないRunner、不正な入力と設定を固定しました。
 
 残りは、Runnerの実装（Native / Container / WASM / Browser）、checkpointと再開、`Outcome`をResultClaimとしてControl Planeへ報告する経路です。
+
+実行の終わり方を回復へ渡す写像も追加しました（`internal/agent/reclaim`）。
+
+- `reclaimed`、`failed`、`deadline_exceeded`は`recovery.Interruption`へ変換し、`recovery.Classify`でattempt budget、deadline、時間窓の予算を判定します。
+- `cancelled`は意図的な停止として自動retryしません。
+- `runner_stuck`は、先に端末側で止める必要があるため自動retryしません。
+- `completed`と`output_exceeded`は回復へ渡しません。
+- Taskの契約（retryable、max attempts）は、WorkOrderやOutcomeではなく、耐久化されたTaskの状態から読みます。
+
+これで、回収から再投入までの経路がCoreとして一続きになりました。残るのは、Runnerの実装、OutcomeのResultClaimとしての報告、Lockedな状態（`workorderaccept`の`Admission`やnonce記録）の耐久化です。
