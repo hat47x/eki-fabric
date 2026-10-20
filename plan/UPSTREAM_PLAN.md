@@ -556,3 +556,9 @@ ADR-0013の子Issueが共通に前提とする概念を揃えるため、委任�
 既存のAuthority Boundariesと突き合わせ、SCH-1、PLC-1、GOV-1はそのまま自律の最適化を受け止められる一方、予算（BUD-1）、容量（CAP-1）、委任先と信頼の水準の登録（DLG-1）、管理者権限の委任状が足りないことを確かめた。権限の設計は[#147](https://github.com/hat47x/eki-fabric/issues/147)で扱う。
 
 候補Scenario PAS-CAND-24〜30を加え、評価を[#148](https://github.com/hat47x/eki-fabric/issues/148)に置いた。7件とも不変条件と既存の要件で方向は扱え、新しいRequirementは作っていない。評価から分かった点は、子Issue（#130、#138〜#143、#145）へコメントで返した。
+
+### 2026-10-20 Authority Boundaries 0.2
+
+[ADR-0014](adr/0014-authorities-for-delegation-budget-capacity.md)で、委任先と信頼の水準の登録（DLG-1）、予算（BUD-1）、容量（CAP-1）の権限と、ADM-1の管理者権限の委任状を加え、[Authority Boundaries](../architecture/AUTHORITY_BOUNDARIES.md)をBaseline 0.2へ上げた。権限の有限性（§3.7）と、信頼の水準を登録から読む原則（§3.8）を基本原則に加え、ADM-2、LSE-1、RVR-1を改めた。ほかの五つの設計文書は0.1のまま。
+
+M0とMVPは0.1の権限の上で進めてよく、新しい権限はADR-0013の段階（S1以降）で実装する。mainline priority guardの順位は変えない。

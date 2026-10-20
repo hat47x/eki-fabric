@@ -106,7 +106,7 @@ EKI Fabricは、まず、企業内の遊休計算資源を安全に使えるこ�
 
 ## 現在地
 
-Architecture Entry Gateを通過し、**Architecture Baseline 0.1**を定義済みです。Baselineは、Authority、Contract、Control-Data Plane、Deployment Profile、Task State Model、Extension SPIで構成されます。
+Architecture Entry Gateを通過し、**Architecture Baseline 0.1**を定義済みです。Baselineは、Authority、Contract、Control-Data Plane、Deployment Profile、Task State Model、Extension SPIで構成されます。2026-10-20に、Authority Boundariesだけを0.2へ上げ、委任先の登録、予算、容量の権限と、管理者権限の委任状を加えました（[ADR-0014](plan/adr/0014-authorities-for-delegation-budget-capacity.md)）。
 
 External Client Planeには、HTTPS、JSON、OpenAPIを採用しました。P0の機械可読な契約は、[`spec/external/openapi.json`](spec/external/openapi.json)に置いています。Worker PlaneとAdapter Planeは、Protobuf IDLとConnectを使います。署名付きのAuthority Decisionは、deterministic CBOR、CDDL、COSE_Sign1をBaselineとしています。
 
