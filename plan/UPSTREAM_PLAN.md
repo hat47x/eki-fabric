@@ -692,3 +692,14 @@ Testでは、完了、非ゼロ終了、Runnerのエラー、出力上限超過�
 Testでは、テストバイナリ自身を子プロセスとして起動し、正常終了、非ゼロ終了、出力上限超過、未登録digest、起動前の改ざん、context取消しを固定しました。
 
 残りは、Container / WASM / BrowserのRunner、ResultClaimの報告経路、`Admission`・nonce・`Outcome`の耐久化です。
+
+Workerの実行結果をControl Planeへ戻す最初の境界として、`internal/core/resultclaim`を追加しました。
+
+- Claimは、Task / TaskIR / Attempt / Worker / Lease / fence / WorkOrder Decision / executor digest / nonce / status / exit code / output bytes / 開始・終了時刻を持ちます。
+- `Decide`は、Claimと、Control Planeが同じ操作で読んだ現在の状態（Attemptの存在と開閉、現在のfence、記録済みのClaim）だけを比べます。
+- 初回は記録してAttemptを閉じ、同じ申告の再送は何も変えず、fenceが古い申告と閉じた後の申告は記録だけ残します。同じAttemptに異なる申告が届いた場合は、最初の申告を採り、後のものを拒否します。
+- `completed`はResult Verificationへ送りますが、Accepted Resultにはしません。`runner_stuck`ではAttemptを閉じません。
+
+Testでは、正常な初回、再送、競合、stale、late、別Attempt、zero Claim、statusごとのcloseとverificationの扱いを固定しました。
+
+残りは、Claimの耐久化とWorker Planeのtransport、Attempt / Lease / Taskへの原子的な反映、報告が届かない場合のLease期限からの確定です。
