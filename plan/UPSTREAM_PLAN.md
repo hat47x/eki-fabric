@@ -613,3 +613,17 @@ one-Worker executionへ進む前提として、WOR-1が署名する`eki.work-ord
 - `WorkOrder.Valid()`やdecodeの成功は、署名検証でも、参照先のPlacement Approval / Lease / Executor Approvalがcurrentであることの証明でもありません。
 
 次の単位は、Worker側でWorkOrderを検証する境界です。署名、参照先Decisionのcurrentness、nonceの使い捨て、resource limitsとLocal Governorの突き合わせを、Leaseの検証とは別に扱います。
+
+### 2026-10-20 Worker側のWorkOrder検証
+
+`internal/core/workorderverify`を追加し、Workerが受け取ったWorkOrderのbytesを、実行指示として扱う前の境界を実装しました。
+
+- strict COSE_Sign1 decode、strict `work-order-v1` decode、decision kindとAuthority roleの確認。
+- 自分（Worker Identity）宛であること。他のWorker宛のWorkOrderは`ReasonSubjectMismatch`で拒否します。
+- 発行時刻・期限・Trust Bundleの鮮度を、`decisiontrust.VerifierBoundary`のpre-crypto検査で確認します。
+- Trust Domain、WOR-1のprincipal、kid、algorithmを現在のTrust Bundleと鍵の状態に照らし、署名を検証します。
+- 失敗はzeroの`Verified`と安定した`VerificationFailure`の理由になり、成功しても`Verified`は一つの観測です。
+
+`Verified`は実行の許可ではありません。参照先のPlacement Approval / Lease / Executor Approvalのcurrentness、Leaseのfencing、nonceの使い捨て、resource limitsとLocal Governorの突き合わせは、まだ別の境界として残しています（[#160](https://github.com/hat47x/eki-fabric/issues/160)）。
+
+Testでは、正しいWorkOrderの受理に加えて、別のWorker宛、発行前、期限後、署名の改ざん、Lease payloadの取り違え、別のTrust Domain、古いTrust Bundle、空のbytes、設定の不足を拒否することを固定しました。
