@@ -8,7 +8,6 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
-	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -1052,13 +1051,15 @@ func TestPathWithReservedCharacters(t *testing.T) {
 // therefore asserts on the generated DSN for paths that no single platform
 // needs to be able to create.
 func TestDSNEscapesReservedCharacters(t *testing.T) {
-	paths := []string{
-		"/var/lib/eki/state#1?.db",
-		`C:\work\eki\state#1?.db`,
-		`relative dir/state%201#2?.db`,
+	paths := []struct{ path, posix, windows string }{
+		{"/var/lib/eki/state#1?.db", "/var/lib/eki/state#1?.db", "/var/lib/eki/state#1?.db"},
+		{`C:\work\eki\state#1?.db`, `/C:\work\eki\state#1?.db`, "/C:/work/eki/state#1?.db"},
+		{`relative dir/state%201#2?.db`, `relative dir/state%201#2?.db`, `relative dir/state%201#2?.db`},
+		{`/tmp/eki/state\copy#1?.db`, `/tmp/eki/state\copy#1?.db`, "/tmp/eki/state/copy#1?.db"},
 	}
-	for _, path := range paths {
-		t.Run(path, func(t *testing.T) {
+	for _, row := range paths {
+		t.Run(row.path, func(t *testing.T) {
+			path := row.path
 			u, err := url.Parse(dsn(path))
 			if err != nil {
 				t.Fatalf("url.Parse(dsn(%q)) error = %v", path, err)
@@ -1074,9 +1075,11 @@ func TestDSNEscapesReservedCharacters(t *testing.T) {
 			if err != nil {
 				t.Fatalf("PathUnescape(%q) error = %v", opaque, err)
 			}
-			want := strings.ReplaceAll(path, `\`, "/")
-			if len(want) >= 2 && want[1] == ':' {
-				want = "/" + want
+			// Backslash is a separator on Windows, but a literal filename
+			// character on POSIX. Escaping must preserve the host's path.
+			want := row.posix
+			if runtime.GOOS == "windows" {
+				want = row.windows
 			}
 			if got != want {
 				t.Fatalf("opaque path = %q, want %q", got, want)
