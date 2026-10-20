@@ -564,6 +564,49 @@ func TestPermitDigestIsStableAndBound(t *testing.T) {
 	}
 }
 
+func TestReleaseDoesNotDependOnInputOrder(t *testing.T) {
+	policy := testPolicy()
+	policy.MaxReleasesPerWindow = 3
+
+	pending := []Pending{
+		pendingFor(t, 1, PriorityNormal, baseTime.Add(3*time.Hour)),
+		pendingFor(t, 2, PriorityUrgent, time.Time{}),
+		pendingFor(t, 3, PriorityBestEffort, time.Time{}),
+		pendingFor(t, 4, PriorityNormal, baseTime.Add(time.Hour)),
+	}
+	forward, err := Release(baseTime, policy, pending, Budget{}, 1)
+	if err != nil {
+		t.Fatalf("Release(forward) error = %v", err)
+	}
+	reversed := []Pending{pending[3], pending[2], pending[1], pending[0]}
+	backward, err := Release(baseTime, policy, reversed, Budget{}, 1)
+	if err != nil {
+		t.Fatalf("Release(reversed) error = %v", err)
+	}
+	if len(forward.Permits) != len(backward.Permits) {
+		t.Fatalf("permit count = %d and %d", len(forward.Permits), len(backward.Permits))
+	}
+	for i := range forward.Permits {
+		if forward.Permits[i].Digest() != backward.Permits[i].Digest() {
+			t.Fatalf("permit[%d] differs when the input order changes", i)
+		}
+	}
+}
+
+func TestReleaseRejectsPendingThatWidensTheAttemptBudget(t *testing.T) {
+	policy := testPolicy()
+	item := pendingFor(t, 1, PriorityNormal, time.Time{})
+	item.MaxAttempts = 2 // next attempt is 2, so this alone is inside the budget
+	if _, err := Release(baseTime, policy, []Pending{item}, Budget{}, 1); err != nil {
+		t.Fatalf("Release() error = %v", err)
+	}
+
+	item.NextAttemptNumber = 5
+	if _, err := Release(baseTime, policy, []Pending{item}, Budget{}, 1); !errors.Is(err, ErrInvalidPending) {
+		t.Fatalf("widened budget error = %v, want %v", err, ErrInvalidPending)
+	}
+}
+
 func TestPolicyAndInputValidation(t *testing.T) {
 	policy := testPolicy()
 	if err := policy.Validate(); err != nil {

@@ -534,6 +534,8 @@ func (p Permit) validateShape() error {
 		return fmt.Errorf("%w: Sequence is required", ErrInvalidPermit)
 	case p.issuedAt.IsZero() || p.expiresAt.IsZero():
 		return fmt.Errorf("%w: issuance and expiry are required", ErrInvalidPermit)
+	case p.expiresAt.Before(p.issuedAt):
+		return fmt.Errorf("%w: expiry is before issuance", ErrInvalidPermit)
 	case p.expiresAt.Before(p.notBefore):
 		return fmt.Errorf("%w: expiry is before the usable time", ErrInvalidPermit)
 	}
