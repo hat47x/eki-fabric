@@ -21,6 +21,7 @@
 - `internal/adapters/reference/statestore/memory`: CASの意味を確かめるための、メモリ上の参照アダプタ
 - `internal/adapters/reference/statestore/sqlite`: 永続化する参照アダプタ（SQLite、WAL、migration）
 - `internal/core/placementverify`: Placement Approvalの検証を、COSEのデコードから現在の状態での再検証までつなぐ
+- `internal/core/recovery`: 回収後の再投入を、attempt budgetと時間窓の件数・転送量・計算量で区切る
 - `internal/core/admission`: Taskの受理審査（厳格なJSON、P0スキーマの検証、ポリシー、冪等性、公開status、Cancel）
 - `internal/control/clientapi`: P0のExternal Client PlaneのHTTP実装（認証、サイズの制限、Problem Details）
 - `internal/control/service`: Control Planeの設定、起動、停止

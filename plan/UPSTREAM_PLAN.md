@@ -562,3 +562,29 @@ ADR-0013の子Issueが共通に前提とする概念を揃えるため、委任�
 [ADR-0014](adr/0014-authorities-for-delegation-budget-capacity.md)で、委任先と信頼の水準の登録（DLG-1）、予算（BUD-1）、容量（CAP-1）の権限と、ADM-1の管理者権限の委任状を加え、[Authority Boundaries](../architecture/AUTHORITY_BOUNDARIES.md)をBaseline 0.2へ上げた。権限の有限性（§3.7）と、信頼の水準を登録から読む原則（§3.8）を基本原則に加え、ADM-2、LSE-1、RVR-1を改めた。ほかの五つの設計文書は0.1のまま。
 
 M0とMVPは0.1の権限の上で進めてよく、新しい権限はADR-0013の段階（S1以降）で実装する。mainline priority guardの順位は変えない。
+
+### 2026-10-20 検証環境を整え、回収後の再投入を予算で区切る
+
+これまで「この実行環境ではGoを取得できず、`go test ./...`を実行していない」という理由で、draftのまま止まる作業や、CIを見ないままmergeされる変更がありました。まず、その状態を解消しました。
+
+- Go 1.27.3を用意し、`go mod download`、`go build ./...`、`go vet ./...`、`go test ./...`を実行できるようにしました。
+- `scripts/verify.sh`と`scripts/verify.ps1`を追加し、gofmt、`go vet`、`go test`を一度に確かめられるようにしました（[#152](https://github.com/hat47x/eki-fabric/pull/152)）。
+- gofmtされていなかったGoのソース30件を整形しました。CRLFの作業ツリーでも同じ判定になるよう、`.gitattributes`で改行を固定しています。
+- Windowsでだけ落ちていた`TestPathWithReservedCharacters`を直しました。ファイル名に`?`を使えないOSでは、そのOSで使える文字でファイルを作り、`?`のエスケープはDSNの組み立てを直接確かめるTestで確認します。
+
+この結果、`go test ./...`は全packageで通っています。以後、実装の変更には`scripts/verify`の出力をEvidenceとして付けます。
+
+次に、回収後の再投入の境界をCoreとして実装しました。
+
+- [ADR-0015](adr/0015-reclaim-as-authority-revocation-and-bounded-recovery.md): 回収を実行権限の失効として扱い、回復を新しいAttemptの受理にする。attempt budget、release count、transfer / computeの三つを別々に判定し、priorityは順序だけに使う。
+- `internal/core/recovery`: 時計もI/Oも持たない純粋なCore。`Classify`が回収されたAttemptを保留と再投入候補に分け、`Release`が時間窓の予算内で`Permit`を発行する。`Permit`はTask、TaskIR、前のAttempt、次のAttempt番号、policy revision、通し番号、使用可能時刻、期限へbindingし、packageの外から作れない。
+- 1,000 Task / 64 MiB / 2 GiB窓の条件で、Spikeと同じく32件しかreleaseしないことをTestで固定しました。count予算、compute予算、単体で窓を超えるTask、重複配送、deadline経過、clockの逆転、予算の破損、Permitの再利用もTestにしています。
+
+決めていないこと:
+
+- `Pending`、窓の消費量、`Permit`の耐久化と、Attempt / Leaseの更新と同じtransaction境界への接続。着手条件は、[#57](https://github.com/hat47x/eki-fabric/issues/57)のvertical sliceで回収からretryまでの状態遷移が一つにつながることです。
+- 回収イベントを確定する権限。Workerの自己申告から作らず、Leaseの失効とAttemptのcloseから導きます。
+- 窓をまたいだ公平性。urgentが続く場合のaging、fair share、reserved recovery capacityの比較。
+- 単体で窓の予算を超えるTaskの扱い。
+
+この作業は、mainline priority guardの順位を変えません。M0 vertical sliceの次の単位は、引き続きWorker Planeとone-Worker executionの接続です。

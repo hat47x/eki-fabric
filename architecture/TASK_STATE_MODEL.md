@@ -635,6 +635,24 @@ Workerが、ローカルではまだ動いている可能性を考慮します�
 
 WorkOrderとLocal Agentは、expiryで停止することを期待します。ただし、malicious Workerが無視する可能性はあります。
 
+## 20.1 Recovery Candidateを、そのまま実行可能にしない
+
+Recovery Candidateは、再実行してよい候補という意味であり、実行の権限ではありません（[ADR-0015](../plan/adr/0015-reclaim-as-authority-revocation-and-bounded-recovery.md)）。
+
+回復では、次の三つを別々に判定します。
+
+- Taskの信頼性契約とattempt budgetの範囲に収まるか。
+- backoffとjitterの後の、いつ再投入してよいか。
+- その時間窓に、何件、何byte、何ミリ秒まで再投入してよいか。
+
+三つを満たした候補だけが、新しいAttemptの受理へ進みます。priorityは窓の中の順序を決めるだけで、予算を越える権限にはなりません。
+
+回復は、失効したLeaseを延長せず、同じAttemptを再開もしません。前のAttemptをcloseし、次の番号のAttemptを、新しいPlacement、新しいLease、新しいfencingの番号で作ります。
+
+回復の判定は`internal/core/recovery`に置いています。このpackageが返すPermitは、新しいAttemptを受理してよいという証拠であり、LeaseでもPlacement Approvalでもありません。Permitの耐久化と、Attempt / Leaseの更新と同じtransaction境界への接続は、まだ行っていません。
+
+deadlineを過ぎた候補は、次の窓へ回さずにqueueから外します。実行できないTaskが予算を占め続けないようにするためです。
+
 ---
 
 # 21. 遅れて戻ってきたWorker
