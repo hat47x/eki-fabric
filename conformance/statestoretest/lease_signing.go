@@ -37,6 +37,9 @@ func RunLeaseSigningContract(t *testing.T, newStore LeaseEmissionFactory) {
 	t.Run("durable-lease-delivery", func(t *testing.T) {
 		runLeaseDeliveryContract(t, newStore)
 	})
+	t.Run("loopback-tls-lease-delivery", func(t *testing.T) {
+		runLeaseHTTPDeliveryContract(t, newStore)
+	})
 
 	t.Run("emits-verifiable-lease-bound-to-reservation", func(t *testing.T) {
 		store := newStore(t)
