@@ -703,3 +703,11 @@ Workerの実行結果をControl Planeへ戻す最初の境界として、`intern
 Testでは、正常な初回、再送、競合、stale、late、別Attempt、zero Claim、statusごとのcloseとverificationの扱いを固定しました。
 
 残りは、Claimの耐久化とWorker Planeのtransport、Attempt / Lease / Taskへの原子的な反映、報告が届かない場合のLease期限からの確定です。
+
+Worker側では、`internal/agent/claim`が`executor.Outcome`を`resultclaim.Claim`へ写像します。
+
+- statusの写像を明示し、未知のstatusは`ErrUnknownStatus`で止めます。黙って`failed`や`completed`へ丸めません。
+- `Attempt`のbindingはAdmissionとローカルLease記録から作り、Outcomeから作り直しません。
+- `completed`に非ゼロの終了コードが入っている場合などは、`resultclaim`の検証で拒否し、builderは値を直しません。
+
+Testでは、全statusの写像、未知のstatus、bindingの不足、時刻の欠落、`completed`と終了コードの矛盾を固定しました。次は、Claimを送るtransportと、Control Plane側での耐久化です。
