@@ -46,9 +46,9 @@ func TestAttemptRejectsImpossibleBindings(t *testing.T) {
 	lease := mustLeaseID(t)
 
 	cases := map[string]func(*AttemptRecord){
-		"zero number": func(r *AttemptRecord) { r.Number = 0 },
-		"unknown phase": func(r *AttemptRecord) { r.Phase = "unknown" },
-		"created worker": func(r *AttemptRecord) { r.WorkerIdentity = "worker-a" },
+		"zero number":            func(r *AttemptRecord) { r.Number = 0 },
+		"unknown phase":          func(r *AttemptRecord) { r.Phase = "unknown" },
+		"created worker":         func(r *AttemptRecord) { r.WorkerIdentity = "worker-a" },
 		"placing without worker": func(r *AttemptRecord) { r.Phase = AttemptPhasePlacing },
 		"placing with lease": func(r *AttemptRecord) {
 			r.Phase = AttemptPhasePlacing
@@ -59,14 +59,14 @@ func TestAttemptRejectsImpossibleBindings(t *testing.T) {
 			r.Phase = AttemptPhaseAssigned
 			r.WorkerIdentity = "worker-a"
 		},
-		"lease without worker": func(r *AttemptRecord) { r.LeaseID = lease },
+		"lease without worker":    func(r *AttemptRecord) { r.LeaseID = lease },
 		"close reason while open": func(r *AttemptRecord) { r.CloseReason = CloseReasonCancelled },
-		"closed without reason": func(r *AttemptRecord) { r.Phase = AttemptPhaseClosed },
+		"closed without reason":   func(r *AttemptRecord) { r.Phase = AttemptPhaseClosed },
 		"unknown close reason": func(r *AttemptRecord) {
 			r.Phase = AttemptPhaseClosed
 			r.CloseReason = "unknown"
 		},
-		"zero revision": func(r *AttemptRecord) { r.Revision = 0 },
+		"zero revision":          func(r *AttemptRecord) { r.Revision = 0 },
 		"updated before created": func(r *AttemptRecord) { r.UpdatedAt = r.CreatedAt.Add(-time.Second) },
 	}
 	for name, mutate := range cases {

@@ -47,9 +47,9 @@ func TestAbortedRecordPreservesCloseReasonAndReason(t *testing.T) {
 	leaseID := mustLeaseID(t)
 	at := time.Date(2026, 10, 10, 0, 0, 0, 0, time.UTC)
 	record, err := NewAborted(AbortedConfig{
-		LeaseID: leaseID,
+		LeaseID:     leaseID,
 		CloseReason: "policy_revoked",
-		Reason: "policy changed before emission",
+		Reason:      "policy changed before emission",
 		CommittedAt: at,
 	})
 	if err != nil {
@@ -70,18 +70,18 @@ func validEmittedConfig(t *testing.T) EmittedConfig {
 	t.Helper()
 	signed := []byte("synthetic signed Lease envelope")
 	return EmittedConfig{
-		LeaseID: mustLeaseID(t),
-		DecisionID: "lease-decision-1",
-		TrustDomain: "local.example",
+		LeaseID:            mustLeaseID(t),
+		DecisionID:         "lease-decision-1",
+		TrustDomain:        "local.example",
 		AuthorityPrincipal: "control-plane/lse-1",
-		KeyID: decisiontrust.KeyID("kid-lse-1"),
-		Algorithm: decisiontrust.AlgorithmEdDSA,
-		PayloadDigest: contract.SHA256([]byte("payload")),
-		EnvelopeDigest: contract.SHA256(signed),
-		SignedEnvelope: signed,
-		PolicyRevision: "policy-42",
-		PolicyEpoch: 1,
-		CommittedAt: time.Date(2026, 10, 10, 0, 0, 0, 0, time.UTC),
+		KeyID:              decisiontrust.KeyID("kid-lse-1"),
+		Algorithm:          decisiontrust.AlgorithmEdDSA,
+		PayloadDigest:      contract.SHA256([]byte("payload")),
+		EnvelopeDigest:     contract.SHA256(signed),
+		SignedEnvelope:     signed,
+		PolicyRevision:     "policy-42",
+		PolicyEpoch:        1,
+		CommittedAt:        time.Date(2026, 10, 10, 0, 0, 0, 0, time.UTC),
 	}
 }
 

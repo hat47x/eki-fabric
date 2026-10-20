@@ -155,9 +155,9 @@ func (s *Store) AbortLeaseEmission(ctx context.Context, abort statestore.LeaseEm
 		return statestore.LeaseEmissionResult{}, err
 	}
 	record, err := leaseemission.NewAborted(leaseemission.AbortedConfig{
-		LeaseID: lease.ID,
+		LeaseID:     lease.ID,
 		CloseReason: string(abort.CloseReason),
-		Reason: abort.Reason,
+		Reason:      abort.Reason,
 		CommittedAt: abort.CommittedAt,
 	})
 	if err != nil {

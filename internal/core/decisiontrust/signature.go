@@ -27,7 +27,7 @@ var (
 	ErrSigningPolicyMismatch       = errors.New("signed-decision signing policy revision mismatch")
 	ErrSigningAuthorizationChanged = errors.New("signed-decision signing authorization changed during signing")
 	ErrSignatureGeneration         = errors.New("signed-decision signature generation failed")
-	ErrVerificationKeyInvalid     = errors.New("signed-decision verification key is invalid")
+	ErrVerificationKeyInvalid      = errors.New("signed-decision verification key is invalid")
 )
 
 type COSESigningRequest struct {

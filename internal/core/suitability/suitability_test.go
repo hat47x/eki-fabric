@@ -11,11 +11,11 @@ import (
 
 func TestEvaluateFixedSuitabilityFixtures(t *testing.T) {
 	tests := []struct {
-		name        string
-		input       Input
-		want        Decision
-		wantReason  ReasonCode
-		wantFabric  uint64
+		name       string
+		input      Input
+		want       Decision
+		wantReason ReasonCode
+		wantFabric uint64
 	}{
 		{
 			name: "S0-1 large transfer is executable but not justified",

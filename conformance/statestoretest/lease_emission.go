@@ -232,11 +232,11 @@ func RunLeaseEmissionContract(t *testing.T, newStore LeaseEmissionFactory) {
 			t.Fatal(err)
 		}
 		if _, err := store.AbortLeaseEmission(context.Background(), statestore.LeaseEmissionAbort{
-			LeaseID: reserved.Lease.ID,
+			LeaseID:                 reserved.Lease.ID,
 			ExpectedAttemptRevision: attempt.Revision,
-			CloseReason: attemptstate.CloseReasonResultAccepted,
-			Reason: "impossible before Worker Authority emission",
-			CommittedAt: reserved.Lease.IssuedAt.Add(time.Second),
+			CloseReason:             attemptstate.CloseReasonResultAccepted,
+			Reason:                  "impossible before Worker Authority emission",
+			CommittedAt:             reserved.Lease.IssuedAt.Add(time.Second),
 		}); err == nil {
 			t.Fatal("pre-emission abort accepted result_accepted close reason")
 		}
@@ -260,7 +260,7 @@ func RunLeaseEmissionContract(t *testing.T, newStore LeaseEmissionFactory) {
 		abort := statestore.LeaseEmissionAbort{
 			LeaseID: first.Lease.ID, ExpectedAttemptRevision: assigned.Revision,
 			CloseReason: attemptstate.CloseReasonPolicyRevoked,
-			Reason: "signing premise changed before durable emission",
+			Reason:      "signing premise changed before durable emission",
 			CommittedAt: first.Lease.IssuedAt.Add(time.Second),
 		}
 		aborted, err := store.AbortLeaseEmission(context.Background(), abort)
@@ -320,11 +320,11 @@ func RunLeaseEmissionContract(t *testing.T, newStore LeaseEmissionFactory) {
 			t.Fatal(err)
 		}
 		abort := statestore.LeaseEmissionAbort{
-			LeaseID: reserved.Lease.ID,
+			LeaseID:                 reserved.Lease.ID,
 			ExpectedAttemptRevision: attempt.Revision,
-			CloseReason: attemptstate.CloseReasonSuperseded,
-			Reason: "concurrent authority premise loss",
-			CommittedAt: commit.CommittedAt,
+			CloseReason:             attemptstate.CloseReasonSuperseded,
+			Reason:                  "concurrent authority premise loss",
+			CommittedAt:             commit.CommittedAt,
 		}
 
 		start := make(chan struct{})
@@ -517,19 +517,19 @@ func emissionCommit(t testing.TB, store LeaseEmissionTestStore, lease leasestate
 	}
 	signed := []byte("signed-lease:" + lease.ID.String())
 	return statestore.LeaseEmissionCommit{
-		LeaseID: lease.ID,
-		ExpectedTaskRevision: task.Revision,
+		LeaseID:                 lease.ID,
+		ExpectedTaskRevision:    task.Revision,
 		ExpectedAttemptRevision: attempt.Revision,
-		ExpectedPolicyEpoch: lease.PolicyEpoch,
-		DecisionID: "lease-decision-" + lease.ID.String(),
-		TrustDomain: "local.example",
-		AuthorityPrincipal: "control-plane/lse-1",
-		KeyID: decisiontrust.KeyID("kid-lse-1"),
-		Algorithm: decisiontrust.AlgorithmEdDSA,
-		PayloadDigest: contract.SHA256([]byte("lease-payload:" + lease.ID.String())),
-		EnvelopeDigest: contract.SHA256(signed),
-		SignedEnvelope: signed,
-		CommittedAt: at,
+		ExpectedPolicyEpoch:     lease.PolicyEpoch,
+		DecisionID:              "lease-decision-" + lease.ID.String(),
+		TrustDomain:             "local.example",
+		AuthorityPrincipal:      "control-plane/lse-1",
+		KeyID:                   decisiontrust.KeyID("kid-lse-1"),
+		Algorithm:               decisiontrust.AlgorithmEdDSA,
+		PayloadDigest:           contract.SHA256([]byte("lease-payload:" + lease.ID.String())),
+		EnvelopeDigest:          contract.SHA256(signed),
+		SignedEnvelope:          signed,
+		CommittedAt:             at,
 	}
 }
 

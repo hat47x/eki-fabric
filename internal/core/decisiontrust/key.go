@@ -213,22 +213,22 @@ func (r KeyRecord) sameRegistration(other KeyRecord) bool {
 		r.policyRevision == other.policyRevision
 }
 
-func (r KeyRecord) ID() KeyID                       { return r.id }
-func (r KeyRecord) AuthorityRole() authority.Role   { return r.authorityRole }
-func (r KeyRecord) AuthorityPrincipal() string      { return r.authorityPrincipal }
-func (r KeyRecord) TrustDomain() string             { return r.trustDomain }
-func (r KeyRecord) Algorithm() Algorithm            { return r.algorithm }
-func (r KeyRecord) KeyType() KeyType                { return r.keyType }
-func (r KeyRecord) Curve() Curve                    { return r.curve }
+func (r KeyRecord) ID() KeyID                        { return r.id }
+func (r KeyRecord) AuthorityRole() authority.Role    { return r.authorityRole }
+func (r KeyRecord) AuthorityPrincipal() string       { return r.authorityPrincipal }
+func (r KeyRecord) TrustDomain() string              { return r.trustDomain }
+func (r KeyRecord) Algorithm() Algorithm             { return r.algorithm }
+func (r KeyRecord) KeyType() KeyType                 { return r.keyType }
+func (r KeyRecord) Curve() Curve                     { return r.curve }
 func (r KeyRecord) PublicKeyDigest() contract.Digest { return r.publicKeyDigest }
-func (r KeyRecord) State() KeyState                 { return r.state }
+func (r KeyRecord) State() KeyState                  { return r.state }
 func (r KeyRecord) ActivatedAt() time.Time           { return r.activatedAt }
 func (r KeyRecord) VerifyOnlyAt() time.Time          { return r.verifyOnlyAt }
-func (r KeyRecord) SigningNotBefore() time.Time     { return r.signingNotBefore }
-func (r KeyRecord) SigningNotAfter() time.Time      { return r.signingNotAfter }
-func (r KeyRecord) PolicyRevision() string          { return r.policyRevision }
-func (r KeyRecord) Revision() uint64                { return r.revision }
-func (r KeyRecord) StateChangedAt() time.Time       { return r.stateChangedAt }
+func (r KeyRecord) SigningNotBefore() time.Time      { return r.signingNotBefore }
+func (r KeyRecord) SigningNotAfter() time.Time       { return r.signingNotAfter }
+func (r KeyRecord) PolicyRevision() string           { return r.policyRevision }
+func (r KeyRecord) Revision() uint64                 { return r.revision }
+func (r KeyRecord) StateChangedAt() time.Time        { return r.stateChangedAt }
 
 func (r KeyRecord) PublicKey() crypto.PublicKey {
 	return clonePublicKey(r.publicKey)

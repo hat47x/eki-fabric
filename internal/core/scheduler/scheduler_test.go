@@ -284,16 +284,16 @@ func suitabilityInput(
 		})
 	}
 	return suitability.Input{
-		TaskID:                taskID,
-		TaskIRDigest:          taskIR,
-		WorkloadDigest:        contract.SHA256([]byte("fixture-workload")),
-		PolicyRevision:        1,
-		EvaluatorVersion:      "suitability-v0",
-		FeasibilityConfirmed:  true,
-		Baseline:              &suitability.DurationEvidence{Millis: baselineMillis, EvidenceRef: "fixture:baseline"},
-		Components:            components,
-		Excluded:              excluded,
-		MinimumBenefitMillis:  1_000,
+		TaskID:               taskID,
+		TaskIRDigest:         taskIR,
+		WorkloadDigest:       contract.SHA256([]byte("fixture-workload")),
+		PolicyRevision:       1,
+		EvaluatorVersion:     "suitability-v0",
+		FeasibilityConfirmed: true,
+		Baseline:             &suitability.DurationEvidence{Millis: baselineMillis, EvidenceRef: "fixture:baseline"},
+		Components:           components,
+		Excluded:             excluded,
+		MinimumBenefitMillis: 1_000,
 	}
 }
 

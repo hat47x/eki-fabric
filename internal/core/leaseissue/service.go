@@ -24,11 +24,11 @@ import (
 )
 
 var (
-	ErrInvalidConfig      = errors.New("invalid LSE-1 lease issue configuration")
-	ErrInvalidRequest     = errors.New("invalid LSE-1 lease issue request")
-	ErrCurrentState       = errors.New("current state does not match verified Placement Approval")
-	ErrPlacementConsumed  = errors.New("Placement Approval already maps to an expired Lease")
-	ErrStoreInvariant     = errors.New("Lease Store returned a record outside the verified Placement binding")
+	ErrInvalidConfig     = errors.New("invalid LSE-1 lease issue configuration")
+	ErrInvalidRequest    = errors.New("invalid LSE-1 lease issue request")
+	ErrCurrentState      = errors.New("current state does not match verified Placement Approval")
+	ErrPlacementConsumed = errors.New("Placement Approval already maps to an expired Lease")
+	ErrStoreInvariant    = errors.New("Lease Store returned a record outside the verified Placement binding")
 )
 
 type State interface {
@@ -47,11 +47,11 @@ type Clock interface {
 }
 
 type Config struct {
-	Verifier      *placementverify.Verifier
-	State         State
-	TrustBundle   TrustBundleSource
-	Clock         Clock
-	MaxLifetime   time.Duration
+	Verifier    *placementverify.Verifier
+	State       State
+	TrustBundle TrustBundleSource
+	Clock       Clock
+	MaxLifetime time.Duration
 }
 
 type Service struct {

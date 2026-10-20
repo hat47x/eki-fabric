@@ -194,19 +194,19 @@ INSERT INTO lease_emissions (
 		t.Fatal(err)
 	}
 	if _, err := store.CommitLeaseEmission(context.Background(), statestore.LeaseEmissionCommit{
-		LeaseID: lease.ID,
-		ExpectedTaskRevision: task.Revision,
+		LeaseID:                 lease.ID,
+		ExpectedTaskRevision:    task.Revision,
 		ExpectedAttemptRevision: attempt.Revision,
-		ExpectedPolicyEpoch: fresh.Epoch,
-		DecisionID: "lease-decision-wrong-epoch",
-		TrustDomain: "local.example",
-		AuthorityPrincipal: "control-plane/lse-1",
-		KeyID: decisiontrust.KeyID("kid-lse-1"),
-		Algorithm: decisiontrust.AlgorithmEdDSA,
-		PayloadDigest: contract.SHA256([]byte("payload")),
-		EnvelopeDigest: contract.SHA256(signed),
-		SignedEnvelope: signed,
-		CommittedAt: lease.IssuedAt.Add(3*time.Second),
+		ExpectedPolicyEpoch:     fresh.Epoch,
+		DecisionID:              "lease-decision-wrong-epoch",
+		TrustDomain:             "local.example",
+		AuthorityPrincipal:      "control-plane/lse-1",
+		KeyID:                   decisiontrust.KeyID("kid-lse-1"),
+		Algorithm:               decisiontrust.AlgorithmEdDSA,
+		PayloadDigest:           contract.SHA256([]byte("payload")),
+		EnvelopeDigest:          contract.SHA256(signed),
+		SignedEnvelope:          signed,
+		CommittedAt:             lease.IssuedAt.Add(3 * time.Second),
 	}); !errors.Is(err, statestore.ErrPolicyChanged) {
 		t.Fatalf("old Lease emitted under fresh unrelated policy: %v", err)
 	}
@@ -224,19 +224,19 @@ func TestEmissionSchemaMakesCommittedRecordImmutable(t *testing.T) {
 	}
 	signed := []byte("immutable-signed-envelope")
 	commit := statestore.LeaseEmissionCommit{
-		LeaseID: lease.ID,
-		ExpectedTaskRevision: task.Revision,
+		LeaseID:                 lease.ID,
+		ExpectedTaskRevision:    task.Revision,
 		ExpectedAttemptRevision: attempt.Revision,
-		ExpectedPolicyEpoch: lease.PolicyEpoch,
-		DecisionID: "lease-decision-immutable",
-		TrustDomain: "local.example",
-		AuthorityPrincipal: "control-plane/lse-1",
-		KeyID: decisiontrust.KeyID("kid-lse-1"),
-		Algorithm: decisiontrust.AlgorithmEdDSA,
-		PayloadDigest: contract.SHA256([]byte("payload")),
-		EnvelopeDigest: contract.SHA256(signed),
-		SignedEnvelope: signed,
-		CommittedAt: lease.IssuedAt.Add(time.Second),
+		ExpectedPolicyEpoch:     lease.PolicyEpoch,
+		DecisionID:              "lease-decision-immutable",
+		TrustDomain:             "local.example",
+		AuthorityPrincipal:      "control-plane/lse-1",
+		KeyID:                   decisiontrust.KeyID("kid-lse-1"),
+		Algorithm:               decisiontrust.AlgorithmEdDSA,
+		PayloadDigest:           contract.SHA256([]byte("payload")),
+		EnvelopeDigest:          contract.SHA256(signed),
+		SignedEnvelope:          signed,
+		CommittedAt:             lease.IssuedAt.Add(time.Second),
 	}
 	if _, err := store.CommitLeaseEmission(context.Background(), commit); err != nil {
 		t.Fatal(err)
@@ -299,22 +299,22 @@ func seedReservedLeaseForEmission(t *testing.T, store *Store, seed string) (task
 		t.Fatal(err)
 	}
 	reserved, err := store.ReserveLease(context.Background(), statestore.LeaseReservation{
-		LeaseID: leaseID,
-		TaskID: task.ID,
-		TaskIRDigest: task.TaskIRDigest,
-		ExpectedTaskRevision: task.Revision,
-		AttemptID: attempt.ID,
-		ExpectedAttemptRevision: placing.Revision,
-		WorkerIdentity: placing.WorkerIdentity,
-		PlacementTrustDomain: "local.example",
+		LeaseID:                     leaseID,
+		TaskID:                      task.ID,
+		TaskIRDigest:                task.TaskIRDigest,
+		ExpectedTaskRevision:        task.Revision,
+		AttemptID:                   attempt.ID,
+		ExpectedAttemptRevision:     placing.Revision,
+		WorkerIdentity:              placing.WorkerIdentity,
+		PlacementTrustDomain:        "local.example",
 		PlacementAuthorityPrincipal: "control-plane/plc-1",
-		PlacementDecisionID: "placement-" + seed,
-		PlacementPayloadDigest: contract.SHA256([]byte("placement:" + seed)),
-		PlacementExpiresAt: now.Add(2*time.Minute),
-		PolicyRevision: policy.Revision,
-		ExpectedPolicyEpoch: policy.Epoch,
-		IssuedAt: now.Add(time.Second),
-		ExpiresAt: now.Add(time.Minute),
+		PlacementDecisionID:         "placement-" + seed,
+		PlacementPayloadDigest:      contract.SHA256([]byte("placement:" + seed)),
+		PlacementExpiresAt:          now.Add(2 * time.Minute),
+		PolicyRevision:              policy.Revision,
+		ExpectedPolicyEpoch:         policy.Epoch,
+		IssuedAt:                    now.Add(time.Second),
+		ExpiresAt:                   now.Add(time.Minute),
 	})
 	if err != nil {
 		t.Fatal(err)

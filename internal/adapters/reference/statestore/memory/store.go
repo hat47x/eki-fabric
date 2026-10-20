@@ -31,34 +31,33 @@ type authorityDecisionScope struct {
 	decisionID  string
 }
 
-
 type Store struct {
-	mu              sync.RWMutex
-	admissions      map[ids.TaskID]statestore.Admission
-	idempotent      map[idempotencyScope]ids.TaskID
-	tasks           map[ids.TaskID]taskstate.TaskRecord
-	attempts        map[ids.AttemptID]attemptstate.AttemptRecord
+	mu                sync.RWMutex
+	admissions        map[ids.TaskID]statestore.Admission
+	idempotent        map[idempotencyScope]ids.TaskID
+	tasks             map[ids.TaskID]taskstate.TaskRecord
+	attempts          map[ids.AttemptID]attemptstate.AttemptRecord
 	leases            map[ids.LeaseID]leasestate.LeaseRecord
 	leaseEmissions    map[ids.LeaseID]leaseemission.Record
 	emissionDecisions map[authorityDecisionScope]ids.LeaseID
 	placementLeases   map[placementScope]ids.LeaseID
-	maxFence        map[ids.TaskID]uint64
-	policyCurrent   uint64
-	policyHistory   map[uint64]policystate.State
+	maxFence          map[ids.TaskID]uint64
+	policyCurrent     uint64
+	policyHistory     map[uint64]policystate.State
 }
 
 func New() *Store {
 	return &Store{
-		tasks:           make(map[ids.TaskID]taskstate.TaskRecord),
-		attempts:        make(map[ids.AttemptID]attemptstate.AttemptRecord),
-		admissions:      make(map[ids.TaskID]statestore.Admission),
-		idempotent:      make(map[idempotencyScope]ids.TaskID),
+		tasks:             make(map[ids.TaskID]taskstate.TaskRecord),
+		attempts:          make(map[ids.AttemptID]attemptstate.AttemptRecord),
+		admissions:        make(map[ids.TaskID]statestore.Admission),
+		idempotent:        make(map[idempotencyScope]ids.TaskID),
 		leases:            make(map[ids.LeaseID]leasestate.LeaseRecord),
 		leaseEmissions:    make(map[ids.LeaseID]leaseemission.Record),
 		emissionDecisions: make(map[authorityDecisionScope]ids.LeaseID),
 		placementLeases:   make(map[placementScope]ids.LeaseID),
-		maxFence:        make(map[ids.TaskID]uint64),
-		policyHistory:   make(map[uint64]policystate.State),
+		maxFence:          make(map[ids.TaskID]uint64),
+		policyHistory:     make(map[uint64]policystate.State),
 	}
 }
 

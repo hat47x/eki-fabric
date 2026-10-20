@@ -89,14 +89,18 @@ type ApprovalDraft struct {
 	evidence               []ConditionEvidence
 }
 
-func (d ApprovalDraft) TaskID() ids.TaskID                     { return d.taskID }
-func (d ApprovalDraft) TaskIRDigest() contract.Digest          { return d.taskIRDigest }
-func (d ApprovalDraft) AttemptID() ids.AttemptID               { return d.attemptID }
-func (d ApprovalDraft) WorkerIdentity() string                 { return d.workerIdentity }
-func (d ApprovalDraft) PolicyRevision() uint64                 { return d.policyRevision }
+func (d ApprovalDraft) TaskID() ids.TaskID                      { return d.taskID }
+func (d ApprovalDraft) TaskIRDigest() contract.Digest           { return d.taskIRDigest }
+func (d ApprovalDraft) AttemptID() ids.AttemptID                { return d.attemptID }
+func (d ApprovalDraft) WorkerIdentity() string                  { return d.workerIdentity }
+func (d ApprovalDraft) PolicyRevision() uint64                  { return d.policyRevision }
 func (d ApprovalDraft) SuitabilityBasisDigest() contract.Digest { return d.suitabilityBasisDigest }
-func (d ApprovalDraft) DecisionKind() authority.DecisionKind   { return authority.DecisionPlacementApproval }
-func (d ApprovalDraft) RequiredAuthorityRole() authority.Role  { return authority.RolePlacementAuthorization }
+func (d ApprovalDraft) DecisionKind() authority.DecisionKind {
+	return authority.DecisionPlacementApproval
+}
+func (d ApprovalDraft) RequiredAuthorityRole() authority.Role {
+	return authority.RolePlacementAuthorization
+}
 
 func (d ApprovalDraft) Evidence() []ConditionEvidence {
 	return append([]ConditionEvidence(nil), d.evidence...)

@@ -362,7 +362,6 @@ func TestRegistryRevisionAdvancesOnAdministrativeMutation(t *testing.T) {
 	}
 }
 
-
 func signingRequestFor(key KeyRecord, kind authority.DecisionKind) SigningRequest {
 	return SigningRequest{
 		TrustDomain:        key.TrustDomain(),

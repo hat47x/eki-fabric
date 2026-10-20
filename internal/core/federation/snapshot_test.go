@@ -231,7 +231,9 @@ func TestRestoreRefusesTamperedKeysAndSignatures(t *testing.T) {
 			ErrBundleSignature,
 		},
 		"authority signature truncated": {
-			func(s *Snapshot) { s.Entries[0].Bundle.AuthoritySignature = s.Entries[0].Bundle.AuthoritySignature[:63] },
+			func(s *Snapshot) {
+				s.Entries[0].Bundle.AuthoritySignature = s.Entries[0].Bundle.AuthoritySignature[:63]
+			},
 			ErrBundleSignature,
 		},
 		"authority signature missing": {
@@ -469,7 +471,9 @@ func TestRestoreRefusesMalformedSnapshots(t *testing.T) {
 			ErrInvalidBundle,
 		},
 		"installed bundle with a repeated key ID": {
-			func(s *Snapshot) { s.Entries[0].Bundle.Keys = append(s.Entries[0].Bundle.Keys, s.Entries[0].Bundle.Keys[0]) },
+			func(s *Snapshot) {
+				s.Entries[0].Bundle.Keys = append(s.Entries[0].Bundle.Keys, s.Entries[0].Bundle.Keys[0])
+			},
 			ErrInvalidBundle,
 		},
 	}
