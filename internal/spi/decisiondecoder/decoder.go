@@ -24,3 +24,17 @@ type LeaseCodec interface {
 	LeaseDecoder
 	EncodeLease(lease decisionpayload.Lease) ([]byte, error)
 }
+
+// WorkOrderDecoder decodes hostile P2 eki.work-order/v1 payload bytes. Success
+// does not authenticate the signature, prove that the referenced Placement
+// Approval / Lease / Executor Approval are current, or authorize execution.
+type WorkOrderDecoder interface {
+	DecodeWorkOrder(payload []byte) (decisionpayload.WorkOrder, error)
+}
+
+// WorkOrderCodec adds canonical encoding for the WOR-1 producer. Workers only
+// need WorkOrderDecoder.
+type WorkOrderCodec interface {
+	WorkOrderDecoder
+	EncodeWorkOrder(order decisionpayload.WorkOrder) ([]byte, error)
+}
