@@ -723,3 +723,11 @@ Control Plane側では、`internal/control/claimaccept`がClaimをAttemptの状�
 Testでは、completedの検証への遷移（CLAIMED / DISPATCHED）、reclaimedのclose、runner_stuckの非変更、再送によるcloseのやり直し、競合、stale、ClaimのfenceがLeaseより先の場合、別Worker、late、早すぎる段階、CAS競合、設定不足を固定しました。
 
 残りは、Claimの耐久StoreとWorker Planeのtransport、ClaimとAttemptの原子的な反映、報告が届かない場合のLease期限からの確定です。
+
+### 2026-10-20 要件の正本へのADR-0013〜0016の反映
+
+ADR-0013、0014、0016で定めた方向を、[Product Requirements](../requirements/PRODUCT_REQUIREMENTS.md)へ反映した。新しい節「K. 委任の核、仕事の型、組織の判断との連動」に、RQ-054〜RQ-063の10件を加え、53 Requirementから63 Requirementになった。RQ-011、RQ-016、RQ-026に追記し、非目標（L節）を見直した。
+
+- RQ-054（委任先の内部の再実行）はNeeds researchとし、Spike（#67）で確かめる前にBaselineへ上げない。
+- 残りの9件は、ADRで方向が決まっているためBaselineとした。
+- 委任状の操作の一覧、委任の等級の引き上げの承認、常駐の上限の既定値、自律の判断の開示の範囲は、未決事項（16〜19）として残した。
