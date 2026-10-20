@@ -634,3 +634,12 @@ WorkOrderのnonceを使い捨てるための最初の部品として、`internal
 - 満杯のときは、まだ期限内の記録を追い出さずに失敗します。追い出すと、nonceを再利用できてしまうためです。
 - 期限ちょうどの時刻では記録を失効させ、再利用を許します。
 - メモリ実装は再起動で記録が消えるため、Worker実行の証跡ではありません。durableなStoreへのAdapterは次の作業です。
+
+その後、WorkOrderの受理を一つの境界にまとめました（`internal/core/workorderaccept`）。
+
+- 署名済みWorkOrder、Worker自身のLease記録、Placement Approval、Executor Approval、nonceの獲得を突き合わせます。
+- 署名、宛先、期限、Trust Bundleの検証は`workorderverify`に任せ、この境界はWorkerのcurrent stateとの一致と、一度だけの使用を扱います。
+- nonceは、ほかのすべての確認が通った後でだけ獲得します。不正な指示でnonceを消費しません。
+- 成功すると`Admission`を返します。`Admission`は、受理時刻における指示のcurrentnessとnonceの未使用を示す証拠であり、Leaseでも実行の許可でもありません。Local Governorの判断を上書きしません。
+
+Local Governorの現在の上限との突き合わせ、Lease更新時の再受理、nonce記録の耐久化は、まだ残しています（[#160](https://github.com/hat47x/eki-fabric/issues/160)）。
