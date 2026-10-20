@@ -731,3 +731,17 @@ ADR-0013、0014、0016で定めた方向を、[Product Requirements](../requirem
 - RQ-054（委任先の内部の再実行）はNeeds researchとし、Spike（#67）で確かめる前にBaselineへ上げない。
 - 残りの9件は、ADRで方向が決まっているためBaselineとした。
 - 委任状の操作の一覧、委任の等級の引き上げの承認、常駐の上限の既定値、自律の判断の開示の範囲は、未決事項（16〜19）として残した。
+
+### 2026-10-21 Claimの再送queue
+
+WorkerがControl Planeへ届く前に止まる場合に備え、`internal/agent/claimqueue`を追加しました。
+
+- `Enqueue`は同じAttemptの同じClaimを一件に畳み、同じAttemptの違うClaimは`ErrConflict`で拒否します。
+- `DeliverDue`は、`NextAt`を過ぎたClaimを送ります。成功したら削除し、失敗したら指数backoff（上限つき、均等jitter）で再予約します。Claimは捨てません。
+- 送信はat-least-onceです。二度届いた場合は、Control Planeの`resultclaim.Decide`が`duplicate`として畳みます。
+- 送信成功後に削除で落ちた場合も、次のpassで再送し、Control Plane側の重複判定に任せます。
+- memory Storeはプロセス内だけなので、Workerの実行証跡にはなりません。durable StoreへのAdapterを残しています。
+
+Testでは、同一Claimの冪等なenqueue、異なるClaimの衝突、成功時の削除、失敗時の再予約とbackoff後の再送、件数上限、Storeの期限順・digest照合削除・不正entryを固定しました。
+
+次は、Claimのdurable Store（SQLite）と、ClaimとAttempt CASの同一transaction化です。
