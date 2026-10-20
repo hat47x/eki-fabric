@@ -627,3 +627,10 @@ one-Worker executionへ進む前提として、WOR-1が署名する`eki.work-ord
 `Verified`は実行の許可ではありません。参照先のPlacement Approval / Lease / Executor Approvalのcurrentness、Leaseのfencing、nonceの使い捨て、resource limitsとLocal Governorの突き合わせは、まだ別の境界として残しています（[#160](https://github.com/hat47x/eki-fabric/issues/160)）。
 
 Testでは、正しいWorkOrderの受理に加えて、別のWorker宛、発行前、期限後、署名の改ざん、Lease payloadの取り違え、別のTrust Domain、古いTrust Bundle、空のbytes、設定の不足を拒否することを固定しました。
+
+WorkOrderのnonceを使い捨てるための最初の部品として、`internal/spi/replayguard`と`internal/adapters/reference/replayguard/memory`も追加しました。
+
+- `Claim(nonce, until)`は、未使用ならtrue、使用済みで期限内ならfalseを返します。
+- 満杯のときは、まだ期限内の記録を追い出さずに失敗します。追い出すと、nonceを再利用できてしまうためです。
+- 期限ちょうどの時刻では記録を失効させ、再利用を許します。
+- メモリ実装は再起動で記録が消えるため、Worker実行の証跡ではありません。durableなStoreへのAdapterは次の作業です。
