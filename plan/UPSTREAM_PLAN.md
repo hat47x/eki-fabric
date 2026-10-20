@@ -643,3 +643,16 @@ WorkOrderのnonceを使い捨てるための最初の部品として、`internal
 - 成功すると`Admission`を返します。`Admission`は、受理時刻における指示のcurrentnessとnonceの未使用を示す証拠であり、Leaseでも実行の許可でもありません。Local Governorの判断を上書きしません。
 
 Local Governorの現在の上限との突き合わせ、Lease更新時の再受理、nonce記録の耐久化は、まだ残しています（[#160](https://github.com/hat47x/eki-fabric/issues/160)）。
+
+### 2026-10-20 開始前のLocal Governorとの突き合わせ
+
+Admissionを受けた後に、端末側の上限と実行を始めてよいかを決める`internal/agent/startgate`を追加しました。
+
+- WorkOrderの上限（Control Planeが許した量）と、Local Governorの上限（端末の利用者が許した割合）を、MachineProfileの実測容量を通して比べ、小さい方を実効上限にします。
+- CPUとMemoryは容量×割合で按分し、GPUは台数で按分します。Temporary Disk、Network、出力byteは、この版では使用の可否だけを見ます。
+- `StopRunning`、`AcceptNewLeases=false`、必要資源の上限0、端末容量の不明、Admissionの期限切れを拒否します。
+- 成功すると`Plan`を返します。`Plan`は実行の開始ではなく、その時点でその上限なら開始してよいという証拠です。以後のLocal Governorの判断を固定しません。
+
+Testでは、按分の計算、WorkOrderの上限が小さい場合、停止・不受理、資源ごとの0、容量不明、期限切れ、GPUの按分、wall timeによる期限の切り下げを固定しました。
+
+残りは、実行環境への上限の適用、実行中のGovernor再評価と停止、Lease更新時の再受理です。
