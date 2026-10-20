@@ -1,0 +1,13 @@
+# 耐久保存したLeaseの配送
+
+`Service.Send`はLease IDを受け取り、既存のState StoreからEMITTEDと予約を読み戻して、その記録が持つWorkerへ署名済みbytesを渡します。呼出し側から配送先や署名bytesを指定するAPIは持ちません。
+
+EMITTEDがないRESERVED、中止済みのABORTED、予約と発行記録の不一致、有効期間外、時計の欠落、Context取消、保存先の読取失敗ではtransportを呼びません。transportを呼ぶのは、一回の`Send`につき最大一回です。
+
+再度`Send`を呼ぶと、同じEMITTEDを読み戻して同じbytesを送ります。再署名や新しいLeaseの発行は行いません。transportが失敗した場合は`ErrDeliveryUnknown`を返し、内部で再送しません。相手が既に受信し、応答だけが失われた可能性があるためです。transportへ渡すbytesは保存記録からのコピーで、transport側の変更は原本へ反映されません。
+
+この処理は、信頼できるState Storeとtransportを注入するための接合点です。ネットワーク接続、永続outbox、配送済み記録、Worker受領の確認は実装していません。transportの成功から、Workerが受領・検証・実行したとは判断しません。
+
+EMITTED後のpolicy失効に関する再送は、新しいAuthorityの発行と区別します。この処理は署名やpolicyの現在性を検証し直さず、保存済みbytesを運ぶだけです。Workerは受信時の`leaseverify`、Task入力、FenceEpoch、Local Governorなどを別途確認する必要があります。Worker側のpolicy currentnessの扱いは#78の未決事項として残します。
+
+memory・SQLite共通のconformanceでは、実Emitterが署名・保存したbytesをtransport経由でWorker verifierへ渡し、配送失敗後の再呼出しで同一bytesに戻ることと、拒否時のtransport呼出し回数が0であることを検証します。実端末間の配送やTaskの実行の証拠にはしません。
