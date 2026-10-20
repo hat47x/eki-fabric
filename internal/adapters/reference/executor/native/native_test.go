@@ -10,9 +10,108 @@ import (
 	"time"
 
 	"github.com/hat47x/eki-fabric/internal/agent/executor"
+	"github.com/hat47x/eki-fabric/internal/agent/governor"
 	"github.com/hat47x/eki-fabric/internal/core/contract"
 	"github.com/hat47x/eki-fabric/internal/core/decisionpayload"
 )
+
+type fakeClock struct{ now time.Time }
+
+func (c *fakeClock) Now() time.Time { return c.now }
+
+type sourceFunc func(ctx context.Context) (governor.Decision, error)
+
+func (f sourceFunc) Next(ctx context.Context) (governor.Decision, error) { return f(ctx) }
+
+func blockingSource(ctx context.Context) (governor.Decision, error) {
+	<-ctx.Done()
+	return governor.Decision{}, ctx.Err()
+}
+
+func newSupervisor(t *testing.T) *executor.Supervisor {
+	t.Helper()
+	supervisor, err := executor.New(executor.Config{Clock: &fakeClock{now: time.Now().UTC()}, StopGrace: 2 * time.Second})
+	if err != nil {
+		t.Fatalf("executor.New() error = %v", err)
+	}
+	return supervisor
+}
+
+func TestSupervisedNativeRunCompletes(t *testing.T) {
+	path, digest := testBinary(t)
+	runner := newRunner(t, digest, path, "ok")
+	outcome, err := newSupervisor(t).Execute(context.Background(), specFor(digest, 1024), runner, sourceFunc(blockingSource))
+	if err != nil {
+		t.Fatalf("Execute() error = %v", err)
+	}
+	if outcome.Status != executor.StatusCompleted || outcome.OutputBytes != 5 {
+		t.Fatalf("outcome = %+v, want completed with 5 bytes", outcome)
+	}
+}
+
+func TestSupervisedNativeRunReportsFailure(t *testing.T) {
+	path, digest := testBinary(t)
+	runner := newRunner(t, digest, path, "fail")
+	outcome, err := newSupervisor(t).Execute(context.Background(), specFor(digest, 1024), runner, sourceFunc(blockingSource))
+	if err != nil {
+		t.Fatalf("Execute() error = %v", err)
+	}
+	if outcome.Status != executor.StatusFailed || outcome.ExitCode != 3 {
+		t.Fatalf("outcome = %+v, want failed with exit code 3", outcome)
+	}
+}
+
+func TestSupervisedNativeRunStopsWhenTheGovernorStops(t *testing.T) {
+	path, digest := testBinary(t)
+	runner := newRunner(t, digest, path, "sleep")
+	decisions := make(chan governor.Decision, 1)
+	decisions <- governor.Decision{StopRunning: true, Reasons: []governor.Reason{governor.ReasonUserPresent}}
+	source := sourceFunc(func(ctx context.Context) (governor.Decision, error) {
+		select {
+		case decision := <-decisions:
+			return decision, nil
+		case <-ctx.Done():
+			return governor.Decision{}, ctx.Err()
+		}
+	})
+	started := time.Now()
+	outcome, err := newSupervisor(t).Execute(context.Background(), specFor(digest, 1024), runner, source)
+	if err != nil {
+		t.Fatalf("Execute() error = %v", err)
+	}
+	if outcome.Status != executor.StatusReclaimed {
+		t.Fatalf("outcome = %+v, want reclaimed", outcome)
+	}
+	if elapsed := time.Since(started); elapsed > 5*time.Second {
+		t.Fatalf("stopping took %s", elapsed)
+	}
+}
+
+func TestSupervisedNativeRunStopsAtTheDeadline(t *testing.T) {
+	path, digest := testBinary(t)
+	runner := newRunner(t, digest, path, "sleep")
+	spec := specFor(digest, 1024)
+	spec.Deadline = time.Now().Add(300 * time.Millisecond)
+	outcome, err := newSupervisor(t).Execute(context.Background(), spec, runner, sourceFunc(blockingSource))
+	if err != nil {
+		t.Fatalf("Execute() error = %v", err)
+	}
+	if outcome.Status != executor.StatusDeadlineExceeded {
+		t.Fatalf("outcome = %+v, want deadline_exceeded", outcome)
+	}
+}
+
+func TestSupervisedNativeRunStopsOversizedOutput(t *testing.T) {
+	path, digest := testBinary(t)
+	runner := newRunner(t, digest, path, "big")
+	outcome, err := newSupervisor(t).Execute(context.Background(), specFor(digest, 10), runner, sourceFunc(blockingSource))
+	if err != nil {
+		t.Fatalf("Execute() error = %v", err)
+	}
+	if outcome.Status != executor.StatusOutputExceeded {
+		t.Fatalf("outcome = %+v, want output_exceeded", outcome)
+	}
+}
 
 // TestHelperProcess is not a real test. The Runner starts the test binary again
 // with -test.run=TestHelperProcess and EK_NATIVE_MODE set, so the tests can
