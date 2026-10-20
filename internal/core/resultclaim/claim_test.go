@@ -110,13 +110,24 @@ func TestClaimEqualAndDigest(t *testing.T) {
 }
 
 func TestDecideFirstClaimClosesAnOpenAttempt(t *testing.T) {
-	claim := mustClaim(t, nil)
+	claim := mustClaim(t, func(c *ClaimConfig) { c.Status = StatusFailed; c.ExitCode = 1 })
 	decision, err := Decide(claim, Existing{AttemptID: testAttempt, AttemptOpen: true, CurrentFence: 7})
 	if err != nil {
 		t.Fatalf("Decide() error = %v", err)
 	}
 	if decision.Kind != KindNew || !decision.Record || !decision.CloseAttempt {
 		t.Fatalf("decision = %+v, want a new closing claim", decision)
+	}
+}
+
+func TestDecideDoesNotCloseOnACompletedClaim(t *testing.T) {
+	claim := mustClaim(t, nil)
+	decision, err := Decide(claim, Existing{AttemptID: testAttempt, AttemptOpen: true, CurrentFence: 7})
+	if err != nil {
+		t.Fatalf("Decide() error = %v", err)
+	}
+	if decision.Kind != KindNew || !decision.Record || decision.CloseAttempt {
+		t.Fatalf("decision = %+v, want a new claim without a close", decision)
 	}
 }
 
@@ -130,6 +141,19 @@ func TestDecideCollapsesAnExactReplay(t *testing.T) {
 	}
 	if decision.Kind != KindDuplicate || decision.Record || decision.CloseAttempt {
 		t.Fatalf("decision = %+v, want a duplicate", decision)
+	}
+}
+
+func TestDecideRetriesTheCloseAfterACrash(t *testing.T) {
+	claim := mustClaim(t, func(c *ClaimConfig) { c.Status = StatusReclaimed; c.ExitCode = 0 })
+	decision, err := Decide(claim, Existing{
+		AttemptID: testAttempt, AttemptOpen: true, CurrentFence: 7, Recorded: &claim,
+	})
+	if err != nil {
+		t.Fatalf("Decide() error = %v", err)
+	}
+	if decision.Kind != KindDuplicate || decision.Record || !decision.CloseAttempt {
+		t.Fatalf("decision = %+v, want the recorded claim to retry the close", decision)
 	}
 }
 
@@ -177,11 +201,14 @@ func TestDecideRejectsAnotherAttemptOrAnUnconstructedClaim(t *testing.T) {
 }
 
 func TestStatusPolicy(t *testing.T) {
-	closing := []Status{StatusCompleted, StatusFailed, StatusReclaimed, StatusDeadlineExceeded, StatusCancelled, StatusOutputExceeded}
+	closing := []Status{StatusFailed, StatusReclaimed, StatusDeadlineExceeded, StatusCancelled, StatusOutputExceeded}
 	for _, status := range closing {
 		if !status.ClosesAttempt() {
 			t.Fatalf("%q should close the Attempt", status)
 		}
+	}
+	if StatusCompleted.ClosesAttempt() {
+		t.Fatal("completed must move to Result Verification, not close the Attempt")
 	}
 	if StatusRunnerStuck.ClosesAttempt() {
 		t.Fatal("runner_stuck must not close the Attempt before the platform stops it")
