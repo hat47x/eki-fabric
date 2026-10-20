@@ -129,6 +129,8 @@ capabilityの候補は、たとえば次のとおりです。
 
 ただし、Operational Historyは、Security Root of Trustではありません。長い間、良好だったWorkerが、後から侵害される可能性は、排除できません。
 
+業務端末は日々入れ替わるため、Worker単位の履歴は薄く、すぐ古くなります。そのため、管理者が束ねた委任先（資源のプールなど。RQ-058）の単位でも、履歴を持てるようにします。履歴は、Control Planeが自分で観測した出来事（受理、配置、Result Claimの受信、Leaseの失効、検証の不一致）から作り、WorkerやAdapterの申告からは作りません。委任先の単位の履歴も、配置の最適化には使えますが、委任の等級を上げる根拠にはしません（2026-10-20追記。RQ-058、#109）。
+
 ---
 
 ## Axis G — Resource Measurement Assurance
