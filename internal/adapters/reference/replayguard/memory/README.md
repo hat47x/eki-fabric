@@ -14,6 +14,8 @@ Claim(nonce, until)
 - nonceの意味や、WorkOrderの他の条件を検証しません。署名、宛先、参照先Decisionのcurrentnessは、`workorderverify`など別の境界で確かめます。
 - 複数のWorkerや複数のプロセスで共有しません。共有が必要な場合は、durableなStoreを持つAdapterに差し替えます。
 
+再起動後の記録の保持と、同じローカルDBを開くプロセス間の排他が必要な場合は、[SQLite実装](../sqlite/README.md)を使えます。Workerの起動設定を自動で切り替えるものではありません。
+
 ## 満杯のとき
 
 上限に達した場合、古い記録を追い出さずに`ErrGuardCapacity`で失敗します。追い出すと、まだ期限内のnonceを再利用できてしまうためです。呼出し側は、このエラーを実行の許可として扱いません。
