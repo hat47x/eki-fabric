@@ -803,3 +803,7 @@ Protobuf / Connectの生成コードをまだ入れずに、その両側を接�
 ### 2026-10-21 一台で完結する配備形態（DP-7）
 
 [ADR-0018](adr/0018-single-machine-delegation-profile.md)で、RQ-063（一台での利用）に対応する配備形態DP-7を[Deployment Profiles](../architecture/DEPLOYMENT_PROFILES.md)に加え、0.2へ上げた。一台の構成では、依頼者（AI Agentなど）が制御層と同じOSのユーザーとして動くと、鍵やmetadata storeを直接触れてRQ-016を素通りできる。そのため、制御層と実行を専用のOSのアカウントで動かすことをDP-7の条件とした。M0とMVPの優先順位は変えず、S1で実装する。
+
+### 2026-10-21 隔離実行の外面（ADR-0019）
+
+[ADR-0019](adr/0019-sandbox-face-isolation-levels-and-frontends.md)で、隔離の水準（ISO-0〜ISO-3）を管理者が実行環境ごとに登録する語彙として定め、[Extension SPI](../architecture/EXTENSION_SPI.md) §32に加えた。隔離して試す型ではISO-0を使わない。AIが生成したコードは、実行体ではなく入力のArtifactとして扱い、事前に承認したインタプリタの上で動かす（[Contract Boundaries](../architecture/CONTRACT_BOUNDARIES.md) §7.9）。MCP、OpenAI互換、REAPIなどの外部の入口は、依頼をTaskRequestの意味に写すだけで権限を持たないという原則を、§7Aに置いた。Extension SPIとContract Boundariesを0.2へ上げた。
