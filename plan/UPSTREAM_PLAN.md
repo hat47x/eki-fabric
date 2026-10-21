@@ -821,3 +821,7 @@ Protobuf / Connectの生成コードをまだ入れずに、その両側を接�
 ### 2026-10-21 委任状で委任できる操作の区分（ADR-0022）
 
 [ADR-0022](adr/0022-mandate-operation-classes-and-thresholds.md)で、管理の操作を、安全側の操作、範囲内の拡大、人間の承認が要る操作、委任できない操作の四つに分け、[Authority Boundaries](../architecture/AUTHORITY_BOUNDARIES.md)の委任状の節に加えた。閾値の雛形は、一つの配分先への親の枠の30%、一日の配分し直しの合計の20%、委任状の期限の最長30日。SEIは、縮小や停止を広く執行でき、配分の拡大は上限と速さの上限の中で行い、新しい外部の相手への提供などは人間の承認を経る。
+
+### 2026-10-21 自律の判断の範囲と、外部の要求のインターフェース（ADR-0023）
+
+[ADR-0023](adr/0023-autonomy-scope-and-request-interfaces.md)で、EKIの自律の判断を、承認なしで行う、人間の承認を求める、行わないの三つに分け、[Authority Boundaries](../architecture/AUTHORITY_BOUNDARIES.md) §7Aに置いた。区分はADR-0022の委任状の区分と揃えた。外部の要求（依頼、方針、照会、承認、通知）の形を[Contract Boundaries](../architecture/CONTRACT_BOUNDARIES.md) §31.1と§33.1〜33.4に置いた。承認は期限までになければ承認されなかったものとし、通知は権限を持たず、受けられない依頼には拘束力のない代わりの案を返す。
