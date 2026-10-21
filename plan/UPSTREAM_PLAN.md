@@ -732,6 +732,10 @@ ADR-0013、0014、0016で定めた方向を、[Product Requirements](../requirem
 - 残りの9件は、ADRで方向が決まっているためBaselineとした。
 - 委任状の操作の一覧、委任の等級の引き上げの承認、常駐の上限の既定値、自律の判断の開示の範囲は、未決事項（16〜19）として残した。
 
+### 2026-10-20 脅威モデルへの反映
+
+要件の反映（RQ-054〜063）に合わせて、[Threat Model](../requirements/THREAT_MODEL.md)に攻撃者A17〜A22（委任先の内部の実行管理系、委任の等級の誤登録、委任状を持つ主体の誤りや乗っ取り、組織に費用を負わせる依頼者、外部への提供先、常駐を更新し続ける主体）と、安全上の不変条件SEC-024〜SEC-030を加えた。委任状を持つ主体（SEIなど）は信頼の基盤に含めず、被害を委任状の範囲と期限の中に収めることを不変条件とした。[Worker Assurance Model](../requirements/ASSURANCE_MODEL.md)のAxis Fに、委任先の単位で、Control Planeの観測から履歴を作ることを追記した。
+
 ### 2026-10-21 Claimの再送queue
 
 WorkerがControl Planeへ届く前に止まる場合に備え、`internal/agent/claimqueue`を追加しました。
