@@ -1,6 +1,6 @@
 # 制御層とデータ層の構成（Control Plane / Data Plane Architecture）
 
-Status: **Baseline 0.1 — 2026-09-21**
+Status: **Baseline 0.2 — 2026-10-21**（Baseline 0.1: 2026-09-21。0.2での変更点は§3.4、§32、§35、§42、§48の追加で、理由は[ADR-0021](../plan/adr/0021-observation-plane-and-disclosure-tiers.md)にあります）
 
 ## 1. この文書の目的
 
@@ -110,6 +110,42 @@ ArtifactGrantやOutput Bindingなど、Control PlaneのDecisionを、Data Plane�
 Storage backendの登録、Artifact Storeのcredentialの設定、Federationのexport policy、encryption keyのpolicyなどは、Administrative Planeです。
 
 通常のTask requestからは、変更できません。
+
+## 3.4 Observation Plane
+
+（Baseline 0.2で追加。[ADR-0021](../plan/adr/0021-observation-plane-and-disclosure-tiers.md)）
+
+Observation Planeが扱うのは、管理画面、予実、資源の消費の記録のための観測情報です。
+
+主な対象は、次のとおりです。
+
+- 委任先ごとの予実（期限内の完了割合、所要時間の分布、中断の回数、検証の不一致の回数）
+- 依頼ごとの資源の消費（物理量と観測者）
+- 仕事、Task Group、Session、常駐の一覧と状態の要約
+- 端末と委任先の状況の要約
+- Data Planeのmetrics（§35）
+
+Observation Planeには、Control Plane、Data Plane、Workerから一方向に書き出します。権限の判断に使う状態（Task、Lease、Fence、Policyの版、予算の予約）とは、保存先を分けます。
+
+- Observation Planeが使えなくなっても、受理、配置の承認、Lease、結果の確定は影響を受けません。
+- Observation Planeの値は、Authorityを持たないObservationです。Schedulerや広域の最適化の入力には使えますが、委任の等級、予算の権限、結果の確定の根拠にはしません。
+- 予実は、Control Planeが自分で観測した出来事から作ります。Workerが申告した値は、申告であることを示して保持します。
+- 金額への換算は、Observation Planeの外で行います。
+- 記録が食い違った場合は、権限の状態を正とします。
+
+### 開示の段階
+
+| 見る人 | 見えるもの |
+| --- | --- |
+| 利用者 | 自分の依頼の状態と、等級ごとの見込み |
+| 委任先の管理者 | 自分の委任先の予実と負荷 |
+| Fabric全体の管理者 | 全体の予実、負荷、依頼の状態 |
+
+どの段階でも、依頼の中身（入力のArtifact）は、Data authorityを別に持たない限り見せません。利用者の権限から、委任先の数、種類、所在を列挙できないようにします（RQ-018）。
+
+### 管理画面
+
+管理画面は、Observation Planeと、読み取り専用の照会だけを読みます。予算の付与や委任先の停止などの操作は、Administrative Planeを通し、閲覧とは別の権限とします。管理画面はEKIに依存しない場所で動かし、EKIが止まった場合のためにCLIによる最小の運用手段を残します。
 
 ---
 
@@ -1062,6 +1098,8 @@ Modelをcacheしているという理由だけで、そのWorkerが、そのMode
 
 Licenseや契約上の制約も、Artifact policyのextensionとして扱える余地を持ちます。
 
+（Baseline 0.2で追加。[ADR-0021](../plan/adr/0021-observation-plane-and-disclosure-tiers.md)）toolchain、依存モジュール、ビルドキャッシュも、Modelと同じく再利用されるArtifactとして扱います。Workerが実行中にnetworkから取得するものではなく、事前に配置したRuntime Classの一部として用意します（RQ-029）。TEIの投影Spikeでは、ビルドキャッシュの有無で、同じビルドの時間が約15倍変わりました。
+
 ---
 
 # 33. Data PlaneとContribution
@@ -1118,6 +1156,8 @@ Data Planeのmetricsは、少なくとも、次のものを取得できる余地
 - reclaimからの回復による増幅
 
 OpenTelemetryやOTLPなどにexportできるようにします。ただし、具体的なTelemetry backendは固定しません。
+
+これらのmetricsは、§3.4のObservation Planeへ書き出します（Baseline 0.2）。
 
 ---
 
@@ -1257,6 +1297,10 @@ cache confidence
 egress cost class
 site network pressure
 store availability
+build cache / toolchain / dependency locality      (Baseline 0.2)
+warm session / sandbox availability                 (Baseline 0.2)
+elastic capacity cost class and reservation state   (Baseline 0.2)
+delegate track-record estimate                      (Baseline 0.2)
 ~~~
 
 learned estimatorを利用しても、Data access、residency、Securityの制約を、上書きしません。
@@ -1372,6 +1416,9 @@ Control / Data Planeで維持する不変条件を、まとめます。
 18. cancellationの後も、すでに送ったDataの事後の削除を、保証しない。
 19. 変更できるaliasを、実行時のContent Identityにしない。
 20. 任意のWorker側のfetchを、標準の動作にしない。
+21. Observation Planeが使えなくなっても、受理、配置の承認、Lease、結果の確定は影響を受けない（Baseline 0.2）。
+22. Observation Planeの値を、委任の等級、予算の権限、結果の確定の根拠にしない（Baseline 0.2）。
+23. 管理画面は、Administrative Planeを通さずに、権限の状態を書き換えない（Baseline 0.2）。
 
 ---
 

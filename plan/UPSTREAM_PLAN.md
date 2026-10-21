@@ -811,3 +811,9 @@ Protobuf / Connectの生成コードをまだ入れずに、その両側を接�
 ### 2026-10-21 Task State Modelへの新しい仕事の型の反映（ADR-0020）
 
 [ADR-0020](adr/0020-task-state-for-groups-sessions-resident.md)で、[Task State Model](../architecture/TASK_STATE_MODEL.md)を0.2へ上げた。期限切れを、送り出しの記録の有無で「実行されていないことが確か」（`DEADLINE_EXPIRED_NOT_STARTED`）と「実行されたか分からない」（`DEADLINE_EXPIRED_AFTER_DISPATCH`）に分け、期限で終えたTaskが未完了の上限を占め続けないようにした（RQ-011）。Task Group、SessionとSandbox、常駐の状態を、既存のTask、Attempt、Leaseとfencingの延長として加えた。設計基準の6文書のうち、`CONTROL_DATA_PLANE.md`だけが0.1のまま。
+
+### 2026-10-21 観測の面と、設計基準0.2の完成（ADR-0021）
+
+[ADR-0021](adr/0021-observation-plane-and-disclosure-tiers.md)で、[Control / Data Plane](../architecture/CONTROL_DATA_PLANE.md)に観測の面（Observation Plane）を加え、予実、資源の消費の記録、管理画面のための一覧を、権限の判断に使う状態とは別の保存先に置くことにした。観測の値は権限の根拠にしない。開示を利用者、委任先の管理者、Fabric全体の管理者の三段階に分け、管理画面は読み取りだけとし、操作はAdministrative Planeを通す。配置の費用の入力に、ビルドキャッシュ、toolchain、依存の局所性などを加えた。
+
+これで、設計基準の6文書（Authority、Contract、Control-Data Plane、Deployment Profile、Task State Model、Extension SPI）はすべて0.2になった。ADR-0013で定めたプロダクトの方向（委任の核と四つの外面）は、要件（RQ-054〜063）、脅威モデル（A17〜A22、SEC-024〜030）、設計基準0.2まで反映された。

@@ -6,7 +6,7 @@ EKIの本質（コア）は、分散処理そのものではなく、委任先�
 
 一つの製品や一つの組織だけの計算基盤にはしません。SEI Cognition、TEI、SUIなど既知のOSSに加えて、将来現れる未知のOSS、Webアプリ、他社製品からも共通して使えることを前提にしています。
 
-Architecture Entry Gateを通過し、現在の設計基準（Architecture Baseline）0.1を定めています。NATS、WASM、SPIFFEなどの技術を先に固定せず、守る対象、利用場面、悪意のあるClientやWorkerに対して保証する範囲を要求から導きます。
+Architecture Entry Gateを通過し、現在の設計基準（Architecture Baseline）0.2を定めています。NATS、WASM、SPIFFEなどの技術を先に固定せず、守る対象、利用場面、悪意のあるClientやWorkerに対して保証する範囲を要求から導きます。
 
 ## まず全体像を知りたい方へ
 
@@ -106,7 +106,7 @@ EKI Fabricは、まず、企業内の遊休計算資源を安全に使えるこ�
 
 ## 現在地
 
-Architecture Entry Gateを通過し、**Architecture Baseline 0.1**を定義済みです。Baselineは、Authority、Contract、Control-Data Plane、Deployment Profile、Task State Model、Extension SPIで構成されます。2026-10-20に、Authority Boundariesだけを0.2へ上げ、委任先の登録、予算、容量の権限と、管理者権限の委任状を加えました（[ADR-0014](plan/adr/0014-authorities-for-delegation-budget-capacity.md)）。2026-10-21に、Deployment Profilesを0.2へ上げ、一台で完結する配備形態（DP-7）を加えました（[ADR-0018](plan/adr/0018-single-machine-delegation-profile.md)）。
+Architecture Entry Gateを通過し、**Architecture Baseline 0.2**を定義済みです。Baselineは、Authority、Contract、Control-Data Plane、Deployment Profile、Task State Model、Extension SPIで構成されます。2026-09-21に0.1を定め、2026-10-20〜21に、ADR-0013で定めたプロダクトの方向（委任の核と四つの外面）に合わせて六つの文書をすべて0.2へ上げました（[ADR-0014](plan/adr/0014-authorities-for-delegation-budget-capacity.md)、[ADR-0018](plan/adr/0018-single-machine-delegation-profile.md)〜[ADR-0021](plan/adr/0021-observation-plane-and-disclosure-tiers.md)）。
 
 External Client Planeには、HTTPS、JSON、OpenAPIを採用しました。P0の機械可読な契約は、[`spec/external/openapi.json`](spec/external/openapi.json)に置いています。Worker PlaneとAdapter Planeは、Protobuf IDLとConnectを使います。署名付きのAuthority Decisionは、deterministic CBOR、CDDL、COSE_Sign1をBaselineとしています。
 
