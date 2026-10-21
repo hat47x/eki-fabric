@@ -1,6 +1,6 @@
 # 拡張用SPIの設計（Extension SPI Architecture）
 
-Status: **Baseline 0.1 — 2026-09-21**
+Status: **Baseline 0.2 — 2026-10-21**（Baseline 0.1: 2026-09-21。0.2での変更点は§32の隔離の水準の追加で、理由は[ADR-0019](../plan/adr/0019-sandbox-face-isolation-levels-and-frontends.md)にあります）
 
 ## 1. この文書の目的
 
@@ -886,6 +886,23 @@ Executor Runtimeと、OS固有のenforcementを分離する場合に利用しま
 ResourceとCapabilityのlimitを適用します。
 
 Sandbox Adapterが失敗しても、制限のないnative executionにはfallbackしません。
+
+## 隔離の水準
+
+（Baseline 0.2で追加。[ADR-0019](../plan/adr/0019-sandbox-face-isolation-levels-and-frontends.md)）
+
+Runtime ClassとSandbox Backendの組ごとに、管理者が隔離の水準を登録します。数字は、ホストへの攻撃面を狭める仕組みの種類を表し、安全性の総合点ではありません。資源の上限の効き方は、§31のenforcementの種類（HARD、BEST_EFFORTなど）で別に表します。
+
+| 水準 | 内容 | 例 |
+| --- | --- | --- |
+| ISO-0 | 資源の上限だけ。OSのアカウントを分けたnative実行 | 参照実装のnative Runner |
+| ISO-1 | OSの隔離。ファイルシステムとネットワークを既定で閉じる。カーネルは共有する | Linuxのnamespaceとseccomp、WindowsのAppContainer |
+| ISO-2 | ホストのカーネルへの攻撃面を狭める実行環境 | gVisor、WASMとWASI |
+| ISO-3 | 仮想マシンの境界 | Kata Containers、Firecracker |
+
+- 水準は、構成のdigestなどの根拠とともに登録し、RuntimeやWorkerの自己申告では決めません。
+- 委任の等級（Delegation Class）は、委任先が提供できる水準を明示します。
+- 隔離して試す型（Sandbox）には、ISO-0を使いません。要求を満たす実行環境がなければ、低い水準へ逃がしません。
 
 ---
 

@@ -1,6 +1,6 @@
 # 外部・内部の契約境界（External / Internal Contract Boundaries）
 
-Status: **Baseline 0.1 — 2026-09-21**
+Status: **Baseline 0.2 — 2026-10-21**（Baseline 0.1: 2026-09-21。0.2での変更点は§7.9と§7Aの追加で、理由は[ADR-0019](../plan/adr/0019-sandbox-face-isolation-levels-and-frontends.md)にあります）
 
 ## 1. この文書の目的
 
@@ -453,6 +453,39 @@ Secretが必要なTaskでは、Secretのbytesを、TaskRequestに埋め込むこ
 論理的なSecret Referenceや、登録済みのcapabilityを要求します。そして、後段のAuthorityが、Task、Attempt、Worker、Executorに範囲を限ったGrantに解決します。
 
 Secret Contractの詳細は、Data Planeの設計で決めます。
+
+## 7.9 生成されたコード
+
+（Baseline 0.2で追加。[ADR-0019](../plan/adr/0019-sandbox-face-isolation-levels-and-frontends.md)）
+
+AIが生成したコードのように、依頼ごとに変わるコードは、Executorとして扱いません。入力のArtifactとして扱います。
+
+Executorは、事前に承認したインタプリタや実行環境です。たとえば、決まった版のPythonの実行環境のdigestです。生成コードのdigestは、入力の来歴として記録します。
+
+こうして、§7.4の「任意のcodeの場所をExecutorとして指定できない」原則を保ったまま、生成コードを隔離して実行できます。隔離して試す型（Sandbox）では、ISO-0の実行環境を使いません（[Extension SPI](EXTENSION_SPI.md) §32）。
+
+---
+
+# 7A. 外部の入口（Frontend）
+
+（Baseline 0.2で追加。[ADR-0019](../plan/adr/0019-sandbox-face-isolation-levels-and-frontends.md)）
+
+## 7A.1 役割
+
+利用者が既存の道具からEKIを使えるように、標準の入口を置けます。たとえば、AI AgentのためのMCP、OpenAI互換の推論API、ビルドの遠隔実行のREAPI、既存のジョブ投入の互換APIです。
+
+## 7A.2 原則
+
+- 入口は、受けた依頼をTaskRequest、Session、Sandboxの意味に写すだけです。権限を持ちません。
+- 入口から来た依頼も、ほかの依頼と同じAdmission、予算、委任の等級の判断を通ります。
+- 入口は、依頼者のcredentialだけを持ちます。管理者の操作を提供しません。
+- 入口の仕様にあって、EKIの契約で表せない機能は、受け付けたうえで無視することはせず、その依頼を受理しません。
+- 入口が返す出力は、§19のResultClaimと§22のAcceptedResultの区別を保ちます。隔離実行の出力には、信頼できない生成物であることを示す印を付けます。
+- 入口の引数や、ツールの説明文の中の指示を、権限として扱いません。
+
+## 7A.3 MCP
+
+MCPの入口は、隔離して試す型を中心にします。一台の構成（DP-7）では、AI Agentの実行環境が起動するローカルのMCPサーバとして、依頼者のOSのユーザーで動き、依頼者のcredentialだけを持ちます。AI Agentが別のAgentへ仕事を渡す場合は、委譲の連鎖として予算を縛ります（RQ-017）。
 
 ---
 
