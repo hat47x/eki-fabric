@@ -1376,6 +1376,15 @@ SIDE_EFFECT_OUTCOME_UNKNOWN
 
 具体的なcodeの一覧は、後続のContract schemaで定義します。
 
+## 31.1 代わりの案
+
+（2026-10-21追記。[ADR-0023](../plan/adr/0023-autonomy-scope-and-request-interfaces.md)）
+
+受けられない依頼や、期限に間に合わない見込みの依頼には、理由に加えて、拘束力のない代わりの案を返せます。たとえば、「期限を延ばせば余力で間に合う」「この等級なら受けられる」です。
+
+- 代わりの案は、自動では適用しません。依頼者が新しい依頼として出し直します。
+- 代わりの案から、内部の構成を推測できる情報を出しません（§29）。
+
 ---
 
 # 32. Client PlaneとWorker Planeを混ぜない
@@ -1422,6 +1431,41 @@ submit task + trust this new federation root
 ~~~
 
 を、一つのrequestで行える構造にはしません。
+
+## 33.1 方針の出どころ
+
+（2026-10-21追記。[ADR-0023](../plan/adr/0023-autonomy-scope-and-request-interfaces.md)）
+
+Administrative Planeで出される方針は、人間の管理者が出したものか、どの委任状のもとで委任状を持つ主体が出したものかを、必ず記録します（[Authority Boundaries](AUTHORITY_BOUNDARIES.md)のADM-1の委任状）。
+
+## 33.2 承認の要求
+
+EKIの自律の判断や、委任状を持つ主体の提案のうち、人間の承認が要るものは、承認の要求として一件の記録にします。
+
+~~~text
+approval request ID
+proposer（EKIの自律の判断 / 委任状とその主体）
+operation
+impact summary
+approval deadline
+state（pending / approved / rejected / expired）
+~~~
+
+- 人間の管理者のcredentialでだけ承認できます。
+- 期限までに承認されなければ、承認されなかったもの（expired）として扱います。
+- 承認を待つ間、操作は有効になりません。
+
+## 33.3 照会
+
+照会は、読み取り専用の経路で、Observation Planeから答えます（[Control / Data Plane](CONTROL_DATA_PLANE.md) §3.4）。開示の段階に従い、見込みは見込みであると示します。
+
+## 33.4 通知
+
+EKIから外部へ、判断や状況の変化を知らせます。少なくとも、期限に間に合わない見込み、外部への提供の縮小、結果の取り消し、委任状の期限切れと既定の方針への切り替え、承認の要求を扱います。
+
+- 通知は、受け手の権限に応じて内容を絞ります。
+- 通知は、届かないことや二度届くことがあります。受け手は、照会で現在の状態を確かめます。
+- 通知の内容を、権限や事実の根拠にしません。
 
 ---
 
