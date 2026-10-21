@@ -257,23 +257,34 @@ func Decide(claim Claim, existing Existing) (Decision, error) {
 		return Decision{Kind: KindStale, Record: true, Reason: "fence_epoch_behind_current"}, nil
 	}
 	if existing.Recorded != nil {
-		return Decision{Kind: KindDuplicate, Record: false, Reason: "exact_replay"}, nil
+		// An exact replay may still find the Attempt open when a previous
+		// close crashed after recording the claim. The state transition is
+		// retried; the claim itself is not recorded twice.
+		return Decision{
+			Kind: KindDuplicate, Record: false,
+			CloseAttempt: existing.AttemptOpen && claim.Status().ClosesAttempt(),
+			Reason:       "exact_replay",
+		}, nil
 	}
 	if !existing.AttemptOpen {
 		return Decision{Kind: KindLate, Record: true, Reason: "attempt_already_closed"}, nil
 	}
-	return Decision{Kind: KindNew, Record: true, CloseAttempt: true, Reason: "first_claim"}, nil
+	return Decision{
+		Kind: KindNew, Record: true,
+		CloseAttempt: claim.Status().ClosesAttempt(),
+		Reason:       "first_claim",
+	}, nil
 }
 
-// ClosesAttempt reports whether the outcome should move an open Attempt to a
-// terminal state. runner_stuck is not a close: the platform must stop the
-// process first, and the Agent reports a follow-up claim.
+// ClosesAttempt reports whether the outcome moves an open Attempt to a terminal
+// state. A completed outcome does not close the Attempt: it moves to Result
+// Verification first. runner_stuck is not a close either: the platform must
+// stop the process, and the Agent reports a follow-up claim.
 func (s Status) ClosesAttempt() bool {
 	switch s {
-	case StatusCompleted, StatusFailed, StatusReclaimed, StatusDeadlineExceeded,
-		StatusCancelled, StatusOutputExceeded:
+	case StatusFailed, StatusReclaimed, StatusDeadlineExceeded, StatusCancelled, StatusOutputExceeded:
 		return true
-	case StatusRunnerStuck:
+	case StatusCompleted, StatusRunnerStuck:
 		return false
 	}
 	return false

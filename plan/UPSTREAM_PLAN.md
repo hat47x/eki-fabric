@@ -712,6 +712,18 @@ Worker側では、`internal/agent/claim`が`executor.Outcome`を`resultclaim.Cla
 
 Testでは、全statusの写像、未知のstatus、bindingの不足、時刻の欠落、`completed`と終了コードの矛盾を固定しました。次は、Claimを送るtransportと、Control Plane側での耐久化です。
 
+Control Plane側では、`internal/control/claimaccept`がClaimをAttemptの状態へ反映します。
+
+- Attempt、Lease（現在のfence）、記録済みのClaimを読み、`resultclaim.Decide`の結果に従います。
+- `completed`はA-DISPATCHEDからA-CLAIMEDを経てA-VERIFYINGへ進めます。ほかの終端statusはA-CLOSEDへ進め、close reasonを対応づけます。`runner_stuck`は状態を変えません。
+- 適用できない段階で`completed`が届いた場合は、Claimを記録する前に`ErrWrongPhase`で拒否します。
+- 同じClaimの再送は記録を増やさず、記録後にcrashした場合の状態遷移だけをやり直します。
+- Claimの記録とAttemptのCASはまだ別の操作です。同じtransactionへ置く作業を残しています（#173）。
+
+Testでは、completedの検証への遷移（CLAIMED / DISPATCHED）、reclaimedのclose、runner_stuckの非変更、再送によるcloseのやり直し、競合、stale、ClaimのfenceがLeaseより先の場合、別Worker、late、早すぎる段階、CAS競合、設定不足を固定しました。
+
+残りは、Claimの耐久StoreとWorker Planeのtransport、ClaimとAttemptの原子的な反映、報告が届かない場合のLease期限からの確定です。
+
 ### 2026-10-20 要件の正本へのADR-0013〜0016の反映
 
 ADR-0013、0014、0016で定めた方向を、[Product Requirements](../requirements/PRODUCT_REQUIREMENTS.md)へ反映した。新しい節「K. 委任の核、仕事の型、組織の判断との連動」に、RQ-054〜RQ-063の10件を加え、53 Requirementから63 Requirementになった。RQ-011、RQ-016、RQ-026に追記し、非目標（L節）を見直した。
@@ -723,3 +735,67 @@ ADR-0013、0014、0016で定めた方向を、[Product Requirements](../requirem
 ### 2026-10-20 脅威モデルへの反映
 
 要件の反映（RQ-054〜063）に合わせて、[Threat Model](../requirements/THREAT_MODEL.md)に攻撃者A17〜A22（委任先の内部の実行管理系、委任の等級の誤登録、委任状を持つ主体の誤りや乗っ取り、組織に費用を負わせる依頼者、外部への提供先、常駐を更新し続ける主体）と、安全上の不変条件SEC-024〜SEC-030を加えた。委任状を持つ主体（SEIなど）は信頼の基盤に含めず、被害を委任状の範囲と期限の中に収めることを不変条件とした。[Worker Assurance Model](../requirements/ASSURANCE_MODEL.md)のAxis Fに、委任先の単位で、Control Planeの観測から履歴を作ることを追記した。
+
+### 2026-10-21 Claimの再送queue
+
+WorkerがControl Planeへ届く前に止まる場合に備え、`internal/agent/claimqueue`を追加しました。
+
+- `Enqueue`は同じAttemptの同じClaimを一件に畳み、同じAttemptの違うClaimは`ErrConflict`で拒否します。
+- `DeliverDue`は、`NextAt`を過ぎたClaimを送ります。成功したら削除し、失敗したら指数backoff（上限つき、均等jitter）で再予約します。Claimは捨てません。
+- 送信はat-least-onceです。二度届いた場合は、Control Planeの`resultclaim.Decide`が`duplicate`として畳みます。
+- 送信成功後に削除で落ちた場合も、次のpassで再送し、Control Plane側の重複判定に任せます。
+- memory Storeはプロセス内だけなので、Workerの実行証跡にはなりません。durable StoreへのAdapterを残しています。
+
+Testでは、同一Claimの冪等なenqueue、異なるClaimの衝突、成功時の削除、失敗時の再予約とbackoff後の再送、件数上限、Storeの期限順・digest照合削除・不正entryを固定しました。
+
+次は、Claimのdurable Store（SQLite）と、ClaimとAttempt CASの同一transaction化です。
+
+### 2026-10-21 Claimの耐久化と原子的な受理
+
+Claimの記録とAttemptの遷移を、同じtransactionで確定できるようにしました。
+
+- `internal/spi/statestore/claim.go`に`ResultClaimStore`と`ResultClaimAcceptance`を追加しました。`ApplyResultClaim`は、Claimの記録とAttemptの更新を一つのcommitにまとめます。片方だけが残ることはありません。
+- memoryとSQLiteの両Adapterが実装しました。SQLiteはmigration 8で`result_claims`を追加し、Claimを不変の行として保存します。
+- `claimaccept`は、Claimの記録とAttemptのCASを別々に行うのをやめ、`ApplyResultClaim`を一度だけ呼ぶようにしました。`completed`をA-DISPATCHEDから進める場合だけ、A-CLAIMEDへの最初の一歩を別のCASで行います。その間に落ちても、A-CLAIMEDから再送でやり直せます。
+- 新しいClaimの二重記録は`ErrAlreadyExists`、同じAttemptの異なるClaimは`ErrConflict`、古いAttempt revisionは`ErrConflict`として、transactionごと拒否します。
+
+Testでは、ClaimとAttemptの同時commit、stale revisionでのrollback（Claimが残らない）、二重記録と異なるClaimの拒否、不正な遷移のrollback、SQLiteのclose/reopenを跨いだClaimの復元を固定しました。
+
+残りは、Worker Planeのtransport（Claim送信の実体）、報告が届かないAttemptのLease期限からの確定、Runnerの種類の拡張です。
+
+### 2026-10-21 申告の入口で、認証されたWorkerを確かめる
+
+Worker Planeのtransportが認証したprincipalと、Claimが名乗るWorkerを照合する`internal/control/claimplane`を追加しました。
+
+- transportはWorkerを認証し、`Principal{WorkerIdentity, TrustDomain}`を渡します。認証そのものはtransportの責務です。
+- `Submit`は、Claimの`WorkerIdentity`がprincipalと一致しなければ`ErrNotClaimOwner`で拒否し、`claimaccept`を呼びません。
+- これがなければ、認証されたWorkerが別のWorkerの名前を書いたClaimを送り、Attemptの名前と一致させることができました。`claimaccept`の束縛だけでは、送信者のidentityを確かめられません。
+- Claimの内容の正しさ、Trust Domainの一致、Attemptごとの重複と競合は、それぞれ別の境界の責務です。
+
+Testでは、正しいprincipalの受理、別Workerの拒否（acceptorを呼ばない）、不正なprincipalとzero Claim、nil context、acceptorのエラー伝播を固定しました。
+
+残りは、Worker Planeのtransport実装（認証とClaimの運搬）、報告が届かないAttemptのLease期限からの確定、Runnerの種類の拡張です。
+
+### 2026-10-21 申告が届かないAttemptの扱い
+
+`internal/control/claimreconcile`を追加し、Claimが届かないAttemptを、期限だけで失敗や再実行へ丸めないようにしました。
+
+- Leaseの期限後もgraceの間は`AwaitClaim`とし、遅れて届くClaimを待ちます。claimqueueはat-least-onceなので、直後に閉じると正しいClaimが`late`になります。
+- graceの後、外部副作用の可能性がなければ`CloseLeaseExpired`とし、Attemptを閉じます。再実行してよいかは`recovery`がTaskの契約とattempt budgetで決めます。
+- 外部副作用の可能性があれば`Reconcile`とし、Attemptを閉じません。Receiptなしに閉じて再実行すると、二重の副作用になり得ます。
+- 開いていないAttemptと、Claimが既にあるAttemptは`NoAction`です。
+
+Testでは、closed / claimed、期限前とgrace内、grace境界とその後、外部副作用あり、不正入力（zero now、負のgrace、期限なし）を固定しました。
+
+残りは、Worker Planeのtransport実装（認証とClaimの運搬）、`Reconcile`からReceiptを得た後の状態遷移、Runnerの種類の拡張です。
+
+### 2026-10-21 Worker PlaneのClaim送受信の継ぎ目
+
+Protobuf / Connectの生成コードをまだ入れずに、その両側を接続できる継ぎ目を実装しました。
+
+- `internal/spi/workerplane`に、`Principal`、`ClaimAck`、`ClaimClient`を定義しました。wire protocolは`spec/worker/v1/worker.proto`のままで、この層は接続の意味だけを持ちます。
+- `internal/control/workerplane.Server`が、認証済みprincipalとClaimを`claimplane`へ渡し、`ClaimAck{Decision, AttemptPhase, VerificationRequired}`へ写像します。認証とframingはConnect handlerの責務です。
+- `internal/agent/claimclient.Client`が、`claimqueue`の`Sender`としてClaimを送ります。Agentのprincipalと一致しないClaimは送らず、queueへエラーを返します。
+- 統合Testでは、claimqueue → claimclient → workerplane.Server → claimplane → acceptorを実配線し、成功時の削除と、失敗時の保持・backoff後の再送を確認しました。
+
+残りは、Connect serviceのhandlerと生成コード、認証情報の更新、タイムアウトと流量制限です。
