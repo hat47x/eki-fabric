@@ -807,3 +807,7 @@ Protobuf / Connectの生成コードをまだ入れずに、その両側を接�
 ### 2026-10-21 隔離実行の外面（ADR-0019）
 
 [ADR-0019](adr/0019-sandbox-face-isolation-levels-and-frontends.md)で、隔離の水準（ISO-0〜ISO-3）を管理者が実行環境ごとに登録する語彙として定め、[Extension SPI](../architecture/EXTENSION_SPI.md) §32に加えた。隔離して試す型ではISO-0を使わない。AIが生成したコードは、実行体ではなく入力のArtifactとして扱い、事前に承認したインタプリタの上で動かす（[Contract Boundaries](../architecture/CONTRACT_BOUNDARIES.md) §7.9）。MCP、OpenAI互換、REAPIなどの外部の入口は、依頼をTaskRequestの意味に写すだけで権限を持たないという原則を、§7Aに置いた。Extension SPIとContract Boundariesを0.2へ上げた。
+
+### 2026-10-21 Task State Modelへの新しい仕事の型の反映（ADR-0020）
+
+[ADR-0020](adr/0020-task-state-for-groups-sessions-resident.md)で、[Task State Model](../architecture/TASK_STATE_MODEL.md)を0.2へ上げた。期限切れを、送り出しの記録の有無で「実行されていないことが確か」（`DEADLINE_EXPIRED_NOT_STARTED`）と「実行されたか分からない」（`DEADLINE_EXPIRED_AFTER_DISPATCH`）に分け、期限で終えたTaskが未完了の上限を占め続けないようにした（RQ-011）。Task Group、SessionとSandbox、常駐の状態を、既存のTask、Attempt、Leaseとfencingの延長として加えた。設計基準の6文書のうち、`CONTROL_DATA_PLANE.md`だけが0.1のまま。

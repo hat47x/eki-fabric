@@ -66,7 +66,7 @@ zkVMの実測に基づく性能比較、学習を用いた処理の配置、匿�
 5. `TASK_STATE_MODEL.md`: Task、Attempt、Lease、Result、外部への副作用、回復の状態機械
 6. `EXTENSION_SPI.md`: Queue、State、Storage、Identity、Runtime、Verificationなどを差し替える境界
 
-2026-10-20に、`AUTHORITY_BOUNDARIES.md`だけを設計基準0.2へ上げました。委任先と信頼の水準の登録（DLG-1）、予算（BUD-1）、容量（CAP-1）の権限と、管理者権限の委任状を加えています。理由と移行は[ADR-0014](../plan/adr/0014-authorities-for-delegation-budget-capacity.md)にあります。2026-10-21には、`DEPLOYMENT_PROFILES.md`を0.2へ上げ、一台で完結する配備形態（DP-7）を加えました（[ADR-0018](../plan/adr/0018-single-machine-delegation-profile.md)）。2026-10-21に、`EXTENSION_SPI.md`と`CONTRACT_BOUNDARIES.md`も0.2へ上げ、隔離の水準、生成されたコードの扱い、外部の入口の原則を加えました（[ADR-0019](../plan/adr/0019-sandbox-face-isolation-levels-and-frontends.md)）。ほかの二つの文書は0.1のままです。
+2026-10-20に、`AUTHORITY_BOUNDARIES.md`だけを設計基準0.2へ上げました。委任先と信頼の水準の登録（DLG-1）、予算（BUD-1）、容量（CAP-1）の権限と、管理者権限の委任状を加えています。理由と移行は[ADR-0014](../plan/adr/0014-authorities-for-delegation-budget-capacity.md)にあります。2026-10-21には、`DEPLOYMENT_PROFILES.md`を0.2へ上げ、一台で完結する配備形態（DP-7）を加えました（[ADR-0018](../plan/adr/0018-single-machine-delegation-profile.md)）。2026-10-21に、`EXTENSION_SPI.md`と`CONTRACT_BOUNDARIES.md`も0.2へ上げ、隔離の水準、生成されたコードの扱い、外部の入口の原則を加えました（[ADR-0019](../plan/adr/0019-sandbox-face-isolation-levels-and-frontends.md)）。同じ日に、`TASK_STATE_MODEL.md`も0.2へ上げ、期限切れの区別、Task Group、SessionとSandbox、常駐の状態を加えました（[ADR-0020](../plan/adr/0020-task-state-for-groups-sessions-resident.md)）。`CONTROL_DATA_PLANE.md`だけが0.1のままです。
 
 設計基準0.1では、六つの領域が互いに矛盾しないかも点検しました。[`plan/reviews/BASELINE_REVIEW_2026-09-21.md`](../plan/reviews/BASELINE_REVIEW_2026-09-21.md)に、その結果を記録しています。`MVP_IMPLEMENTATION_PLAN.md`では、安全上の境界と状態の意味を守りながら一連の処理を通す最小構成を示し、M0からM5までの段階と完了条件を定めています。
 
