@@ -1,10 +1,10 @@
 # 配備形態（Deployment Profiles）
 
-Status: **Baseline 0.1 — 2026-09-21**
+Status: **Baseline 0.2 — 2026-10-21**（Baseline 0.1: 2026-09-21。0.2での変更点はDP-7の追加で、理由と移行は[ADR-0018](../plan/adr/0018-single-machine-delegation-profile.md)にあります）
 
 ## 1. この文書の目的
 
-EKI Fabricは、10〜30台ほどの社内端末から、ブラウザを使った一時参加、複数組織の連携、Cloud Providerによる公益向けCompute Grantまでを、共通の原則で扱うことを目指します。
+EKI Fabricは、一台のコンピューターから、10〜30台ほどの社内端末、ブラウザを使った一時参加、複数組織の連携、Cloud Providerによる公益向けCompute Grantまでを、共通の原則で扱うことを目指します。
 
 ただし、どの利用形態にも同じ数のService、同じPKIやDatabaseを求めると、小規模な導入には負担が大きすぎます。
 
@@ -677,6 +677,88 @@ Dedicated Poolは、次のものに利用できます。
 
 ---
 
+# 12A. DP-7 — Single Machine Delegation
+
+（Baseline 0.2で追加。[0018](../plan/adr/0018-single-machine-delegation-profile.md)、RQ-063）
+
+## 12A.1 想定
+
+一台のコンピューターの中だけで、委任の核（受理と予算、範囲と期限のある権限、持ち主の拒否権、申告と確定の区別、来歴）を使う構成です。分散は行いません。
+
+たとえば、次のような使い方です。
+
+- 開発者の端末で動くAI Agentに、予算と期限と通信の範囲を限って、生成したコードを実行させる。
+- 一台のGPU workstationで、ローカルの推論を、Data Classと予算で統治する。機密のデータを外部のLLM APIへ送らせない。
+- 一台のserverで、常駐する索引の更新を、期限つきで更新される権限で動かす。
+
+DP-0（開発・試験）と違い、本番の利用を想定します。安全上の性質を、簡略化の名目で弱めません。
+
+## 12A.2 最小構成の例
+
+~~~text
+one machine
+
+  OS user: eki-service（制御層の専用のアカウント）
+    eki-control
+      client API（loopbackのみ）
+      admin API（loopbackのみ、別のcredential）
+      logical authorities
+    metadata store（eki-serviceだけが読み書きできる）
+    artifact store（eki-serviceだけが読み書きできる）
+    signing keys（OSの鍵の保管庫、またはeki-serviceだけが読めるfile）
+
+  OS user: eki-sandbox（実行用の専用のアカウント、または隔離の仕組み）
+    worker agent
+      local governor
+      sandboxed executors
+
+  OS user: 端末の利用者
+    AI Agentなどの依頼者（Client）
+    人間の管理者の操作（Admin credentialを使うときだけ）
+~~~
+
+委任先は、少なくとも「この端末の隔離実行」の一つです。外部のLLM APIのような外部の委任先を加える場合も、管理者が委任の等級を登録します（RQ-058）。外部の委任先は、機密のData Classには届かない等級として登録することを標準にします。
+
+## 12A.3 一台でも分けるもの
+
+一台の構成で最も注意すべき点は、依頼者（AI Agentなど）が、制御層と同じOSのユーザーとして動きやすいことです。同じOSのユーザーなら、依頼者は制御層の鍵やmetadata storeを直接読み書きでき、受理、予算、委任の等級を素通りできます。RQ-016とSEC-004が成り立たなくなります。
+
+そのため、DP-7では次のものを分けます。
+
+- 制御層（eki-control、metadata store、artifact store、signing key）は、専用のOSのアカウントで動かす。依頼者のOSのユーザーからは、鍵とstoreを読み書きできないようにする。
+- 実行（worker agentとexecutor）は、制御層とも依頼者とも別のOSのアカウント、または隔離の仕組み（Sandbox）の中で動かす。
+- Client、Worker、Adminのcredentialを分ける。同じ人間が依頼者と管理者を兼ねる場合も、管理者の操作には別のcredentialを使う。AI Agentに、Admin credentialを渡さない。
+- client APIとadmin APIは、loopbackに限っても、routeとaudienceと認可を分ける。
+
+依頼者が端末の管理者権限（OSのrootやAdministrator）を持つ場合、OSのアカウントの境界は依頼者を止められません。この場合、DP-7が保証できるのは、依頼者が「EKIの操作として」権限を広げられないことまでです。依頼者がOSの管理者権限でEKIそのものを書き換える攻撃は、保証の範囲外です（§12A.6）。AI Agentには、OSの管理者権限を渡さない構成を推奨します。
+
+## 12A.4 許容する簡略化
+
+- 単一のprocessのeki-control（Authority Boundaries §2のとおり、識別、鍵、書き込める状態、監査は分ける）
+- 組み込みのmetadata store
+- filesystemのartifact store
+- loopbackのtransport
+- 外部のIdPを使わない、端末内で発行するcredential
+- Control PlaneのHAなし
+
+## 12A.5 Network
+
+- client APIとadmin APIは、loopbackだけで待ち受ける。
+- 外部の委任先（外部のLLM APIなど）への通信は、登録したnetwork profileを通す。依頼者が指定したURLへは送らない（RQ-029）。
+- 隔離実行の中の仕事には、標準で通信を与えない。
+
+## 12A.6 保証しないこと
+
+- 端末のOSの管理者権限やkernelが侵害された場合の安全性
+- 隔離の仕組みからの脱出（Sandbox escape）を完全に防ぐこと
+- 人間の管理者が、自分の意思で方針を緩めた場合の結果
+
+## 12A.7 広げるとき
+
+DP-7から、業務端末（DP-1）、専用のserver（DP-6）、クラウドへ委任先を広げるときに、依頼者との契約（TaskRequest、Session、Sandbox、結果の申告と確定）を変えません（RQ-063）。この端末は、広げた後も委任先の一つとして残せます。
+
+---
+
 # 13. Profileの組み合わせ
 
 実際のOrganizationは、複数のProfileを組み合わせられます。
@@ -735,6 +817,7 @@ Profileごとに、標準的な上限を持てます。
 | DP-4 Federation | 明示的なexport grantの範囲 |
 | DP-5 Public-interest Grant | grantの契約の範囲 |
 | DP-6 Dedicated | 管理されたpolicyの範囲 |
+| DP-7 Single Machine | 端末の利用者と組織のpolicyの範囲。外部の委任先へは、その等級が許すData Classだけ |
 
 これは、絶対的なLevelではありません。
 
@@ -999,6 +1082,8 @@ DP-2
 - ResultClaim
 
 Processを分割しても、Protocolのsemanticsが変わらないようにします。
+
+DP-7（一台）からDP-1以上へ広げるときも同じです。一台の端末は、広げた後も委任先の一つとして残せます。
 
 ---
 
