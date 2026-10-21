@@ -13,7 +13,7 @@ Outcome（status / exit code / 出力byte / 開始・終了時刻）
 
 Outcomeのstatusを、そのまま文字列として送らないためです。新しいstatusが増えたときに、黙って`failed`や`completed`へ丸めず、`ErrUnknownStatus`で止めます。
 
-また、`completed`のOutcomeに非ゼロの終了コードが入っている場合、`resultclaim.NewClaim`の検証で拒否されます。このbuilderは、検証を通すために値を直しません。
+また、`completed`のOutcomeに非ゼロの終了コードが入っている場合、`resultclaim.NewClaim`の検証で拒否されます。このbuilderは検証を通すために値を直しません。
 
 終了時刻が開始時刻より前の場合も、時刻を補正せず`resultclaim.ErrInvalidClaim`で拒否します。同時刻の観測は有効です。時計が戻った場合、その観測をどう扱うかは呼出し側で判断する必要があります。
 
