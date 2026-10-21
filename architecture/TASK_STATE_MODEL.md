@@ -1,6 +1,6 @@
 # Task・Attempt・Lease・Recoveryの状態モデル（State Model）
 
-Status: **Baseline 0.1 — 2026-09-21**
+Status: **Baseline 0.2 — 2026-10-21**（Baseline 0.1: 2026-09-21。0.2での変更点は§7.3、§47、§49A〜§49C、§80の追加で、理由は[ADR-0020](../plan/adr/0020-task-state-for-groups-sessions-resident.md)にあります）
 
 ## 1. この文書の目的
 
@@ -303,6 +303,19 @@ runningは、便利な表示の状態です。
 ## 7.2 reconciling
 
 外部のEffectのoutcomeが未確定の場合、Clientに、failedと偽らずに、reconcilingやunknown系の状態を返せるようにします。
+
+## 7.3 期限切れのterminal_code
+
+（Baseline 0.2で追加。[ADR-0020](../plan/adr/0020-task-state-for-groups-sessions-resident.md)）
+
+期限で終えたTaskには、Clientが安全に再投入してよいかを判断できる`terminal_code`を付けます。
+
+| terminal_code | 意味 | Clientが再投入してよいか |
+| --- | --- | --- |
+| `DEADLINE_EXPIRED_NOT_STARTED` | どのAttemptにも送り出しの記録がない。実行されていないことが確か | よい |
+| `DEADLINE_EXPIRED_AFTER_DISPATCH` | 送り出しの記録があるAttemptが残っていた。副作用のない仕事で、実行されたかどうか分からない | 副作用がないので、よい。ただし、二重に計算された可能性はある |
+
+副作用の分からない仕事は、期限が来ても`reconciling`のまま扱い、これらのコードを付けません。
 
 ---
 
@@ -1153,6 +1166,26 @@ Deadlineに到達したときに、次のどれを選ぶかは、Task Contract�
 
 Baselineでは、少なくとも、deadlineを越えて、無制限に新しいAttemptを生成しないことを、要求します。
 
+## 47.1 期限切れの区別
+
+（Baseline 0.2で追加。[ADR-0020](../plan/adr/0020-task-state-for-groups-sessions-resident.md)、RQ-011）
+
+§16（Commit before dispatch）により、WorkOrderを送り出す前に、必ずその事実を記録しています。この記録を使って、期限切れを次のように区別します。
+
+~~~text
+deadline reached
+  ├─ no Attempt has a dispatch record
+  │     → T-TERMINAL / EXHAUSTED
+  │       terminal_code = DEADLINE_EXPIRED_NOT_STARTED（実行されていないことが確か）
+  ├─ dispatched Attempts remain, pure compute
+  │     → T-TERMINAL / EXHAUSTED
+  │       terminal_code = DEADLINE_EXPIRED_AFTER_DISPATCH（実行されたか分からない）
+  └─ dispatched Attempts remain, external effect unknown
+        → T-RECONCILING（§28、§34）
+~~~
+
+期限で終えたTaskは、未完了の依頼の上限の予約を解放します。期限の後に届いたResultClaimは、記録には残しますが、Task Policyが明示しない限りAcceptedResultにしません。
+
 ---
 
 # 48. Max Attempts
@@ -1180,6 +1213,150 @@ Taskが子Taskを生成できる拡張を導入する場合、子Taskは、親�
 Task graphのcycleや、分散したfork bombを防ぎます。
 
 具体的なGraph Contractは、Extension SPI以降で扱います。
+
+---
+
+# 49A. Task Group
+
+（Baseline 0.2で追加。[ADR-0020](../plan/adr/0020-task-state-for-groups-sessions-resident.md)、RQ-055）
+
+関連する多数のTaskを、予算、期限、取り消し、部分的な結果の単位としてまとめます。
+
+## 49A.1 GroupRecord
+
+~~~text
+Group ID
+Requester Principal
+Budget envelope ref
+Group deadline
+Member Task IDs
+Cancellation Intent
+State Revision
+~~~
+
+## 49A.2 予算と期限
+
+- 所属するTaskの予算は、Groupの予算の枠から予約します。Group内の展開と再試行は、その枠を超えません（RQ-017）。
+- 所属するTaskの期限は、Groupの期限を超えません。
+
+## 49A.3 Groupの状態
+
+Groupの状態は、所属するTaskの状態を数えて導きます。Group自身に別の真実を持たせません。
+
+~~~text
+completed
+failed
+expired_not_started
+expired_or_unknown（DEADLINE_EXPIRED_AFTER_DISPATCH、またはreconciling）
+cancelled
+active
+~~~
+
+終わらなかったTaskを、成功とも、結果が空とも取り違えません。
+
+## 49A.4 取り消し
+
+Groupの取り消しは、所属するすべてのTaskへのCancellation Intentです（§27）。副作用の分からないTaskは、Groupを取り消しても`reconciling`のまま残ります。
+
+---
+
+# 49B. SessionとSandbox
+
+（Baseline 0.2で追加。[ADR-0020](../plan/adr/0020-task-state-for-groups-sessions-resident.md)、[ADR-0019](../plan/adr/0019-sandbox-face-isolation-levels-and-frontends.md)、RQ-055）
+
+期限と予算のある枠を先に開き、その中で小さな依頼を続けて流す型です。Sandboxは、隔離の水準の条件を持つSessionです。
+
+## 49B.1 SessionRecord
+
+~~~text
+Session ID
+Requester Principal
+Type（session / sandbox）
+Executor Approval ref
+Isolation level requirement（sandboxのみ）
+Data Class
+Budget reservation ref
+Lease ref / FenceEpoch
+Phase
+Close reason
+~~~
+
+## 49B.2 Phase
+
+| Phase | 意味 |
+| --- | --- |
+| S-OPENING | 予算を予約し、委任先と実行環境を選び、Leaseを発行している |
+| S-OPEN | Leaseが有効で、枠の中の依頼を受け付けている |
+| S-CLOSING | 新しい依頼を受け付けず、処理中の依頼を終えている |
+| S-CLOSED | 枠を閉じた。Close reasonを持つ |
+
+Close reasonは、`closed_by_requester`、`expired`、`revoked`、`reclaimed`、`budget_exhausted`のいずれかです。
+
+## 49B.3 枠の中の依頼（Invocation）
+
+枠の中の小さな依頼は、Taskにはしません。依頼ごとに、次のものを来歴として記録します。
+
+~~~text
+Invocation ID
+Session ID
+input digest
+output claim digest
+verified（true / false）
+observed time
+~~~
+
+検証を省いた出力は、`verified=false`のClaimとして返します（RQ-019）。
+
+## 49B.4 中断
+
+枠のLeaseがreclaimや失効で終わった場合、処理中だった依頼の結果は、分からないものとして扱います。依頼者は、副作用のない依頼であれば再び送れます。枠は、予算と期限が残っていれば、新しいLeaseとFenceEpochで開き直せます。古いFenceEpochの実行者の出力は確定しません。
+
+## 49B.5 Sandboxの破棄
+
+Sandboxを閉じたら、実行環境を破棄します。破棄したという報告は、WorkerのClaimとして記録します。ほかの依頼者の枠に、その実行環境を再利用しません（ADR-0019）。
+
+---
+
+# 49C. 常駐（Resident）
+
+（Baseline 0.2で追加。[ADR-0020](../plan/adr/0020-task-state-for-groups-sessions-resident.md)、RQ-060、RQ-062）
+
+常駐する処理を、期間の連なりとして扱います。存在は終わりませんが、権限は期間ごとに有限です。
+
+## 49C.1 期間とLease
+
+各期間は、新しいLeaseです。期間が変わるたびに、FenceEpochを進めます。
+
+§18のLease Renewalは、同じ期間の中で期限を延ばす操作です。常駐の期間の移り変わりは、これと区別します。
+
+~~~text
+Resident R
+  Period 1: Lease L1 (FenceEpoch e1)
+     │ transition decision
+  Period 2: Lease L2 (FenceEpoch e2 > e1)
+     │ transition decision
+  Period 3: ...
+~~~
+
+## 49C.2 次の期間へ移る判断
+
+次の期間へ移る前に、次のものを確かめます。どれか一つでも満たさなければ、次の期間へ移らず、常駐は終わります。
+
+- 次の期間の予算を、予算の枠から予約できる
+- 委任先と実行体が失効していない
+- 現在のPolicyで許されている
+- 業務端末で常駐に回してよい上限を超えない
+
+## 49C.3 Phase
+
+| Phase | 意味 |
+| --- | --- |
+| R-ACTIVE | 現在の期間のLeaseが有効 |
+| R-TRANSITIONING | 次の期間へ移る判断をしている |
+| R-SUSPENDED | 持ち主の拒否権やreclaimで、現在の期間が中断された。次の期間で再開できる |
+| R-ENDED | 次の期間へ移らなかった。理由（`not_renewed`、`revoked`、`budget_exhausted`、`policy`）を持つ |
+
+古い期間のLeaseで動く実行者の出力は、確定しません。
 
 ---
 
@@ -1629,6 +1806,15 @@ Leaseを長めにできても、同じstateのsemanticsを維持する。
 ---
 
 # 80. State Model Invariants
+
+（Baseline 0.2で、次の不変条件を加えました。[ADR-0020](../plan/adr/0020-task-state-for-groups-sessions-resident.md)）
+
+- 期限切れを`DEADLINE_EXPIRED_NOT_STARTED`とするのは、どのAttemptにも送り出しの記録がない場合に限る。
+- Task Groupの状態は、所属するTaskの状態から導き、Group自身に別の真実を持たせない。
+- SessionとSandboxのLeaseは、期限を持つ。枠の中の依頼は、枠のLeaseと予算の範囲を超えない。
+- 常駐の期間の移り変わりでは、必ず新しいLeaseを発行してFenceEpochを進め、予算を予約し直す。
+
+以下は、Baseline 0.1からの不変条件です。
 
 1. TaskとAttemptを、同一のIdentityにしない。
 2. Retryは、新しいAttemptを作る。
