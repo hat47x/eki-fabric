@@ -49,9 +49,6 @@ func Build(outcome executor.Outcome, attempt Attempt) (resultclaim.Claim, error)
 	if startedAt.IsZero() || endedAt.IsZero() {
 		return resultclaim.Claim{}, fmt.Errorf("%w: the outcome has no time window", ErrInvalidAttempt)
 	}
-	if endedAt.Before(startedAt) {
-		endedAt = startedAt
-	}
 	claim, err := resultclaim.NewClaim(resultclaim.ClaimConfig{
 		TaskID:            attempt.TaskID,
 		TaskIRDigest:      attempt.TaskIRDigest,

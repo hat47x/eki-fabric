@@ -103,3 +103,37 @@ func TestBuildKeepsResultClaimValidation(t *testing.T) {
 		t.Fatalf("error = %v, want %v", err, resultclaim.ErrInvalidClaim)
 	}
 }
+
+func TestBuildRejectsReversedObservationWindowForEveryStatus(t *testing.T) {
+	for _, status := range []executor.Status{
+		executor.StatusCompleted, executor.StatusFailed, executor.StatusReclaimed,
+		executor.StatusDeadlineExceeded, executor.StatusCancelled,
+		executor.StatusOutputExceeded, executor.StatusRunnerStuck,
+	} {
+		t.Run(string(status), func(t *testing.T) {
+			observed := outcome(status, 0)
+			observed.EndedAt = observed.StartedAt.Add(-time.Nanosecond)
+			got, err := Build(observed, binding())
+			if !errors.Is(err, resultclaim.ErrInvalidClaim) || got.Valid() {
+				t.Fatalf("Build() = %+v, %v; reversed observations must not become a valid claim", got, err)
+			}
+		})
+	}
+}
+
+func TestBuildPreservesObservationInstants(t *testing.T) {
+	for _, duration := range []time.Duration{0, time.Nanosecond, time.Minute} {
+		t.Run(duration.String(), func(t *testing.T) {
+			observed := outcome(executor.StatusCompleted, 0)
+			observed.StartedAt = baseTime.Add(123 * time.Nanosecond).In(time.FixedZone("worker", 9*60*60))
+			observed.EndedAt = observed.StartedAt.Add(duration).UTC()
+			got, err := Build(observed, binding())
+			if err != nil {
+				t.Fatal(err)
+			}
+			if !got.StartedAt().Equal(observed.StartedAt) || !got.EndedAt().Equal(observed.EndedAt) {
+				t.Fatalf("observation changed: start=%s end=%s", got.StartedAt(), got.EndedAt())
+			}
+		})
+	}
+}
