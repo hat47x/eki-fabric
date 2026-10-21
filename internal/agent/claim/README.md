@@ -15,6 +15,8 @@ Outcomeのstatusを、そのまま文字列として送らないためです。�
 
 また、`completed`のOutcomeに非ゼロの終了コードが入っている場合、`resultclaim.NewClaim`の検証で拒否されます。このbuilderは、検証を通すために値を直しません。
 
+終了時刻が開始時刻より前の場合も、時刻を補正せず`resultclaim.ErrInvalidClaim`で拒否します。同時刻の観測は有効です。時計が戻った場合、その観測をどう扱うかは呼出し側で判断する必要があります。
+
 ## 何を保証しないか
 
 - Claimの内容の正しさ。Workerの自己申告です。
