@@ -799,3 +799,7 @@ Protobuf / Connectの生成コードをまだ入れずに、その両側を接�
 - 統合Testでは、claimqueue → claimclient → workerplane.Server → claimplane → acceptorを実配線し、成功時の削除と、失敗時の保持・backoff後の再送を確認しました。
 
 残りは、Connect serviceのhandlerと生成コード、認証情報の更新、タイムアウトと流量制限です。
+
+### 2026-10-21 一台で完結する配備形態（DP-7）
+
+[ADR-0018](adr/0018-single-machine-delegation-profile.md)で、RQ-063（一台での利用）に対応する配備形態DP-7を[Deployment Profiles](../architecture/DEPLOYMENT_PROFILES.md)に加え、0.2へ上げた。一台の構成では、依頼者（AI Agentなど）が制御層と同じOSのユーザーとして動くと、鍵やmetadata storeを直接触れてRQ-016を素通りできる。そのため、制御層と実行を専用のOSのアカウントで動かすことをDP-7の条件とした。M0とMVPの優先順位は変えず、S1で実装する。
