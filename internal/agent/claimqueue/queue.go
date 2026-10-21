@@ -147,6 +147,9 @@ func (q *Queue) DeliverDue(ctx context.Context, limit int) (Report, error) {
 			return report, err
 		}
 		if err := q.sender.Send(ctx, entry.Claim); err != nil {
+			if entry.Attempts == ^uint32(0) {
+				return report, fmt.Errorf("%w: retry counter exhausted", ErrInvalidEntry)
+			}
 			entry.Attempts++
 			entry.NextAt = now.Add(q.backoff(entry.Claim, entry.Attempts))
 			entry.LastError = err.Error()

@@ -23,10 +23,12 @@ queueは少なくとも一度は送ります。二度届くことがあります
 ## 何を保証しないか
 
 - Control Planeが受理したこと。送信の成功は、受理の確認ではありません。
-- queueの耐久性。今のmemory Storeはプロセス内だけです。再起動で消えるため、Workerの実行証跡としては不十分です。durable StoreへのAdapterが必要です。
+- queueの耐久性はStoreに依存します。memory Storeはプロセス内だけで、再起動すると消えます。記録を残すには、後述のSQLite Storeなど、耐久的な保存先が必要です。
 - Claimの順序。Attemptごとに独立して扱います。
 - 送信結果が不明な場合の判別。`Sender.Send`がエラーを返したとき、Control Planeが受理したかは分かりません。再送し、Control Planeの重複判定に任せます。
 
 ## 保存則
 
 `Sender.Send`が成功しても、Storeの削除に失敗する場合があります。その場合、次のpassで同じClaimを再送します。Control Plane側は`duplicate`として扱うため、記録は増えません。
+
+再起動後も未送信の申告と再送予定を保持する場合は、[SQLite Store](../../adapters/reference/claimqueue/sqlite/README.md)を注入できます。メモリ実装やAgentの起動設定を自動で切り替えるものではありません。登録前のcrashや、Control Planeによる受理の確認は、引き続き別の境界です。
