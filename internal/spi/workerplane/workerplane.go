@@ -1,10 +1,13 @@
 // Package workerplane defines the transport-neutral messages of the Worker
 // Plane that the reference implementation already needs.
 //
-// The wire protocol (Protobuf IDL and Connect) stays as specified in
-// spec/worker/v1/worker.proto. These types describe what crosses that boundary,
-// so the Control Plane service and the Agent client can be tested without a
-// network and without fixing a transport in the policy layer.
+// The target wire protocol is specified in spec/worker/v1/worker.proto.
+// These are in-process ports, not an implemented lossless mapping to its
+// ResultClaim and EventReceipt messages. Field, outcome, and acknowledgement
+// alignment is tracked in Issue #198 before a Worker Protocol transport can
+// connect them.
+// The Control Plane service and Agent client tests do not establish network
+// interoperability or authentication.
 package workerplane
 
 import (
