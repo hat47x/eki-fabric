@@ -258,6 +258,63 @@ func RunLeaseStoreContract(t *testing.T, newStore LeaseFactory) {
 		}
 	})
 
+	// A closed Attempt holds no execution authority when the close shows that the
+	// Worker stopped or the result was decided. Its Lease then no longer blocks the
+	// next placement. Other closes, such as a lost Worker, do not show that the
+	// Worker stopped, so the Lease keeps blocking until it expires.
+	for _, reason := range []attemptstate.CloseReason{
+		attemptstate.CloseReasonResultAccepted,
+		attemptstate.CloseReasonResultRejected,
+		attemptstate.CloseReasonExecutionFailureConfirmed,
+		attemptstate.CloseReasonWorkerLost,
+		attemptstate.CloseReasonLeaseExpired,
+		attemptstate.CloseReasonReclaimed,
+		attemptstate.CloseReasonCancelled,
+		attemptstate.CloseReasonSuperseded,
+		attemptstate.CloseReasonDeadline,
+		attemptstate.CloseReasonBudgetExhausted,
+		attemptstate.CloseReasonUnknownExternalEffect,
+		attemptstate.CloseReasonPolicyRevoked,
+		attemptstate.CloseReasonStaleAttempt,
+	} {
+		reason := reason
+		t.Run("lease-after-attempt-closed-"+string(reason), func(t *testing.T) {
+			store := newStore(t)
+			task := readyTask(t, store, "closed-"+string(reason))
+			first := leaseReservation(t, store, task, "placement-1", leaseNow, leaseNow.Add(time.Minute))
+			reservedFirst, err := store.ReserveLease(context.Background(), first)
+			if err != nil {
+				t.Fatal(err)
+			}
+			attempt, err := store.LoadAttempt(context.Background(), first.AttemptID)
+			if err != nil {
+				t.Fatal(err)
+			}
+			closed := attempt
+			closed.Phase, closed.CloseReason = attemptstate.AttemptPhaseClosed, reason
+			closed.Revision++
+			closed.UpdatedAt = attempt.UpdatedAt.Add(time.Second)
+			if err := store.CompareAndSwapAttempt(context.Background(), attempt.ID, attempt.Revision, closed); err != nil {
+				t.Fatalf("close Attempt as %s: %v", reason, err)
+			}
+
+			second := leaseReservation(t, store, task, "placement-2", leaseNow.Add(10*time.Second), leaseNow.Add(70*time.Second))
+			got, err := store.ReserveLease(context.Background(), second)
+			if reason.EndsExecutionAuthority() {
+				if err != nil {
+					t.Fatalf("ReserveLease() after %s error = %v, want the next placement to proceed", reason, err)
+				}
+				if got.Lease.FenceEpoch <= reservedFirst.Lease.FenceEpoch {
+					t.Fatalf("next fence %d is not above %d", got.Lease.FenceEpoch, reservedFirst.Lease.FenceEpoch)
+				}
+				return
+			}
+			if !errors.Is(err, statestore.ErrLeaseActive) {
+				t.Fatalf("ReserveLease() after %s error = %v, want ErrLeaseActive", reason, err)
+			}
+		})
+	}
+
 	t.Run("expired-placement-replay-does-not-mint-a-new-fence", func(t *testing.T) {
 		store := newStore(t)
 		task := readyTask(t, store, "expired-replay")

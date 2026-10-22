@@ -155,6 +155,45 @@ func validPhase(v AttemptPhase) bool {
 	}
 }
 
+// authorityEndingReasons are the close reasons after which no execution
+// authority remains for the Attempt, so its Lease no longer blocks the next
+// placement of the Task.
+//
+// Each of them rests on a fact the Control Plane holds, not on a guess. A
+// Worker that reported that it stopped (reclaimed, failed, deadline, cancelled,
+// an output over its limit), or a result that was decided (accepted, rejected),
+// ended the work. The Local Governor's stop does not wait for a central
+// approval (ADR-0015), so waiting for the Lease to expire would only delay the
+// retry.
+var authorityEndingReasons = []CloseReason{
+	CloseReasonResultAccepted,
+	CloseReasonResultRejected,
+	CloseReasonExecutionFailureConfirmed,
+	CloseReasonReclaimed,
+	CloseReasonCancelled,
+	CloseReasonDeadline,
+	CloseReasonBudgetExhausted,
+}
+
+// EndsExecutionAuthority reports whether an Attempt closed for this reason has
+// no execution authority left. It is false for the reasons that do not show the
+// Worker stopped, such as worker_lost: the Worker may still be running, and only
+// the Lease's expiry (or an aborted emission) ends its authority.
+func (r CloseReason) EndsExecutionAuthority() bool {
+	for _, reason := range authorityEndingReasons {
+		if r == reason {
+			return true
+		}
+	}
+	return false
+}
+
+// AuthorityEndingCloseReasons lists the reasons for which EndsExecutionAuthority
+// is true, in a stable order. Adapters use it to express the rule in a query.
+func AuthorityEndingCloseReasons() []CloseReason {
+	return append([]CloseReason(nil), authorityEndingReasons...)
+}
+
 func validCloseReason(v CloseReason) bool {
 	switch v {
 	case CloseReasonNone,

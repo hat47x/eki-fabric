@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"math"
+	"strings"
 	"time"
 
 	"github.com/hat47x/eki-fabric/internal/core/attemptstate"
@@ -16,6 +17,19 @@ import (
 	"github.com/hat47x/eki-fabric/internal/core/taskstate"
 	"github.com/hat47x/eki-fabric/internal/spi/statestore"
 )
+
+// authorityEndingReasonsSQL is the quoted list of close reasons after which an
+// Attempt holds no execution authority. The values are constants of this module,
+// never input.
+var authorityEndingReasonsSQL = quotedCloseReasons(attemptstate.AuthorityEndingCloseReasons())
+
+func quotedCloseReasons(reasons []attemptstate.CloseReason) string {
+	quoted := make([]string, len(reasons))
+	for i, reason := range reasons {
+		quoted[i] = "'" + string(reason) + "'"
+	}
+	return strings.Join(quoted, ", ")
+}
 
 func (s *Store) ReserveLease(ctx context.Context, reservation statestore.LeaseReservation) (statestore.LeaseReservationResult, error) {
 	if err := ctx.Err(); err != nil {
@@ -175,6 +189,10 @@ LEFT JOIN lease_emissions e ON e.lease_id = l.lease_id
 WHERE l.task_id = ?
   AND l.expires_at_ns > ?
   AND (e.status IS NULL OR e.status <> 'aborted')
+  AND NOT EXISTS (
+    SELECT 1 FROM attempts a
+    WHERE a.attempt_id = l.attempt_id AND a.phase = 'closed' AND a.close_reason IN (`+authorityEndingReasonsSQL+`)
+  )
 ORDER BY l.fence_epoch DESC
 LIMIT 1`, reservation.TaskID.String(), reservation.IssuedAt.UTC().UnixNano()).Scan(&activeID)
 	switch {

@@ -89,6 +89,13 @@ LSE-1がWorkerへLeaseを発行する前に、State Storeへ新しいLeaseを予
 
 Store implementationは、これらの予約に対する拒否をErrConflictまたはErrNotFoundとして返してください。Backend固有errorへ置き換えないでください。
 
+- Attemptが「Workerが止まった」と確認できる理由（reclaimed、failed、deadline、cancelled、出力の上限超過）か、結果が決まった理由（accepted、rejected）で閉じたとき、そのLeaseは次の配置を妨げない。FenceEpochは前より大きくなる。`worker_lost`など、Workerが止まったと分からない理由で閉じたときは、Leaseの期限まで`ErrLeaseActive`のまま（ADR-0015）
+
+`RunLeaseStoreContract`は、Attemptが閉じたときのLeaseの扱いも確かめます（`lease-after-attempt-closed-*`）。
+
+- Workerが止まったと確認できる理由（reclaimed、failed、deadline、cancelled、出力の上限超過）か、結果が決まった理由（accepted、rejected）でAttemptが閉じたとき、そのLeaseは次の配置を妨げない。FenceEpochは前より大きくなる
+- `worker_lost`など、Workerが止まったと分からない理由で閉じたときは、Leaseの期限まで`ErrLeaseActive`のままになる。Workerがまだ動いているかもしれないため（ADR-0015）
+
 ## `RunLeaseSigningContract` / `RunLeaseSigningDurabilityContract`
 
 LSE-1の署名境界（`leaseissue.Emitter`）を、実際のState Storeに対して動かす契約です。署名側はReferenceのCOSE / CBOR codecとEd25519 keyを使います。どのStore Adapterも同じbytesで判定されます。
