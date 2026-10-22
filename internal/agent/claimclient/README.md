@@ -26,6 +26,9 @@ transportはcontextの取消に応じて返る必要があります。このclie
 
 ## まだ無いもの
 
+- Core/SPIの`ResultClaim`・`ClaimAck`とProtobufの対応の確定（[#198](https://github.com/hat47x/eki-fabric/issues/198)）。
 - `ClaimClient`の実装。Connect clientの生成コードと接続設定。
 - 認証情報の更新と失効時の扱い。
 - Control Plane側の流量制限。
+
+`ClaimClient`と`ClaimAck`は、現在はプロセス内で接続するための型です。既存のProtobufとの対応は#198で確定する必要があります。CoreのテストやSQLiteの再送テストが通っても、通信経路で値が欠落しないことや認証の成立を確認したことにはなりません。
