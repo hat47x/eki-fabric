@@ -33,6 +33,38 @@ type recordingSender struct {
 	calls int
 }
 
+type senderFunc func(context.Context, resultclaim.Claim) error
+
+func (f senderFunc) Send(ctx context.Context, c resultclaim.Claim) error { return f(ctx, c) }
+
+func TestInvalidClockAfterFailedDeliveryKeepsTheEntry(t *testing.T) {
+	ctx := context.Background()
+	clock := &fakeClock{now: baseTime}
+	store := memorystore.New()
+	q, err := claimqueue.New(claimqueue.Config{
+		Store: store, Clock: clock, BaseDelay: time.Second, MaxDelay: time.Minute,
+		Sender: senderFunc(func(context.Context, resultclaim.Claim) error {
+			clock.now = time.Time{}
+			return errors.New("delivery failed")
+		}),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	c := claim(t, 1)
+	if _, err := q.Enqueue(ctx, c); err != nil {
+		t.Fatal(err)
+	}
+	report, err := q.DeliverDue(ctx, 1)
+	if !errors.Is(err, claimqueue.ErrInvalidConfig) || report != (claimqueue.Report{}) {
+		t.Fatalf("delivery = %+v, %v", report, err)
+	}
+	entry, found, err := store.Load(ctx, c.AttemptID())
+	if err != nil || !found || !entry.Claim.Equal(c) || entry.Attempts != 0 || !entry.NextAt.Equal(baseTime) {
+		t.Fatalf("failed retry scheduling lost the entry: %+v, %v, %v", entry, found, err)
+	}
+}
+
 func (s *recordingSender) Send(_ context.Context, claim resultclaim.Claim) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
