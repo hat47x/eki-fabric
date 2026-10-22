@@ -17,13 +17,14 @@ type fakeAPI struct {
 	principal workerplane.Principal
 	claim     resultclaim.Claim
 	err       error
+	ack       workerplane.ClaimAck
 }
 
 func (f *fakeAPI) SubmitClaim(_ context.Context, principal workerplane.Principal, claim resultclaim.Claim) (workerplane.ClaimAck, error) {
 	f.calls++
 	f.principal = principal
 	f.claim = claim
-	return workerplane.ClaimAck{}, f.err
+	return f.ack, f.err
 }
 
 func claim(t *testing.T, worker string) resultclaim.Claim {
@@ -47,7 +48,7 @@ func claim(t *testing.T, worker string) resultclaim.Claim {
 }
 
 func TestSendUsesTheAgentPrincipal(t *testing.T) {
-	api := &fakeAPI{}
+	api := &fakeAPI{ack: workerplane.ClaimAck{Decision: "new", AttemptPhase: "closed"}}
 	client, err := New(api, workerplane.Principal{WorkerIdentity: "worker-a", TrustDomain: "example.org"})
 	if err != nil {
 		t.Fatal(err)
@@ -81,8 +82,48 @@ func TestSendPropagatesTransportErrors(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := client.Send(context.Background(), claim(t, "worker-a")); err == nil {
-		t.Fatal("Send() hid a transport error")
+	if err := client.Send(context.Background(), claim(t, "worker-a")); err != api.err {
+		t.Fatalf("Send() replaced the transport error: %v", err)
+	}
+}
+
+func TestSendRefusesMalformedAcknowledgements(t *testing.T) {
+	for name, ack := range map[string]workerplane.ClaimAck{
+		"empty":                      {},
+		"unknown decision":           {Decision: "accepted", AttemptPhase: "closed"},
+		"unknown phase":              {Decision: "new", AttemptPhase: "accepted"},
+		"missing phase":              {Decision: "duplicate"},
+		"missing verification flag":  {Decision: "new", AttemptPhase: "verifying"},
+		"spurious verification flag": {Decision: "duplicate", AttemptPhase: "closed", VerificationRequired: true},
+	} {
+		t.Run(name, func(t *testing.T) {
+			api := &fakeAPI{ack: ack}
+			client, err := New(api, workerplane.Principal{WorkerIdentity: "worker-a"})
+			if err != nil {
+				t.Fatal(err)
+			}
+			if err := client.Send(context.Background(), claim(t, "worker-a")); !errors.Is(err, ErrInvalidAcknowledgement) {
+				t.Fatalf("Send() error = %v, want invalid acknowledgement", err)
+			}
+			if api.calls != 1 {
+				t.Fatalf("calls = %d", api.calls)
+			}
+		})
+	}
+}
+
+func TestSendAllowsEveryRecordedDecision(t *testing.T) {
+	for _, decision := range []string{"new", "duplicate", "stale", "late"} {
+		t.Run(decision, func(t *testing.T) {
+			api := &fakeAPI{ack: workerplane.ClaimAck{Decision: decision, AttemptPhase: "closed"}}
+			client, err := New(api, workerplane.Principal{WorkerIdentity: "worker-a"})
+			if err != nil {
+				t.Fatal(err)
+			}
+			if err := client.Send(context.Background(), claim(t, "worker-a")); err != nil {
+				t.Fatal(err)
+			}
+		})
 	}
 }
 

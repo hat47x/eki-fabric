@@ -34,11 +34,15 @@ var interrupted = errors.New("synthetic interruption")
 // authentication implementation. The test supplies the trusted principal.
 type interruptedAPI struct {
 	workerplane.ClaimClient
-	before, after bool
-	acks          []workerplane.ClaimAck
+	before, after           bool
+	emptyBefore, emptyAfter bool
+	acks                    []workerplane.ClaimAck
 }
 
 func (a *interruptedAPI) SubmitClaim(ctx context.Context, p workerplane.Principal, c resultclaim.Claim) (workerplane.ClaimAck, error) {
+	if a.emptyBefore {
+		return workerplane.ClaimAck{}, nil
+	}
 	if a.before {
 		return workerplane.ClaimAck{}, interrupted
 	}
@@ -47,6 +51,9 @@ func (a *interruptedAPI) SubmitClaim(ctx context.Context, p workerplane.Principa
 		a.acks = append(a.acks, ack)
 		if a.after {
 			return workerplane.ClaimAck{}, interrupted
+		}
+		if a.emptyAfter {
+			return workerplane.ClaimAck{}, nil
 		}
 	}
 	return ack, err
@@ -184,7 +191,7 @@ func seedClaim(t *testing.T, s *statesqlite.Store, now time.Time, status resultc
 
 func TestDurableClaimRoundtripAcrossInterruptedBoundaries(t *testing.T) {
 	for _, status := range []resultclaim.Status{resultclaim.StatusCompleted, resultclaim.StatusReclaimed, resultclaim.StatusRunnerStuck} {
-		for _, boundary := range []string{"before_receive", "before_claim_commit", "after_commit_before_ack", "after_ack_before_delete"} {
+		for _, boundary := range []string{"before_receive", "before_claim_commit", "after_commit_before_ack", "after_ack_before_delete", "before_receive_empty_ack", "after_commit_empty_ack"} {
 			t.Run(string(status)+"/"+boundary, func(t *testing.T) {
 				ctx := context.Background()
 				clock := &roundtripClock{time.Date(2026, 10, 21, 0, 0, 2, 0, time.UTC)}
@@ -192,7 +199,7 @@ func TestDurableClaimRoundtripAcrossInterruptedBoundaries(t *testing.T) {
 				statePath, queuePath := filepath.Join(dir, "control.db"), filepath.Join(dir, "worker.db")
 				state, pending := openState(t, statePath), openQueue(t, queuePath)
 				claim, initial := seedClaim(t, state, clock.now.Add(-2*time.Second), status)
-				api := &interruptedAPI{ClaimClient: durableServer(t, state, clock, boundary == "before_claim_commit"), before: boundary == "before_receive", after: boundary == "after_commit_before_ack"}
+				api := &interruptedAPI{ClaimClient: durableServer(t, state, clock, boundary == "before_claim_commit"), before: boundary == "before_receive", after: boundary == "after_commit_before_ack", emptyBefore: boundary == "before_receive_empty_ack", emptyAfter: boundary == "after_commit_empty_ack"}
 				var queueStore claimqueue.Store = pending
 				if boundary == "after_ack_before_delete" {
 					queueStore = interruptedDelete{pending}
@@ -220,7 +227,7 @@ func TestDurableClaimRoundtripAcrossInterruptedBoundaries(t *testing.T) {
 				} else if queued.Attempts != 1 || !queued.NextAt.After(clock.now) || queued.LastError == "" {
 					t.Fatalf("failed delivery did not persist backoff: %+v", queued)
 				}
-				committed := boundary == "after_commit_before_ack" || boundary == "after_ack_before_delete"
+				committed := boundary == "after_commit_before_ack" || boundary == "after_ack_before_delete" || boundary == "after_commit_empty_ack"
 				stored, found, err := state.LoadResultClaim(ctx, claim.AttemptID())
 				if err != nil || found != committed || (found && !stored.Equal(claim)) {
 					t.Fatalf("claim before reopen: %v, %v", found, err)
