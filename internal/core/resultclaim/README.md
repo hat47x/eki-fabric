@@ -34,6 +34,15 @@ WorkerのOutcome
 - Result Verificationの結果。`completed`の申告は、検証の入力になるだけです。
 - 実行時間や出力byte数の独立した観測。Workerの自己申告として記録し、必要な場合は別のEvidenceと突き合わせます。
 
+## 出力のダイジェスト
+
+`completed`の申告は、Workerが確定した出力のダイジェスト（`OutputDigest`）を必ず持ちます。Result Verificationは、検証者が確認した出力をこのダイジェストと突き合わせるため、これがないと、何を検証すればよいのかを申告から決められないためです。
+
+- `completed`以外のstatusでは、`OutputDigest`は空でなければなりません。途中までの出力を、結果として扱わないためです。
+- ダイジェストは申告の同一性（`Digest`）に含めます。ただし、ダイジェストがない申告の同一性は、この項目を足す前と同じ値のままです。保存済みの古い行を検証し直せます。
+- 出力が複数のArtifactに分かれる場合の一覧（名前、個別のダイジェスト、サイズ）は、Artifactの確定の責務です。Coreの申告が束縛するのは、確定した出力を表す一つのダイジェストだけです。通信仕様の`outputs`との往復は、#198で確定します。
+- 現在のnative Runnerでは、出力は標準出力と標準エラーを合わせたbyte列で、そのSHA-256を報告します。
+
 ## 決定の入力
 
 `Decide`は、Claimと、Control Planeが同じ操作で読んだ`Existing`（Attemptの存在、開閉、現在のfence、既に記録したClaim）を比べます。Claimだけから状態を推測しません。fenceが現在より古い申告は、記録はしますが、現在のAttemptを閉じたり、新しいAttemptの根拠にしたりしません。
