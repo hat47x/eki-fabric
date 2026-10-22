@@ -180,13 +180,13 @@ func (q *Queue) backoff(claim resultclaim.Claim, attempts uint32) time.Duration 
 	}
 	delay := q.baseDelay
 	for i := uint32(1); i < attempts; i++ {
-		if delay >= q.maxDelay/2 {
-			return q.maxDelay
+		// Compare before doubling to avoid duration overflow. Reaching the
+		// cap still goes through jitter, including on later retries.
+		if delay >= q.maxDelay-delay {
+			delay = q.maxDelay
+			break
 		}
 		delay *= 2
-		if delay >= q.maxDelay {
-			return q.maxDelay
-		}
 	}
 	if delay <= 1 {
 		return delay

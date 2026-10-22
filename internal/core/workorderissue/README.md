@@ -65,6 +65,8 @@ SQLite Adapterは、Adapterを経由しない書き込みに対しても同じ�
 | commit前のcrash | 何も記録されない。再試行は新しく署名する |
 | commit後に応答が失われた | 再試行は保存済みbytesを返す |
 
+署名中にWOR-1 keyのprimaryが入れ替わった場合にABORTEDとし、新しいprimaryで署名し直さないのは、LSE-1についての[ADR-0025](../../../plan/adr/0025-lease-policy-currentness-and-key-rotation.md)に合わせたものです。
+
 ABORTEDは`work_order_emissions`（memoryでは対応するmap）だけに記録します。Task、Attempt、Lease、FenceEpochは変えません。LSE-1のABORTEDと違い、Attemptを閉じません。Leaseは既にEMITTEDで、Leaseの期限まで同じTaskの新しいLeaseを排他するので、Attemptを閉じても再配置は早まらないためです。期限後の回収は既存のrecovery経路に任せます。
 
 ## 仮決め
