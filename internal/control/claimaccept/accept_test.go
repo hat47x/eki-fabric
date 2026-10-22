@@ -125,8 +125,13 @@ func lease(t *testing.T) leasestate.LeaseRecord {
 
 func claim(t *testing.T, status resultclaim.Status, exit int) resultclaim.Claim {
 	t.Helper()
+	var outputDigest contract.Digest
+	if status == resultclaim.StatusCompleted {
+		outputDigest = contract.SHA256([]byte("output"))
+	}
 	record, err := resultclaim.NewClaim(resultclaim.ClaimConfig{
-		TaskID: testTask, TaskIRDigest: contract.SHA256([]byte("taskir")),
+		OutputDigest: outputDigest,
+		TaskID:       testTask, TaskIRDigest: contract.SHA256([]byte("taskir")),
 		AttemptID: testAttempt, WorkerIdentity: "worker-a", LeaseID: testLease,
 		FenceEpoch: 7, WorkOrderDecision: "wor-001",
 		ExecutorDigest: contract.SHA256([]byte("executable")),

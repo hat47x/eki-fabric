@@ -32,10 +32,34 @@ func binding() Attempt {
 	}
 }
 
+var outputDigest = contract.SHA256([]byte("output"))
+
 func outcome(status executor.Status, exitCode int) executor.Outcome {
-	return executor.Outcome{
+	o := executor.Outcome{
 		Status: status, ExitCode: exitCode,
 		StartedAt: baseTime, EndedAt: baseTime.Add(time.Minute),
+	}
+	if status == executor.StatusCompleted {
+		o.OutputDigest = outputDigest
+	}
+	return o
+}
+
+func TestBuildCarriesTheOutputDigestOfACompletedOutcome(t *testing.T) {
+	claim, err := Build(outcome(executor.StatusCompleted, 0), binding())
+	if err != nil {
+		t.Fatalf("Build() error = %v", err)
+	}
+	if claim.OutputDigest() != outputDigest {
+		t.Fatalf("output digest = %s, want %s", claim.OutputDigest(), outputDigest)
+	}
+}
+
+func TestBuildRefusesACompletedOutcomeWithoutAnOutputDigest(t *testing.T) {
+	o := outcome(executor.StatusCompleted, 0)
+	o.OutputDigest = contract.Digest{}
+	if _, err := Build(o, binding()); !errors.Is(err, resultclaim.ErrInvalidClaim) {
+		t.Fatalf("Build() error = %v, want %v", err, resultclaim.ErrInvalidClaim)
 	}
 }
 

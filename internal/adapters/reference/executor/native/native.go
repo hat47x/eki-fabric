@@ -130,7 +130,7 @@ func (r *Runner) Run(ctx context.Context, spec executor.Spec) (executor.Result, 
 		}
 		return executor.Result{}, fmt.Errorf("%w: %v", ErrExecutorStart, err)
 	}
-	return executor.Result{ExitCode: 0, OutputBytes: output.written}, nil
+	return executor.Result{ExitCode: 0, OutputBytes: output.written, OutputDigest: output.digest()}, nil
 }
 
 // verifyFile hashes the file again, so a registration cannot outlive the
@@ -186,6 +186,16 @@ func (b *boundedBuffer) Write(p []byte) (int, error) {
 	}
 	b.buf.Write(p)
 	return len(p), nil
+}
+
+// digest returns the SHA-256 of everything the process wrote. In this Runner the
+// output of an execution is its combined standard output and standard error, so
+// this is the digest a completed ResultClaim reports. It is only meaningful when
+// the buffer did not overflow, which the caller checks first.
+func (b *boundedBuffer) digest() contract.Digest {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	return contract.SHA256(b.buf.Bytes())
 }
 
 func minUint64(a, b uint64) uint64 {

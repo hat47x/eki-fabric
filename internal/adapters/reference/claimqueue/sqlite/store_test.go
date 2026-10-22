@@ -22,10 +22,13 @@ var baseTime = time.Date(2026, 10, 21, 0, 0, 0, 123, time.UTC)
 func claim(t testing.TB, n int, output uint64, status resultclaim.Status) resultclaim.Claim {
 	t.Helper()
 	exitCode := -7
+	var outputDigest contract.Digest
 	if status == resultclaim.StatusCompleted {
 		exitCode = 0
+		outputDigest = contract.SHA256([]byte("output"))
 	}
 	c, err := resultclaim.NewClaim(resultclaim.ClaimConfig{
+		OutputDigest: outputDigest,
 		TaskID:       ids.TaskID("tsk_00000000000000000000000000000001"),
 		TaskIRDigest: contract.SHA256([]byte("taskir")), AttemptID: ids.AttemptID(fmt.Sprintf("atm_%032d", n)),
 		WorkerIdentity: "worker-あ", LeaseID: ids.LeaseID("les_00000000000000000000000000000001"),

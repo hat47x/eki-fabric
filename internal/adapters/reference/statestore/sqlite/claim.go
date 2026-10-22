@@ -23,11 +23,12 @@ func (s *Store) LoadResultClaim(ctx context.Context, id ids.AttemptID) (resultcl
 	row := s.db.QueryRowContext(ctx, `
 SELECT task_id, task_ir_digest, attempt_id, worker_identity, lease_id, fence_epoch,
        work_order_decision, executor_digest, nonce, status, exit_code, output_bytes,
-       started_at_ns, ended_at_ns
+       started_at_ns, ended_at_ns, output_digest
 FROM result_claims WHERE attempt_id = ?`, id.String())
 
 	var (
 		taskID, taskIR, attemptID, worker, leaseID, workOrder, executor, status string
+		outputDigest                                                            string
 		fence                                                                   uint64
 		nonce                                                                   []byte
 		exitCode                                                                int
@@ -35,7 +36,7 @@ FROM result_claims WHERE attempt_id = ?`, id.String())
 		startedNS, endedNS                                                      int64
 	)
 	err := row.Scan(&taskID, &taskIR, &attemptID, &worker, &leaseID, &fence,
-		&workOrder, &executor, &nonce, &status, &exitCode, &outputBytes, &startedNS, &endedNS)
+		&workOrder, &executor, &nonce, &status, &exitCode, &outputBytes, &startedNS, &endedNS, &outputDigest)
 	if errors.Is(err, sql.ErrNoRows) {
 		return resultclaim.Claim{}, false, nil
 	}
@@ -43,7 +44,7 @@ FROM result_claims WHERE attempt_id = ?`, id.String())
 		return resultclaim.Claim{}, false, fmt.Errorf("load ResultClaim %s: %w", id, err)
 	}
 	claim, err := buildClaim(taskID, taskIR, attemptID, worker, leaseID, fence, workOrder, executor,
-		nonce, status, exitCode, outputBytes, startedNS, endedNS)
+		nonce, status, exitCode, outputBytes, outputDigest, startedNS, endedNS)
 	if err != nil {
 		return resultclaim.Claim{}, false, fmt.Errorf("load ResultClaim %s: %w", id, err)
 	}
@@ -86,8 +87,8 @@ func (s *Store) ApplyResultClaim(ctx context.Context, acceptance statestore.Resu
 INSERT INTO result_claims (
 	attempt_id, task_id, task_ir_digest, worker_identity, lease_id, fence_epoch,
 	work_order_decision, executor_digest, nonce, status, exit_code, output_bytes,
-	started_at_ns, ended_at_ns, claim_digest, recorded_at_ns
-) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+	started_at_ns, ended_at_ns, claim_digest, recorded_at_ns, output_digest
+) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 			attemptID,
 			claim.TaskID().String(),
 			claim.TaskIRDigest().Hex(),
@@ -104,6 +105,7 @@ INSERT INTO result_claims (
 			claim.EndedAt().UnixNano(),
 			claim.Digest().Hex(),
 			time.Now().UTC().UnixNano(),
+			outputDigestColumn(claim),
 		); err != nil {
 			return fmt.Errorf("insert ResultClaim %s: %w", attemptID, err)
 		}
@@ -154,9 +156,26 @@ WHERE attempt_id = ? AND revision = ?`,
 	return nil
 }
 
+// outputDigestColumn is the empty string for a claim without an output digest,
+// which is every claim except a completed one.
+func outputDigestColumn(claim resultclaim.Claim) string {
+	if claim.OutputDigest().IsZero() {
+		return ""
+	}
+	return claim.OutputDigest().Hex()
+}
+
 func buildClaim(taskID, taskIR, attemptID, worker, leaseID string, fence uint64,
 	workOrder, executor string, nonce []byte, status string, exitCode int, outputBytes uint64,
-	startedNS, endedNS int64) (resultclaim.Claim, error) {
+	outputDigestHex string, startedNS, endedNS int64) (resultclaim.Claim, error) {
+	var outputDigest contract.Digest
+	if outputDigestHex != "" {
+		parsed, err := contract.ParseSHA256(outputDigestHex)
+		if err != nil {
+			return resultclaim.Claim{}, err
+		}
+		outputDigest = parsed
+	}
 	parsedTaskID, err := ids.ParseTaskID(taskID)
 	if err != nil {
 		return resultclaim.Claim{}, err
@@ -182,6 +201,7 @@ func buildClaim(taskID, taskIR, attemptID, worker, leaseID string, fence uint64,
 		WorkerIdentity: worker, LeaseID: parsedLeaseID, FenceEpoch: fence,
 		WorkOrderDecision: workOrder, ExecutorDigest: executorDigest, Nonce: nonce,
 		Status: resultclaim.Status(status), ExitCode: exitCode, OutputBytes: outputBytes,
-		StartedAt: time.Unix(0, startedNS).UTC(), EndedAt: time.Unix(0, endedNS).UTC(),
+		OutputDigest: outputDigest,
+		StartedAt:    time.Unix(0, startedNS).UTC(), EndedAt: time.Unix(0, endedNS).UTC(),
 	})
 }

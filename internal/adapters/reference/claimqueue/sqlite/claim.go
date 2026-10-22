@@ -26,13 +26,22 @@ type storedClaim struct {
 	Status            resultclaim.Status
 	ExitCode          int
 	OutputBytes       uint64
-	StartedAt         time.Time
-	EndedAt           time.Time
+	// OutputDigest is empty for every status except completed. A queued entry
+	// written before the field existed decodes with it empty, and a completed
+	// entry without it is refused by resultclaim.NewClaim.
+	OutputDigest string `json:"OutputDigest,omitempty"`
+	StartedAt    time.Time
+	EndedAt      time.Time
 }
 
 func encodeClaim(c resultclaim.Claim) ([]byte, error) {
+	var outputDigest string
+	if !c.OutputDigest().IsZero() {
+		outputDigest = c.OutputDigest().Hex()
+	}
 	return json.Marshal(storedClaim{
-		TaskID: c.TaskID(), TaskIRDigest: c.TaskIRDigest().Hex(), AttemptID: c.AttemptID(),
+		OutputDigest: outputDigest,
+		TaskID:       c.TaskID(), TaskIRDigest: c.TaskIRDigest().Hex(), AttemptID: c.AttemptID(),
 		WorkerIdentity: c.WorkerIdentity(), LeaseID: c.LeaseID(), FenceEpoch: c.FenceEpoch(),
 		WorkOrderDecision: c.WorkOrderDecision(), ExecutorDigest: c.ExecutorDigest().Hex(),
 		Nonce: c.Nonce(), Status: c.Status(), ExitCode: c.ExitCode(), OutputBytes: c.OutputBytes(),
@@ -58,8 +67,16 @@ func decodeClaim(raw []byte) (resultclaim.Claim, error) {
 	if err != nil {
 		return resultclaim.Claim{}, err
 	}
+	var outputDigest contract.Digest
+	if value.OutputDigest != "" {
+		outputDigest, err = contract.ParseSHA256(value.OutputDigest)
+		if err != nil {
+			return resultclaim.Claim{}, err
+		}
+	}
 	return resultclaim.NewClaim(resultclaim.ClaimConfig{
-		TaskID: value.TaskID, TaskIRDigest: taskIR, AttemptID: value.AttemptID,
+		OutputDigest: outputDigest,
+		TaskID:       value.TaskID, TaskIRDigest: taskIR, AttemptID: value.AttemptID,
 		WorkerIdentity: value.WorkerIdentity, LeaseID: value.LeaseID, FenceEpoch: value.FenceEpoch,
 		WorkOrderDecision: value.WorkOrderDecision, ExecutorDigest: executor,
 		Nonce: value.Nonce, Status: value.Status, ExitCode: value.ExitCode, OutputBytes: value.OutputBytes,

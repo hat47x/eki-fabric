@@ -62,6 +62,7 @@ func Build(outcome executor.Outcome, attempt Attempt) (resultclaim.Claim, error)
 		Status:            status,
 		ExitCode:          outcome.ExitCode,
 		OutputBytes:       outcome.OutputBytes,
+		OutputDigest:      outcome.OutputDigest,
 		StartedAt:         startedAt,
 		EndedAt:           endedAt,
 	})

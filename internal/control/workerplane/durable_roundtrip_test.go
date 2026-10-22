@@ -177,8 +177,13 @@ func seedClaim(t *testing.T, s *statesqlite.Store, now time.Time, status resultc
 	if err := s.CompareAndSwapAttempt(ctx, attempt.ID, assigned.Revision, dispatched); err != nil {
 		t.Fatal(err)
 	}
+	var outputDigest contract.Digest
+	if status == resultclaim.StatusCompleted {
+		outputDigest = contract.SHA256([]byte("output"))
+	}
 	c, err := resultclaim.NewClaim(resultclaim.ClaimConfig{
-		TaskID: task.ID, TaskIRDigest: task.TaskIRDigest, AttemptID: attempt.ID, WorkerIdentity: "worker-a",
+		OutputDigest: outputDigest,
+		TaskID:       task.ID, TaskIRDigest: task.TaskIRDigest, AttemptID: attempt.ID, WorkerIdentity: "worker-a",
 		LeaseID: reservation.Lease.ID, FenceEpoch: reservation.Lease.FenceEpoch, WorkOrderDecision: "workorder-1",
 		ExecutorDigest: contract.SHA256([]byte("executor")), Nonce: []byte("0123456789abcdef"),
 		Status: status, OutputBytes: 42, StartedAt: now, EndedAt: now.Add(time.Second),

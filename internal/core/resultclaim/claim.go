@@ -67,8 +67,13 @@ type ClaimConfig struct {
 	Status            Status
 	ExitCode          int
 	OutputBytes       uint64
-	StartedAt         time.Time
-	EndedAt           time.Time
+	// OutputDigest is the digest of the finalized output the Worker claims to
+	// have produced. A completed claim must carry it, because Result
+	// Verification compares what a verifier observed against it. Every other
+	// status must leave it zero: a partial output is not a result.
+	OutputDigest contract.Digest
+	StartedAt    time.Time
+	EndedAt      time.Time
 }
 
 type Claim struct {
@@ -84,6 +89,7 @@ type Claim struct {
 	status            Status
 	exitCode          int
 	outputBytes       uint64
+	outputDigest      contract.Digest
 	startedAt         time.Time
 	endedAt           time.Time
 }
@@ -114,13 +120,18 @@ func NewClaim(cfg ClaimConfig) (Claim, error) {
 		return Claim{}, fmt.Errorf("%w: started/ended window is invalid", ErrInvalidClaim)
 	case cfg.Status == StatusCompleted && cfg.ExitCode != 0:
 		return Claim{}, fmt.Errorf("%w: a completed claim needs exit code 0", ErrInvalidClaim)
+	case cfg.Status == StatusCompleted && cfg.OutputDigest.IsZero():
+		return Claim{}, fmt.Errorf("%w: a completed claim needs the digest of its output", ErrInvalidClaim)
+	case cfg.Status != StatusCompleted && !cfg.OutputDigest.IsZero():
+		return Claim{}, fmt.Errorf("%w: only a completed claim may carry an output digest", ErrInvalidClaim)
 	}
 	return Claim{
 		taskID: cfg.TaskID, taskIRDigest: cfg.TaskIRDigest, attemptID: cfg.AttemptID,
 		workerIdentity: cfg.WorkerIdentity, leaseID: cfg.LeaseID, fenceEpoch: cfg.FenceEpoch,
 		workOrderDecision: cfg.WorkOrderDecision, executorDigest: cfg.ExecutorDigest,
 		nonce: append([]byte(nil), cfg.Nonce...), status: cfg.Status, exitCode: cfg.ExitCode,
-		outputBytes: cfg.OutputBytes, startedAt: cfg.StartedAt.UTC(), endedAt: cfg.EndedAt.UTC(),
+		outputBytes: cfg.OutputBytes, outputDigest: cfg.OutputDigest,
+		startedAt: cfg.StartedAt.UTC(), endedAt: cfg.EndedAt.UTC(),
 	}, nil
 }
 
@@ -140,8 +151,13 @@ func (c Claim) Nonce() []byte                   { return append([]byte(nil), c.n
 func (c Claim) Status() Status                  { return c.status }
 func (c Claim) ExitCode() int                   { return c.exitCode }
 func (c Claim) OutputBytes() uint64             { return c.outputBytes }
-func (c Claim) StartedAt() time.Time            { return c.startedAt }
-func (c Claim) EndedAt() time.Time              { return c.endedAt }
+
+// OutputDigest is the digest of the output a completed claim reports. It is
+// zero for every other status.
+func (c Claim) OutputDigest() contract.Digest { return c.outputDigest }
+
+func (c Claim) StartedAt() time.Time { return c.startedAt }
+func (c Claim) EndedAt() time.Time   { return c.endedAt }
 
 func (c Claim) Valid() bool { return c.taskID != "" && c.attemptID != "" && c.status.valid() }
 
@@ -153,6 +169,7 @@ func (c Claim) Equal(other Claim) bool {
 		c.workOrderDecision != other.workOrderDecision || c.executorDigest != other.executorDigest ||
 		!bytesEqual(c.nonce, other.nonce) || c.status != other.status ||
 		c.exitCode != other.exitCode || c.outputBytes != other.outputBytes ||
+		c.outputDigest != other.outputDigest ||
 		!c.startedAt.Equal(other.startedAt) || !c.endedAt.Equal(other.endedAt) {
 		return false
 	}
@@ -183,6 +200,13 @@ func (c Claim) Digest() contract.Digest {
 		h.Write(buf)
 	}
 	h.Write(c.nonce)
+	// The output digest joins the hash only when present. A claim without one
+	// keeps the digest it had before the field existed, so rows stored earlier
+	// still verify.
+	if !c.outputDigest.IsZero() {
+		h.Write([]byte("output-digest"))
+		h.Write([]byte(c.outputDigest.String()))
+	}
 	return contract.SHA256(h.Sum(nil))
 }
 
