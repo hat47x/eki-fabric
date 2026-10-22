@@ -47,6 +47,9 @@ func TestSupervisedNativeRunCompletes(t *testing.T) {
 	if outcome.Status != executor.StatusCompleted || outcome.OutputBytes != 5 {
 		t.Fatalf("outcome = %+v, want completed with 5 bytes", outcome)
 	}
+	if want := contract.SHA256([]byte("hello")); outcome.OutputDigest != want {
+		t.Fatalf("output digest = %s, want %s", outcome.OutputDigest, want)
+	}
 }
 
 func TestSupervisedNativeRunReportsFailure(t *testing.T) {
@@ -186,6 +189,9 @@ func TestRunExecutesTheRegisteredArtifact(t *testing.T) {
 	if result.ExitCode != 0 || result.OutputBytes != 5 {
 		t.Fatalf("result = %+v, want exit 0 and 5 bytes", result)
 	}
+	if want := contract.SHA256([]byte("hello")); result.OutputDigest != want {
+		t.Fatalf("output digest = %s, want %s", result.OutputDigest, want)
+	}
 }
 
 func TestRunReportsANonZeroExitAsAResult(t *testing.T) {
@@ -198,6 +204,9 @@ func TestRunReportsANonZeroExitAsAResult(t *testing.T) {
 	if result.ExitCode != 3 {
 		t.Fatalf("exit code = %d, want 3", result.ExitCode)
 	}
+	if !result.OutputDigest.IsZero() {
+		t.Fatalf("a failed execution reported the output digest %s", result.OutputDigest)
+	}
 }
 
 func TestRunStopsWhenOutputExceedsTheLimit(t *testing.T) {
@@ -209,6 +218,9 @@ func TestRunStopsWhenOutputExceedsTheLimit(t *testing.T) {
 	}
 	if result.ExitCode != -1 || result.OutputBytes <= 10 {
 		t.Fatalf("result = %+v, want an oversized output with exit -1", result)
+	}
+	if !result.OutputDigest.IsZero() {
+		t.Fatalf("an oversized output reported the output digest %s", result.OutputDigest)
 	}
 }
 

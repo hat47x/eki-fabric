@@ -66,7 +66,11 @@ func newSupervisor(t *testing.T, now time.Time) *Supervisor {
 	return supervisor
 }
 
-func TestExecuteCompletesWithinTheDeadline(t *testing.T) {
+var testOutputDigest = contract.SHA256([]byte("output"))
+
+// A Runner that finishes normally but names no output leaves nothing for a
+// verifier to check, so the execution is reported as failed, not completed.
+func TestExecuteFailsACompletionThatNamesNoOutput(t *testing.T) {
 	supervisor := newSupervisor(t, baseTime)
 	outcome, err := supervisor.Execute(context.Background(), validSpec(),
 		runnerFunc(func(context.Context, Spec) (Result, error) {
@@ -74,6 +78,23 @@ func TestExecuteCompletesWithinTheDeadline(t *testing.T) {
 		}), sourceFunc(blockingSource))
 	if err != nil {
 		t.Fatalf("Execute() error = %v", err)
+	}
+	if outcome.Status != StatusFailed || outcome.Failure == nil || !outcome.OutputDigest.IsZero() {
+		t.Fatalf("outcome = %+v, want a failure with no output digest", outcome)
+	}
+}
+
+func TestExecuteCompletesWithinTheDeadline(t *testing.T) {
+	supervisor := newSupervisor(t, baseTime)
+	outcome, err := supervisor.Execute(context.Background(), validSpec(),
+		runnerFunc(func(context.Context, Spec) (Result, error) {
+			return Result{ExitCode: 0, OutputBytes: 512, OutputDigest: testOutputDigest}, nil
+		}), sourceFunc(blockingSource))
+	if err != nil {
+		t.Fatalf("Execute() error = %v", err)
+	}
+	if outcome.OutputDigest != testOutputDigest {
+		t.Fatalf("output digest = %s, want %s", outcome.OutputDigest, testOutputDigest)
 	}
 	if outcome.Status != StatusCompleted {
 		t.Fatalf("status = %q, want %q (failure: %v)", outcome.Status, StatusCompleted, outcome.Failure)

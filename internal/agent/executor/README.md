@@ -22,7 +22,7 @@ startgate.Plan
 
 | Status | 意味 | 回復への渡し方 |
 |---|---|---|
-| `completed` | 正常終了 | 結果の検証へ |
+| `completed` | 正常終了。Runnerが出力のダイジェストを報告しなかった場合は`failed`にします。検証の対象が分からないためです | 結果の検証へ |
 | `failed` | 異常終了、または出力上限超過 | Taskの信頼性契約に従う |
 | `reclaimed` | Local Governorが停止した | 実行権限の失効。`reclaimed`として閉じ、回復へ（ADR-0015） |
 | `deadline_exceeded` | 期限に達した | 再実行可能かはTaskの契約とattempt budgetで決める |
@@ -40,5 +40,6 @@ startgate.Plan
 - Native / Container / WASM / BrowserのRunner実装。
 - 実行中のcheckpointと再開。
 - `runner_stuck`の後の強制停止と、Attemptの状態遷移。
-- 出力の内容の検証。この層はbyte数だけを見ます。
+- 出力の内容の検証。この層はbyte数を見るだけで、内容の正しさは確かめません。Runnerが報告する出力のダイジェストは、そのまま`Outcome.OutputDigest`と`ResultClaim`に載ります。
+
 - `Outcome`をControl Planeへ報告する経路（ResultClaim）。
