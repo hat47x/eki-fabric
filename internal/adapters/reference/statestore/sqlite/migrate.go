@@ -469,7 +469,14 @@ BEFORE DELETE ON result_claims
 BEGIN
 	SELECT RAISE(ABORT, 'ResultClaim is immutable');
 END`,
-	// 9: durable WOR-1 WorkOrder emission / abort state. One row per Lease.
+	// 9: a completed ResultClaim names the digest of the output it reports, so
+	// Result Verification has something to check. The column is empty for every
+	// other status and for claims stored before this migration; a completed
+	// claim without it is refused when it is read back, so such a row can never
+	// reach acceptance.
+	`ALTER TABLE result_claims ADD COLUMN output_digest TEXT NOT NULL DEFAULT ''
+	CHECK (output_digest = '' OR length(output_digest) = 64)`,
+	// 10: durable WOR-1 WorkOrder emission / abort state. One row per Lease.
 	// The emitted guard repeats the adapter's currentness checks so a write
 	// that bypasses the adapter cannot store a WorkOrder for a Lease that is
 	// not EMITTED, not the latest fence, not held by an ASSIGNED Attempt, or

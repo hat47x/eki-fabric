@@ -51,7 +51,7 @@ func claim(t *testing.T) resultclaim.Claim {
 		FenceEpoch: 7, WorkOrderDecision: "wor-001",
 		ExecutorDigest: contract.SHA256([]byte("executable")),
 		Nonce:          []byte("0123456789abcdef"), Status: resultclaim.StatusCompleted,
-		ExitCode: 0, OutputBytes: 10,
+		ExitCode: 0, OutputBytes: 10, OutputDigest: contract.SHA256([]byte("output")),
 		StartedAt: time.Date(2026, 10, 21, 0, 0, 0, 0, time.UTC),
 		EndedAt:   time.Date(2026, 10, 21, 0, 0, 1, 0, time.UTC),
 	})

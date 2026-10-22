@@ -65,6 +65,11 @@ func SpecFromPlan(plan startgate.Plan) Spec {
 type Result struct {
 	ExitCode    int
 	OutputBytes uint64
+	// OutputDigest is the digest of the output the Runner finalized. A Runner
+	// that finished normally must report it. Without it the Supervisor cannot
+	// report a completed execution, because nothing would say what a verifier
+	// is supposed to check.
+	OutputDigest contract.Digest
 }
 
 // Runner executes one Attempt. Run must return when ctx is cancelled; the
@@ -97,10 +102,12 @@ type Outcome struct {
 	Status      Status
 	ExitCode    int
 	OutputBytes uint64
-	Reasons     []governor.Reason
-	StartedAt   time.Time
-	EndedAt     time.Time
-	Failure     error
+	// OutputDigest is set only for StatusCompleted.
+	OutputDigest contract.Digest
+	Reasons      []governor.Reason
+	StartedAt    time.Time
+	EndedAt      time.Time
+	Failure      error
 }
 
 type Config struct {
@@ -227,7 +234,13 @@ func (s *Supervisor) finish(run runResult, spec Spec, startedAt time.Time, reaso
 		outcome.Failure = fmt.Errorf("runner exited with code %d", run.result.ExitCode)
 		return outcome
 	}
+	if run.result.OutputDigest.IsZero() {
+		outcome.Status = StatusFailed
+		outcome.Failure = errors.New("runner finished without reporting the digest of its output")
+		return outcome
+	}
 	outcome.Status = StatusCompleted
+	outcome.OutputDigest = run.result.OutputDigest
 	return outcome
 }
 

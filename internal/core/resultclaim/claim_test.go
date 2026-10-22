@@ -30,6 +30,7 @@ func claimConfig() ClaimConfig {
 		Status:            StatusCompleted,
 		ExitCode:          0,
 		OutputBytes:       512,
+		OutputDigest:      contract.SHA256([]byte("output")),
 		StartedAt:         baseTime,
 		EndedAt:           baseTime.Add(time.Minute),
 	}
@@ -63,20 +64,23 @@ func TestNewClaimAcceptsTheClosedShape(t *testing.T) {
 
 func TestNewClaimRejectsInvalidShapes(t *testing.T) {
 	cases := map[string]func(*ClaimConfig){
-		"task":             func(c *ClaimConfig) { c.TaskID = "" },
-		"task ir":          func(c *ClaimConfig) { c.TaskIRDigest = contract.Digest{} },
-		"attempt":          func(c *ClaimConfig) { c.AttemptID = "" },
-		"worker":           func(c *ClaimConfig) { c.WorkerIdentity = "" },
-		"lease":            func(c *ClaimConfig) { c.LeaseID = "" },
-		"fence":            func(c *ClaimConfig) { c.FenceEpoch = 0 },
-		"work order":       func(c *ClaimConfig) { c.WorkOrderDecision = "" },
-		"executor":         func(c *ClaimConfig) { c.ExecutorDigest = contract.Digest{} },
-		"short nonce":      func(c *ClaimConfig) { c.Nonce = make([]byte, MinNonceBytes-1) },
-		"long nonce":       func(c *ClaimConfig) { c.Nonce = make([]byte, MaxNonceBytes+1) },
-		"unknown status":   func(c *ClaimConfig) { c.Status = Status("done") },
-		"zero start":       func(c *ClaimConfig) { c.StartedAt = time.Time{} },
-		"end before start": func(c *ClaimConfig) { c.EndedAt = c.StartedAt.Add(-time.Second) },
-		"completed exit":   func(c *ClaimConfig) { c.ExitCode = 1 },
+		"task":                               func(c *ClaimConfig) { c.TaskID = "" },
+		"task ir":                            func(c *ClaimConfig) { c.TaskIRDigest = contract.Digest{} },
+		"attempt":                            func(c *ClaimConfig) { c.AttemptID = "" },
+		"worker":                             func(c *ClaimConfig) { c.WorkerIdentity = "" },
+		"lease":                              func(c *ClaimConfig) { c.LeaseID = "" },
+		"fence":                              func(c *ClaimConfig) { c.FenceEpoch = 0 },
+		"work order":                         func(c *ClaimConfig) { c.WorkOrderDecision = "" },
+		"executor":                           func(c *ClaimConfig) { c.ExecutorDigest = contract.Digest{} },
+		"short nonce":                        func(c *ClaimConfig) { c.Nonce = make([]byte, MinNonceBytes-1) },
+		"long nonce":                         func(c *ClaimConfig) { c.Nonce = make([]byte, MaxNonceBytes+1) },
+		"unknown status":                     func(c *ClaimConfig) { c.Status = Status("done") },
+		"zero start":                         func(c *ClaimConfig) { c.StartedAt = time.Time{} },
+		"end before start":                   func(c *ClaimConfig) { c.EndedAt = c.StartedAt.Add(-time.Second) },
+		"completed exit":                     func(c *ClaimConfig) { c.ExitCode = 1 },
+		"completed without an output digest": func(c *ClaimConfig) { c.OutputDigest = contract.Digest{} },
+		"failed with an output digest":       func(c *ClaimConfig) { c.Status = StatusFailed; c.ExitCode = 1 },
+		"stuck with an output digest":        func(c *ClaimConfig) { c.Status = StatusRunnerStuck },
 	}
 	for name, mutate := range cases {
 		cfg := claimConfig()
@@ -103,14 +107,54 @@ func TestClaimEqualAndDigest(t *testing.T) {
 	if first.Digest() == changed.Digest() {
 		t.Fatal("claims with different output have the same digest")
 	}
-	otherStatus := mustClaim(t, func(c *ClaimConfig) { c.Status = StatusFailed; c.ExitCode = 1 })
+	otherStatus := mustClaim(t, func(c *ClaimConfig) {
+		c.Status = StatusFailed
+		c.ExitCode = 1
+		c.OutputDigest = contract.Digest{}
+	})
 	if first.Digest() == otherStatus.Digest() {
 		t.Fatal("status is not bound into the digest")
 	}
 }
 
+func TestClaimBindsTheOutputDigest(t *testing.T) {
+	first := mustClaim(t, nil)
+	if first.OutputDigest() != contract.SHA256([]byte("output")) {
+		t.Fatalf("OutputDigest() = %s", first.OutputDigest())
+	}
+	other := mustClaim(t, func(c *ClaimConfig) { c.OutputDigest = contract.SHA256([]byte("another output")) })
+	if first.Equal(other) {
+		t.Fatal("claims that name different outputs are Equal")
+	}
+	if first.Digest() == other.Digest() {
+		t.Fatal("the output digest is not bound into the claim digest")
+	}
+}
+
+// A claim without an output digest hashes the way it did before the field
+// existed, so a row stored earlier still verifies against its recorded digest.
+func TestClaimDigestIgnoresAnAbsentOutputDigest(t *testing.T) {
+	failed := mustClaim(t, func(c *ClaimConfig) {
+		c.Status = StatusFailed
+		c.ExitCode = 1
+		c.OutputDigest = contract.Digest{}
+	})
+	again := mustClaim(t, func(c *ClaimConfig) {
+		c.Status = StatusFailed
+		c.ExitCode = 1
+		c.OutputDigest = contract.Digest{}
+	})
+	if failed.Digest() != again.Digest() || !failed.OutputDigest().IsZero() {
+		t.Fatal("a claim without an output digest is not stable")
+	}
+	completed := mustClaim(t, nil)
+	if completed.Digest() == failed.Digest() {
+		t.Fatal("a completed claim shares a digest with a failed one")
+	}
+}
+
 func TestDecideFirstClaimClosesAnOpenAttempt(t *testing.T) {
-	claim := mustClaim(t, func(c *ClaimConfig) { c.Status = StatusFailed; c.ExitCode = 1 })
+	claim := mustClaim(t, func(c *ClaimConfig) { c.Status = StatusFailed; c.ExitCode = 1; c.OutputDigest = contract.Digest{} })
 	decision, err := Decide(claim, Existing{AttemptID: testAttempt, AttemptOpen: true, CurrentFence: 7})
 	if err != nil {
 		t.Fatalf("Decide() error = %v", err)
@@ -145,7 +189,7 @@ func TestDecideCollapsesAnExactReplay(t *testing.T) {
 }
 
 func TestDecideRetriesTheCloseAfterACrash(t *testing.T) {
-	claim := mustClaim(t, func(c *ClaimConfig) { c.Status = StatusReclaimed; c.ExitCode = 0 })
+	claim := mustClaim(t, func(c *ClaimConfig) { c.Status = StatusReclaimed; c.ExitCode = 0; c.OutputDigest = contract.Digest{} })
 	decision, err := Decide(claim, Existing{
 		AttemptID: testAttempt, AttemptOpen: true, CurrentFence: 7, Recorded: &claim,
 	})
