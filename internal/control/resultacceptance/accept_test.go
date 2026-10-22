@@ -450,8 +450,8 @@ func TestAcceptDoesNotCompleteATaskWithACancellationRequest(t *testing.T) {
 	f.task = requested
 
 	_, err := f.service.Accept(ctx, f.request(f.twoIndependentVerifiers()...))
-	if !errors.Is(err, ErrStateChanged) {
-		t.Fatalf("Accept() error = %v, want %v", err, ErrStateChanged)
+	if !errors.Is(err, ErrTaskNotCompletable) {
+		t.Fatalf("Accept() error = %v, want %v", err, ErrTaskNotCompletable)
 	}
 	f.assertUntouched(t)
 }
@@ -505,4 +505,42 @@ func TestAcceptDoesNotLetTheProducingWorkerVouchForItself(t *testing.T) {
 		t.Fatalf("result = %+v, %v", result, err)
 	}
 	f.assertUntouched(t)
+}
+
+func TestAcceptRefusesATaskThatAlreadyReachedAnotherEnd(t *testing.T) {
+	f := newFixture(t, fixtureOptions{})
+	ctx := context.Background()
+	cancelled := f.task
+	cancelled.Phase = taskstate.TaskPhaseTerminal
+	cancelled.TerminalOutcome = taskstate.TerminalOutcomeCancelled
+	cancelled.Revision++
+	cancelled.UpdatedAt = cancelled.UpdatedAt.Add(time.Second)
+	if err := f.store.CompareAndSwapTask(ctx, f.task.ID, f.task.Revision, cancelled); err != nil {
+		t.Fatal(err)
+	}
+	f.task = cancelled
+
+	_, err := f.service.Accept(ctx, f.request(f.twoIndependentVerifiers()...))
+	if !errors.Is(err, ErrTaskNotCompletable) || errors.Is(err, ErrStateChanged) {
+		t.Fatalf("Accept() error = %v, want %v and not a retryable race", err, ErrTaskNotCompletable)
+	}
+	f.assertUntouched(t)
+}
+
+func TestAcceptKeepsTheCauseOfAPolicyFailure(t *testing.T) {
+	f := newFixture(t, fixtureOptions{})
+	cause := errors.New("policy store is down")
+	f.policy.err = cause
+	_, err := f.service.Accept(context.Background(), f.request(f.twoIndependentVerifiers()...))
+	if !errors.Is(err, ErrPolicyUnavailable) || !errors.Is(err, cause) {
+		t.Fatalf("Accept() error = %v, want it to wrap both %v and %v", err, ErrPolicyUnavailable, cause)
+	}
+}
+
+func TestAcceptOnAnUnbuiltServiceFailsInsteadOfPanicking(t *testing.T) {
+	f := newFixture(t, fixtureOptions{})
+	partial := &Service{attempts: f.store, results: f.store, clock: f.clock}
+	if _, err := partial.Accept(context.Background(), f.request()); !errors.Is(err, ErrInvalidConfig) {
+		t.Fatalf("Accept() error = %v, want %v", err, ErrInvalidConfig)
+	}
 }

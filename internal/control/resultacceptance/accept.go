@@ -33,11 +33,12 @@ import (
 )
 
 var (
-	ErrInvalidConfig     = errors.New("invalid result acceptance configuration")
-	ErrWrongPhase        = errors.New("the Attempt is not waiting for result verification")
-	ErrNoCompletedClaim  = errors.New("the Attempt has no completed claim to accept")
-	ErrStateChanged      = errors.New("the Attempt or Task changed while the result was being decided")
-	ErrPolicyUnavailable = errors.New("the result policy or the producer identity could not be read")
+	ErrInvalidConfig      = errors.New("invalid result acceptance configuration")
+	ErrWrongPhase         = errors.New("the Attempt is not waiting for result verification")
+	ErrNoCompletedClaim   = errors.New("the Attempt has no completed claim to accept")
+	ErrStateChanged       = errors.New("the Attempt or Task changed while the result was being decided")
+	ErrTaskNotCompletable = errors.New("the Task cannot be completed: it is terminal or has a cancellation request")
+	ErrPolicyUnavailable  = errors.New("the result policy or the producer identity could not be read")
 )
 
 type AttemptStore interface {
@@ -146,7 +147,8 @@ func (r Result) Outcome() resultaccept.Outcome {
 // Accept decides one Attempt that is waiting for verification. It is idempotent:
 // an Attempt that was already accepted returns the stored result.
 func (s *Service) Accept(ctx context.Context, req Request) (Result, error) {
-	if s == nil || s.attempts == nil || s.results == nil || s.clock == nil {
+	if s == nil || s.attempts == nil || s.tasks == nil || s.claims == nil || s.results == nil ||
+		s.policies == nil || s.producers == nil || s.clock == nil {
 		return Result{}, fmt.Errorf("%w: service is not initialized", ErrInvalidConfig)
 	}
 	if ctx == nil {
@@ -182,14 +184,19 @@ func (s *Service) Accept(ctx context.Context, req Request) (Result, error) {
 	if err != nil {
 		return Result{}, err
 	}
+	// A Task that can no longer complete will never accept this result. Say so
+	// before evaluating evidence, so the caller does not read it as a race to retry.
+	if task.CancellationRequested || !task.Phase.AcceptsResult() {
+		return Result{}, fmt.Errorf("%w: Task %s is %s", ErrTaskNotCompletable, task.ID, task.Phase)
+	}
 
 	policy, err := s.policies.ResultPolicy(ctx, attempt.TaskID)
 	if err != nil {
-		return Result{}, fmt.Errorf("%w: policy: %v", ErrPolicyUnavailable, err)
+		return Result{}, fmt.Errorf("%w: policy: %w", ErrPolicyUnavailable, err)
 	}
 	producer, err := s.producers.ProducerDimensions(ctx, attempt.WorkerIdentity)
 	if err != nil {
-		return Result{}, fmt.Errorf("%w: producer: %v", ErrPolicyUnavailable, err)
+		return Result{}, fmt.Errorf("%w: producer: %w", ErrPolicyUnavailable, err)
 	}
 
 	decision, err := resultaccept.Decide(resultaccept.ResultClaim{

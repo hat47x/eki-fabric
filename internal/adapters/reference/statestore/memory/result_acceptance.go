@@ -8,7 +8,6 @@ import (
 	"github.com/hat47x/eki-fabric/internal/core/attemptstate"
 	"github.com/hat47x/eki-fabric/internal/core/ids"
 	"github.com/hat47x/eki-fabric/internal/core/resultclaim"
-	"github.com/hat47x/eki-fabric/internal/core/taskstate"
 	"github.com/hat47x/eki-fabric/internal/spi/statestore"
 )
 
@@ -66,7 +65,7 @@ func (s *Store) CommitAcceptedResult(ctx context.Context, commit statestore.Resu
 		return fmt.Errorf("%w: task %s", statestore.ErrNotFound, taskID)
 	}
 	if task.Revision != commit.ExpectedTaskRevision || task.CancellationRequested ||
-		task.TaskIRDigest != commit.NextTask.TaskIRDigest || !acceptingPhase(task.Phase) {
+		task.TaskIRDigest != commit.NextTask.TaskIRDigest || !task.Phase.AcceptsResult() {
 		return fmt.Errorf("%w: task %s cannot complete at revision %d", statestore.ErrConflict, taskID, commit.ExpectedTaskRevision)
 	}
 
@@ -74,15 +73,4 @@ func (s *Store) CommitAcceptedResult(ctx context.Context, commit statestore.Resu
 	s.attempts[attemptID] = commit.NextAttempt
 	s.tasks[taskID] = commit.NextTask
 	return nil
-}
-
-// acceptingPhase lists the Task phases from which a verified result may
-// complete the Task. A Task that already reached a terminal phase, or that is
-// held or reconciling, is not completed by a late result.
-func acceptingPhase(phase taskstate.TaskPhase) bool {
-	switch phase {
-	case taskstate.TaskPhaseReady, taskstate.TaskPhaseActive, taskstate.TaskPhaseVerifying:
-		return true
-	}
-	return false
 }

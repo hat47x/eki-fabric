@@ -2,6 +2,7 @@ package acceptedresult
 
 import (
 	"errors"
+	"fmt"
 	"strings"
 	"testing"
 	"time"
@@ -79,7 +80,7 @@ func TestNewRejectsAnIncompleteOrUnjustifiedRecord(t *testing.T) {
 func manyVerifiers(n int) []string {
 	out := make([]string, n)
 	for i := range out {
-		out[i] = "verifier-" + strings.Repeat("x", 3) + string(rune('a'+i%26)) + time.Duration(i).String()
+		out[i] = fmt.Sprintf("verifier-%04d", i)
 	}
 	return out
 }

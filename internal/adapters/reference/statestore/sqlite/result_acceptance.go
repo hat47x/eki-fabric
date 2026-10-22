@@ -14,7 +14,6 @@ import (
 	"github.com/hat47x/eki-fabric/internal/core/ids"
 	"github.com/hat47x/eki-fabric/internal/core/resultaccept"
 	"github.com/hat47x/eki-fabric/internal/core/resultclaim"
-	"github.com/hat47x/eki-fabric/internal/core/taskstate"
 	"github.com/hat47x/eki-fabric/internal/spi/statestore"
 )
 
@@ -107,7 +106,7 @@ FROM tasks WHERE task_id = ?`, taskID.String()))
 		return fmt.Errorf("load task %s for acceptance: %w", taskID, err)
 	}
 	if task.Revision != commit.ExpectedTaskRevision || task.CancellationRequested ||
-		task.TaskIRDigest != commit.NextTask.TaskIRDigest || !acceptingTaskPhase(task.Phase) {
+		task.TaskIRDigest != commit.NextTask.TaskIRDigest || !task.Phase.AcceptsResult() {
 		return fmt.Errorf("%w: task %s cannot complete at revision %d", statestore.ErrConflict, taskID, commit.ExpectedTaskRevision)
 	}
 
@@ -160,17 +159,6 @@ INSERT INTO accepted_results (
 		return fmt.Errorf("commit accepted result for %s: %w", taskID, err)
 	}
 	return nil
-}
-
-// acceptingTaskPhase lists the Task phases from which a verified result may
-// complete the Task. A Task that reached a terminal phase, or that is held or
-// reconciling, is not completed by a late result.
-func acceptingTaskPhase(phase taskstate.TaskPhase) bool {
-	switch phase {
-	case taskstate.TaskPhaseReady, taskstate.TaskPhaseActive, taskstate.TaskPhaseVerifying:
-		return true
-	}
-	return false
 }
 
 func scanAcceptedResult(row rowScanner) (acceptedresult.Record, error) {
