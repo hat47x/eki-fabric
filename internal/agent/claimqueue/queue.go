@@ -150,8 +150,12 @@ func (q *Queue) DeliverDue(ctx context.Context, limit int) (Report, error) {
 			if entry.Attempts == ^uint32(0) {
 				return report, fmt.Errorf("%w: retry counter exhausted", ErrInvalidEntry)
 			}
+			retryAt := q.clock.Now().UTC()
+			if retryAt.IsZero() {
+				return report, fmt.Errorf("%w: clock returned zero time after failed delivery", ErrInvalidConfig)
+			}
 			entry.Attempts++
-			entry.NextAt = now.Add(q.backoff(entry.Claim, entry.Attempts))
+			entry.NextAt = retryAt.Add(q.backoff(entry.Claim, entry.Attempts))
 			entry.LastError = err.Error()
 			if err := q.store.Save(ctx, entry); err != nil {
 				return report, err

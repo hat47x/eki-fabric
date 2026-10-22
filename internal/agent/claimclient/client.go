@@ -9,6 +9,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"time"
 
 	"github.com/hat47x/eki-fabric/internal/core/attemptstate"
 	"github.com/hat47x/eki-fabric/internal/core/resultclaim"
@@ -21,22 +22,34 @@ var (
 )
 
 type Client struct {
-	api       workerplane.ClaimClient
-	principal workerplane.Principal
+	api         workerplane.ClaimClient
+	principal   workerplane.Principal
+	sendTimeout time.Duration
 }
+
+const DefaultSendTimeout = 30 * time.Second
 
 var _ interface {
 	Send(ctx context.Context, claim resultclaim.Claim) error
 } = (*Client)(nil)
 
 func New(api workerplane.ClaimClient, principal workerplane.Principal) (*Client, error) {
+	return NewWithTimeout(api, principal, DefaultSendTimeout)
+}
+
+// NewWithTimeout sets the maximum duration of one transport call. The
+// transport must honor context cancellation; no goroutine is detached to
+// abandon a non-cooperative implementation.
+func NewWithTimeout(api workerplane.ClaimClient, principal workerplane.Principal, timeout time.Duration) (*Client, error) {
 	switch {
 	case api == nil:
 		return nil, fmt.Errorf("%w: Worker Plane client is required", ErrInvalidConfig)
 	case principal.WorkerIdentity == "":
 		return nil, fmt.Errorf("%w: Worker identity is required", ErrInvalidConfig)
+	case timeout <= 0:
+		return nil, fmt.Errorf("%w: send timeout must be positive", ErrInvalidConfig)
 	}
-	return &Client{api: api, principal: principal}, nil
+	return &Client{api: api, principal: principal, sendTimeout: timeout}, nil
 }
 
 // Send satisfies the claim queue's Sender. A transport error is returned
@@ -51,7 +64,12 @@ func (c *Client) Send(ctx context.Context, claim resultclaim.Claim) error {
 	if claim.WorkerIdentity() != c.principal.WorkerIdentity {
 		return fmt.Errorf("%w: claim names %q, this Agent is %q", ErrInvalidConfig, claim.WorkerIdentity(), c.principal.WorkerIdentity)
 	}
-	ack, err := c.api.SubmitClaim(ctx, c.principal, claim)
+	callCtx, cancel := context.WithTimeout(ctx, c.sendTimeout)
+	defer cancel()
+	if err := callCtx.Err(); err != nil {
+		return err
+	}
+	ack, err := c.api.SubmitClaim(callCtx, c.principal, claim)
 	if err != nil {
 		return err
 	}
