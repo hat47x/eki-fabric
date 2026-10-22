@@ -825,3 +825,7 @@ Protobuf / Connectの生成コードをまだ入れずに、その両側を接�
 ### 2026-10-21 自律の判断の範囲と、外部の要求のインターフェース（ADR-0023）
 
 [ADR-0023](adr/0023-autonomy-scope-and-request-interfaces.md)で、EKIの自律の判断を、承認なしで行う、人間の承認を求める、行わないの三つに分け、[Authority Boundaries](../architecture/AUTHORITY_BOUNDARIES.md) §7Aに置いた。区分はADR-0022の委任状の区分と揃えた。外部の要求（依頼、方針、照会、承認、通知）の形を[Contract Boundaries](../architecture/CONTRACT_BOUNDARIES.md) §31.1と§33.1〜33.4に置いた。承認は期限までになければ承認されなかったものとし、通知は権限を持たず、受けられない依頼には拘束力のない代わりの案を返す。
+
+### 2026-10-22 案件の予算の執行と、外部への提供（ADR-0024）
+
+[ADR-0024](adr/0024-project-budget-execution-and-outward-provision.md)で、SEIの判断の執行を二つ具体化した。案件は、BUD-1の入れ子の一段（案件の予算の枠）と、それを使う依頼として表し、案件の意味はSEIの側に残す。予実は照会と通知で返す。外部への提供は、人間が定める提供の方針の範囲でCompute Grantとして行い、量の拡大はSEIに、縮小はSEIとEKIの自律に委ね、新しい相手は人間の承認を経る。提供先の仕事には、既定でISO-2以上の隔離を求める。新しい権限は足していない。

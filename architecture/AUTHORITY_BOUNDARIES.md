@@ -394,6 +394,8 @@ Federation Trust Binding Spikeの原則を維持します。
 
 予算の枠の予約は、受理（ADM-2）と容量の確保（CAP-1）のどちらからも、事前に行います。後から精算するだけでは、予算を超えた消費を止められないからです（RQ-017）。
 
+（2026-10-22追記。[ADR-0024](../plan/adr/0024-project-budget-execution-and-outward-provision.md)）SEIが立ち上げた案件は、BUD-1の入れ子の一段（案件の予算の枠）として表します。案件の名前や目的は、EKIでは意味を持たない識別子として扱います。案件の枠は、委任状を持つSEIが親の枠の中で作り、期間は委任状の期限を超えません。
+
 ---
 
 ## EXE-1 — Executor Admission Authority

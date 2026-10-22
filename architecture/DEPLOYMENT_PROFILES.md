@@ -638,6 +638,17 @@ Providerは、Resource Measurement Evidenceを、Contribution Authorityに渡せ
 
 EKI Coreは、価値を決めません。
 
+## 11.7 組織の余力を外部へ提供する場合
+
+（2026-10-22追記。[ADR-0024](../plan/adr/0024-project-budget-execution-and-outward-provision.md)）
+
+組織が自分の余力を、研究機関や取引先へ提供する場合は、組織がこのProfileのProviderになります。
+
+- 提供は、人間の管理者が定める「提供の方針」の範囲で行います。方針は、資源の区分ごとの上限、提供してよい相手の一覧、Data Classの上限、隔離の水準の下限、時間帯を持ちます。
+- 方針の上限の中で、一覧にある相手への量を増やすことは、委任状を持つSEIに委ねられます。提供の縮小と停止は、SEIにもEKIの自律の判断にも許します。新しい相手への提供の開始は、人間の承認を経ます。
+- 提供先の仕事は、組織の端末やサーバで外部の主体のコードとして動くため、隔離の水準の下限を設けます。既定の雛形はISO-2以上です（[Extension SPI](EXTENSION_SPI.md) §32）。
+- 多数のGrantを一度に縮小するときは、mass reclaimの回復の方針を通し、提供先の再配置が集中しないようにします。業務端末の持ち主の拒否権は、提供より優先します。
+
 ---
 
 # 12. DP-6 — Dedicated / Server Pool
