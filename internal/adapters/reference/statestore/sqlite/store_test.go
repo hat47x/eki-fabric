@@ -190,6 +190,28 @@ func TestLeaseSigningDurabilityContract(t *testing.T) {
 	})
 }
 
+func TestWorkOrderSigningContract(t *testing.T) {
+	statestoretest.RunWorkOrderSigningContract(t, func(t testing.TB) statestoretest.WorkOrderSigningTestStore {
+		t.Helper()
+		store := openStore(t, filepath.Join(t.TempDir(), "state.db"))
+		t.Cleanup(func() {
+			if err := store.Close(); err != nil {
+				t.Errorf("Close() error = %v", err)
+			}
+		})
+		return store
+	})
+}
+
+func TestWorkOrderSigningDurabilityContract(t *testing.T) {
+	statestoretest.RunWorkOrderSigningDurabilityContract(t, statestoretest.DurableWorkOrderSigningFactory{
+		Open: func(t testing.TB, location string) (statestoretest.WorkOrderSigningTestStore, func() error) {
+			store := openStore(t, location)
+			return store, store.Close
+		},
+	})
+}
+
 func TestPolicyStoreContract(t *testing.T) {
 	statestoretest.RunPolicyStoreContract(t, func(t testing.TB) statestore.PolicyStore {
 		t.Helper()

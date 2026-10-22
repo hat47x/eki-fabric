@@ -829,3 +829,15 @@ Protobuf / Connectの生成コードをまだ入れずに、その両側を接�
 ### 2026-10-22 案件の予算の執行と、外部への提供（ADR-0024）
 
 [ADR-0024](adr/0024-project-budget-execution-and-outward-provision.md)で、SEIの判断の執行を二つ具体化した。案件は、BUD-1の入れ子の一段（案件の予算の枠）と、それを使う依頼として表し、案件の意味はSEIの側に残す。予実は照会と通知で返す。外部への提供は、人間が定める提供の方針の範囲でCompute Grantとして行い、量の拡大はSEIに、縮小はSEIとEKIの自律に委ね、新しい相手は人間の承認を経る。提供先の仕事には、既定でISO-2以上の隔離を求める。新しい権限は足していない。
+
+### 2026-10-22 WOR-1のWorkOrder発行（#57）
+
+Worker側には署名済みWorkOrderを検証・受理する境界（`workorderverify`、`workorderaccept`、`agent/startgate`）があったが、Control Plane側にWorkOrderへ署名する主体がなかった。`internal/core/workorderissue`を追加し、LSE-1（`leaseissue.Emitter`）と同じ形でWOR-1の発行を線形化した。
+
+- 入力はEMITTEDのLeaseと、Executor Approvalの参照、limits、sandbox。Task、Attempt、Worker、Placement / Leaseの参照、policy revision、fenceは保存済みのLeaseから導く。
+- 署名後、commitの直前にPolicy Epoch、WOR-1 key、Trust Bundle、Task、Attempt、Leaseのfenceを確かめ直す。State Storeも同じ書き込みの中で照合する。
+- EMITTEDは保存済みbytesをそのまま返し、再署名しない。前提を失った場合はABORTEDを記録し、署名済みbytesを出さない。ABORTEDはAttempt、Lease、FenceEpochを変えない。一時的に読めない状態では何も記録しない。
+- State Store SPIに`WorkOrderEmissionStore`を加え、memoryとSQLite（migration 9の`work_order_emissions`）が実装した。
+- 共通の適合性試験`RunWorkOrderSigningContract`では、発行したWorkOrderがWorker側の三つの境界を通ること、古いPolicy・失効したkey・期限切れや置き換えられたLease・Workerの不一致がABORTEDになること、crashと再送、SQLiteの再起動を固定した。
+
+#160で未決の論点のうち、一つのLeaseからWorkOrderは一つだけ、`A-ASSIGNED`のAttemptだけが受け取れる、Artifact Grantは含めない、Executor Approvalは呼び出し側の参照を結び付ける、の四点を仮決めとした（[`internal/core/workorderissue/README.md`](../internal/core/workorderissue/README.md)）。

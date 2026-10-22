@@ -87,3 +87,10 @@ func TestLeaseSigningContract(t *testing.T) {
 		return New()
 	})
 }
+
+func TestWorkOrderSigningContract(t *testing.T) {
+	statestoretest.RunWorkOrderSigningContract(t, func(t testing.TB) statestoretest.WorkOrderSigningTestStore {
+		t.Helper()
+		return New()
+	})
+}
