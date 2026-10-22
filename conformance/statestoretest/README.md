@@ -121,6 +121,18 @@ WOR-1の署名境界（`workorderissue.Issuer`）を、実際のState Storeに�
 - 複数のIssuerが同時に同じLeaseを処理しても、全員が同じEMITTED bytesを返す
 - SQLiteを再起動しても、commit前crashからの再試行、EMITTEDの再送、ABORTEDの再送が同じ結果になる
 
+## `RunResultAcceptanceContract` / `RunResultAcceptanceDurabilityContract`
+
+検証を終えた結果を受理済みの結果（AcceptedResult）へ昇格させる、RAC-1の記録の契約です（#57）。受理は、AcceptedResultの記録、Attemptのaccepted終了、Taskのcompleted化を、一つのcommitで行います。
+
+確認する行は次のとおりです。
+
+- commitが成功すると、三つがそろって反映される。受理済みの結果はTask単位で読み出せる
+- 同じ内容の再送は`ErrAlreadyExists`で、同じTaskへの別の内容は`ErrConflict`。最初の受理済みの結果は置き換わらない
+- 拒否されたcommit（古いAttempt revision、古いTask revision、A-VERIFYINGではないAttempt、記録された申告がない、申告のdigestや出力のdigestが違う、Taskが終端に達している、取消しの要求がある、別のTaskのAttempt）は、受理済みの結果を作らず、AttemptもTaskも変えない
+- 形が壊れたcommit（Attemptを別の理由で閉じる、Taskを完了にしない、など）は、状態を読む前に`ErrInvalidAcceptance`で拒否される
+- SQLiteを再起動しても、受理済みの結果、閉じたAttempt、完了したTaskがそろって残り、再送は`ErrAlreadyExists`のまま
+
 ## 未決事項（Open Question）
 
 - `A-ASSIGNED`で保持されたLeaseへの同じPlacement Decisionの再送を許すかどうかは未決です。現在の契約（`reserve-load-replay`、`exact-replay-keeps-attempt-revision-and-fence`）と両Adapterは、この再送が既存のLeaseへ収束することを確認しています。ただし、これは「配送前の段階でも再送を許す」という設計判断を確定したものではありません。Leaseをまだ配送していない段階で再送を許してよいかは、後続の設計判断で決めます。それまで、この挙動は暫定です。
