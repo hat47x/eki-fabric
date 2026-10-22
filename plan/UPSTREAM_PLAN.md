@@ -833,3 +833,15 @@ Protobuf / Connectの生成コードをまだ入れずに、その両側を接�
 ### 2026-10-22 Leaseのpolicyの鮮度と、署名中の鍵の入れ替わり（ADR-0025）
 
 [ADR-0025](adr/0025-lease-policy-currentness-and-key-rotation.md)で、#78に残っていた二点を仮承認で決めた。Workerは、Leaseのpolicyが今も有効かを確かめず、署名、Trust Bundle、有効期限、`policy_revision`の一致だけを確かめる。policyの取り消しはControl PlaneのFenceEpochとreservationを閉じる処理で防ぎ、配送済みのLeaseが止まるまでの上限はLeaseの有効期間とする。署名中に鍵のprimaryが入れ替わった場合はABORTEDとし、署名し直さない。Leaseの有効期間の値と、emergency revokeの経路は未決のまま残す。
+
+### 2026-10-22 WOR-1のWorkOrder発行（#57）
+
+Worker側には署名済みWorkOrderを検証・受理する境界（`workorderverify`、`workorderaccept`、`agent/startgate`）があったが、Control Plane側にWorkOrderへ署名する主体がなかった。`internal/core/workorderissue`を追加し、LSE-1（`leaseissue.Emitter`）と同じ形でWOR-1の発行を線形化した。
+
+- 入力はEMITTEDのLeaseと、Executor Approvalの参照、limits、sandbox。Task、Attempt、Worker、Placement / Leaseの参照、policy revision、fenceは保存済みのLeaseから導く。
+- 署名後、commitの直前にPolicy Epoch、WOR-1 key、Trust Bundle、Task、Attempt、Leaseのfenceを確かめ直す。State Storeも同じ書き込みの中で照合する。
+- EMITTEDは保存済みbytesをそのまま返し、再署名しない。前提を失った場合はABORTEDを記録し、署名済みbytesを出さない。ABORTEDはAttempt、Lease、FenceEpochを変えない。一時的に読めない状態では何も記録しない。
+- State Store SPIに`WorkOrderEmissionStore`を加え、memoryとSQLite（migration 10の`work_order_emissions`）が実装した。
+- 共通の適合性試験`RunWorkOrderSigningContract`では、発行したWorkOrderがWorker側の三つの境界を通ること、古いPolicy・失効したkey・期限切れや置き換えられたLease・Workerの不一致がABORTEDになること、crashと再送、SQLiteの再起動を固定した。
+
+#160で未決の論点のうち、一つのLeaseからWorkOrderは一つだけ、`A-ASSIGNED`のAttemptだけが受け取れる、Artifact Grantは含めない、Executor Approvalは呼び出し側の参照を結び付ける、の四点を仮決めとした（[`internal/core/workorderissue/README.md`](../internal/core/workorderissue/README.md)）。署名中にWOR-1 keyのprimaryが入れ替わった場合は、[ADR-0025](adr/0025-lease-policy-currentness-and-key-rotation.md)のLSE-1と同じくABORTEDとし、署名し直さない。

@@ -106,6 +106,21 @@ LSE-1の署名境界（`leaseissue.Emitter`）を、実際のState Storeに対�
 - 複数のEmitterが同時に同じreservationを処理しても、全員が同じEMITTED bytesを返す
 - SQLiteを再起動しても、commit前crashからの再試行、EMITTEDの再送、ABORTEDの再送が同じ結果になる
 
+## `RunWorkOrderSigningContract` / `RunWorkOrderSigningDurabilityContract`
+
+WOR-1の署名境界（`workorderissue.Issuer`）を、実際のState Storeに対して動かす契約です。LeaseはLSE-1の`leaseissue.Emitter`でEMITTEDにしてから使います。WOR-1 keyは、LSE-1 keyと同じRegistryに別のscopeで登録します。
+
+確認する行は次のとおりです（#57、#160）。
+
+- 発行したWorkOrderが、Worker側の`workorderverify`、`workorderaccept`、`agent/startgate`をそのまま通る。同じbytesの二度目の受理はnonceの再利用として拒否される
+- 古いPolicy、署名中のPolicy取消、commit直前のPolicy取消（State Storeが拒否）、WOR-1 keyの失効・侵害、Leaseの期限切れ、Leaseの置き換え（Attemptのclose）、Workerの不一致は、いずれもABORTEDになる。ABORTEDは署名済みbytesを返さず、Lease、Lease emission、Attempt、FenceEpochを変えない
+- LeaseがRESERVEDのまま、Policyを読めない、Trust Bundleが古い場合は、何も記録しない
+- commit前にcrashしても何も記録されず、再試行は一度だけEMITTEDを作る。その後の再送は再署名せず同じbytesを返す
+- commit後に応答が失われても、再試行は保存済みのbytesを返す。Policyを取り消した後でも同じ
+- 条件の違う再送にはbytesを返さない
+- 複数のIssuerが同時に同じLeaseを処理しても、全員が同じEMITTED bytesを返す
+- SQLiteを再起動しても、commit前crashからの再試行、EMITTEDの再送、ABORTEDの再送が同じ結果になる
+
 ## 未決事項（Open Question）
 
 - `A-ASSIGNED`で保持されたLeaseへの同じPlacement Decisionの再送を許すかどうかは未決です。現在の契約（`reserve-load-replay`、`exact-replay-keeps-attempt-revision-and-fence`）と両Adapterは、この再送が既存のLeaseへ収束することを確認しています。ただし、これは「配送前の段階でも再送を許す」という設計判断を確定したものではありません。Leaseをまだ配送していない段階で再送を許してよいかは、後続の設計判断で決めます。それまで、この挙動は暫定です。

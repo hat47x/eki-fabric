@@ -12,6 +12,7 @@ import (
 	"github.com/hat47x/eki-fabric/internal/core/policystate"
 	"github.com/hat47x/eki-fabric/internal/core/resultclaim"
 	"github.com/hat47x/eki-fabric/internal/core/taskstate"
+	"github.com/hat47x/eki-fabric/internal/core/workorderemission"
 	"github.com/hat47x/eki-fabric/internal/spi/statestore"
 )
 
@@ -41,6 +42,8 @@ type Store struct {
 	leases            map[ids.LeaseID]leasestate.LeaseRecord
 	leaseEmissions    map[ids.LeaseID]leaseemission.Record
 	emissionDecisions map[authorityDecisionScope]ids.LeaseID
+	workOrders        map[ids.LeaseID]workorderemission.Record
+	workOrderDecision map[authorityDecisionScope]ids.LeaseID
 	placementLeases   map[placementScope]ids.LeaseID
 	maxFence          map[ids.TaskID]uint64
 	policyCurrent     uint64
@@ -57,6 +60,8 @@ func New() *Store {
 		leases:            make(map[ids.LeaseID]leasestate.LeaseRecord),
 		leaseEmissions:    make(map[ids.LeaseID]leaseemission.Record),
 		emissionDecisions: make(map[authorityDecisionScope]ids.LeaseID),
+		workOrders:        make(map[ids.LeaseID]workorderemission.Record),
+		workOrderDecision: make(map[authorityDecisionScope]ids.LeaseID),
 		placementLeases:   make(map[placementScope]ids.LeaseID),
 		maxFence:          make(map[ids.TaskID]uint64),
 		policyHistory:     make(map[uint64]policystate.State),
