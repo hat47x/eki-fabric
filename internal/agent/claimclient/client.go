@@ -10,11 +10,15 @@ import (
 	"errors"
 	"fmt"
 
+	"github.com/hat47x/eki-fabric/internal/core/attemptstate"
 	"github.com/hat47x/eki-fabric/internal/core/resultclaim"
 	"github.com/hat47x/eki-fabric/internal/spi/workerplane"
 )
 
-var ErrInvalidConfig = errors.New("invalid claim client configuration")
+var (
+	ErrInvalidConfig          = errors.New("invalid claim client configuration")
+	ErrInvalidAcknowledgement = errors.New("invalid result claim acknowledgement")
+)
 
 type Client struct {
 	api       workerplane.ClaimClient
@@ -47,6 +51,34 @@ func (c *Client) Send(ctx context.Context, claim resultclaim.Claim) error {
 	if claim.WorkerIdentity() != c.principal.WorkerIdentity {
 		return fmt.Errorf("%w: claim names %q, this Agent is %q", ErrInvalidConfig, claim.WorkerIdentity(), c.principal.WorkerIdentity)
 	}
-	_, err := c.api.SubmitClaim(ctx, c.principal, claim)
-	return err
+	ack, err := c.api.SubmitClaim(ctx, c.principal, claim)
+	if err != nil {
+		return err
+	}
+	return validateAcknowledgement(ack)
+}
+
+// A nil transport error alone is not a receipt. Unknown/empty fields or an
+// inconsistent verification flag leave delivery unconfirmed, so the queue
+// retains the claim. This validates the message shape, not result correctness
+// or authentication/binding of the transport's response to this request.
+func validateAcknowledgement(ack workerplane.ClaimAck) error {
+	switch resultclaim.Kind(ack.Decision) {
+	case resultclaim.KindNew, resultclaim.KindDuplicate, resultclaim.KindStale, resultclaim.KindLate:
+	default:
+		return fmt.Errorf("%w: unknown decision %q", ErrInvalidAcknowledgement, ack.Decision)
+	}
+	phase := attemptstate.AttemptPhase(ack.AttemptPhase)
+	switch phase {
+	case attemptstate.AttemptPhaseCreated, attemptstate.AttemptPhasePlacing,
+		attemptstate.AttemptPhaseAssigned, attemptstate.AttemptPhaseDispatched,
+		attemptstate.AttemptPhaseClaimed, attemptstate.AttemptPhaseVerifying,
+		attemptstate.AttemptPhaseClosed:
+	default:
+		return fmt.Errorf("%w: unknown Attempt phase %q", ErrInvalidAcknowledgement, ack.AttemptPhase)
+	}
+	if ack.VerificationRequired != (phase == attemptstate.AttemptPhaseVerifying) {
+		return fmt.Errorf("%w: verification flag differs from Attempt phase", ErrInvalidAcknowledgement)
+	}
+	return nil
 }
