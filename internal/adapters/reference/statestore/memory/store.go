@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"sync"
 
+	"github.com/hat47x/eki-fabric/internal/core/acceptedresult"
 	"github.com/hat47x/eki-fabric/internal/core/attemptstate"
 	"github.com/hat47x/eki-fabric/internal/core/ids"
 	"github.com/hat47x/eki-fabric/internal/core/leaseemission"
@@ -49,6 +50,7 @@ type Store struct {
 	policyCurrent     uint64
 	policyHistory     map[uint64]policystate.State
 	claims            map[ids.AttemptID]resultclaim.Claim
+	accepted          map[ids.TaskID]acceptedresult.Record
 }
 
 func New() *Store {
@@ -66,6 +68,7 @@ func New() *Store {
 		maxFence:          make(map[ids.TaskID]uint64),
 		policyHistory:     make(map[uint64]policystate.State),
 		claims:            make(map[ids.AttemptID]resultclaim.Claim),
+		accepted:          make(map[ids.TaskID]acceptedresult.Record),
 	}
 }
 

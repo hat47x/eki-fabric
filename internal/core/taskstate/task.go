@@ -98,6 +98,17 @@ func validPhase(v TaskPhase) bool {
 	}
 }
 
+// AcceptsResult reports whether a verified result may still complete a Task in
+// this phase. A Task that is terminal, held or reconciling is not completed by a
+// late result.
+func (p TaskPhase) AcceptsResult() bool {
+	switch p {
+	case TaskPhaseReady, TaskPhaseActive, TaskPhaseVerifying:
+		return true
+	}
+	return false
+}
+
 func validOutcome(v TerminalOutcome) bool {
 	switch v {
 	case TerminalOutcomeNone, TerminalOutcomeCompleted, TerminalOutcomeCancelled, TerminalOutcomeFailed, TerminalOutcomeExhausted, TerminalOutcomeAbandoned:

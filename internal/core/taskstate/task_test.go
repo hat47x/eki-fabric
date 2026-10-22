@@ -62,3 +62,18 @@ func TestTaskRecordRequiresOutcomeOnlyWhenTerminal(t *testing.T) {
 		t.Fatalf("terminal Validate() error = %v", err)
 	}
 }
+
+func TestOnlyAnOpenPhaseAcceptsAResult(t *testing.T) {
+	want := map[TaskPhase]bool{
+		TaskPhaseAdmitted: false, TaskPhaseReady: true, TaskPhaseActive: true, TaskPhaseVerifying: true,
+		TaskPhaseReconciling: false, TaskPhaseHeld: false, TaskPhaseTerminal: false,
+	}
+	for phase, accepts := range want {
+		if phase.AcceptsResult() != accepts {
+			t.Fatalf("%s.AcceptsResult() = %v, want %v", phase, !accepts, accepts)
+		}
+	}
+	if TaskPhase("unknown").AcceptsResult() {
+		t.Fatal("an unknown phase accepts a result")
+	}
+}

@@ -598,6 +598,30 @@ BEFORE DELETE ON work_order_emissions
 BEGIN
 	SELECT RAISE(ABORT, 'WorkOrder emission state is immutable');
 END`,
+	// 11: durable AcceptedResults (RAC-1). A Task has at most one. The row is
+	// written in the same transaction that closes the Attempt as accepted and
+	// completes the Task, so the three cannot disagree after a crash. Rows are
+	// immutable: an accepted result is never rewritten or removed.
+	`CREATE TABLE accepted_results (
+	task_id         TEXT    NOT NULL PRIMARY KEY,
+	attempt_id      TEXT    NOT NULL UNIQUE,
+	claim_digest    TEXT    NOT NULL CHECK (length(claim_digest) = 64),
+	output_digest   TEXT    NOT NULL CHECK (length(output_digest) = 64),
+	assurance_level TEXT    NOT NULL CHECK (assurance_level IN ('RA-1', 'RA-2')),
+	policy_digest   TEXT    NOT NULL CHECK (length(policy_digest) = 64),
+	verifiers       TEXT    NOT NULL,
+	accepted_at_ns  INTEGER NOT NULL
+);
+CREATE TRIGGER accepted_results_immutable_update
+BEFORE UPDATE ON accepted_results
+BEGIN
+	SELECT RAISE(ABORT, 'AcceptedResult is immutable');
+END;
+CREATE TRIGGER accepted_results_immutable_delete
+BEFORE DELETE ON accepted_results
+BEGIN
+	SELECT RAISE(ABORT, 'AcceptedResult is immutable');
+END`,
 }
 
 // migrate brings the database to the latest version. It is idempotent, rejects
