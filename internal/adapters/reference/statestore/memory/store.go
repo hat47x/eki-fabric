@@ -51,6 +51,7 @@ type Store struct {
 	policyHistory     map[uint64]policystate.State
 	claims            map[ids.AttemptID]resultclaim.Claim
 	accepted          map[ids.TaskID]acceptedresult.Record
+	recovery          recoveryState
 }
 
 func New() *Store {
@@ -69,6 +70,7 @@ func New() *Store {
 		policyHistory:     make(map[uint64]policystate.State),
 		claims:            make(map[ids.AttemptID]resultclaim.Claim),
 		accepted:          make(map[ids.TaskID]acceptedresult.Record),
+		recovery:          newRecoveryState(),
 	}
 }
 

@@ -188,6 +188,20 @@ func (r CloseReason) EndsExecutionAuthority() bool {
 	return false
 }
 
+// IsInterruption reports whether an Attempt closed for this reason ended without a
+// decided result, so the Task may be given a new Attempt if its reliability
+// contract allows. A decided result (accepted or rejected), a cancellation, a
+// supersession, an unknown external effect and a revoked policy are not
+// interruptions: a new Attempt for any of them needs another decision.
+func (r CloseReason) IsInterruption() bool {
+	switch r {
+	case CloseReasonReclaimed, CloseReasonExecutionFailureConfirmed, CloseReasonWorkerLost,
+		CloseReasonLeaseExpired, CloseReasonDeadline, CloseReasonBudgetExhausted:
+		return true
+	}
+	return false
+}
+
 // AuthorityEndingCloseReasons lists the reasons for which EndsExecutionAuthority
 // is true, in a stable order. Adapters use it to express the rule in a query.
 func AuthorityEndingCloseReasons() []CloseReason {

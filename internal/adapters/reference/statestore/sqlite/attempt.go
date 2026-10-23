@@ -28,60 +28,8 @@ func (s *Store) CreateAttempt(ctx context.Context, record attemptstate.AttemptRe
 	}
 	defer func() { _ = tx.Rollback() }()
 
-	var (
-		parentDigest    string
-		parentPhase     string
-		parentCancelled int64
-	)
-	err = tx.QueryRowContext(ctx, `
-SELECT task_ir_digest, phase, cancellation_requested
-FROM tasks WHERE task_id = ?`, record.TaskID.String()).Scan(&parentDigest, &parentPhase, &parentCancelled)
-	if errors.Is(err, sql.ErrNoRows) {
-		return fmt.Errorf("%w: task %s", statestore.ErrNotFound, record.TaskID)
-	}
-	if err != nil {
-		return fmt.Errorf("load parent task for attempt %s: %w", record.ID, err)
-	}
-	if parentDigest != record.TaskIRDigest.Hex() {
-		return fmt.Errorf("%w: attempt %s TaskIR differs from parent Task", statestore.ErrConflict, record.ID)
-	}
-	phase := taskstate.TaskPhase(parentPhase)
-	if parentCancelled != 0 ||
-		(phase != taskstate.TaskPhaseReady && phase != taskstate.TaskPhaseActive) {
-		return fmt.Errorf("%w: task %s cannot create a new Attempt", statestore.ErrConflict, record.TaskID)
-	}
-
-	var lease any
-	if record.LeaseID != "" {
-		lease = record.LeaseID.String()
-	}
-	res, err := tx.ExecContext(ctx, `
-INSERT INTO attempts (
-	attempt_id, task_id, task_ir_digest, attempt_number, phase,
-	worker_identity, lease_id, close_reason, revision, created_at_ns, updated_at_ns
-) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-ON CONFLICT DO NOTHING`,
-		record.ID.String(),
-		record.TaskID.String(),
-		record.TaskIRDigest.Hex(),
-		int64(record.Number),
-		string(record.Phase),
-		record.WorkerIdentity,
-		lease,
-		string(record.CloseReason),
-		int64(record.Revision),
-		record.CreatedAt.UTC().UnixNano(),
-		record.UpdatedAt.UTC().UnixNano(),
-	)
-	if err != nil {
-		return fmt.Errorf("create attempt %s: %w", record.ID, err)
-	}
-	n, err := res.RowsAffected()
-	if err != nil {
-		return fmt.Errorf("create attempt %s: %w", record.ID, err)
-	}
-	if n == 0 {
-		return fmt.Errorf("%w: attempt %s or task %s number %d", statestore.ErrAlreadyExists, record.ID, record.TaskID, record.Number)
+	if err := createAttemptTx(ctx, tx, record); err != nil {
+		return err
 	}
 	if err := tx.Commit(); err != nil {
 		return fmt.Errorf("commit attempt %s: %w", record.ID, err)
@@ -225,3 +173,65 @@ func corruptAttempt(id string, err error) error {
 }
 
 var _ statestore.AttemptStore = (*Store)(nil)
+
+// createAttemptTx creates an Attempt inside the caller's transaction, so that an
+// operation that also changes other state can commit both or neither.
+func createAttemptTx(ctx context.Context, tx *sql.Tx, record attemptstate.AttemptRecord) error {
+	var err error
+	var (
+		parentDigest    string
+		parentPhase     string
+		parentCancelled int64
+	)
+	err = tx.QueryRowContext(ctx, `
+SELECT task_ir_digest, phase, cancellation_requested
+FROM tasks WHERE task_id = ?`, record.TaskID.String()).Scan(&parentDigest, &parentPhase, &parentCancelled)
+	if errors.Is(err, sql.ErrNoRows) {
+		return fmt.Errorf("%w: task %s", statestore.ErrNotFound, record.TaskID)
+	}
+	if err != nil {
+		return fmt.Errorf("load parent task for attempt %s: %w", record.ID, err)
+	}
+	if parentDigest != record.TaskIRDigest.Hex() {
+		return fmt.Errorf("%w: attempt %s TaskIR differs from parent Task", statestore.ErrConflict, record.ID)
+	}
+	phase := taskstate.TaskPhase(parentPhase)
+	if parentCancelled != 0 ||
+		(phase != taskstate.TaskPhaseReady && phase != taskstate.TaskPhaseActive) {
+		return fmt.Errorf("%w: task %s cannot create a new Attempt", statestore.ErrConflict, record.TaskID)
+	}
+
+	var lease any
+	if record.LeaseID != "" {
+		lease = record.LeaseID.String()
+	}
+	res, err := tx.ExecContext(ctx, `
+INSERT INTO attempts (
+	attempt_id, task_id, task_ir_digest, attempt_number, phase,
+	worker_identity, lease_id, close_reason, revision, created_at_ns, updated_at_ns
+) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+ON CONFLICT DO NOTHING`,
+		record.ID.String(),
+		record.TaskID.String(),
+		record.TaskIRDigest.Hex(),
+		int64(record.Number),
+		string(record.Phase),
+		record.WorkerIdentity,
+		lease,
+		string(record.CloseReason),
+		int64(record.Revision),
+		record.CreatedAt.UTC().UnixNano(),
+		record.UpdatedAt.UTC().UnixNano(),
+	)
+	if err != nil {
+		return fmt.Errorf("create attempt %s: %w", record.ID, err)
+	}
+	n, err := res.RowsAffected()
+	if err != nil {
+		return fmt.Errorf("create attempt %s: %w", record.ID, err)
+	}
+	if n == 0 {
+		return fmt.Errorf("%w: attempt %s or task %s number %d", statestore.ErrAlreadyExists, record.ID, record.TaskID, record.Number)
+	}
+	return nil
+}

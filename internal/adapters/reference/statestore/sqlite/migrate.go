@@ -622,6 +622,97 @@ BEFORE DELETE ON accepted_results
 BEGIN
 	SELECT RAISE(ABORT, 'AcceptedResult is immutable');
 END`,
+	// 12: durable recovery state. A retry waits in recovery_pending, one per Task.
+	// A pass of the release logic consumes budget from the single recovery_window
+	// row and issues Permits, and recovery_releases remembers each committed pass
+	// so that a repeat of it is recognized. A Permit is written once and used once:
+	// the only change it accepts is spent_by going from empty to an Attempt. The
+	// three tables that only record what happened are immutable.
+	`CREATE TABLE recovery_pending (
+	task_id                  TEXT    NOT NULL PRIMARY KEY REFERENCES tasks (task_id),
+	task_ir_digest           TEXT    NOT NULL CHECK (length(task_ir_digest) = 64),
+	previous_attempt_id      TEXT    NOT NULL UNIQUE,
+	previous_attempt_number  INTEGER NOT NULL CHECK (previous_attempt_number > 0),
+	next_attempt_number      INTEGER NOT NULL CHECK (next_attempt_number = previous_attempt_number + 1),
+	max_attempts             INTEGER NOT NULL CHECK (max_attempts >= next_attempt_number),
+	priority                 INTEGER NOT NULL CHECK (priority BETWEEN 0 AND 2),
+	deadline_ns              INTEGER NOT NULL,
+	not_before_ns            INTEGER NOT NULL,
+	estimated_transfer_bytes TEXT    NOT NULL CHECK (length(estimated_transfer_bytes) BETWEEN 1 AND 20),
+	estimated_compute_millis TEXT    NOT NULL CHECK (length(estimated_compute_millis) BETWEEN 1 AND 20)
+);
+CREATE TRIGGER recovery_pending_immutable_update
+BEFORE UPDATE ON recovery_pending
+BEGIN
+	SELECT RAISE(ABORT, 'a pending retry is not rewritten');
+END;
+CREATE TABLE recovery_window (
+	singleton       INTEGER NOT NULL PRIMARY KEY CHECK (singleton = 1),
+	policy_revision INTEGER NOT NULL CHECK (policy_revision > 0),
+	window_start_ns INTEGER NOT NULL,
+	released        INTEGER NOT NULL CHECK (released >= 0),
+	transfer_bytes  TEXT    NOT NULL CHECK (length(transfer_bytes) BETWEEN 1 AND 20),
+	compute_millis  TEXT    NOT NULL CHECK (length(compute_millis) BETWEEN 1 AND 20),
+	last_sequence   INTEGER NOT NULL CHECK (last_sequence > 0)
+);
+CREATE TRIGGER recovery_window_never_goes_back
+BEFORE UPDATE ON recovery_window
+WHEN NEW.last_sequence <> OLD.last_sequence + 1
+BEGIN
+	SELECT RAISE(ABORT, 'the recovery sequence only moves forward by one');
+END;
+CREATE TRIGGER recovery_window_no_delete
+BEFORE DELETE ON recovery_window
+BEGIN
+	SELECT RAISE(ABORT, 'the recovery window is not removed');
+END;
+CREATE TABLE recovery_releases (
+	sequence    INTEGER NOT NULL PRIMARY KEY CHECK (sequence > 0),
+	fingerprint TEXT    NOT NULL CHECK (length(fingerprint) = 64)
+);
+CREATE TRIGGER recovery_releases_immutable_update
+BEFORE UPDATE ON recovery_releases
+BEGIN
+	SELECT RAISE(ABORT, 'a committed recovery pass is immutable');
+END;
+CREATE TRIGGER recovery_releases_immutable_delete
+BEFORE DELETE ON recovery_releases
+BEGIN
+	SELECT RAISE(ABORT, 'a committed recovery pass is immutable');
+END;
+CREATE TABLE recovery_permits (
+	previous_attempt_id      TEXT    NOT NULL PRIMARY KEY,
+	task_id                  TEXT    NOT NULL REFERENCES tasks (task_id),
+	task_ir_digest           TEXT    NOT NULL CHECK (length(task_ir_digest) = 64),
+	previous_attempt_number  INTEGER NOT NULL CHECK (previous_attempt_number > 0),
+	next_attempt_number      INTEGER NOT NULL CHECK (next_attempt_number = previous_attempt_number + 1),
+	policy_revision          INTEGER NOT NULL CHECK (policy_revision > 0),
+	sequence                 INTEGER NOT NULL CHECK (sequence > 0),
+	issued_at_ns             INTEGER NOT NULL,
+	not_before_ns            INTEGER NOT NULL,
+	expires_at_ns            INTEGER NOT NULL,
+	estimated_transfer_bytes TEXT    NOT NULL CHECK (length(estimated_transfer_bytes) BETWEEN 1 AND 20),
+	estimated_compute_millis TEXT    NOT NULL CHECK (length(estimated_compute_millis) BETWEEN 1 AND 20),
+	permit_digest            TEXT    NOT NULL CHECK (length(permit_digest) = 64),
+	spent_by                 TEXT
+);
+CREATE TRIGGER recovery_permits_use_once
+BEFORE UPDATE ON recovery_permits
+WHEN OLD.spent_by IS NOT NULL
+	OR NEW.spent_by IS NULL
+	OR NEW.previous_attempt_id <> OLD.previous_attempt_id
+	OR NEW.task_id <> OLD.task_id
+	OR NEW.permit_digest <> OLD.permit_digest
+	OR NEW.expires_at_ns <> OLD.expires_at_ns
+	OR NEW.not_before_ns <> OLD.not_before_ns
+BEGIN
+	SELECT RAISE(ABORT, 'a recovery Permit is written once and used once');
+END;
+CREATE TRIGGER recovery_permits_no_delete
+BEFORE DELETE ON recovery_permits
+BEGIN
+	SELECT RAISE(ABORT, 'a recovery Permit is not removed');
+END`,
 }
 
 // migrate brings the database to the latest version. It is idempotent, rejects

@@ -46,3 +46,21 @@ func TestAuthorityEndingCloseReasonsMatchesThePredicateAndIsACopy(t *testing.T) 
 		t.Fatal("the list is not a copy")
 	}
 }
+
+func TestOnlyAnEndWithoutAResultIsAnInterruption(t *testing.T) {
+	want := map[CloseReason]bool{
+		CloseReasonReclaimed: true, CloseReasonExecutionFailureConfirmed: true, CloseReasonWorkerLost: true,
+		CloseReasonLeaseExpired: true, CloseReasonDeadline: true, CloseReasonBudgetExhausted: true,
+		CloseReasonNone: false, CloseReasonResultAccepted: false, CloseReasonResultRejected: false,
+		CloseReasonCancelled: false, CloseReasonSuperseded: false, CloseReasonUnknownExternalEffect: false,
+		CloseReasonPolicyRevoked: false, CloseReasonStaleAttempt: false,
+	}
+	for reason, interrupted := range want {
+		if reason.IsInterruption() != interrupted {
+			t.Fatalf("%q.IsInterruption() = %v, want %v", reason, !interrupted, interrupted)
+		}
+	}
+	if CloseReason("a_future_reason").IsInterruption() {
+		t.Fatal("an unknown close reason is an interruption")
+	}
+}

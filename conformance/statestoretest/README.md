@@ -140,6 +140,20 @@ WOR-1の署名境界（`workorderissue.Issuer`）を、実際のState Storeに�
 - 形が壊れたcommit（Attemptを別の理由で閉じる、Taskを完了にしない、など）は、状態を読む前に`ErrInvalidAcceptance`で拒否される
 - SQLiteを再起動しても、受理済みの結果、閉じたAttempt、完了したTaskがそろって残り、再送は`ErrAlreadyExists`のまま
 
+## `RunRecoveryStoreContract` / `RunRecoveryDurabilityContract`
+
+回収された後の再投入を支える、回復の状態の契約です（#154）。待っている再投入（Pending）、時間窓の予算の消費量、発行済みのPermitを、AttemptやTaskと同じStateに耐久的に置きます。
+
+確認する行は次のとおりです。
+
+- 中断（`reclaimed`、`worker_lost`、`lease_expired`、`deadline`など）で閉じたAttemptについてだけ、再投入を積める。結果が決まった閉じ方、取消し、`superseded`、外部副作用の不明、policyの取消では積めない。Taskは再投入を一つしか待たない
+- 同じ再投入を積み直すと、保存済みのものが返る。開始時刻（NotBefore）は動かない
+- 一回の処理（pass）の確定で、Pendingが消え、Permitが保存され、窓の消費量とsequenceが更新される。同じ内容の再送は何も変えず、同じsequenceの別の内容は拒否される。sequenceは一つずつ進む
+- 窓の消費量は、処理をまたいで引き継がれる。古い（巻き戻した）予算から始める処理、消費量を少なく申告する処理、対応するPendingのないPermitは拒否される。policy revisionが変わると新しい窓から始まり、前の予算は持ち越されない
+- Permitからの新しいAttemptの作成と、Permitの使用済みの印は、一つのtransactionで行う。期限切れ・開始前・別のpolicy revisionのPermit、Permitが許さないAttempt、受け付けられないTask、すでに存在するAttemptは、Permitを使わずに拒否する。使ったPermitは二度目を拒否する
+- SQLiteを再起動しても、待っている再投入（NotBeforeを含む）、窓の予算、Permitとその使用の状態が変わらない
+- SQLiteは、Adapterを経由する書き込みだけでなく、Permitの書き換え、二度目の使用、確定した処理の変更、sequenceの飛びをtriggerで拒否する。保存されたPermitの行は、ダイジェストが一致しなければ読み出し時に拒否する
+
 ## 未決事項（Open Question）
 
 - `A-ASSIGNED`で保持されたLeaseへの同じPlacement Decisionの再送を許すかどうかは未決です。現在の契約（`reserve-load-replay`、`exact-replay-keeps-attempt-revision-and-fence`）と両Adapterは、この再送が既存のLeaseへ収束することを確認しています。ただし、これは「配送前の段階でも再送を許す」という設計判断を確定したものではありません。Leaseをまだ配送していない段階で再送を許してよいかは、後続の設計判断で決めます。それまで、この挙動は暫定です。
