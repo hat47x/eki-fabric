@@ -397,12 +397,11 @@ func (w *world) principal(worker string) workerplane.Principal {
 	return workerplane.Principal{WorkerIdentity: worker, TrustDomain: trustDomain}
 }
 
-// report puts the Claim in the Worker's durable queue and delivers it through
-// the real client and Worker Plane. It returns the Control Plane's answer.
-func (w *world) report(worker string, c resultclaim.Claim) workerplane.ClaimAck {
+// queueFor builds the Worker's durable queue over its own file, wired to the
+// Control Plane through the real client and Worker Plane.
+func (w *world) queueFor(worker string, acks *[]workerplane.ClaimAck) *claimqueue.Queue {
 	w.t.Helper()
-	var acks []workerplane.ClaimAck
-	api := recordingAPI{ClaimClient: w.workerPlane(), acks: &acks}
+	api := recordingAPI{ClaimClient: w.workerPlane(), acks: acks}
 	client, err := claimclient.New(api, w.principal(worker))
 	if err != nil {
 		w.t.Fatal(err)
@@ -414,12 +413,36 @@ func (w *world) report(worker string, c resultclaim.Claim) workerplane.ClaimAck 
 	if err != nil {
 		w.t.Fatal(err)
 	}
-	if _, err := queue.Enqueue(w.ctx, c); err != nil {
+	return queue
+}
+
+// enqueue puts the Claim in the Worker's durable queue without sending it.
+func (w *world) enqueue(worker string, c resultclaim.Claim) {
+	w.t.Helper()
+	var acks []workerplane.ClaimAck
+	if _, err := w.queueFor(worker, &acks).Enqueue(w.ctx, c); err != nil {
 		w.t.Fatal(err)
 	}
-	report, err := queue.DeliverDue(w.ctx, 8)
-	if err != nil || report.Delivered != 1 || len(acks) != 1 {
-		w.t.Fatalf("DeliverDue() = %+v, %v, acks=%d", report, err, len(acks))
+}
+
+// deliver sends everything due in the Worker's queue and returns the answers.
+func (w *world) deliver(worker string) []workerplane.ClaimAck {
+	w.t.Helper()
+	var acks []workerplane.ClaimAck
+	if _, err := w.queueFor(worker, &acks).DeliverDue(w.ctx, 8); err != nil {
+		w.t.Fatalf("DeliverDue() error = %v", err)
+	}
+	return acks
+}
+
+// report puts the Claim in the Worker's durable queue and delivers it. It returns
+// the Control Plane's answer.
+func (w *world) report(worker string, c resultclaim.Claim) workerplane.ClaimAck {
+	w.t.Helper()
+	w.enqueue(worker, c)
+	acks := w.deliver(worker)
+	if len(acks) != 1 {
+		w.t.Fatalf("delivered %d answers, want 1", len(acks))
 	}
 	return acks[0]
 }
