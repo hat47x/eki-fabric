@@ -117,6 +117,12 @@ func (s *Store) ReserveLease(ctx context.Context, reservation statestore.LeaseRe
 	}
 
 	for _, lease := range s.leases {
+		if attempt, ok := s.attempts[lease.AttemptID]; ok && attempt.Phase == attemptstate.AttemptPhaseClosed &&
+			attempt.CloseReason.EndsExecutionAuthority() {
+			// The Attempt ended its own authority, so this Lease no longer
+			// blocks the next placement of the Task.
+			continue
+		}
 		if emission, ok := s.leaseEmissions[lease.ID]; ok && emission.Status() == leaseemission.StatusAborted {
 			continue
 		}

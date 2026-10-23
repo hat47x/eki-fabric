@@ -13,7 +13,12 @@ import (
 )
 
 var (
-	// ErrLeaseActive means another unexpired lease already owns the Task fence.
+	// ErrLeaseActive means another unexpired lease already owns the Task fence. A Lease whose
+	// Attempt closed after a confirmed stop or a decided result does not count
+	// (attemptstate.CloseReason.EndsExecutionAuthority), so a reclaimed Attempt can
+	// be retried without waiting for the Lease to expire. A Lease whose Attempt
+	// closed because the Worker was lost still counts, because the Worker may be
+	// running.
 	ErrLeaseActive = errors.New("an active lease already exists")
 	// ErrPlacementDecisionConflict means a scoped Placement Decision ID was
 	// reused with a different durable authority or subject binding. A decision
