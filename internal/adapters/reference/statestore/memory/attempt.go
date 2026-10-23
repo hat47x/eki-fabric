@@ -21,6 +21,12 @@ func (s *Store) CreateAttempt(ctx context.Context, record attemptstate.AttemptRe
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
+	return s.createAttemptLocked(record)
+}
+
+// createAttemptLocked creates an Attempt. The caller holds the write lock, so that
+// an operation that also changes other state can do both under one lock.
+func (s *Store) createAttemptLocked(record attemptstate.AttemptRecord) error {
 	task, ok := s.tasks[record.TaskID]
 	if !ok {
 		return fmt.Errorf("%w: task %s", statestore.ErrNotFound, record.TaskID)
