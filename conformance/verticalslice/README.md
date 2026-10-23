@@ -23,8 +23,8 @@ Client（悪意を持ち得る）
 
 | 合成しているもの | 実際には |
 |---|---|
-| 配置の判断（Placement Approval）とLeaseの署名 | PLC-1とLSE-1が署名する。ここでは、署名の検証を通った後の「配置の入力」だけを渡す |
-| WorkOrderの署名と、Workerの受け入れ | WOR-1が署名し、Workerが検証して開始する。ここでは`executor.Spec`を直接組み立てる |
+| 配置の判断（Placement Approval）とLeaseの署名（V1〜V6） | PLC-1とLSE-1が署名する。V1〜V6では、署名の検証を通った後の「配置の入力」だけを渡す。署名つきの連鎖（下）では本物にしている |
+| WorkOrderの署名と、Workerの受け入れ（V1〜V6） | WOR-1が署名し、Workerが検証して開始する。V1〜V6では`executor.Spec`を直接組み立てる。署名つきの連鎖（下）では本物にしている |
 | 受付後にTaskをreadyにする遷移 | 実装した部品がまだない |
 | Runner | 決まった出力を返す、またはGovernorの停止まで動き続ける関数。本物のプロセスの実行は`executor/native`のテストにある |
 | 検証者の証拠 | RVR-1が作る。ここでは検証者を名乗る入力を直接渡す |
@@ -43,7 +43,36 @@ Client（悪意を持ち得る）
 | V5 | 悪意のあるWorker。別のWorkerになりすました申告、古いFenceの申告、Leaseより先のFenceの申告、二度目の別の申告、同じ主体の下に集まった多数の検証者、出力が壊れた結果 |
 | V6 | 再起動。Attemptの間、キューに申告が残ったまま、受理の後。再起動をまたいでも、有効な権限は一つだけ |
 
-V5の次の二つは、このスライスに署名つきWorkOrderがないため、`Skip`として見える形で残しています。変更された実行ファイルは`executor/native`のテスト（`ErrExecutorChanged`）、変更されたWorkOrderは`workorderverify`のテストが確かめています。
+V5の「バイト列が変わった実行ファイル」は、WorkOrderから本物のプロセスを起動する経路をこのスライスが持たないため、`Skip`として見える形で残しています。`executor/native`のテスト（`ErrExecutorChanged`）が確かめています。改変されたWorkOrderは、次の署名つきの連鎖で確かめています。
+
+## 署名つきの連鎖（Signed chain）
+
+V1〜V6の配置とWorkOrderを、本物のAuthorityに置き換えた流れです。鍵の生成、署名、検証、COSEの符号化は、参照実装を使います。
+
+```text
+Scheduler（提案。権限を持たない）
+  -> PLC-1がPlacement Approvalに署名
+  -> LSE-1が検証して予約（FenceEpochを確定）-> 現在の状態で再確認して署名（EMITTED）
+  -> WorkerがLeaseを検証
+  -> WOR-1がLeaseからWorkOrderを作って署名
+  -> WorkerがWorkOrderを検証し、Lease・Placement・Executorの記録と突き合わせ、nonceを一度だけ使う
+  -> Local Governorの現在の判断と比べて、実効上限のPlanを作る
+  -> 実行。申告は、WorkOrderの決定・実行体・nonceを持つ
+```
+
+| | 確かめること |
+|---|---|
+| 正常系 | 署名つきの連鎖を通って完了し、受理される。実効上限は、WorkOrderの許可とLocal Governorの余力の小さい方になる。申告がWorkOrderの束縛を持つ |
+| 回収 | 回収された後の次のAttemptには、新しいPlacement Approvalが要る。古い承認は使えない。FenceEpochが増える |
+| Placement Approval | 信頼されない鍵による偽造、署名後の改変、Attemptに結び付いたのと別のWorker宛、期限切れ、現在でない方針のrevisionを、すべて拒否する。拒否はLeaseを残さない。同じ承認の再送は同じLeaseに収束し、期限切れのLeaseは復活させない |
+| LeaseとWorkOrder | 経路上で改変されたLease、改変されたWorkOrder（nonceを消費しない）、別のWorker宛のbytes、二度目の使用（nonceの再利用）、Leaseの期限後の使用を拒否する。Local Governorは、Control Planeが許していても開始を拒否できる |
+| 方針の取消 | Leaseの予約の後、署名の前に方針が取り消されると、署名されたLeaseは出ず、Attemptは`policy_revoked`で閉じる。次の配置のFenceEpochは前より大きい |
+
+署名つきの連鎖で、まだ合成している入力は次のとおりです。
+
+- Executor Approval（EXE-1）。WorkOrderが参照する決定のIDとダイジェストだけを持つ。署名する主体がまだない。
+- 署名済みbytesのWorkerへの配送（`leasedelivery`）。連鎖の各段のbytesを、テストが直接Workerへ渡す。
+- Trust Bundleの取得。常に新しく検証された値を返す。失効や古さは、`decisiontrust`と各検証器のテストが確かめている。
 
 ## 証跡の再構成
 
