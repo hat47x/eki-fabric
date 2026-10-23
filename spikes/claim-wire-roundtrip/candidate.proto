@@ -1,0 +1,64 @@
+syntax = "proto3";
+
+// Experiment only: neither a Worker protocol revision nor an adopted contract.
+package eki.spike.claimwire;
+
+import "google/protobuf/timestamp.proto";
+
+enum Status {
+  STATUS_UNSPECIFIED = 0;
+  STATUS_COMPLETED = 1;
+  STATUS_FAILED = 2;
+  STATUS_RECLAIMED = 3;
+  STATUS_DEADLINE_EXCEEDED = 4;
+  STATUS_CANCELLED = 5;
+  STATUS_OUTPUT_EXCEEDED = 6;
+  STATUS_RUNNER_STUCK = 7;
+}
+
+message Claim {
+  uint32 experimental_profile = 1;
+  string task_id = 2;
+  bytes task_ir_sha256 = 3;
+  string attempt_id = 4;
+  string lease_id = 5;
+  uint64 fence_epoch = 6;
+  string work_order_decision_id = 7;
+  bytes executor_sha256 = 8;
+  bytes nonce = 9;
+  Status status = 10;
+  optional sint64 exit_code = 11;
+  optional uint64 output_bytes = 12;
+  bytes output_sha256 = 13;
+  google.protobuf.Timestamp started_at = 14;
+  google.protobuf.Timestamp ended_at = 15;
+  // Includes the authenticated Worker identity, which has no body field.
+  bytes claim_sha256 = 16;
+}
+
+enum Decision {
+  DECISION_UNSPECIFIED = 0;
+  DECISION_NEW = 1;
+  DECISION_DUPLICATE = 2;
+  DECISION_STALE = 3;
+  DECISION_LATE = 4;
+}
+
+enum Phase {
+  PHASE_UNSPECIFIED = 0;
+  PHASE_CREATED = 1;
+  PHASE_PLACING = 2;
+  PHASE_ASSIGNED = 3;
+  PHASE_DISPATCHED = 4;
+  PHASE_CLAIMED = 5;
+  PHASE_VERIFYING = 6;
+  PHASE_CLOSED = 7;
+}
+
+message Receipt {
+  uint32 experimental_profile = 1;
+  Decision decision = 2;
+  Phase attempt_phase = 3;
+  optional bool verification_required = 4;
+  bytes claim_sha256 = 5;
+}

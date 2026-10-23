@@ -1,0 +1,9 @@
+{"Time":"2026-10-23T20:46:47.821378074+09:00","Action":"start","Package":"github.com/hat47x/eki-fabric/spikes/claim-wire-roundtrip"}
+{"Time":"2026-10-23T20:46:47.838575159+09:00","Action":"run","Package":"github.com/hat47x/eki-fabric/spikes/claim-wire-roundtrip","Test":"TestExitOutsideNativeIntRejected"}
+{"Time":"2026-10-23T20:46:47.845950149+09:00","Action":"output","Package":"github.com/hat47x/eki-fabric/spikes/claim-wire-roundtrip","Test":"TestExitOutsideNativeIntRejected","Output":"=== RUN   TestExitOutsideNativeIntRejected\n","OutputType":"frame"}
+{"Time":"2026-10-23T20:46:47.85324377+09:00","Action":"output","Package":"github.com/hat47x/eki-fabric/spikes/claim-wire-roundtrip","Test":"TestExitOutsideNativeIntRejected","Output":"    codec_test.go:133: out-of-range sint64 -9223372036854775808 was narrowed to int32\n","OutputType":"error"}
+{"Time":"2026-10-23T20:46:47.860355566+09:00","Action":"output","Package":"github.com/hat47x/eki-fabric/spikes/claim-wire-roundtrip","Test":"TestExitOutsideNativeIntRejected","Output":"--- FAIL: TestExitOutsideNativeIntRejected (0.00s)\n","OutputType":"frame"}
+{"Time":"2026-10-23T20:46:47.865985063+09:00","Action":"fail","Package":"github.com/hat47x/eki-fabric/spikes/claim-wire-roundtrip","Test":"TestExitOutsideNativeIntRejected","Elapsed":0}
+{"Time":"2026-10-23T20:46:47.87071433+09:00","Action":"output","Package":"github.com/hat47x/eki-fabric/spikes/claim-wire-roundtrip","Output":"FAIL\n","OutputType":"frame"}
+{"Time":"2026-10-23T20:46:47.880942047+09:00","Action":"output","Package":"github.com/hat47x/eki-fabric/spikes/claim-wire-roundtrip","Output":"FAIL\tgithub.com/hat47x/eki-fabric/spikes/claim-wire-roundtrip\t0.048s\n","OutputType":"frame"}
+{"Time":"2026-10-23T20:46:47.88694969+09:00","Action":"fail","Package":"github.com/hat47x/eki-fabric/spikes/claim-wire-roundtrip","Elapsed":0.066}

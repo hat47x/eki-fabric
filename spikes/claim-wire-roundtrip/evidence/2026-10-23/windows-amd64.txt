@@ -1,0 +1,202 @@
+=== RUN   TestClaimProtobufRoundTrip
+=== RUN   TestClaimProtobufRoundTrip/completed/edge-0/int-64
+=== RUN   TestClaimProtobufRoundTrip/completed/edge-1/int-64
+=== RUN   TestClaimProtobufRoundTrip/completed/edge-2/int-64
+=== RUN   TestClaimProtobufRoundTrip/failed/edge-0/int-64
+=== RUN   TestClaimProtobufRoundTrip/failed/edge-1/int-64
+=== RUN   TestClaimProtobufRoundTrip/failed/edge-2/int-64
+=== RUN   TestClaimProtobufRoundTrip/reclaimed/edge-0/int-64
+=== RUN   TestClaimProtobufRoundTrip/reclaimed/edge-1/int-64
+=== RUN   TestClaimProtobufRoundTrip/reclaimed/edge-2/int-64
+=== RUN   TestClaimProtobufRoundTrip/deadline_exceeded/edge-0/int-64
+=== RUN   TestClaimProtobufRoundTrip/deadline_exceeded/edge-1/int-64
+=== RUN   TestClaimProtobufRoundTrip/deadline_exceeded/edge-2/int-64
+=== RUN   TestClaimProtobufRoundTrip/cancelled/edge-0/int-64
+=== RUN   TestClaimProtobufRoundTrip/cancelled/edge-1/int-64
+=== RUN   TestClaimProtobufRoundTrip/cancelled/edge-2/int-64
+=== RUN   TestClaimProtobufRoundTrip/output_exceeded/edge-0/int-64
+=== RUN   TestClaimProtobufRoundTrip/output_exceeded/edge-1/int-64
+=== RUN   TestClaimProtobufRoundTrip/output_exceeded/edge-2/int-64
+=== RUN   TestClaimProtobufRoundTrip/runner_stuck/edge-0/int-64
+=== RUN   TestClaimProtobufRoundTrip/runner_stuck/edge-1/int-64
+=== RUN   TestClaimProtobufRoundTrip/runner_stuck/edge-2/int-64
+--- PASS: TestClaimProtobufRoundTrip (0.00s)
+    --- PASS: TestClaimProtobufRoundTrip/completed/edge-0/int-64 (0.00s)
+    --- PASS: TestClaimProtobufRoundTrip/completed/edge-1/int-64 (0.00s)
+    --- PASS: TestClaimProtobufRoundTrip/completed/edge-2/int-64 (0.00s)
+    --- PASS: TestClaimProtobufRoundTrip/failed/edge-0/int-64 (0.00s)
+    --- PASS: TestClaimProtobufRoundTrip/failed/edge-1/int-64 (0.00s)
+    --- PASS: TestClaimProtobufRoundTrip/failed/edge-2/int-64 (0.00s)
+    --- PASS: TestClaimProtobufRoundTrip/reclaimed/edge-0/int-64 (0.00s)
+    --- PASS: TestClaimProtobufRoundTrip/reclaimed/edge-1/int-64 (0.00s)
+    --- PASS: TestClaimProtobufRoundTrip/reclaimed/edge-2/int-64 (0.00s)
+    --- PASS: TestClaimProtobufRoundTrip/deadline_exceeded/edge-0/int-64 (0.00s)
+    --- PASS: TestClaimProtobufRoundTrip/deadline_exceeded/edge-1/int-64 (0.00s)
+    --- PASS: TestClaimProtobufRoundTrip/deadline_exceeded/edge-2/int-64 (0.00s)
+    --- PASS: TestClaimProtobufRoundTrip/cancelled/edge-0/int-64 (0.00s)
+    --- PASS: TestClaimProtobufRoundTrip/cancelled/edge-1/int-64 (0.00s)
+    --- PASS: TestClaimProtobufRoundTrip/cancelled/edge-2/int-64 (0.00s)
+    --- PASS: TestClaimProtobufRoundTrip/output_exceeded/edge-0/int-64 (0.00s)
+    --- PASS: TestClaimProtobufRoundTrip/output_exceeded/edge-1/int-64 (0.00s)
+    --- PASS: TestClaimProtobufRoundTrip/output_exceeded/edge-2/int-64 (0.00s)
+    --- PASS: TestClaimProtobufRoundTrip/runner_stuck/edge-0/int-64 (0.00s)
+    --- PASS: TestClaimProtobufRoundTrip/runner_stuck/edge-1/int-64 (0.00s)
+    --- PASS: TestClaimProtobufRoundTrip/runner_stuck/edge-2/int-64 (0.00s)
+=== RUN   TestTimestampNanosecondBoundaries
+=== RUN   TestTimestampNanosecondBoundaries/-9223372036854775808
+=== RUN   TestTimestampNanosecondBoundaries/0
+=== RUN   TestTimestampNanosecondBoundaries/9223372036854775806
+--- PASS: TestTimestampNanosecondBoundaries (0.00s)
+    --- PASS: TestTimestampNanosecondBoundaries/-9223372036854775808 (0.00s)
+    --- PASS: TestTimestampNanosecondBoundaries/0 (0.00s)
+    --- PASS: TestTimestampNanosecondBoundaries/9223372036854775806 (0.00s)
+=== RUN   TestExitOutsideNativeIntRejected
+    codec_test.go:117: the narrowing boundary is exercised by GOARCH=386
+--- SKIP: TestExitOutsideNativeIntRejected (0.00s)
+=== RUN   TestClaimRejectsMissingInvalidAndUnsupportedValues
+=== RUN   TestClaimRejectsMissingInvalidAndUnsupportedValues/missing/experimental_profile
+=== RUN   TestClaimRejectsMissingInvalidAndUnsupportedValues/missing/task_id
+=== RUN   TestClaimRejectsMissingInvalidAndUnsupportedValues/missing/task_ir_sha256
+=== RUN   TestClaimRejectsMissingInvalidAndUnsupportedValues/missing/attempt_id
+=== RUN   TestClaimRejectsMissingInvalidAndUnsupportedValues/missing/lease_id
+=== RUN   TestClaimRejectsMissingInvalidAndUnsupportedValues/missing/fence_epoch
+=== RUN   TestClaimRejectsMissingInvalidAndUnsupportedValues/missing/work_order_decision_id
+=== RUN   TestClaimRejectsMissingInvalidAndUnsupportedValues/missing/executor_sha256
+=== RUN   TestClaimRejectsMissingInvalidAndUnsupportedValues/missing/nonce
+=== RUN   TestClaimRejectsMissingInvalidAndUnsupportedValues/missing/status
+=== RUN   TestClaimRejectsMissingInvalidAndUnsupportedValues/missing/exit_code
+=== RUN   TestClaimRejectsMissingInvalidAndUnsupportedValues/missing/output_bytes
+=== RUN   TestClaimRejectsMissingInvalidAndUnsupportedValues/missing/output_sha256
+=== RUN   TestClaimRejectsMissingInvalidAndUnsupportedValues/missing/started_at
+=== RUN   TestClaimRejectsMissingInvalidAndUnsupportedValues/missing/ended_at
+=== RUN   TestClaimRejectsMissingInvalidAndUnsupportedValues/missing/claim_sha256
+=== RUN   TestClaimRejectsMissingInvalidAndUnsupportedValues/long-nonce
+=== RUN   TestClaimRejectsMissingInvalidAndUnsupportedValues/content-digest-mismatch
+=== RUN   TestClaimRejectsMissingInvalidAndUnsupportedValues/failed-with-output
+=== RUN   TestClaimRejectsMissingInvalidAndUnsupportedValues/timestamp-nanos
+=== RUN   TestClaimRejectsMissingInvalidAndUnsupportedValues/timestamp-range
+=== RUN   TestClaimRejectsMissingInvalidAndUnsupportedValues/nanosecond-storage-range
+=== RUN   TestClaimRejectsMissingInvalidAndUnsupportedValues/nested-unknown
+=== RUN   TestClaimRejectsMissingInvalidAndUnsupportedValues/unknown-profile
+=== RUN   TestClaimRejectsMissingInvalidAndUnsupportedValues/unknown-status
+=== RUN   TestClaimRejectsMissingInvalidAndUnsupportedValues/negative-status
+=== RUN   TestClaimRejectsMissingInvalidAndUnsupportedValues/malformed-id
+=== RUN   TestClaimRejectsMissingInvalidAndUnsupportedValues/wrong-digest-size
+=== RUN   TestClaimRejectsMissingInvalidAndUnsupportedValues/short-nonce
+=== RUN   TestClaimRejectsMissingInvalidAndUnsupportedValues/too-large
+=== RUN   TestClaimRejectsMissingInvalidAndUnsupportedValues/unknown-body-identity
+=== RUN   TestClaimRejectsMissingInvalidAndUnsupportedValues/empty
+=== RUN   TestClaimRejectsMissingInvalidAndUnsupportedValues/malformed
+--- PASS: TestClaimRejectsMissingInvalidAndUnsupportedValues (0.00s)
+    --- PASS: TestClaimRejectsMissingInvalidAndUnsupportedValues/missing/experimental_profile (0.00s)
+    --- PASS: TestClaimRejectsMissingInvalidAndUnsupportedValues/missing/task_id (0.00s)
+    --- PASS: TestClaimRejectsMissingInvalidAndUnsupportedValues/missing/task_ir_sha256 (0.00s)
+    --- PASS: TestClaimRejectsMissingInvalidAndUnsupportedValues/missing/attempt_id (0.00s)
+    --- PASS: TestClaimRejectsMissingInvalidAndUnsupportedValues/missing/lease_id (0.00s)
+    --- PASS: TestClaimRejectsMissingInvalidAndUnsupportedValues/missing/fence_epoch (0.00s)
+    --- PASS: TestClaimRejectsMissingInvalidAndUnsupportedValues/missing/work_order_decision_id (0.00s)
+    --- PASS: TestClaimRejectsMissingInvalidAndUnsupportedValues/missing/executor_sha256 (0.00s)
+    --- PASS: TestClaimRejectsMissingInvalidAndUnsupportedValues/missing/nonce (0.00s)
+    --- PASS: TestClaimRejectsMissingInvalidAndUnsupportedValues/missing/status (0.00s)
+    --- PASS: TestClaimRejectsMissingInvalidAndUnsupportedValues/missing/exit_code (0.00s)
+    --- PASS: TestClaimRejectsMissingInvalidAndUnsupportedValues/missing/output_bytes (0.00s)
+    --- PASS: TestClaimRejectsMissingInvalidAndUnsupportedValues/missing/output_sha256 (0.00s)
+    --- PASS: TestClaimRejectsMissingInvalidAndUnsupportedValues/missing/started_at (0.00s)
+    --- PASS: TestClaimRejectsMissingInvalidAndUnsupportedValues/missing/ended_at (0.00s)
+    --- PASS: TestClaimRejectsMissingInvalidAndUnsupportedValues/missing/claim_sha256 (0.00s)
+    --- PASS: TestClaimRejectsMissingInvalidAndUnsupportedValues/long-nonce (0.00s)
+    --- PASS: TestClaimRejectsMissingInvalidAndUnsupportedValues/content-digest-mismatch (0.00s)
+    --- PASS: TestClaimRejectsMissingInvalidAndUnsupportedValues/failed-with-output (0.00s)
+    --- PASS: TestClaimRejectsMissingInvalidAndUnsupportedValues/timestamp-nanos (0.00s)
+    --- PASS: TestClaimRejectsMissingInvalidAndUnsupportedValues/timestamp-range (0.00s)
+    --- PASS: TestClaimRejectsMissingInvalidAndUnsupportedValues/nanosecond-storage-range (0.00s)
+    --- PASS: TestClaimRejectsMissingInvalidAndUnsupportedValues/nested-unknown (0.00s)
+    --- PASS: TestClaimRejectsMissingInvalidAndUnsupportedValues/unknown-profile (0.00s)
+    --- PASS: TestClaimRejectsMissingInvalidAndUnsupportedValues/unknown-status (0.00s)
+    --- PASS: TestClaimRejectsMissingInvalidAndUnsupportedValues/negative-status (0.00s)
+    --- PASS: TestClaimRejectsMissingInvalidAndUnsupportedValues/malformed-id (0.00s)
+    --- PASS: TestClaimRejectsMissingInvalidAndUnsupportedValues/wrong-digest-size (0.00s)
+    --- PASS: TestClaimRejectsMissingInvalidAndUnsupportedValues/short-nonce (0.00s)
+    --- PASS: TestClaimRejectsMissingInvalidAndUnsupportedValues/too-large (0.00s)
+    --- PASS: TestClaimRejectsMissingInvalidAndUnsupportedValues/unknown-body-identity (0.00s)
+    --- PASS: TestClaimRejectsMissingInvalidAndUnsupportedValues/empty (0.00s)
+    --- PASS: TestClaimRejectsMissingInvalidAndUnsupportedValues/malformed (0.00s)
+=== RUN   TestReceiptPreservesAllSPIFields
+=== RUN   TestReceiptPreservesAllSPIFields/new/created
+=== RUN   TestReceiptPreservesAllSPIFields/new/placing
+=== RUN   TestReceiptPreservesAllSPIFields/new/assigned
+=== RUN   TestReceiptPreservesAllSPIFields/new/dispatched
+=== RUN   TestReceiptPreservesAllSPIFields/new/claimed
+=== RUN   TestReceiptPreservesAllSPIFields/new/verifying
+=== RUN   TestReceiptPreservesAllSPIFields/new/closed
+=== RUN   TestReceiptPreservesAllSPIFields/duplicate/created
+=== RUN   TestReceiptPreservesAllSPIFields/duplicate/placing
+=== RUN   TestReceiptPreservesAllSPIFields/duplicate/assigned
+=== RUN   TestReceiptPreservesAllSPIFields/duplicate/dispatched
+=== RUN   TestReceiptPreservesAllSPIFields/duplicate/claimed
+=== RUN   TestReceiptPreservesAllSPIFields/duplicate/verifying
+=== RUN   TestReceiptPreservesAllSPIFields/duplicate/closed
+=== RUN   TestReceiptPreservesAllSPIFields/stale/created
+=== RUN   TestReceiptPreservesAllSPIFields/stale/placing
+=== RUN   TestReceiptPreservesAllSPIFields/stale/assigned
+=== RUN   TestReceiptPreservesAllSPIFields/stale/dispatched
+=== RUN   TestReceiptPreservesAllSPIFields/stale/claimed
+=== RUN   TestReceiptPreservesAllSPIFields/stale/verifying
+=== RUN   TestReceiptPreservesAllSPIFields/stale/closed
+=== RUN   TestReceiptPreservesAllSPIFields/late/created
+=== RUN   TestReceiptPreservesAllSPIFields/late/placing
+=== RUN   TestReceiptPreservesAllSPIFields/late/assigned
+=== RUN   TestReceiptPreservesAllSPIFields/late/dispatched
+=== RUN   TestReceiptPreservesAllSPIFields/late/claimed
+=== RUN   TestReceiptPreservesAllSPIFields/late/verifying
+=== RUN   TestReceiptPreservesAllSPIFields/late/closed
+--- PASS: TestReceiptPreservesAllSPIFields (0.00s)
+    --- PASS: TestReceiptPreservesAllSPIFields/new/created (0.00s)
+    --- PASS: TestReceiptPreservesAllSPIFields/new/placing (0.00s)
+    --- PASS: TestReceiptPreservesAllSPIFields/new/assigned (0.00s)
+    --- PASS: TestReceiptPreservesAllSPIFields/new/dispatched (0.00s)
+    --- PASS: TestReceiptPreservesAllSPIFields/new/claimed (0.00s)
+    --- PASS: TestReceiptPreservesAllSPIFields/new/verifying (0.00s)
+    --- PASS: TestReceiptPreservesAllSPIFields/new/closed (0.00s)
+    --- PASS: TestReceiptPreservesAllSPIFields/duplicate/created (0.00s)
+    --- PASS: TestReceiptPreservesAllSPIFields/duplicate/placing (0.00s)
+    --- PASS: TestReceiptPreservesAllSPIFields/duplicate/assigned (0.00s)
+    --- PASS: TestReceiptPreservesAllSPIFields/duplicate/dispatched (0.00s)
+    --- PASS: TestReceiptPreservesAllSPIFields/duplicate/claimed (0.00s)
+    --- PASS: TestReceiptPreservesAllSPIFields/duplicate/verifying (0.00s)
+    --- PASS: TestReceiptPreservesAllSPIFields/duplicate/closed (0.00s)
+    --- PASS: TestReceiptPreservesAllSPIFields/stale/created (0.00s)
+    --- PASS: TestReceiptPreservesAllSPIFields/stale/placing (0.00s)
+    --- PASS: TestReceiptPreservesAllSPIFields/stale/assigned (0.00s)
+    --- PASS: TestReceiptPreservesAllSPIFields/stale/dispatched (0.00s)
+    --- PASS: TestReceiptPreservesAllSPIFields/stale/claimed (0.00s)
+    --- PASS: TestReceiptPreservesAllSPIFields/stale/verifying (0.00s)
+    --- PASS: TestReceiptPreservesAllSPIFields/stale/closed (0.00s)
+    --- PASS: TestReceiptPreservesAllSPIFields/late/created (0.00s)
+    --- PASS: TestReceiptPreservesAllSPIFields/late/placing (0.00s)
+    --- PASS: TestReceiptPreservesAllSPIFields/late/assigned (0.00s)
+    --- PASS: TestReceiptPreservesAllSPIFields/late/dispatched (0.00s)
+    --- PASS: TestReceiptPreservesAllSPIFields/late/claimed (0.00s)
+    --- PASS: TestReceiptPreservesAllSPIFields/late/verifying (0.00s)
+    --- PASS: TestReceiptPreservesAllSPIFields/late/closed (0.00s)
+=== RUN   TestInvalidReceiptNeverBecomesAcknowledgement
+=== RUN   TestInvalidReceiptNeverBecomesAcknowledgement/missing/experimental_profile
+=== RUN   TestInvalidReceiptNeverBecomesAcknowledgement/missing/decision
+=== RUN   TestInvalidReceiptNeverBecomesAcknowledgement/missing/attempt_phase
+=== RUN   TestInvalidReceiptNeverBecomesAcknowledgement/missing/verification_required
+=== RUN   TestInvalidReceiptNeverBecomesAcknowledgement/missing/claim_sha256
+=== RUN   TestInvalidReceiptNeverBecomesAcknowledgement/unknown-phase
+=== RUN   TestInvalidReceiptNeverBecomesAcknowledgement/inconsistent-flag
+=== RUN   TestInvalidReceiptNeverBecomesAcknowledgement/different-profile
+=== RUN   TestInvalidReceiptNeverBecomesAcknowledgement/unknown-decision
+--- PASS: TestInvalidReceiptNeverBecomesAcknowledgement (0.00s)
+    --- PASS: TestInvalidReceiptNeverBecomesAcknowledgement/missing/experimental_profile (0.00s)
+    --- PASS: TestInvalidReceiptNeverBecomesAcknowledgement/missing/decision (0.00s)
+    --- PASS: TestInvalidReceiptNeverBecomesAcknowledgement/missing/attempt_phase (0.00s)
+    --- PASS: TestInvalidReceiptNeverBecomesAcknowledgement/missing/verification_required (0.00s)
+    --- PASS: TestInvalidReceiptNeverBecomesAcknowledgement/missing/claim_sha256 (0.00s)
+    --- PASS: TestInvalidReceiptNeverBecomesAcknowledgement/unknown-phase (0.00s)
+    --- PASS: TestInvalidReceiptNeverBecomesAcknowledgement/inconsistent-flag (0.00s)
+    --- PASS: TestInvalidReceiptNeverBecomesAcknowledgement/different-profile (0.00s)
+    --- PASS: TestInvalidReceiptNeverBecomesAcknowledgement/unknown-decision (0.00s)
+PASS
