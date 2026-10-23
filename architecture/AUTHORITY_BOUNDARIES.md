@@ -593,6 +593,19 @@ Placement Proposalです。
 - Federationの設定を変更すること
 - learned modelのscoreを、Authorizationに変換すること
 
+### 広域の資源最適化での入力と出力
+
+（2026-10-24追記。[ADR-0026](../plan/adr/0026-wide-area-resource-optimization.md)）
+
+SCH-1は、広域の最適化でも提案だけを出します。
+
+- 入力: 依頼の条件（期限、Data Class、必要な信頼の水準、予算の枠、指名）、候補の委任先の状況（Observation Planeの予実、空き、局所性、費用の区分）、予算の残り。
+- 出力: 委任先を決めるPlacement Proposal、容量を増やすCapacity Proposal（CAP-1へ）、温めておく枠の提案。
+
+制約と目的を分けます。制約（持ち主の拒否権と上限、Data Class、委任の等級が満たす信頼の水準と仕事の型、Grantの範囲、予算の枠、隔離の水準、利用の許可、指名された範囲）を満たさない候補は、並べません。目的（期限までの余裕、費用、転送量、持ち主の端末への影響、運用の実績）は、制約を満たした候補の間で比べ、重みは管理者が方針として定めます。目的の重みで、制約を埋め合わせません。
+
+学習した予測は、入力の一つにできますが、権限を持ちません。
+
 Schedulerが侵害されると、availabilityや効率には影響し得ます。しかし、他のAuthorityの署名を偽造しない限り、Schedulerだけでは、Security requirementを迂回できない構造を、めざします。
 
 ---
