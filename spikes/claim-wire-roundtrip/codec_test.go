@@ -3,6 +3,7 @@ package claimwire
 import (
 	"bytes"
 	"context"
+	"errors"
 	"fmt"
 	"math"
 	"strconv"
@@ -107,8 +108,8 @@ func TestTimestampNanosecondBoundaries(t *testing.T) {
 	}
 	cfg := config(resultclaim.StatusReclaimed, 0)
 	cfg.StartedAt, cfg.EndedAt = time.Date(2500, 1, 1, 0, 0, 0, 0, time.UTC), time.Date(2500, 1, 1, 0, 0, 1, 0, time.UTC)
-	if _, err := c.encodeClaim(principal, makeClaim(t, cfg)); err == nil {
-		t.Fatal("out-of-profile Core timestamp silently encoded")
+	if _, err := resultclaim.NewClaim(cfg); !errors.Is(err, resultclaim.ErrInvalidClaim) {
+		t.Fatalf("Core accepted a timestamp outside its canonical digest range: %v", err)
 	}
 }
 

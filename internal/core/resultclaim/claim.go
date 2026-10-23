@@ -72,8 +72,10 @@ type ClaimConfig struct {
 	// Verification compares what a verifier observed against it. Every other
 	// status must leave it zero: a partial output is not a result.
 	OutputDigest contract.Digest
-	StartedAt    time.Time
-	EndedAt      time.Time
+	// StartedAt and EndedAt must fit signed 64-bit Unix nanoseconds, the
+	// timestamp representation used by the canonical claim digest.
+	StartedAt time.Time
+	EndedAt   time.Time
 }
 
 type Claim struct {
@@ -118,6 +120,9 @@ func NewClaim(cfg ClaimConfig) (Claim, error) {
 		return Claim{}, fmt.Errorf("%w: unknown status %q", ErrInvalidClaim, cfg.Status)
 	case cfg.StartedAt.IsZero() || cfg.EndedAt.IsZero() || cfg.EndedAt.Before(cfg.StartedAt):
 		return Claim{}, fmt.Errorf("%w: started/ended window is invalid", ErrInvalidClaim)
+	case !time.Unix(0, cfg.StartedAt.UnixNano()).Equal(cfg.StartedAt) ||
+		!time.Unix(0, cfg.EndedAt.UnixNano()).Equal(cfg.EndedAt):
+		return Claim{}, fmt.Errorf("%w: timestamps must fit signed 64-bit Unix nanoseconds", ErrInvalidClaim)
 	case cfg.Status == StatusCompleted && cfg.ExitCode != 0:
 		return Claim{}, fmt.Errorf("%w: a completed claim needs exit code 0", ErrInvalidClaim)
 	case cfg.Status == StatusCompleted && cfg.OutputDigest.IsZero():
