@@ -202,7 +202,7 @@ func newFixture(t *testing.T, opts fixtureOptions) *fixture {
 	policy := &policySource{policy: twoVoicePolicy()}
 	clock := &fakeClock{now: baseTime.Add(time.Minute)}
 	service, err := New(Config{
-		Attempts: store, Tasks: store, Claims: store, Results: store,
+		Attempts: store, Tasks: store, Claims: store, Results: store, Rejections: store,
 		Policies: policy, Producers: producerSource{dims: producerDims()}, Clock: clock,
 	})
 	if err != nil {
@@ -400,6 +400,31 @@ func TestAcceptClosesTheAttemptWhenAnAuthorityRejectsTheOutput(t *testing.T) {
 	if _, ok, _ := f.store.LoadAcceptedResult(ctx, f.task.ID); ok {
 		t.Fatal("a rejected result was recorded as accepted")
 	}
+
+	// The reason is durable: the record names the claim, the policy, the
+	// authority that rejected, and the eligible verifiers (#57 evidence chain).
+	stored, ok, err := f.store.LoadRejectedResult(ctx, f.attempt.ID)
+	if err != nil || !ok || !stored.Equal(result.Rejected) {
+		t.Fatalf("stored rejection = %+v, %v, %v; want %+v", stored, ok, err, result.Rejected)
+	}
+	if stored.ClaimDigest() != f.claim.Digest() || stored.OutputDigest() != outputDigest ||
+		stored.PolicyDigest() != result.Decision.PolicyDigest || stored.Reason() != resultaccept.ReasonAuthorityRejected ||
+		!stored.RejectedAt().Equal(f.clock.now) {
+		t.Fatalf("stored rejection = %+v", stored)
+	}
+	if d := stored.Dissent(); len(d) != 1 || d[0].VerifierID != "authority-1" || d[0].Check != resultaccept.CheckValidatorRejected {
+		t.Fatalf("dissent = %+v", d)
+	}
+	if v := stored.Verifiers(); len(v) != 2 || v[0] != "authority-1" || v[1] != "verifier-1" {
+		t.Fatalf("verifiers = %v", v)
+	}
+
+	// A repeat returns the stored rejection and decides nothing again, even
+	// with evidence that would now accept.
+	again, err := f.service.Accept(ctx, f.request(f.twoIndependentVerifiers()...))
+	if err != nil || !again.Replayed || again.Outcome() != resultaccept.OutcomeRejected || !again.Rejected.Equal(stored) {
+		t.Fatalf("repeat = %+v, %v, want the stored rejection replayed", again, err)
+	}
 }
 
 func TestAcceptRefusesAnAttemptThatIsNotWaitingForVerification(t *testing.T) {
@@ -441,7 +466,7 @@ func TestAcceptFailsClosedWhenTheTrustedInputsCannotBeRead(t *testing.T) {
 
 	f = newFixture(t, fixtureOptions{})
 	broken, err := New(Config{
-		Attempts: f.store, Tasks: f.store, Claims: f.store, Results: f.store,
+		Attempts: f.store, Tasks: f.store, Claims: f.store, Results: f.store, Rejections: f.store,
 		Policies: f.policy, Producers: producerSource{err: errors.New("identity records are down")}, Clock: f.clock,
 	})
 	if err != nil {
@@ -499,17 +524,18 @@ func TestAcceptNeverMovesTimeBackwards(t *testing.T) {
 func TestNewRejectsMissingDependencies(t *testing.T) {
 	f := newFixture(t, fixtureOptions{})
 	valid := Config{
-		Attempts: f.store, Tasks: f.store, Claims: f.store, Results: f.store,
+		Attempts: f.store, Tasks: f.store, Claims: f.store, Results: f.store, Rejections: f.store,
 		Policies: f.policy, Producers: producerSource{dims: producerDims()}, Clock: f.clock,
 	}
 	cases := map[string]func(*Config){
-		"attempts":  func(c *Config) { c.Attempts = nil },
-		"tasks":     func(c *Config) { c.Tasks = nil },
-		"claims":    func(c *Config) { c.Claims = nil },
-		"results":   func(c *Config) { c.Results = nil },
-		"policies":  func(c *Config) { c.Policies = nil },
-		"producers": func(c *Config) { c.Producers = nil },
-		"clock":     func(c *Config) { c.Clock = nil },
+		"attempts":   func(c *Config) { c.Attempts = nil },
+		"tasks":      func(c *Config) { c.Tasks = nil },
+		"claims":     func(c *Config) { c.Claims = nil },
+		"results":    func(c *Config) { c.Results = nil },
+		"rejections": func(c *Config) { c.Rejections = nil },
+		"policies":   func(c *Config) { c.Policies = nil },
+		"producers":  func(c *Config) { c.Producers = nil },
+		"clock":      func(c *Config) { c.Clock = nil },
 	}
 	for name, mutate := range cases {
 		cfg := valid
@@ -569,5 +595,38 @@ func TestAcceptOnAnUnbuiltServiceFailsInsteadOfPanicking(t *testing.T) {
 	partial := &Service{attempts: f.store, results: f.store, clock: f.clock}
 	if _, err := partial.Accept(context.Background(), f.request()); !errors.Is(err, ErrInvalidConfig) {
 		t.Fatalf("Accept() error = %v, want %v", err, ErrInvalidConfig)
+	}
+}
+
+// failingRejections fails the commit as if the process died before it, and
+// leaves the store untouched.
+type failingRejections struct{ *memory.Store }
+
+func (failingRejections) CommitRejectedResult(context.Context, statestore.ResultRejectionCommit) error {
+	return errors.New("simulated crash before the rejection commit")
+}
+
+func TestARejectionThatCrashesBeforeItsCommitCanBeDecidedAgain(t *testing.T) {
+	f := newFixture(t, fixtureOptions{})
+	ctx := context.Background()
+	rejected := f.verification("authority-1", "principal-P3", "operator-O3", resultaccept.CheckValidatorRejected, outputDigest.Hex())
+	crashing, err := New(Config{
+		Attempts: f.store, Tasks: f.store, Claims: f.store, Results: f.store, Rejections: failingRejections{f.store},
+		Policies: f.policy, Producers: producerSource{dims: producerDims()}, Clock: f.clock,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := crashing.Accept(ctx, f.request(rejected)); err == nil {
+		t.Fatal("Accept() through a crashing store succeeded")
+	}
+	f.assertUntouched(t)
+	if _, ok, err := f.store.LoadRejectedResult(ctx, f.attempt.ID); err != nil || ok {
+		t.Fatalf("a rejection was recorded before its commit: %v, %v", ok, err)
+	}
+
+	result, err := f.service.Accept(ctx, f.request(rejected))
+	if err != nil || result.Outcome() != resultaccept.OutcomeRejected || result.Replayed {
+		t.Fatalf("Accept() after the crash = %+v, %v", result, err)
 	}
 }

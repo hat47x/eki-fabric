@@ -10,7 +10,8 @@
 //
 //	accepted -> record the AcceptedResult, close the Attempt as accepted and
 //	            complete the Task, in one atomic commit
-//	rejected -> close the Attempt as rejected; the Task is left for recovery
+//	rejected -> record why, and close the Attempt as rejected, in one atomic
+//	            commit; the Task is left for recovery
 //	held     -> change nothing; the evidence is insufficient or disagrees
 //
 // A held decision is not a failure. The verifications may be incomplete, and a
@@ -26,6 +27,7 @@ import (
 	"github.com/hat47x/eki-fabric/internal/core/acceptedresult"
 	"github.com/hat47x/eki-fabric/internal/core/attemptstate"
 	"github.com/hat47x/eki-fabric/internal/core/ids"
+	"github.com/hat47x/eki-fabric/internal/core/rejectedresult"
 	"github.com/hat47x/eki-fabric/internal/core/resultaccept"
 	"github.com/hat47x/eki-fabric/internal/core/resultclaim"
 	"github.com/hat47x/eki-fabric/internal/core/resultverify"
@@ -75,23 +77,26 @@ type ProducerSource interface {
 type Clock interface{ Now() time.Time }
 
 type Config struct {
-	Attempts  AttemptStore
-	Tasks     TaskStore
-	Claims    statestore.ResultClaimStore
-	Results   statestore.ResultAcceptanceStore
-	Policies  PolicySource
-	Producers ProducerSource
-	Clock     Clock
+	Attempts AttemptStore
+	Tasks    TaskStore
+	Claims   statestore.ResultClaimStore
+	Results  statestore.ResultAcceptanceStore
+	// Rejections records why a result was rejected, with the Attempt's close.
+	Rejections statestore.ResultRejectionStore
+	Policies   PolicySource
+	Producers  ProducerSource
+	Clock      Clock
 }
 
 type Service struct {
-	attempts  AttemptStore
-	tasks     TaskStore
-	claims    statestore.ResultClaimStore
-	results   statestore.ResultAcceptanceStore
-	policies  PolicySource
-	producers ProducerSource
-	clock     Clock
+	attempts   AttemptStore
+	tasks      TaskStore
+	claims     statestore.ResultClaimStore
+	results    statestore.ResultAcceptanceStore
+	rejections statestore.ResultRejectionStore
+	policies   PolicySource
+	producers  ProducerSource
+	clock      Clock
 }
 
 func New(cfg Config) (*Service, error) {
@@ -104,6 +109,8 @@ func New(cfg Config) (*Service, error) {
 		return nil, fmt.Errorf("%w: Claim store is required", ErrInvalidConfig)
 	case cfg.Results == nil:
 		return nil, fmt.Errorf("%w: result store is required", ErrInvalidConfig)
+	case cfg.Rejections == nil:
+		return nil, fmt.Errorf("%w: rejection store is required", ErrInvalidConfig)
 	case cfg.Policies == nil:
 		return nil, fmt.Errorf("%w: policy source is required", ErrInvalidConfig)
 	case cfg.Producers == nil:
@@ -112,7 +119,7 @@ func New(cfg Config) (*Service, error) {
 		return nil, fmt.Errorf("%w: clock is required", ErrInvalidConfig)
 	}
 	return &Service{
-		attempts: cfg.Attempts, tasks: cfg.Tasks, claims: cfg.Claims, results: cfg.Results,
+		attempts: cfg.Attempts, tasks: cfg.Tasks, claims: cfg.Claims, results: cfg.Results, rejections: cfg.Rejections,
 		policies: cfg.Policies, producers: cfg.Producers, clock: cfg.Clock,
 	}, nil
 }
@@ -138,7 +145,10 @@ type Result struct {
 	// Accepted is the stored AcceptedResult. It is set only when the outcome is
 	// accepted, including when an earlier call already accepted this Attempt.
 	Accepted acceptedresult.Record
-	// Replayed is true when the Attempt was already accepted and nothing changed.
+	// Rejected is the stored rejection. It is set only when the outcome is
+	// rejected, including when an earlier call already rejected this Attempt.
+	Rejected rejectedresult.Record
+	// Replayed is true when the Attempt was already decided and nothing changed.
 	Replayed bool
 }
 
@@ -147,6 +157,9 @@ func (r Result) Outcome() resultaccept.Outcome {
 	if r.Accepted.Valid() {
 		return resultaccept.OutcomeAccepted
 	}
+	if r.Rejected.Valid() {
+		return resultaccept.OutcomeRejected
+	}
 	return r.Decision.Outcome
 }
 
@@ -154,7 +167,7 @@ func (r Result) Outcome() resultaccept.Outcome {
 // an Attempt that was already accepted returns the stored result.
 func (s *Service) Accept(ctx context.Context, req Request) (Result, error) {
 	if s == nil || s.attempts == nil || s.tasks == nil || s.claims == nil || s.results == nil ||
-		s.policies == nil || s.producers == nil || s.clock == nil {
+		s.rejections == nil || s.policies == nil || s.producers == nil || s.clock == nil {
 		return Result{}, fmt.Errorf("%w: service is not initialized", ErrInvalidConfig)
 	}
 	if ctx == nil {
@@ -174,6 +187,9 @@ func (s *Service) Accept(ctx context.Context, req Request) (Result, error) {
 	}
 	if attempt.Phase == attemptstate.AttemptPhaseClosed && attempt.CloseReason == attemptstate.CloseReasonResultAccepted {
 		return s.replay(ctx, attempt)
+	}
+	if attempt.Phase == attemptstate.AttemptPhaseClosed && attempt.CloseReason == attemptstate.CloseReasonResultRejected {
+		return s.replayRejection(ctx, attempt)
 	}
 	if attempt.Phase != attemptstate.AttemptPhaseVerifying {
 		return Result{}, fmt.Errorf("%w: Attempt %s is %s", ErrWrongPhase, attempt.ID, attempt.Phase)
@@ -233,7 +249,7 @@ func (s *Service) Accept(ctx context.Context, req Request) (Result, error) {
 	case resultaccept.OutcomeAccepted:
 		return s.accept(ctx, attempt, task, claim, decision, now)
 	case resultaccept.OutcomeRejected:
-		return s.reject(ctx, attempt, decision, now)
+		return s.reject(ctx, attempt, claim, decision, now)
 	default:
 		return Result{Decision: decision}, nil
 	}
@@ -289,22 +305,55 @@ func (s *Service) accept(ctx context.Context, attempt attemptstate.AttemptRecord
 	return Result{}, err
 }
 
-// reject closes the Attempt as rejected. The Task is not touched: whether the
-// work is retried is a recovery decision, not an acceptance decision.
-func (s *Service) reject(ctx context.Context, attempt attemptstate.AttemptRecord,
+// reject records why the result was rejected and closes the Attempt as
+// rejected, in one commit, so the evidence chain of #57 keeps the dissent, the
+// eligible and excluded verifiers, and the policy digest. The Task is not
+// touched: whether the work is retried is a recovery decision.
+func (s *Service) reject(ctx context.Context, attempt attemptstate.AttemptRecord, claim resultclaim.Claim,
 	decision resultaccept.Decision, now time.Time) (Result, error) {
+	record, err := rejectedresult.FromDecision(attempt.TaskID, attempt.ID, claim.Digest(), claim.OutputDigest(), decision, now)
+	if err != nil {
+		return Result{}, err
+	}
 	closed := attempt
 	closed.Phase = attemptstate.AttemptPhaseClosed
 	closed.CloseReason = attemptstate.CloseReasonResultRejected
 	closed.Revision++
 	closed.UpdatedAt = laterOf(now, attempt.UpdatedAt)
-	if err := s.attempts.CompareAndSwapAttempt(ctx, attempt.ID, attempt.Revision, closed); err != nil {
-		if errors.Is(err, statestore.ErrConflict) {
-			return Result{}, fmt.Errorf("%w: %v", ErrStateChanged, err)
+	err = s.rejections.CommitRejectedResult(ctx, statestore.ResultRejectionCommit{
+		Result:                  record,
+		ExpectedAttemptRevision: attempt.Revision,
+		NextAttempt:             closed,
+	})
+	switch {
+	case err == nil:
+		return Result{Decision: decision, Rejected: record}, nil
+	case errors.Is(err, statestore.ErrAlreadyExists):
+		stored, ok, loadErr := s.rejections.LoadRejectedResult(ctx, attempt.ID)
+		if loadErr != nil {
+			return Result{}, loadErr
 		}
+		if ok && stored.Equal(record) {
+			return Result{Decision: decision, Rejected: stored, Replayed: true}, nil
+		}
+		return Result{}, fmt.Errorf("%w: %v", ErrStateChanged, err)
+	case errors.Is(err, statestore.ErrConflict):
+		return Result{}, fmt.Errorf("%w: %v", ErrStateChanged, err)
+	}
+	return Result{}, err
+}
+
+func (s *Service) replayRejection(ctx context.Context, attempt attemptstate.AttemptRecord) (Result, error) {
+	stored, ok, err := s.rejections.LoadRejectedResult(ctx, attempt.ID)
+	if err != nil {
 		return Result{}, err
 	}
-	return Result{Decision: decision}, nil
+	if !ok {
+		// An Attempt closed as rejected without a record was closed before
+		// rejections were recorded, or by another path. It is not decided again.
+		return Result{}, fmt.Errorf("%w: Attempt %s is closed as rejected", ErrWrongPhase, attempt.ID)
+	}
+	return Result{Rejected: stored, Replayed: true}, nil
 }
 
 func (s *Service) replay(ctx context.Context, attempt attemptstate.AttemptRecord) (Result, error) {

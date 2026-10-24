@@ -739,6 +739,50 @@ WHEN NOT EXISTS (
 BEGIN
 	SELECT RAISE(ABORT, 'accepted result does not come from the Attempt holding the latest fence');
 END`,
+	// 14: durable rejected results (RAC-1). An Attempt has at most one. The row
+	// is written in the same transaction that closes the Attempt as
+	// result_rejected, so the reason for a rejection survives with it (#57
+	// evidence chain). The insert guard refuses a row for an Attempt that is not
+	// verifying or whose stored claim is not the completed claim named by the
+	// row, even from a writer that bypasses the adapter. Rows are immutable.
+	`CREATE TABLE rejected_results (
+	attempt_id     TEXT    NOT NULL PRIMARY KEY,
+	task_id        TEXT    NOT NULL,
+	claim_digest   TEXT    NOT NULL CHECK (length(claim_digest) = 64),
+	output_digest  TEXT    NOT NULL CHECK (length(output_digest) = 64),
+	policy_digest  TEXT    NOT NULL CHECK (length(policy_digest) = 64),
+	reason         TEXT    NOT NULL CHECK (reason IN ('authority-rejected')),
+	dissent        TEXT    NOT NULL CHECK (json_valid(dissent) AND json_array_length(dissent) >= 1),
+	verifiers      TEXT    NOT NULL CHECK (json_valid(verifiers)),
+	excluded       TEXT    NOT NULL CHECK (json_valid(excluded)),
+	rejected_at_ns INTEGER NOT NULL
+);
+CREATE TRIGGER rejected_results_attempt_guard
+BEFORE INSERT ON rejected_results
+WHEN NOT EXISTS (
+	SELECT 1
+	FROM attempts a
+	JOIN result_claims c ON c.attempt_id = a.attempt_id
+	WHERE a.attempt_id = NEW.attempt_id
+	  AND a.task_id = NEW.task_id
+	  AND a.phase = 'verifying'
+	  AND c.status = 'completed'
+	  AND c.claim_digest = NEW.claim_digest
+	  AND c.output_digest = NEW.output_digest
+)
+BEGIN
+	SELECT RAISE(ABORT, 'rejected result does not name the completed claim of a verifying Attempt');
+END;
+CREATE TRIGGER rejected_results_immutable_update
+BEFORE UPDATE ON rejected_results
+BEGIN
+	SELECT RAISE(ABORT, 'rejected result is immutable');
+END;
+CREATE TRIGGER rejected_results_immutable_delete
+BEFORE DELETE ON rejected_results
+BEGIN
+	SELECT RAISE(ABORT, 'rejected result is immutable');
+END`,
 }
 
 // migrate brings the database to the latest version. It is idempotent, rejects
