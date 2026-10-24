@@ -1,0 +1,59 @@
+=== RUN   TestExitOutsideNativeIntRejected
+--- PASS: TestExitOutsideNativeIntRejected (0.00s)
+=== RUN   TestTLSQueueRecovery
+=== RUN   TestTLSQueueRecovery/completed/http-503
+    tls_queue_test.go:270: committed before retry=false; recovery=new; phase=verifying revision=6; both SQLite stores reopened twice
+=== RUN   TestTLSQueueRecovery/completed/drop-response
+    tls_queue_test.go:270: committed before retry=true; recovery=duplicate; phase=verifying revision=6; both SQLite stores reopened twice
+=== RUN   TestTLSQueueRecovery/completed/wrong-receipt
+    tls_queue_test.go:270: committed before retry=true; recovery=duplicate; phase=verifying revision=6; both SQLite stores reopened twice
+=== RUN   TestTLSQueueRecovery/completed/malformed-receipt
+    tls_queue_test.go:270: committed before retry=true; recovery=duplicate; phase=verifying revision=6; both SQLite stores reopened twice
+=== RUN   TestTLSQueueRecovery/completed/timeout
+    tls_queue_test.go:270: committed before retry=false; recovery=new; phase=verifying revision=6; both SQLite stores reopened twice
+=== RUN   TestTLSQueueRecovery/reclaimed/http-503
+    tls_queue_test.go:270: committed before retry=false; recovery=new; phase=closed revision=5; both SQLite stores reopened twice
+=== RUN   TestTLSQueueRecovery/reclaimed/drop-response
+    tls_queue_test.go:270: committed before retry=true; recovery=duplicate; phase=closed revision=5; both SQLite stores reopened twice
+=== RUN   TestTLSQueueRecovery/reclaimed/wrong-receipt
+    tls_queue_test.go:270: committed before retry=true; recovery=duplicate; phase=closed revision=5; both SQLite stores reopened twice
+=== RUN   TestTLSQueueRecovery/reclaimed/malformed-receipt
+    tls_queue_test.go:270: committed before retry=true; recovery=duplicate; phase=closed revision=5; both SQLite stores reopened twice
+=== RUN   TestTLSQueueRecovery/reclaimed/timeout
+    tls_queue_test.go:270: committed before retry=false; recovery=new; phase=closed revision=5; both SQLite stores reopened twice
+=== RUN   TestTLSQueueRecovery/runner_stuck/http-503
+    tls_queue_test.go:270: committed before retry=false; recovery=new; phase=dispatched revision=4; both SQLite stores reopened twice
+=== RUN   TestTLSQueueRecovery/runner_stuck/drop-response
+    tls_queue_test.go:270: committed before retry=true; recovery=duplicate; phase=dispatched revision=4; both SQLite stores reopened twice
+=== RUN   TestTLSQueueRecovery/runner_stuck/wrong-receipt
+    tls_queue_test.go:270: committed before retry=true; recovery=duplicate; phase=dispatched revision=4; both SQLite stores reopened twice
+=== RUN   TestTLSQueueRecovery/runner_stuck/malformed-receipt
+    tls_queue_test.go:270: committed before retry=true; recovery=duplicate; phase=dispatched revision=4; both SQLite stores reopened twice
+=== RUN   TestTLSQueueRecovery/runner_stuck/timeout
+    tls_queue_test.go:270: committed before retry=false; recovery=new; phase=dispatched revision=4; both SQLite stores reopened twice
+--- PASS: TestTLSQueueRecovery (9.28s)
+    --- PASS: TestTLSQueueRecovery/completed/http-503 (0.42s)
+    --- PASS: TestTLSQueueRecovery/completed/drop-response (0.41s)
+    --- PASS: TestTLSQueueRecovery/completed/wrong-receipt (0.43s)
+    --- PASS: TestTLSQueueRecovery/completed/malformed-receipt (0.37s)
+    --- PASS: TestTLSQueueRecovery/completed/timeout (1.46s)
+    --- PASS: TestTLSQueueRecovery/reclaimed/http-503 (0.38s)
+    --- PASS: TestTLSQueueRecovery/reclaimed/drop-response (0.36s)
+    --- PASS: TestTLSQueueRecovery/reclaimed/wrong-receipt (0.43s)
+    --- PASS: TestTLSQueueRecovery/reclaimed/malformed-receipt (0.33s)
+    --- PASS: TestTLSQueueRecovery/reclaimed/timeout (1.38s)
+    --- PASS: TestTLSQueueRecovery/runner_stuck/http-503 (0.37s)
+    --- PASS: TestTLSQueueRecovery/runner_stuck/drop-response (0.35s)
+    --- PASS: TestTLSQueueRecovery/runner_stuck/wrong-receipt (0.40s)
+    --- PASS: TestTLSQueueRecovery/runner_stuck/malformed-receipt (0.73s)
+    --- PASS: TestTLSQueueRecovery/runner_stuck/timeout (1.46s)
+=== RUN   TestTLSWorkerBindingAndInputRejection
+=== RUN   TestTLSWorkerBindingAndInputRejection/oversized
+=== RUN   TestTLSWorkerBindingAndInputRejection/method
+=== RUN   TestTLSWorkerBindingAndInputRejection/content-type
+--- PASS: TestTLSWorkerBindingAndInputRejection (0.89s)
+    --- PASS: TestTLSWorkerBindingAndInputRejection/oversized (0.00s)
+    --- PASS: TestTLSWorkerBindingAndInputRejection/method (0.01s)
+    --- PASS: TestTLSWorkerBindingAndInputRejection/content-type (0.00s)
+PASS
+ok  	github.com/hat47x/eki-fabric/spikes/claim-wire-roundtrip	10.265s
