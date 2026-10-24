@@ -137,6 +137,7 @@ WOR-1の署名境界（`workorderissue.Issuer`）を、実際のState Storeに�
 - commitが成功すると、三つがそろって反映される。受理済みの結果はTask単位で読み出せる
 - 同じ内容の再送は`ErrAlreadyExists`で、同じTaskへの別の内容は`ErrConflict`。最初の受理済みの結果は置き換わらない
 - 拒否されたcommit（古いAttempt revision、古いTask revision、A-VERIFYINGではないAttempt、記録された申告がない、申告のdigestや出力のdigestが違う、Taskが終端に達している、取消しの要求がある、別のTaskのAttempt）は、受理済みの結果を作らず、AttemptもTaskも変えない
+- A-VERIFYINGのまま待つ間にLeaseの期限が切れ、同じTaskが新しいFenceEpochで配置し直された場合、元のAttemptの結果は受理しない（V3の遅れて届いた結果）。申告と検証が整っていても`ErrConflict`で拒否し、AttemptもTaskも変えない。SQLiteでは、アダプタを通らない書き込みもmigration 13のトリガーが拒否する
 - 形が壊れたcommit（Attemptを別の理由で閉じる、Taskを完了にしない、など）は、状態を読む前に`ErrInvalidAcceptance`で拒否される
 - SQLiteを再起動しても、受理済みの結果、閉じたAttempt、完了したTaskがそろって残り、再送は`ErrAlreadyExists`のまま
 

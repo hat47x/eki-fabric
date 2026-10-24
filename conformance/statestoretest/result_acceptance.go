@@ -144,6 +144,32 @@ func RunResultAcceptanceContract(t *testing.T, newStore ResultAcceptanceFactory)
 		assertAcceptanceRejected(t, store, fx, commit, statestore.ErrConflict)
 	})
 
+	t.Run("an-attempt-whose-lease-fence-was-superseded-is-not-accepted", func(t *testing.T) {
+		// V3: A1 reached verification, its Lease expired, and the Task was
+		// placed again on A2 under a newer FenceEpoch. A1 no longer holds the
+		// Task's execution authority, so its result must not complete the
+		// Task, even though its claim and evidence are well formed.
+		store := newStore(t)
+		fx := newAcceptanceFixture(t, store, "accept-superseded-fence", acceptanceOptions{})
+		a1Lease, err := store.LoadLease(ctx, fx.attempt.LeaseID)
+		if err != nil {
+			t.Fatal(err)
+		}
+		a2 := leaseReservation(t, store, fx.task, "placement-accept-superseded-fence-a2",
+			a1Lease.ExpiresAt.Add(time.Minute), a1Lease.ExpiresAt.Add(2*time.Minute))
+		reserved, err := store.ReserveLease(ctx, a2)
+		if err != nil {
+			t.Fatalf("ReserveLease(A2) error = %v", err)
+		}
+		if reserved.Lease.FenceEpoch <= a1Lease.FenceEpoch {
+			t.Fatalf("A2 fence %d does not supersede A1 fence %d", reserved.Lease.FenceEpoch, a1Lease.FenceEpoch)
+		}
+		if fx.task, err = store.LoadTask(ctx, fx.task.ID); err != nil {
+			t.Fatal(err)
+		}
+		assertAcceptanceRejected(t, store, fx, acceptanceCommit(t, fx), statestore.ErrConflict)
+	})
+
 	t.Run("only-an-attempt-in-verification-can-be-accepted", func(t *testing.T) {
 		store := newStore(t)
 		fx := newAcceptanceFixture(t, store, "accept-claimed", acceptanceOptions{stopAt: attemptstate.AttemptPhaseClaimed})

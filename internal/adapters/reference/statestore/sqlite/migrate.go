@@ -713,7 +713,33 @@ BEFORE DELETE ON recovery_permits
 BEGIN
 	SELECT RAISE(ABORT, 'a recovery Permit is not removed');
 END`,
-	// 13: durable rejected results (RAC-1). An Attempt has at most one. The row
+	// 13: an AcceptedResult must come from the Attempt that still holds the
+	// Task's latest FenceEpoch, under the fence its completed claim names (V3).
+	// The adapter checks this before the insert; the trigger refuses writes that
+	// bypass it. It does not check the Attempt phase, because the adapter closes
+	// the Attempt in the same transaction before inserting the row.
+	`CREATE TRIGGER accepted_results_fence_guard
+BEFORE INSERT ON accepted_results
+WHEN NOT EXISTS (
+	SELECT 1
+	FROM attempts a
+	JOIN leases l ON l.lease_id = a.lease_id
+	JOIN lease_fences lf ON lf.task_id = l.task_id
+	JOIN result_claims c ON c.attempt_id = a.attempt_id
+	WHERE a.attempt_id = NEW.attempt_id
+	  AND a.task_id = NEW.task_id
+	  AND l.attempt_id = a.attempt_id
+	  AND l.task_id = NEW.task_id
+	  AND lf.last_fence_epoch = l.fence_epoch
+	  AND c.fence_epoch = l.fence_epoch
+	  AND c.status = 'completed'
+	  AND c.claim_digest = NEW.claim_digest
+	  AND c.output_digest = NEW.output_digest
+)
+BEGIN
+	SELECT RAISE(ABORT, 'accepted result does not come from the Attempt holding the latest fence');
+END`,
+	// 14: durable rejected results (RAC-1). An Attempt has at most one. The row
 	// is written in the same transaction that closes the Attempt as
 	// result_rejected, so the reason for a rejection survives with it (#57
 	// evidence chain). The insert guard refuses a row for an Attempt that is not
