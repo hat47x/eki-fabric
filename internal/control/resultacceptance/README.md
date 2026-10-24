@@ -26,6 +26,20 @@ AcceptedResultの記録、Attemptの終了、Taskの完了のどれかだけが�
 - Taskが、指定したrevisionのまま、終端に達していて、取消しの要求もない。
 - 同じTaskに、別の受理済みの結果がない。同じ内容の再送は`ErrAlreadyExists`です。
 
+## 検証者の観測から証拠を作る（RVR-1）
+
+検証者は、見たもの（再実行で得た出力のdigest、validatorが調べたbytesのdigestと判定、保存されたArtifactのdigest）だけを`Request.Observations`で渡します。観測と申告の関係は、検証者もWorkerも決めません。`resultverify.Normalize`が、記録された`completed`の申告の出力digestと比べて決めます。
+
+| 観測 | 申告のdigestと同じ | 違う |
+|---|---|---|
+| 再実行（`reexecution`） | reproduced | differs |
+| validator（`validator`） | validatorの判定（accepted / rejected） | differs（申告していないbytesへの判定なので、判定としては数えない） |
+| 保存されたArtifactの完全性（`artifact-integrity`） | 証拠に加えない（bytesが申告どおりでも、正しいことにはならない） | 申告された出力へのvalidatorの却下 |
+
+保存されたbytesが申告のdigestと違うのは、Workerが出力を偽って報告した場合です（#57のV5）。方針がその完全性の検査を`RejectAuthorities`に指名していれば、他の検証者が申告と一致しても`rejected`になり、Attemptは`result_rejected`で閉じます。指名していなければ食い違いとして`held`です。別のTask、Attempt、TaskIRについての観測が一つでもあれば、要求全体を`resultverify.ErrBindingMismatch`で拒否し、何も変えません。
+
+仮決め: Artifactの完全性の扱いと、別のbytesへのvalidatorの判定を食い違いとして扱うことは、要件でまだ決まっていません。どちらも、不一致が受理に加わることがない側を選んでいます。
+
 ## 保持の判断（held）は失敗ではない
 
 検証者が足りない、検証者の間で意見が分かれる、検証者が申告したWorkerと同じ主体の下にいる、といった場合は`held`になり、状態を変えません。後から証拠が加われば、同じAttemptをもう一度受理できます。`rejected`は、方針が指名した権威が出力を明示的に退けた場合だけです。
@@ -33,7 +47,7 @@ AcceptedResultの記録、Attemptの終了、Taskの完了のどれかだけが�
 ## 何を保証しないか
 
 - 結果が正しいこと。受理が保証しないことは、`resultaccept.Decision.NotGuaranteed`に毎回列挙されます（入力の秘匿、実行後の削除、資源使用量の自己申告、外部副作用、検証者の健全性、宣言されていない共謀）。
-- 検証者の証拠の作成。RVR-1は、この境界の入力であり、まだ実装していません。
+- 検証者そのもの（再実行の実行、validator、Artifactの読み出し）。この境界は、観測を受け取って申告と比べるだけです。検証者の身元とその独立性の値が正しいことは、呼び出し側の信頼できる境界が保証します。
 - 方針と、申告したWorkerの独立性の値の出どころ。`PolicySource`と`ProducerSource`の実体は、まだありません。読めないときは`ErrPolicyUnavailable`で止まり、「要件なし」とは読みません。
 - 受理済みの結果をClientへ返す経路。
 
