@@ -40,6 +40,9 @@ type ResultAcceptanceCommit struct {
 //   - the ResultClaim recorded for the Attempt is a completed claim whose claim
 //     digest and output digest equal the ones in Result, so a result can only be
 //     accepted for what the Worker actually claimed;
+//   - the Attempt's Lease still holds the latest FenceEpoch of the Task, and the
+//     claim names that fence. Once a later Lease has placed the Task again, the
+//     Attempt's result is a stale late result and must not complete the Task;
 //   - the Task is at ExpectedTaskRevision, has not reached a terminal phase, and
 //     has no cancellation requested.
 //

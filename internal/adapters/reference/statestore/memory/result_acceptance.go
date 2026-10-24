@@ -60,6 +60,15 @@ func (s *Store) CommitAcceptedResult(ctx context.Context, commit statestore.Resu
 		return fmt.Errorf("%w: attempt %s has no completed claim matching the accepted result", statestore.ErrConflict, attemptID)
 	}
 
+	// The Attempt must still hold the Task's latest fence. A later Lease means
+	// the Task was placed again, so this Attempt's result is a stale late
+	// result and must not complete the Task (V3).
+	lease, ok := s.leases[attempt.LeaseID]
+	if !ok || lease.AttemptID != attemptID || lease.FenceEpoch != claim.FenceEpoch() ||
+		s.maxFence[taskID] != lease.FenceEpoch {
+		return fmt.Errorf("%w: attempt %s no longer holds the latest fence of task %s", statestore.ErrConflict, attemptID, taskID)
+	}
+
 	task, ok := s.tasks[taskID]
 	if !ok {
 		return fmt.Errorf("%w: task %s", statestore.ErrNotFound, taskID)

@@ -10,6 +10,7 @@ import (
 	"github.com/hat47x/eki-fabric/internal/core/attemptstate"
 	"github.com/hat47x/eki-fabric/internal/core/contract"
 	"github.com/hat47x/eki-fabric/internal/core/ids"
+	"github.com/hat47x/eki-fabric/internal/core/policystate"
 	"github.com/hat47x/eki-fabric/internal/core/resultaccept"
 	"github.com/hat47x/eki-fabric/internal/core/resultclaim"
 	"github.com/hat47x/eki-fabric/internal/core/taskstate"
@@ -141,7 +142,33 @@ func newFixture(t *testing.T, opts fixtureOptions) *fixture {
 		attempt = next
 	}
 	step(attemptstate.AttemptPhasePlacing, func(a *attemptstate.AttemptRecord) { a.WorkerIdentity = "worker-0" })
-	step(attemptstate.AttemptPhaseAssigned, func(a *attemptstate.AttemptRecord) { a.LeaseID = leaseID })
+	// The Lease is reserved through the store, so the Attempt holds a real
+	// FenceEpoch that acceptance can check is still the Task's latest.
+	policy0, err := policystate.NewActive(1, "policy-1", baseTime.Add(-time.Minute))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := store.CompareAndSwapPolicy(ctx, 0, policy0); err != nil {
+		t.Fatal(err)
+	}
+	reserved, err := store.ReserveLease(ctx, statestore.LeaseReservation{
+		LeaseID: leaseID, TaskID: ready.ID, TaskIRDigest: ready.TaskIRDigest,
+		ExpectedTaskRevision: ready.Revision, AttemptID: attempt.ID, ExpectedAttemptRevision: attempt.Revision,
+		WorkerIdentity: "worker-0", PlacementTrustDomain: "local.example",
+		PlacementAuthorityPrincipal: "control-plane/plc-1", PlacementDecisionID: "placement-1",
+		PlacementPayloadDigest: contract.SHA256([]byte("placement-1")), PlacementExpiresAt: baseTime.Add(2 * time.Hour),
+		PolicyRevision: "policy-1", ExpectedPolicyEpoch: 1,
+		IssuedAt: attempt.UpdatedAt, ExpiresAt: baseTime.Add(time.Hour),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if attempt, err = store.LoadAttempt(ctx, attempt.ID); err != nil {
+		t.Fatal(err)
+	}
+	if reserved.Lease.FenceEpoch != 1 {
+		t.Fatalf("first Lease fence = %d, want 1", reserved.Lease.FenceEpoch)
+	}
 	step(attemptstate.AttemptPhaseDispatched, nil)
 	step(attemptstate.AttemptPhaseClaimed, nil)
 
