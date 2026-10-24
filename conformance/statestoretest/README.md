@@ -140,6 +140,18 @@ WOR-1の署名境界（`workorderissue.Issuer`）を、実際のState Storeに�
 - 形が壊れたcommit（Attemptを別の理由で閉じる、Taskを完了にしない、など）は、状態を読む前に`ErrInvalidAcceptance`で拒否される
 - SQLiteを再起動しても、受理済みの結果、閉じたAttempt、完了したTaskがそろって残り、再送は`ErrAlreadyExists`のまま
 
+## `RunResultRejectionContract` / `RunResultRejectionDurabilityContract`
+
+RAC-1が結果を却下したときの記録の契約です（#57の証跡）。却下の記録と、Attemptの`result_rejected`での終了を、一つのcommitで行います。Taskは変えません。
+
+確認する行は次のとおりです。
+
+- commitが成功すると、記録とAttemptの終了がそろって反映される。記録には食い違った検証、根拠にできた検証者、除外した検証者が残り、Taskは変わらず、受理済みの結果もできない
+- 同じ内容の再送は`ErrAlreadyExists`で、同じAttemptへの別の内容は`ErrConflict`
+- 拒否されたcommit（古いAttempt revision、A-VERIFYINGではないAttempt、記録された申告がない、`completed`でない、申告のdigestが違う）は、記録を作らず、Attemptも変えない
+- 形が壊れたcommitは、状態を読む前に`ErrInvalidAcceptance`で拒否される
+- commitの前にSQLiteを閉じても何も残らず、再起動後のcommitの後は、さらに再起動しても記録と閉じたAttemptがそろって残る
+
 ## `RunRecoveryStoreContract` / `RunRecoveryDurabilityContract`
 
 回収された後の再投入を支える、回復の状態の契約です（#154）。待っている再投入（Pending）、時間窓の予算の消費量、発行済みのPermitを、AttemptやTaskと同じStateに耐久的に置きます。

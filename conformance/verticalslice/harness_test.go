@@ -525,7 +525,7 @@ func (producers) ProducerDimensions(_ context.Context, worker string) (map[resul
 func (w *world) acceptance() *resultacceptance.Service {
 	w.t.Helper()
 	svc, err := resultacceptance.New(resultacceptance.Config{
-		Attempts: w.state, Tasks: w.state, Claims: w.state, Results: w.state,
+		Attempts: w.state, Tasks: w.state, Claims: w.state, Results: w.state, Rejections: w.state,
 		Policies: policySource{resultacceptance.ResultPolicy{
 			Policy: resultaccept.Policy{
 				Level: resultaccept.LevelRA2, Threshold: 2,

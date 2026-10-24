@@ -9,7 +9,7 @@ A-VERIFYING のAttempt（completed の申告が記録済み）
   + 申告したWorkerの独立性の値       <- 身元の記録から。Workerの自己申告ではない
   -> resultaccept.Decide
        accepted -> AcceptedResultを記録 / Attemptを accepted で閉じる / Taskを completed にする（一つのcommit）
-       rejected -> Attemptを rejected で閉じる。Taskは変えない（再試行は回復の判断）
+       rejected -> 却下の記録（RejectedResult）を残し / Attemptを rejected で閉じる（一つのcommit）。Taskは変えない（再試行は回復の判断）
        held     -> 何も変えない。証拠が足りないか、食い違っている
 ```
 
@@ -25,6 +25,12 @@ AcceptedResultの記録、Attemptの終了、Taskの完了のどれかだけが�
 - そのAttemptについて記録された申告が`completed`で、申告のdigestと出力のdigestが、受理する内容と一致する。Workerが報告していない出力は、受理できません。
 - Taskが、指定したrevisionのまま、終端に達していて、取消しの要求もない。
 - 同じTaskに、別の受理済みの結果がない。同じ内容の再送は`ErrAlreadyExists`です。
+
+## 却下の理由を残す
+
+却下でAttemptを`result_rejected`で閉じるだけでは、後から「誰が、どの方針の下で、何を見て退けたか」を説明できません（#57の証跡）。`statestore.ResultRejectionStore.CommitRejectedResult`は、却下の記録とAttemptの終了を一つのtransactionで行います。記録（`internal/core/rejectedresult`）には、申告と出力のdigest、方針のdigest、理由、食い違った検証すべて（検証者、検証の種類、観測したdigest）、根拠にできた検証者、除外した検証者とその理由が入ります。
+
+ストアは、AttemptがA-VERIFYINGで指定のrevisionのままであることと、記録された申告が`completed`で申告と出力のdigestが記録と一致することを確かめます。Attemptごとに記録は一つで、同じ内容の再送は`ErrAlreadyExists`、別の内容は`ErrConflict`です。既に却下したAttemptへの再呼び出しは、保存済みの記録を返し、判定し直しません。
 
 ## 保持の判断（held）は失敗ではない
 
