@@ -83,10 +83,13 @@ FROM attempts WHERE attempt_id = ?`, attemptID.String()))
 		return fmt.Errorf("%w: %v", statestore.ErrConflict, err)
 	}
 
-	var status, claimDigest, outputDigest string
+	var (
+		status, claimDigest, outputDigest string
+		claimFence                        int64
+	)
 	err = tx.QueryRowContext(ctx,
-		`SELECT status, claim_digest, output_digest FROM result_claims WHERE attempt_id = ?`, attemptID.String()).
-		Scan(&status, &claimDigest, &outputDigest)
+		`SELECT status, claim_digest, output_digest, fence_epoch FROM result_claims WHERE attempt_id = ?`, attemptID.String()).
+		Scan(&status, &claimDigest, &outputDigest, &claimFence)
 	if errors.Is(err, sql.ErrNoRows) ||
 		(err == nil && (status != string(resultclaim.StatusCompleted) ||
 			claimDigest != commit.Result.ClaimDigest().Hex() || outputDigest != commit.Result.OutputDigest().Hex())) {
@@ -94,6 +97,24 @@ FROM attempts WHERE attempt_id = ?`, attemptID.String()))
 	}
 	if err != nil {
 		return fmt.Errorf("load ResultClaim %s for acceptance: %w", attemptID, err)
+	}
+
+	// The Attempt must still hold the Task's latest fence. A later Lease means
+	// the Task was placed again, so this Attempt's result is a stale late
+	// result and must not complete the Task (V3). The schema trigger
+	// accepted_results_fence_guard repeats this check.
+	var leaseAttempt string
+	var leaseFence, lastFence int64
+	err = tx.QueryRowContext(ctx, `
+SELECT l.attempt_id, l.fence_epoch, lf.last_fence_epoch
+FROM leases l JOIN lease_fences lf ON lf.task_id = l.task_id
+WHERE l.lease_id = ?`, attempt.LeaseID.String()).Scan(&leaseAttempt, &leaseFence, &lastFence)
+	if errors.Is(err, sql.ErrNoRows) || (err == nil && (leaseAttempt != attemptID.String() ||
+		leaseFence != claimFence || lastFence != leaseFence)) {
+		return fmt.Errorf("%w: attempt %s no longer holds the latest fence of task %s", statestore.ErrConflict, attemptID, taskID)
+	}
+	if err != nil {
+		return fmt.Errorf("load Lease fence of %s for acceptance: %w", attemptID, err)
 	}
 
 	task, err := scanTask(tx.QueryRowContext(ctx, `
