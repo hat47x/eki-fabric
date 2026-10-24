@@ -30,6 +30,7 @@ import (
 	"github.com/hat47x/eki-fabric/internal/core/rejectedresult"
 	"github.com/hat47x/eki-fabric/internal/core/resultaccept"
 	"github.com/hat47x/eki-fabric/internal/core/resultclaim"
+	"github.com/hat47x/eki-fabric/internal/core/resultverify"
 	"github.com/hat47x/eki-fabric/internal/core/taskstate"
 	"github.com/hat47x/eki-fabric/internal/spi/statestore"
 )
@@ -129,6 +130,11 @@ func New(cfg Config) (*Service, error) {
 type Request struct {
 	AttemptID     ids.AttemptID
 	Verifications []resultaccept.Verification
+	// Observations are raw verifier reports. Accept compares each with the
+	// stored completed claim (resultverify.Normalize) and adds the result to
+	// Verifications, so the relation between an observation and the claim is
+	// decided here and not by the verifier or the Worker.
+	Observations []resultverify.Observation
 }
 
 // Result reports what Accept decided and did.
@@ -206,6 +212,19 @@ func (s *Service) Accept(ctx context.Context, req Request) (Result, error) {
 		return Result{}, fmt.Errorf("%w: Task %s is %s", ErrTaskNotCompletable, task.ID, task.Phase)
 	}
 
+	subject, err := resultverify.SubjectOf(claim)
+	if err != nil {
+		return Result{}, fmt.Errorf("%w: Attempt %s: %v", ErrNoCompletedClaim, attempt.ID, err)
+	}
+	if subject.TaskID != attempt.TaskID || subject.TaskIRDigest != attempt.TaskIRDigest {
+		return Result{}, fmt.Errorf("%w: Attempt %s: stored claim is bound to another Task or TaskIR", ErrNoCompletedClaim, attempt.ID)
+	}
+	normalized, err := resultverify.NormalizeAll(subject, req.Observations)
+	if err != nil {
+		return Result{}, err
+	}
+	verifications := append(append([]resultaccept.Verification(nil), req.Verifications...), normalized...)
+
 	policy, err := s.policies.ResultPolicy(ctx, attempt.TaskID)
 	if err != nil {
 		return Result{}, fmt.Errorf("%w: policy: %w", ErrPolicyUnavailable, err)
@@ -221,7 +240,7 @@ func (s *Service) Accept(ctx context.Context, req Request) (Result, error) {
 		WorkerID:     attempt.WorkerIdentity,
 		OutputDigest: claim.OutputDigest().Hex(),
 		Dimensions:   producer,
-	}, req.Verifications, policy.Output, &policy.Policy)
+	}, verifications, policy.Output, &policy.Policy)
 	if err != nil {
 		return Result{}, err
 	}
