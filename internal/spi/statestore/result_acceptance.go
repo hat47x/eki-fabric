@@ -40,22 +40,64 @@ type ResultAcceptanceCommit struct {
 //   - the ResultClaim recorded for the Attempt is a completed claim whose claim
 //     digest and output digest equal the ones in Result, so a result can only be
 //     accepted for what the Worker actually claimed;
-//   - the Attempt's Lease still holds the latest FenceEpoch of the Task, and the
-//     claim names that fence. Once a later Lease has placed the Task again, the
-//     Attempt's result is a stale late result and must not complete the Task;
+//   - the Attempt's Lease is the Attempt's own and the claim names its fence;
 //   - the Task is at ExpectedTaskRevision, has not reached a terminal phase, and
 //     has no cancellation requested.
 //
+// When those hold but the Attempt's Lease no longer holds the latest FenceEpoch
+// of the Task, it fails with ErrStaleFence instead. A later Lease has placed the
+// Task again, so the Attempt's result is a stale late result and must not
+// complete the Task. Unlike ErrConflict this is not a race to retry: a fence
+// only grows, so the same commit can never succeed.
+//
 // A Task has at most one accepted result. Committing the same result again
 // fails with ErrAlreadyExists, and a different one fails with ErrConflict.
+//
+// CloseStaleAttempt closes an Attempt in A-VERIFYING whose Lease no longer
+// holds the Task's latest FenceEpoch, with the close reason stale_attempt, so
+// it does not wait for verification forever. It checks the staleness itself in
+// the same transaction and fails with ErrConflict when the Attempt is not in
+// A-VERIFYING at ExpectedAttemptRevision or still holds the latest fence. The
+// reason stale_attempt is not an interruption, so the closed Attempt does not
+// enter recovery and does not consume the Task's attempt budget again: the
+// Task already continues on the Attempt that holds the newer fence.
 type ResultAcceptanceStore interface {
 	LoadAcceptedResult(ctx context.Context, id ids.TaskID) (acceptedresult.Record, bool, error)
 	CommitAcceptedResult(ctx context.Context, commit ResultAcceptanceCommit) error
+	CloseStaleAttempt(ctx context.Context, stale StaleAttemptClose) error
 }
 
 // ErrInvalidAcceptance means the commit is malformed on its own, before any
 // stored state is read.
 var ErrInvalidAcceptance = errors.New("invalid result acceptance commit")
+
+// ErrStaleFence means the Attempt's Lease no longer holds the latest FenceEpoch
+// of its Task. It is distinct from ErrConflict on purpose: a revision conflict
+// may succeed after a reload, a superseded fence never will.
+var ErrStaleFence = errors.New("attempt no longer holds the latest fence of its task")
+
+// StaleAttemptClose closes an Attempt whose Lease fence was superseded.
+type StaleAttemptClose struct {
+	ExpectedAttemptRevision uint64
+	// NextAttempt must be the stored Attempt moved from A-VERIFYING to A-CLOSED
+	// with the close reason stale_attempt.
+	NextAttempt attemptstate.AttemptRecord
+}
+
+// Validate checks the close without reading any stored state.
+func (c StaleAttemptClose) Validate() error {
+	switch {
+	case c.NextAttempt.Phase != attemptstate.AttemptPhaseClosed ||
+		c.NextAttempt.CloseReason != attemptstate.CloseReasonStaleAttempt:
+		return fmt.Errorf("%w: the Attempt must close as %s", ErrInvalidAcceptance, attemptstate.CloseReasonStaleAttempt)
+	case c.NextAttempt.Revision != c.ExpectedAttemptRevision+1:
+		return fmt.Errorf("%w: Attempt revision %d does not follow %d", ErrInvalidAcceptance, c.NextAttempt.Revision, c.ExpectedAttemptRevision)
+	}
+	if err := c.NextAttempt.Validate(); err != nil {
+		return fmt.Errorf("%w: %v", ErrInvalidAcceptance, err)
+	}
+	return nil
+}
 
 // Validate checks the commit without reading any stored state. Adapters call it
 // first and then check the stored state inside their transaction.
