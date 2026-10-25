@@ -69,9 +69,9 @@ func TestV2UserReclaimRetriesOnAnotherWorker(t *testing.T) {
 		t.Fatalf("a reclaim changed the Task: %+v", got)
 	}
 
-	permit := w.recoverAttempt(task, first.attempt, 1)
-	if permit.NextAttemptNumber() != 2 {
-		t.Fatalf("permit = %+v", permit)
+	next := w.recoverAttempt(task, first.attempt)
+	if next.Number != 2 {
+		t.Fatalf("next Attempt = %+v", next)
 	}
 	second := w.place(task, "worker-b")
 	if second.fence <= first.fence {
@@ -118,7 +118,7 @@ func TestV3LateResultFromASupersededAttemptChangesNothing(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	w.recoverAttempt(task, first.attempt, 1)
+	w.recoverAttempt(task, first.attempt)
 	second := w.place(task, "worker-b")
 	claim2, _ := w.execute(second, producesOutput("hello"), sourceFunc(quiet))
 	w.report("worker-b", claim2)

@@ -100,7 +100,7 @@ func TestV5MaliciousWorker(t *testing.T) {
 		first := w.place(task, "worker-a")
 		claim, _ := w.execute(first, runnerFunc(runsUntilStopped), sourceFunc(userReturns))
 		w.report("worker-a", claim)
-		w.recoverAttempt(task, first.attempt, 1)
+		w.recoverAttempt(task, first.attempt)
 		second := w.place(task, "worker-b")
 		genuine, _ := w.execute(second, producesOutput("hello"), sourceFunc(quiet))
 
@@ -236,9 +236,9 @@ func TestV6Restart(t *testing.T) {
 		w.restart()
 
 		// Everything the next step needs is read back from the durable state.
-		permit := w.recoverAttempt(task, first.attempt, 1)
-		if permit.NextAttemptNumber() != 2 {
-			t.Fatalf("permit = %+v", permit)
+		next := w.recoverAttempt(task, first.attempt)
+		if next.Number != 2 {
+			t.Fatalf("next Attempt = %+v", next)
 		}
 		second := w.place(task, "worker-b")
 		claim2, _ := w.execute(second, producesOutput("hello"), sourceFunc(quiet))

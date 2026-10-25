@@ -70,7 +70,7 @@ func TestSignedV2ReclaimNeedsANewApprovalForTheNextWorker(t *testing.T) {
 		t.Fatalf("outcome = %+v", outcome)
 	}
 	w.report("worker-a", claim)
-	w.recoverAttempt(task, first.placement.attempt, 1)
+	w.recoverAttempt(task, first.placement.attempt)
 
 	// The old Placement Approval does not place the next Attempt. A new Attempt
 	// needs a new approval for its own Worker.
