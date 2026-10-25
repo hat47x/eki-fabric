@@ -5,16 +5,22 @@ package service
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
+	"log/slog"
 	"net"
+	"net/http"
 	"os"
 	"time"
 
 	"github.com/hat47x/eki-fabric/internal/control/clientapi"
+	serverworkerplane "github.com/hat47x/eki-fabric/internal/control/workerplane"
 	"github.com/hat47x/eki-fabric/internal/core/admission"
+	"github.com/hat47x/eki-fabric/internal/core/resultclaim"
+	"github.com/hat47x/eki-fabric/internal/spi/workerplane"
 )
 
 const maxConfigBytes = 1 << 20
@@ -45,6 +51,73 @@ type Config struct {
 	Tokens []TokenConfig `json:"tokens"`
 
 	Policy PolicyConfig `json:"policy"`
+
+	// Worker enables the optional Worker listener of the process-level test
+	// profile. Absent means no Worker listener is opened.
+	Worker *WorkerConfig `json:"worker,omitempty"`
+}
+
+// WorkerConfig is the TEST PROFILE of the Worker listener: a static table of
+// hashed session tokens. It is not the Worker Protocol (#198) and not an
+// enrollment decision; it exists so an Agent process and this process can be
+// tested end to end. Unlike the Client API there is no plaintext opt-out:
+// without TLS the listener must be on a loopback address.
+type WorkerConfig struct {
+	// Listen is the address of the Worker listener, separate from the Client
+	// API's.
+	Listen string `json:"listen"`
+	// TLS is required unless Listen is a loopback address.
+	TLS *TLSConfig `json:"tls,omitempty"`
+	// MaxBodyBytes bounds a request body. Zero means the default.
+	MaxBodyBytes int64 `json:"max_body_bytes,omitempty"`
+	// Sessions maps token hashes to the Worker they authenticate.
+	Sessions []WorkerSessionConfig `json:"sessions"`
+}
+
+type WorkerSessionConfig struct {
+	WorkerIdentity     string `json:"worker_identity"`
+	TrustDomain        string `json:"trust_domain,omitempty"`
+	SessionTokenSHA256 string `json:"session_token_sha256"`
+}
+
+func (w WorkerConfig) validate() error {
+	host, _, err := net.SplitHostPort(w.Listen)
+	if err != nil || w.Listen == "" {
+		return fmt.Errorf("%w: worker.listen %q is not host:port", ErrInvalidConfig, w.Listen)
+	}
+	if w.TLS != nil && (w.TLS.CertFile == "" || w.TLS.KeyFile == "") {
+		return fmt.Errorf("%w: worker.tls requires both cert_file and key_file", ErrInvalidConfig)
+	}
+	if w.TLS == nil && !isLoopback(host) {
+		return fmt.Errorf("%w: the Worker listener on %q needs tls; plaintext is accepted only on a loopback address", ErrInvalidConfig, w.Listen)
+	}
+	if w.MaxBodyBytes < 0 {
+		return fmt.Errorf("%w: negative worker.max_body_bytes", ErrInvalidConfig)
+	}
+	// The handler validates the table; build it once with a stub to reuse
+	// those checks instead of duplicating them.
+	if _, err := w.handler(stubClaims{}, nil); err != nil {
+		return fmt.Errorf("%w: %v", ErrInvalidConfig, err)
+	}
+	return nil
+}
+
+func (w WorkerConfig) handler(claims workerplane.ClaimClient, log *slog.Logger) (http.Handler, error) {
+	entries := make([]serverworkerplane.SessionEntry, 0, len(w.Sessions))
+	for _, s := range w.Sessions {
+		entries = append(entries, serverworkerplane.SessionEntry{
+			WorkerIdentity: s.WorkerIdentity, TrustDomain: s.TrustDomain, SessionTokenSHA256: s.SessionTokenSHA256,
+		})
+	}
+	return serverworkerplane.NewHTTPHandler(serverworkerplane.HTTPConfig{
+		Claims: claims, Sessions: entries, MaxBodyBytes: w.MaxBodyBytes, Logger: log,
+	})
+}
+
+type stubClaims struct{}
+
+func (stubClaims) SubmitClaim(context.Context, workerplane.Principal, resultclaim.Claim) (workerplane.ClaimAck, error) {
+	return workerplane.ClaimAck{}, errors.New("not configured")
 }
 
 type TLSConfig struct {
@@ -131,6 +204,11 @@ func (c Config) Validate() error {
 	}
 	if c.MaxBodyBytes < 0 {
 		return fmt.Errorf("%w: negative max_body_bytes", ErrInvalidConfig)
+	}
+	if c.Worker != nil {
+		if err := c.Worker.validate(); err != nil {
+			return err
+		}
 	}
 	if _, err := c.authenticator(); err != nil {
 		return fmt.Errorf("%w: %v", ErrInvalidConfig, err)

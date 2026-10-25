@@ -8,12 +8,12 @@
 
 現在は、M0 executable skeletonの最初の段階です。
 
-まだTask APIもWorker sessionも起動しません。
+Task APIは`--config`で起動できます。Worker sessionは、試験用のWorker listener（#198の決定ではない）だけが任意で起動します。
 
 現時点で入っているものは、次のとおりです。
 
 - `cmd/eki-control`: Control Planeの実行ファイルの入口
-- `cmd/eki-agent`: Native Worker Agentの実行ファイルの入口
+- `cmd/eki-agent`: Native Worker Agentの実行ファイル。今は、耐久queueの申告をControl Planeへ届ける試験用の配送だけを行う（Taskは実行しない）
 - `internal/core/ids`: Task、Attempt、Leaseの型付きID
 - `internal/core/contract`: SHA-256のDigestの値
 - `internal/core/taskstate`: TaskRecordが最低限守るべき不変条件
@@ -25,7 +25,8 @@
 - `internal/core/recovery`: 回収後の再投入を、attempt budgetと時間窓の件数・転送量・計算量で区切る
 - `internal/core/admission`: Taskの受理審査（厳格なJSON、P0スキーマの検証、ポリシー、冪等性、公開status、Cancel）
 - `internal/control/clientapi`: P0のExternal Client PlaneのHTTP実装（認証、サイズの制限、Problem Details）
-- `internal/control/service`: Control Planeの設定、起動、停止
+- `internal/control/service`: Control Planeの設定、起動、停止。任意で、試験用のWorker listenerを開く
+- `conformance/process`: `eki-control`と`eki-agent`を別プロセスで起動し、申告の配送を確かめる（試験用profile。#198の決定ではない）
 
 メモリ上のアダプタは開発用です。プロセスを再起動すると状態が失われるため、M0のrestart gateを満たしません。restart gateを満たすのは、SQLiteのアダプタです。
 
@@ -53,7 +54,7 @@ eki-control dev
 eki-agent dev
 ~~~
 
-`--version`を付けずに実行した場合、現在はlistenerを開かず、M0 skeletonであることを表示して終了します。
+`eki-control`は`--config`なしでは、`eki-agent`は`--control-url`や`--queue-db`なしでは、何も起動せずに表示して終了します。`eki-agent`の試験用の起動は、`conformance/process/README.md`を参照してください。
 
 ## テストの読み方
 
