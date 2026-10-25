@@ -845,3 +845,22 @@ Worker側には署名済みWorkOrderを検証・受理する境界（`workorderv
 - 共通の適合性試験`RunWorkOrderSigningContract`では、発行したWorkOrderがWorker側の三つの境界を通ること、古いPolicy・失効したkey・期限切れや置き換えられたLease・Workerの不一致がABORTEDになること、crashと再送、SQLiteの再起動を固定した。
 
 #160で未決の論点のうち、一つのLeaseからWorkOrderは一つだけ、`A-ASSIGNED`のAttemptだけが受け取れる、Artifact Grantは含めない、Executor Approvalは呼び出し側の参照を結び付ける、の四点を仮決めとした（[`internal/core/workorderissue/README.md`](../internal/core/workorderissue/README.md)）。署名中にWOR-1 keyのprimaryが入れ替わった場合は、[ADR-0025](adr/0025-lease-policy-currentness-and-key-rotation.md)のLSE-1と同じくABORTEDとし、署名し直さない。
+
+### 2026-10-25 申告の配送を別プロセスで通す（#57、#173）
+
+ResultClaimの配送は、これまでプロセス内の接続（`workerplane.ClaimClient`）と、TLSの往復を測ったSpike（`spikes/claim-wire-roundtrip`）でしか確かめていなかった。`eki-agent`が耐久queueのClaimを、実行中の`eki-control`へTLS越しに届ける最初のプロセス単位の経路を加えた。
+
+- Control Plane: `service.Config`に任意の`worker`を加え、Client APIとは別のlistenerを開く。TLS必須で、loopbackだけ平文を許す。不正な設定は起動せずに失敗する。同じSQLiteのState Storeの上に`claimaccept`、`claimplane`、`workerplane.Server`を組み、`workerplane/httpserver.go`が認証（トークンのSHA-256の定数時間比較）、本文の上限、固定コードのエラー応答を担う。
+- Agent: `claimclient/http.go`が`workerplane.ClaimClient`をHTTP(S)で実装し、`cmd/eki-agent`が`claimqueue.DeliverDue`を一定間隔で回す。SIGINT・SIGTERMで終了する。
+- 試験: `conformance/process`が両バイナリを`go build`し、別プロセスで起動して、申告の配送、Control Planeの強制終了中の保持と再起動後の配送、未知のトークンと別のWorkerの拒否を確かめる。
+
+これは**試験用のprofile**であり、#198の決定ではない。Workerの認証・登録（enrollment）と通信契約は未決のままで、`session_token_sha256 → {worker_identity, trust_domain}`の表とClaimのJSON（`internal/spi/workerplane/testprofile`）は、その決定を先取りしない。`worker.proto`との互換性は主張せず、ResultClaimとprotoの対応と申告queueの意味には触れていない。
+
+仮決め（承認待ち）:
+
+- 試験用のURLパスは`/test-profile/v1/claims`、本文は`application/json`とした。
+- Worker listenerには、Client APIにある「プロキシがTLSを終端する」ための平文の許可を設けなかった。
+- 拒否された申告（401・403など）は、Agentのqueueに残り再送され続ける。恒久的な拒否の扱いは決めていない。
+- Agentの設定は、フラグとJSON設定ファイルで、トークンは`--token-file`、環境変数`EKI_AGENT_TOKEN`、`--token`のいずれか一つとした。
+
+未決: Workerの認証・登録とトークンの更新・失効（#198）、通信契約、恒久的な拒否の扱い、複数のAgentと実ネットワークの障害、署名つきの連鎖と組み合わせたプロセス単位の通し試験。
