@@ -17,7 +17,8 @@ Client（悪意を持ち得る）
 - 受付（`admission`）、Attempt・Lease・Taskの状態とFenceEpoch
 - Workerの実行の監督（`executor`）と、Local Governorの停止による回収
 - Agentの再送キュー、`claimclient`、Worker Plane、`claimplane`、`claimaccept`
-- 回復の判断（`recovery`）と、結果の受理（`resultacceptance`）
+- 回復（`recoveryadmission`）: 閉じたAttemptから再投入を待ち行列に積み、時間窓の予算の中で解放し、Permitから次のAttemptを作る。待ち行列、窓の予算、Permitは、State Storeに耐久的に置かれる
+- 結果の受理（`resultacceptance`）
 
 次は**合成した入力**です。これらは別の作業単位で本物にします。
 
@@ -42,6 +43,7 @@ Client（悪意を持ち得る）
 | V4 | 悪意のあるClient。Workerの直接指定、任意の実行ファイル、任意のURL、データ区分の引き下げ、再試行の予算の拡大、上限を超える要求を、すべて入口で拒否する。拒否は枠を消費せず、同じキーの別の要求は拒否される |
 | V5 | 悪意のあるWorker。別のWorkerになりすました申告、古いFenceの申告、Leaseより先のFenceの申告、二度目の別の申告、同じ主体の下に集まった多数の検証者、出力が壊れた結果 |
 | V6 | 再起動。Attemptの間、キューに申告が残ったまま、受理の後。再起動をまたいでも、有効な権限は一つだけ |
+| 回復 | 待ち行列の再投入が、再起動をまたいで開始時刻も含めて残る。Permitの確定とAttemptの作成の間で落ちても、あとで一度だけ使える。回収の波は、時間窓の予算の中で少しずつ解放され、再起動しても窓が巻き戻らない。再試行してはならないTaskは失敗にせず保持する。Workerが毎回回収しても、Taskのattempt budgetは広がらない。結果が決まったAttemptは再投入できない |
 
 V5の「バイト列が変わった実行ファイル」は、WorkOrderから本物のプロセスを起動する経路をこのスライスが持たないため、`Skip`として見える形で残しています。`executor/native`のテスト（`ErrExecutorChanged`）が確かめています。改変されたWorkOrderは、次の署名つきの連鎖で確かめています。
 
@@ -97,6 +99,6 @@ go test ./conformance/verticalslice/
 ## まだ確かめていないこと
 
 - 署名つきのPlacementとWorkOrderの連鎖（上の合成の表）
-- 回復の「待ち行列」の耐久化（#154）。V6では、閉じたAttemptから分類をやり直している
-- 複数のTaskが回収で一斉に戻る場合の予算（`recovery`の単体テストにある）
+- 再投入の公平性（aging、fair share）と、複数のControl Plane instanceにまたがる窓の合意
+- 保持（Hold）にしたTaskの印の保存。保持はTaskを失敗にせず返すだけで、保存する表はまだない
 - Clientが結果を取得する経路

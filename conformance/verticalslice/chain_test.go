@@ -363,19 +363,10 @@ const (
 func (c *chain) startAttempt(taskID ids.TaskID, worker string) attemptstate.AttemptRecord {
 	c.w.t.Helper()
 	w := c.w
-	task := w.task(taskID)
-	attemptID, err := ids.NewAttemptID()
+	attempt, err := w.nextAttempt(taskID)
 	if err != nil {
 		w.t.Fatal(err)
 	}
-	attempt, err := attemptstate.New(attemptID, taskID, task.TaskIRDigest, uint64(len(w.attempt[taskID])+1), w.clock.now)
-	if err != nil {
-		w.t.Fatal(err)
-	}
-	if err := w.state.CreateAttempt(w.ctx, attempt); err != nil {
-		w.t.Fatal(err)
-	}
-	w.attempt[taskID] = append(w.attempt[taskID], attemptID)
 	placing := attempt
 	placing.Phase, placing.WorkerIdentity = attemptstate.AttemptPhasePlacing, worker
 	placing.Revision++
