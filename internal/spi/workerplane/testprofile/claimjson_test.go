@@ -86,3 +86,32 @@ func TestAckRoundtrip(t *testing.T) {
 		t.Fatal("unknown ack field accepted")
 	}
 }
+
+func TestDecodeAckRequiresEveryField(t *testing.T) {
+	for name, raw := range map[string]string{
+		"missing decision": `{"attempt_phase":"closed","verification_required":false}`,
+		"null decision":    `{"decision":null,"attempt_phase":"closed","verification_required":false}`,
+		"missing phase":    `{"decision":"new","verification_required":false}`,
+		"null phase":       `{"decision":"new","attempt_phase":null,"verification_required":false}`,
+		"missing flag":     `{"decision":"new","attempt_phase":"closed"}`,
+		"null flag":        `{"decision":"new","attempt_phase":"closed","verification_required":null}`,
+	} {
+		t.Run(name, func(t *testing.T) {
+			if _, err := DecodeAck([]byte(raw)); !errors.Is(err, ErrInvalidMessage) {
+				t.Fatalf("error=%v, want ErrInvalidMessage", err)
+			}
+		})
+	}
+	for _, want := range []workerplane.ClaimAck{
+		{Decision: "new", AttemptPhase: "closed", VerificationRequired: false},
+		{Decision: "duplicate", AttemptPhase: "verifying", VerificationRequired: true},
+	} {
+		raw, err := EncodeAck(want)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if got, err := DecodeAck(raw); err != nil || got != want {
+			t.Fatalf("roundtrip=%+v %v want %+v", got, err, want)
+		}
+	}
+}

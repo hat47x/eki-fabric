@@ -122,12 +122,19 @@ func EncodeAck(a workerplane.ClaimAck) ([]byte, error) {
 // DecodeAck parses a response body. Whether the acknowledgement is meaningful
 // is checked by claimclient, not here.
 func DecodeAck(raw []byte) (workerplane.ClaimAck, error) {
-	var w wireAck
+	var w struct {
+		Decision             *string `json:"decision"`
+		AttemptPhase         *string `json:"attempt_phase"`
+		VerificationRequired *bool   `json:"verification_required"`
+	}
 	if err := decodeStrict(raw, &w); err != nil {
 		return workerplane.ClaimAck{}, err
 	}
+	if w.Decision == nil || w.AttemptPhase == nil || w.VerificationRequired == nil {
+		return workerplane.ClaimAck{}, fmt.Errorf("%w: acknowledgement fields must be present and non-null", ErrInvalidMessage)
+	}
 	return workerplane.ClaimAck{
-		Decision: w.Decision, AttemptPhase: w.AttemptPhase, VerificationRequired: w.VerificationRequired,
+		Decision: *w.Decision, AttemptPhase: *w.AttemptPhase, VerificationRequired: *w.VerificationRequired,
 	}, nil
 }
 
