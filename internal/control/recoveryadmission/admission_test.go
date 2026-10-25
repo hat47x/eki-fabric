@@ -163,6 +163,7 @@ func TestIntakeRefusesAnAttemptThatWasNotInterrupted(t *testing.T) {
 	f := newFixture(t)
 	for _, reason := range []attemptstate.CloseReason{
 		attemptstate.CloseReasonResultAccepted, attemptstate.CloseReasonCancelled, attemptstate.CloseReasonSuperseded,
+		attemptstate.CloseReasonStaleAttempt,
 	} {
 		_, attempt := f.interrupted("not-interrupted-"+string(reason), reason)
 		if _, err := f.service.Intake(context.Background(), attempt.ID); !errors.Is(err, ErrNotInterrupted) {

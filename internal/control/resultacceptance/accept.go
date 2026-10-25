@@ -42,6 +42,10 @@ var (
 	ErrStateChanged       = errors.New("the Attempt or Task changed while the result was being decided")
 	ErrTaskNotCompletable = errors.New("the Task cannot be completed: it is terminal or has a cancellation request")
 	ErrPolicyUnavailable  = errors.New("the result policy or the producer identity could not be read")
+	// ErrSuperseded means the Attempt's Lease was superseded by a later
+	// placement of the Task, so its result can never be accepted. It is not a
+	// race to retry. The Attempt is closed as stale_attempt.
+	ErrSuperseded = errors.New("the Attempt's Lease was superseded by a later placement of the Task")
 )
 
 type AttemptStore interface {
@@ -191,6 +195,9 @@ func (s *Service) Accept(ctx context.Context, req Request) (Result, error) {
 	if attempt.Phase == attemptstate.AttemptPhaseClosed && attempt.CloseReason == attemptstate.CloseReasonResultRejected {
 		return s.replayRejection(ctx, attempt)
 	}
+	if attempt.Phase == attemptstate.AttemptPhaseClosed && attempt.CloseReason == attemptstate.CloseReasonStaleAttempt {
+		return Result{}, fmt.Errorf("%w: Attempt %s is closed as %s", ErrSuperseded, attempt.ID, attempt.CloseReason)
+	}
 	if attempt.Phase != attemptstate.AttemptPhaseVerifying {
 		return Result{}, fmt.Errorf("%w: Attempt %s is %s", ErrWrongPhase, attempt.ID, attempt.Phase)
 	}
@@ -299,10 +306,45 @@ func (s *Service) accept(ctx context.Context, attempt attemptstate.AttemptRecord
 			return Result{Decision: decision, Accepted: stored, Replayed: true}, nil
 		}
 		return Result{}, fmt.Errorf("%w: %v", ErrStateChanged, err)
+	case errors.Is(err, statestore.ErrStaleFence):
+		return Result{Decision: decision}, s.closeStale(ctx, attempt, now, err)
 	case errors.Is(err, statestore.ErrConflict):
 		return Result{}, fmt.Errorf("%w: %v", ErrStateChanged, err)
 	}
 	return Result{}, err
+}
+
+// closeStale closes an Attempt whose Lease fence was superseded, so it does not
+// stay in A-VERIFYING forever, and reports ErrSuperseded. The store checks the
+// staleness again in the transaction that closes the Attempt. The close reason
+// stale_attempt is not an interruption, so the Attempt does not enter recovery:
+// the Task already continues on the Attempt that holds the newer fence.
+func (s *Service) closeStale(ctx context.Context, attempt attemptstate.AttemptRecord, now time.Time, cause error) error {
+	closed := attempt
+	closed.Phase = attemptstate.AttemptPhaseClosed
+	closed.CloseReason = attemptstate.CloseReasonStaleAttempt
+	closed.Revision++
+	closed.UpdatedAt = laterOf(now, attempt.UpdatedAt)
+	err := s.results.CloseStaleAttempt(ctx, statestore.StaleAttemptClose{
+		ExpectedAttemptRevision: attempt.Revision,
+		NextAttempt:             closed,
+	})
+	if errors.Is(err, statestore.ErrConflict) {
+		// Another call may have closed it first. Only that outcome gives the
+		// same answer; anything else changed under this call.
+		stored, loadErr := s.attempts.LoadAttempt(ctx, attempt.ID)
+		if loadErr != nil {
+			return loadErr
+		}
+		if stored.Phase != attemptstate.AttemptPhaseClosed || stored.CloseReason != attemptstate.CloseReasonStaleAttempt {
+			return fmt.Errorf("%w: %v", ErrStateChanged, err)
+		}
+		err = nil
+	}
+	if err != nil {
+		return err
+	}
+	return fmt.Errorf("%w: Attempt %s: %w", ErrSuperseded, attempt.ID, cause)
 }
 
 // reject records why the result was rejected and closes the Attempt as

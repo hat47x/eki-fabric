@@ -26,6 +26,18 @@ AcceptedResultの記録、Attemptの終了、Taskの完了のどれかだけが�
 - Taskが、指定したrevisionのまま、終端に達していて、取消しの要求もない。
 - 同じTaskに、別の受理済みの結果がない。同じ内容の再送は`ErrAlreadyExists`です。
 
+## 置き換えられたAttemptを閉じる
+
+A-VERIFYINGで検証を待つ間にLeaseの期限が切れ、同じTaskが新しいFenceEpochで別のAttemptへ配置し直されることがあります（#57のV3）。このとき元のAttemptの結果を受理すると、実行権限を持つ新しいAttemptがいるままTaskが完了してしまうため、ストアは受理を拒否します（#213）。
+
+拒否は`ErrConflict`ではなく`statestore.ErrStaleFence`で返ります。revisionの競合は読み直せば通る可能性がありますが、FenceEpochは増える一方なので、置き換えられたAttemptの受理は何度試しても通りません。この区別がないと、呼び出し側は再試行を繰り返し、AttemptはA-VERIFYINGのまま残ります。
+
+`Accept`は`ErrStaleFence`を受けると、`statestore.ResultAcceptanceStore.CloseStaleAttempt`でAttemptを`stale_attempt`として閉じ、`ErrSuperseded`を返します。ストアは閉じるtransactionの中で、Leaseが最新のFenceEpochを持たないことをもう一度確かめます。閉じたAttemptへの再呼び出しも`ErrSuperseded`です。Taskは変えません。Taskは新しいFenceEpochのAttemptで続いているからです。
+
+`stale_attempt`は中断ではありません（`CloseReason.IsInterruption`がfalse）。そのため`recoveryadmission.Intake`は`ErrNotInterrupted`で断り、閉じたAttemptが再投入の予算やAttempt数を二度使うことはありません。
+
+仮決め: 閉じる場所は、新しいFenceEpochを発行するLeaseの予約ではなく、受理の拒否の直後にしました。予約のtransactionで他のAttemptまで閉じると、予約と関係のないAttemptのrevisionが動き、Leaseの契約が広がるためです。受理が呼ばれないまま残るAttemptは、まだ閉じません。また、閉じる理由が`stale_attempt`か`superseded`かは、Task State Modelでは定義されていません。ここでは、`superseded`を別のAttemptの結果の受理による終了（Task State Model §26）に残し、FenceEpochの置き換えには`stale_attempt`を使います。
+
 ## 検証者の観測から証拠を作る（RVR-1）
 
 検証者は、見たもの（再実行で得た出力のdigest、validatorが調べたbytesのdigestと判定、保存されたArtifactのdigest）だけを`Request.Observations`で渡します。観測と申告の関係は、検証者もWorkerも決めません。`resultverify.Normalize`が、記録された`completed`の申告の出力digestと比べて決めます。
