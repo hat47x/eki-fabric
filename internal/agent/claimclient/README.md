@@ -41,3 +41,5 @@ transportはcontextの取消に応じて返る必要があります。このclie
 - Control Plane側の流量制限。
 
 `ClaimClient`と`ClaimAck`のProtobufとの対応は#198で確定する必要があります。`conformance/process`の試験が通っても、それは試験用の接続で二つのプロセスが申告を受け渡せたことを示すだけです。worker.protoとの互換性、認証方式の妥当性、Workerが実際にTaskを実行したことは示しません。
+
+試験用JSONの受理確認では、`decision`・`attempt_phase`・`verification_required`の3項目を省略できず、`null`も拒否します。`verification_required: false`は有効ですが、項目の欠落を`false`として補いません。不完全な受理確認では申告を保持し、再起動後も再送時刻と失敗回数を引き継ぎます。これはJSONの項目の存在を確かめる検査であり、送った申告と応答の対応を証明するものではありません。
