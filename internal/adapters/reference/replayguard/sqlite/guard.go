@@ -15,7 +15,7 @@ import (
 	"strings"
 	"time"
 
-	_ "modernc.org/sqlite"
+	sqlite3 "modernc.org/sqlite"
 
 	"github.com/hat47x/eki-fabric/internal/core/decisionpayload"
 	"github.com/hat47x/eki-fabric/internal/spi/replayguard"
@@ -58,6 +58,29 @@ func Open(ctx context.Context, path string, clock Clock, maxEntries int) (*Guard
 	if err := file.Close(); err != nil {
 		return nil, err
 	}
+	// Several processes may open a brand-new file at once. Switching it to WAL
+	// and creating the schema take locks that busy_timeout does not always
+	// wait for, so setup is retried while another opener holds them.
+	deadline := time.Now().Add(openRetryWindow)
+	for {
+		g, err := openOnce(ctx, abs, clock, maxEntries)
+		if err == nil || !isBusy(err) || !time.Now().Before(deadline) {
+			return g, err
+		}
+		select {
+		case <-ctx.Done():
+			return nil, ctx.Err()
+		case <-time.After(openRetryInterval):
+		}
+	}
+}
+
+const (
+	openRetryWindow   = 10 * time.Second
+	openRetryInterval = 10 * time.Millisecond
+)
+
+func openOnce(ctx context.Context, abs string, clock Clock, maxEntries int) (*Guard, error) {
 	db, err := sql.Open("sqlite", dsn(abs))
 	if err != nil {
 		return nil, err
@@ -69,6 +92,16 @@ func Open(ctx context.Context, path string, clock Clock, maxEntries int) (*Guard
 		return nil, err
 	}
 	return g, nil
+}
+
+// isBusy reports SQLITE_BUSY and SQLITE_LOCKED, including extended codes.
+func isBusy(err error) bool {
+	var se *sqlite3.Error
+	if errors.As(err, &se) {
+		code := se.Code() & 0xff
+		return code == 5 || code == 6
+	}
+	return false
 }
 
 func (g *Guard) initialize(ctx context.Context) error {
