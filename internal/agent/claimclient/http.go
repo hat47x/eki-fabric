@@ -23,7 +23,7 @@ import (
 // not an enrollment decision. See testprofile for the body format.
 type HTTPClient struct {
 	endpoint string
-	token    string
+	token    string // empty when the client authenticates by certificate
 	http     *http.Client
 }
 
@@ -38,6 +38,11 @@ type HTTPConfig struct {
 	// Token is the bearer token whose SHA-256 the Control Plane's session
 	// table lists.
 	Token string
+	// ClientCertificate, when set, makes the client authenticate with the
+	// client certificate it returns (mTLS, ADR-0027) and send no bearer token.
+	// It is called for each new connection, so a renewed certificate is used
+	// by the next connection. Token must be empty then.
+	ClientCertificate func(*tls.CertificateRequestInfo) (*tls.Certificate, error)
 	// RootCAs are the CAs that may vouch for the Control Plane. Nil means the
 	// system pool.
 	RootCAs *x509.CertPool
@@ -58,11 +63,18 @@ func NewHTTP(cfg HTTPConfig) (*HTTPClient, error) {
 	default:
 		return nil, fmt.Errorf("%w: the control URL must use https unless it is a loopback address", ErrInvalidConfig)
 	}
-	if len(cfg.Token) < 20 {
+	switch {
+	case cfg.ClientCertificate != nil && cfg.Token != "":
+		return nil, fmt.Errorf("%w: give a client certificate or a token, not both", ErrInvalidConfig)
+	case cfg.ClientCertificate != nil && u.Scheme != "https":
+		return nil, fmt.Errorf("%w: client certificate authentication needs https", ErrInvalidConfig)
+	case cfg.ClientCertificate == nil && len(cfg.Token) < 20:
 		return nil, fmt.Errorf("%w: token is missing or too short", ErrInvalidConfig)
 	}
 	tr := &http.Transport{
-		TLSClientConfig:     &tls.Config{MinVersion: tls.VersionTLS12, RootCAs: cfg.RootCAs},
+		TLSClientConfig: &tls.Config{
+			MinVersion: tls.VersionTLS12, RootCAs: cfg.RootCAs, GetClientCertificate: cfg.ClientCertificate,
+		},
 		MaxIdleConnsPerHost: 1,
 		DisableCompression:  true,
 	}
@@ -115,7 +127,9 @@ func (c *HTTPClient) SubmitClaim(ctx context.Context, _ workerplane.Principal, c
 		return workerplane.ClaimAck{}, err
 	}
 	req.Header.Set("Content-Type", testprofile.ContentType)
-	req.Header.Set("Authorization", "Bearer "+c.token)
+	if c.token != "" {
+		req.Header.Set("Authorization", "Bearer "+c.token)
+	}
 	resp, err := c.http.Do(req)
 	if err != nil {
 		return workerplane.ClaimAck{}, err

@@ -21,6 +21,8 @@ import (
 	serverworkerplane "github.com/hat47x/eki-fabric/internal/control/workerplane"
 	"github.com/hat47x/eki-fabric/internal/core/admission"
 	"github.com/hat47x/eki-fabric/internal/core/resultclaim"
+	"github.com/hat47x/eki-fabric/internal/core/workercert"
+	"github.com/hat47x/eki-fabric/internal/core/workerregistry"
 	"github.com/hat47x/eki-fabric/internal/spi/workerplane"
 )
 
@@ -58,12 +60,36 @@ type Config struct {
 	Worker *WorkerConfig `json:"worker,omitempty"`
 }
 
-// WorkerConfig is the TEST PROFILE of the Worker listener: a static table of
-// hashed session tokens. It is not the Worker Protocol (#198) and not an
-// enrollment decision; it exists so an Agent process and this process can be
-// tested end to end. Unlike the Client API there is no plaintext opt-out:
-// without TLS the listener must be on a loopback address.
+// Worker authentication modes.
+const (
+	// WorkerAuthStaticToken is the TEST PROFILE: a static table of hashed
+	// session tokens. It is the default when Auth is empty.
+	WorkerAuthStaticToken = "static_token"
+	// WorkerAuthMTLS is the default for Workers of ADR-0027: a client
+	// certificate per Worker from the Worker CA, enrolled with a one-time
+	// credential.
+	WorkerAuthMTLS = "mtls"
+)
+
+// WorkerConfig configures the Worker listener, which is separate from the
+// Client API's. Auth selects how Workers authenticate.
+//
+// With auth "mtls" (ADR-0027), Workers enroll with a one-time credential and
+// then authenticate with a client certificate from the Worker CA. TLS is
+// required, on loopback too: a client certificate over plaintext means nothing.
+//
+// Without it (auth empty or "static_token") the listener is the TEST PROFILE: a
+// static table of hashed session tokens. It is not the Worker Protocol (#198)
+// and not an enrollment decision; it exists so an Agent process and this
+// process can be tested end to end. Unlike the Client API there is no
+// plaintext opt-out: without TLS the listener must be on a loopback address.
 type WorkerConfig struct {
+	// Auth is "mtls" or "static_token". Empty means "static_token", the test
+	// profile.
+	Auth string `json:"auth,omitempty"`
+	// MTLS holds the settings of auth "mtls". It must be absent otherwise.
+	MTLS *WorkerMTLSConfig `json:"mtls,omitempty"`
+
 	// Listen is the address of the Worker listener, separate from the Client
 	// API's.
 	Listen string `json:"listen"`
@@ -76,14 +102,43 @@ type WorkerConfig struct {
 	AllowTestProfileOffLoopback bool `json:"allow_test_profile_off_loopback,omitempty"`
 	// MaxBodyBytes bounds a request body. Zero means the default.
 	MaxBodyBytes int64 `json:"max_body_bytes,omitempty"`
-	// Sessions maps token hashes to the Worker they authenticate.
+	// Sessions maps token hashes to the Worker they authenticate. Test profile
+	// only; it must be empty with auth "mtls".
 	Sessions []WorkerSessionConfig `json:"sessions"`
+}
+
+// WorkerMTLSConfig is the configuration of Worker authentication by client
+// certificate.
+type WorkerMTLSConfig struct {
+	// TrustDomain is the single trust domain this listener enrolls Workers
+	// into and accepts certificates for.
+	TrustDomain string `json:"trust_domain"`
+	// CACertFile and CAKeyFile are the PEM files of the Worker CA. The key is
+	// a separate key from the Lease and WorkOrder signing keys.
+	CACertFile string `json:"ca_cert_file"`
+	CAKeyFile  string `json:"ca_key_file"`
+	// CertValiditySeconds is the lifetime of a client certificate. Zero means
+	// the default (72 hours). Workers renew when a third of it remains.
+	CertValiditySeconds int64 `json:"cert_validity_seconds,omitempty"`
+}
+
+func (m WorkerMTLSConfig) validity() time.Duration {
+	return time.Duration(m.CertValiditySeconds) * time.Second
 }
 
 type WorkerSessionConfig struct {
 	WorkerIdentity     string `json:"worker_identity"`
 	TrustDomain        string `json:"trust_domain,omitempty"`
 	SessionTokenSHA256 string `json:"session_token_sha256"`
+}
+
+func (w WorkerConfig) mtls() bool { return w.Auth == WorkerAuthMTLS }
+
+func (w WorkerConfig) authMode() string {
+	if w.mtls() {
+		return WorkerAuthMTLS
+	}
+	return WorkerAuthStaticToken
 }
 
 func (w WorkerConfig) validate() error {
@@ -94,19 +149,55 @@ func (w WorkerConfig) validate() error {
 	if w.TLS != nil && (w.TLS.CertFile == "" || w.TLS.KeyFile == "") {
 		return fmt.Errorf("%w: worker.tls requires both cert_file and key_file", ErrInvalidConfig)
 	}
+	if w.MaxBodyBytes < 0 {
+		return fmt.Errorf("%w: negative worker.max_body_bytes", ErrInvalidConfig)
+	}
+	switch w.Auth {
+	case "", WorkerAuthStaticToken:
+		if w.MTLS != nil {
+			return fmt.Errorf("%w: worker.mtls is set but worker.auth is not %q", ErrInvalidConfig, WorkerAuthMTLS)
+		}
+	case WorkerAuthMTLS:
+		return w.validateMTLS()
+	default:
+		return fmt.Errorf("%w: worker.auth %q is not %q or %q", ErrInvalidConfig, w.Auth, WorkerAuthMTLS, WorkerAuthStaticToken)
+	}
 	if !isLoopback(host) && !w.AllowTestProfileOffLoopback {
 		return fmt.Errorf("%w: worker.listen %q is not a loopback address; the Worker listener is a test profile (a static Bearer token table) and is accepted only on loopback by default (ADR-0027 2.5); set allow_test_profile_off_loopback to override deliberately", ErrInvalidConfig, w.Listen)
 	}
 	if w.TLS == nil && !isLoopback(host) {
 		return fmt.Errorf("%w: the Worker listener on %q needs tls; plaintext is accepted only on a loopback address", ErrInvalidConfig, w.Listen)
 	}
-	if w.MaxBodyBytes < 0 {
-		return fmt.Errorf("%w: negative worker.max_body_bytes", ErrInvalidConfig)
-	}
 	// The handler validates the table; build it once with a stub to reuse
 	// those checks instead of duplicating them.
 	if _, err := w.handler(stubClaims{}, nil); err != nil {
 		return fmt.Errorf("%w: %v", ErrInvalidConfig, err)
+	}
+	return nil
+}
+
+// validateMTLS rejects every combination that would leave a Worker listener
+// half in the test profile and half in mTLS.
+func (w WorkerConfig) validateMTLS() error {
+	switch {
+	case w.TLS == nil:
+		return fmt.Errorf("%w: worker.auth %q needs worker.tls; a client certificate is meaningless over plaintext, on loopback too", ErrInvalidConfig, WorkerAuthMTLS)
+	case w.MTLS == nil:
+		return fmt.Errorf("%w: worker.auth %q needs worker.mtls", ErrInvalidConfig, WorkerAuthMTLS)
+	case len(w.Sessions) != 0:
+		return fmt.Errorf("%w: worker.sessions is the static test-profile table and must be empty with worker.auth %q", ErrInvalidConfig, WorkerAuthMTLS)
+	case w.AllowTestProfileOffLoopback:
+		return fmt.Errorf("%w: allow_test_profile_off_loopback applies only to the static test profile, not to worker.auth %q", ErrInvalidConfig, WorkerAuthMTLS)
+	case w.MTLS.CACertFile == "" || w.MTLS.CAKeyFile == "":
+		return fmt.Errorf("%w: worker.mtls requires ca_cert_file and ca_key_file", ErrInvalidConfig)
+	case w.MTLS.CACertFile == w.TLS.CertFile || w.MTLS.CAKeyFile == w.TLS.KeyFile || w.MTLS.CAKeyFile == w.MTLS.CACertFile:
+		return fmt.Errorf("%w: the Worker CA must not share a file with the listener's TLS certificate", ErrInvalidConfig)
+	}
+	if err := workerregistry.ValidateTrustDomain(w.MTLS.TrustDomain); err != nil {
+		return fmt.Errorf("%w: worker.mtls.trust_domain: %v", ErrInvalidConfig, err)
+	}
+	if v := w.MTLS.validity(); v != 0 && (v < workercert.MinValidity || v > workercert.MaxValidity) {
+		return fmt.Errorf("%w: worker.mtls.cert_validity_seconds must be 0 (default) or between %d and %d", ErrInvalidConfig, int64(workercert.MinValidity/time.Second), int64(workercert.MaxValidity/time.Second))
 	}
 	return nil
 }

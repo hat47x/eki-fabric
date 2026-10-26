@@ -911,3 +911,39 @@ ADR-0027の段階1として、Worker登録簿とenrollment資格をState Store�
 未決: 管理者の認証（`clientapi`のRole）から`Admin`を作る配線、状態変更の監査ログの出力、資格・Workerの一覧の操作、登録簿の項目の保持期間。
 
 次の段階2: Worker専用のCA、enrollmentのendpoint、mTLSのauthenticator、要求ごとの登録簿の確認の配線、プロセス単位の通し試験を、別のPRで加える。
+
+### 2026-10-27 WorkerごとのmTLS認証とenrollment（ADR-0027 段階2）
+
+ADR-0027の段階2として、Worker専用のCA、enrollmentとmTLS、更新、失効を実装した（Issue [#222](https://github.com/hat47x/eki-fabric/issues/222)、[#57](https://github.com/hat47x/eki-fabric/issues/57)）。Worker listenerに`auth: "mtls"`の方式が加わり、静的Bearerの表は従来どおり試験用に限る。
+
+- **CA**（`internal/adapters/reference/workerca`）: ECDSA P-256。鍵はLeaseとWorkOrderの署名鍵とは別のファイルで、読み込みだけを行う。CA証明書は、パス長0で、許可するURIの領域を1つの信頼領域に限る、重要なName Constraintを持つ。起動時に、制約のないCA、別の信頼領域のCA、P-256以外の鍵、鍵と証明書の不一致を拒否する。発行する証明書のSANは、登録簿の識別子から作る`eki://<信頼領域>/worker/<識別子>`の一つだけ、拡張鍵用途はクライアント認証だけ。CSRの主体・名前・拡張は無視する。通し番号は127bitの乱数で、`RecordWorkerCertificate`に記録してから返す。
+- **enrollmentと更新**（`internal/control/workerplane/mtls.go`）: 資格は`Authorization`ヘッダだけで受け、URLのクエリは400で拒否する。使えない資格は、理由によらず同じ401と本文で返し、理由は監査ログだけに残す。CSRは資格を消費する前に検証する。更新は現在の証明書のmTLSで行い、同じ鍵は拒否、期限切れ・無効化・失効のWorkerは拒否する。
+- **認証**: TLSでは証明書を要求するだけにして、検証は要求ごとにhandlerで行う（Worker CAだけを信頼、クライアント認証の用途、現在時刻）。信頼領域は完全一致で比べる（GoのURI名制約はサブドメインも通すため）。毎回`Authorize`を呼ぶので、失効・無効化したWorkerは、既存の接続の次の要求から401になり、`Connection: close`で接続を閉じる。Claimの所有検査は変えていない。Worker listenerとClient APIは別のlistenerと別のauthenticatorで、互いの資格を受け付けない。
+- **設定**: `worker.auth: "mtls"`と`worker.mtls`（`trust_domain`、`ca_cert_file`、`ca_key_file`、`cert_validity_seconds`）。TLS必須（loopbackでも）。静的な表、`allow_test_profile_off_loopback`、CAとlistenerの鍵の共用などの矛盾は、起動前に拒否する。
+- **運用者向けsubcommand**（`eki-control`）: `gen-worker-ca`、`enroll-token`（秘密を一度だけ表示し、DBにはSHA-256だけを残す）、`worker-state`（無効化・再有効化・失効）。設定が指すDBを直接開く、ホスト上の運用者の操作であり、Client APIやWorker APIからは呼べない。
+- **Agent**: `eki-agent enroll`が、秘密鍵を端末内で作り、CAの指紋でControl Planeを確かめてから、資格を一度だけ送る。指紋が違えば、資格を送らずに止まる。実行時は、証明書（mTLS）で接続し、残り3分の1で自動更新する。鍵と証明書は一つのファイルに、0600で、置き換えとして書く。
+- **試験**: CA（SAN、拡張鍵用途、名前制約、有効期間、通し番号、CSRの検証）、登録・更新の規則、handler（偽のCSR、一様な拒否、失効後の次の要求、期限切れ・未知のCA・別の信頼領域・サブドメイン）、Agent（指紋の固定、更新）、設定の矛盾、運用者のsubcommandの単体試験と、`conformance/process`のプロセス単位の試験（運用者の資格での登録、mTLSでの申告の配送、同じ資格の2回目の拒否、指紋違いで資格を送らない、失効後の次の要求の拒否、自動更新、期限切れ、役割の分離）を加えた。
+
+仮決め（承認待ち）:
+
+- 証明書の有効期間の既定は72時間、更新は残り3分の1。設定できる範囲は10秒から30日（下限は試験のため）。
+- 鍵はECDSA P-256だけ。Ed25519はTLSのクライアント認証の互換性を確かめていないため使わない。
+- Worker listenerのmTLSは、TLS 1.3以上。
+- Control Planeの固定は、Worker listenerのTLS証明書の鎖の最上位の証明書のSHA-256とした。Agentは、鎖の中で指紋が一致する証明書を信頼の起点にして検証し、以後の接続はその証明書だけを信頼する。CAの指紋と呼んでいるが、Worker CAの指紋ではない（Worker CAは、Workerを検証する側）。サーバ証明書の葉だけを固定すると、サーバ証明書の更新で壊れる。
+- 更新後も、古い証明書は期限まで有効（登録簿の通し番号との一致は求めない）。更新の応答が失われても、Workerが締め出されないようにするため。Workerの失効で止められる。
+- 資格の発行・失効の運用は、`eki-control`のsubcommandとした（Client APIのRoleとは接続しない）。操作者の名前（`admin:<札>`）は、認証ではない札。
+- 失敗した登録（資格の消費後にCAの署名が失敗した場合）は、Workerが証明書なしで残り、管理者が新しい資格を発行する。
+- CAの鍵ファイルの権限は検査しない（Agentの鍵ファイルは、Unix系で他者が読めると読み込まない）。
+- 状態ディレクトリのファイル名、`/v1/worker/enroll`と`/v1/worker/renew`の経路、`application/pkcs10`の本文は、この試験用profileの形で、#198の決定ではない。
+
+未決（ADR-0027 §5のうち、残るもの）:
+
+- CAの運用: 鍵の保管（KMS、HSM）、中間CA、鍵の更新、バックアップ、企業のPKIとの接続、鍵ファイルの権限の検査。
+- 失効の伝播の遅れの上限の測定（登録簿を引けない構成を含む）。今の実装は、Control Planeが登録簿を読める前提で、遅れはほぼ0。
+- 端末のattestationと、鍵を非エクスポートにする条件。
+- TLSを終端するプロキシや、企業のTLS検査での構成（mTLSの素通しか、信頼するGatewayの終端）。
+- 有効期間を超えて眠った端末の再登録と、同じ`WorkerIdentity`の引き継ぎ。時計のずれへの対処。
+- sessionの識別子を証明書に束縛すること、再接続のたびの新しいsession（2.3 項13）。
+- enrollmentへの総当たり対策（流量制限）と、資格の一括発行での人間の承認（ADR-0022の区分）。
+- 管理者の認証（`clientapi`のRole）と、`workerenrollment.Admin`の接続。資格・Workerの一覧の操作。
+- ブラウザ・仮名のWorker（DP-3）、Federationをまたぐ認証、OIDCやSPIFFEなどのIDV-1のAdapter、通信契約（#198）への写像。

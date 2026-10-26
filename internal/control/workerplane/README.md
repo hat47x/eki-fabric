@@ -31,9 +31,37 @@ Connect handler（認証・framing）
 
 プロセス全体の確認は[`conformance/process`](../../../conformance/process/README.md)にあります。
 
+## WorkerごとのmTLS（`mtls.go`、ADR-0027）
+
+`NewMTLSHandler`は、Worker listenerを`auth: "mtls"`で動かすときのhandlerです。Workerの認証の既定の方式で、IDV-1のAdapterとして、検証した証明書を`Principal{WorkerIdentity, TrustDomain}`へ正規化します。
+
+| 経路 | 認証 | 内容 |
+|---|---|---|
+| `POST /v1/worker/enroll` | クライアント証明書は不要。`Authorization: Bearer <enrollment資格>` | CSRを受け、資格を消費し、登録簿が発行した識別子の証明書とCAの証明書を返す |
+| `POST /v1/worker/renew` | 現在有効なクライアント証明書（mTLS） | 新しい鍵のCSRで、新しい証明書を返す。同じ鍵のCSRは400。期限切れ・無効化・失効のWorkerは401 |
+| `POST /test-profile/v1/claims`（試験用profileと同じ経路） | クライアント証明書（mTLS） | ResultClaimを受ける。Claimの本文は試験用profileのJSONのまま |
+
+### 認証
+
+- TLSの設定は証明書を**要求するが検証しない**（`tls.RequestClientCert`）。検証はhandlerが**要求ごとに**行います。enrollmentの経路は証明書なしで通す必要があること、接続が証明書の期限や登録簿の状態より長く続いても止められることが理由です。
+- 検証は、Worker CAだけを信頼の起点にし、拡張鍵用途をクライアント認証に限り、現在時刻で行います。SANは`eki://<信頼領域>/worker/<識別子>`の一つだけで、他の種類のSANを持つ証明書は拒否します。GoはURIの名前制約でサブドメインも通すので、信頼領域は設定値と完全一致で比べます。
+- 識別子は証明書の名前だけから取ります。ResultClaimなどの本文にWorkerの項目があっても、Principalを上書きしません。`claimplane`の所有検査（Claimが名指すWorkerと認証されたWorkerの一致）は変えていません。
+- そのうえで、**毎回**`workerenrollment.Authorize`を呼び、登録簿の状態が`registered`であることを確かめます。無効化または失効したWorkerは、既存の接続の次の要求から401になり、応答に`Connection: close`を付けて接続を閉じます。登録簿を読めないときは、認証せずに503を返します。
+- 失敗の応答は、証明書の期限切れ、未知のCA、別の信頼領域、未登録の識別子のどれでも同じ401です。
+
+### enrollment
+
+- 資格は`Authorization`ヘッダだけで受けます。URLにクエリ文字列が付いていれば、資格の中身を見る前に400で拒否します。
+- 資格が使えない理由（形式の誤り、未知、期限切れ、使用済み、失効済み、別の信頼領域）にかかわらず、同じ401と同じ本文を返します。理由は監査ログ（`reason=`）にだけ残し、資格は出しません。
+- CSRは、資格を消費する前に検証します（署名、P-256、8 KiB以下）。形式の違う要求で資格を消費しません。CSRの主体や名前は使いません。
+
+### listenerの分離
+
+Worker listenerは、Client APIとは別のlistenerと別のauthenticatorです。Worker証明書はClient APIでは資格になりません（Bearerだけを受ける）。Client APIのトークンは、Worker listenerのどの経路でも資格になりません。
+
 ## まだ無いもの
 
 - Connect serviceの生成コードと、実際のhandler。上のHTTP入口は、その代わりではない。
-- Workerの登録（enrollment）、トークンの更新と失効、mTLS。
+- sessionの識別子を証明書へ束縛すること、再接続のたびの新しいsession（ADR-0027の2.3 項13）。今は接続の単位でしか分けていない。
 - Leaseの配送、WorkOrderの配信。
-- 流量制限と監査用のrequest ID。
+- 流量制限と監査用のrequest ID。enrollmentの総当たりへの対策も、まだ無い。

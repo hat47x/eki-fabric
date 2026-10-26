@@ -4,11 +4,15 @@
 //
 // It checks who may do what and draws the random values. The durable rules
 // live in workerregistry and in the State Store adapters. This stage has no
-// CA, no HTTP endpoint and no mTLS; those follow in stage 2 (Issue #222).
+// CA, no HTTP endpoint and no mTLS of its own. Stage 2 (Issue #222) adds
+// Enroll and Renew, which call a CertificateIssuer that the CA adapter
+// implements; the HTTP endpoints and the mTLS authenticator are in
+// internal/control/workerplane.
 package workerenrollment
 
 import (
 	"context"
+	"crypto"
 	"errors"
 	"fmt"
 	"time"
@@ -32,7 +36,38 @@ var (
 	ErrWorkerNotUsable = errors.New("worker is not usable")
 )
 
+// ErrNoIssuer is returned by Enroll and Renew when no CertificateIssuer is
+// configured.
+var ErrNoIssuer = errors.New("no certificate issuer is configured")
+
 const maxIdentityAttempts = 4
+
+// CertificateRequest is what the CA is asked to sign. Identity and TrustDomain
+// come from the registry. PublicKey is the only value that comes from the
+// Worker (from its CSR).
+type CertificateRequest struct {
+	Identity    ids.WorkerIdentity
+	TrustDomain string
+	PublicKey   crypto.PublicKey
+	Now         time.Time
+}
+
+// IssuedCertificate is a signed client certificate.
+type IssuedCertificate struct {
+	// DER is the certificate.
+	DER []byte
+	// Serial is the serial number as hex text.
+	Serial    string
+	NotBefore time.Time
+	NotAfter  time.Time
+}
+
+// CertificateIssuer signs Worker client certificates. The CA adapter
+// (internal/adapters/reference/workerca) implements it; the CA key never
+// enters this package.
+type CertificateIssuer interface {
+	IssueCertificate(CertificateRequest) (IssuedCertificate, error)
+}
 
 // Admin is the capability to act as an administrator. Only the administrator
 // authenticator constructs it, after it has verified an Admin credential
@@ -73,11 +108,15 @@ type Clock interface {
 type Config struct {
 	Store statestore.WorkerRegistryStore
 	Clock Clock
+	// Issuer signs certificates for Enroll and Renew. It may be nil when the
+	// service is used only to manage credentials and Worker state.
+	Issuer CertificateIssuer
 }
 
 type Service struct {
-	store statestore.WorkerRegistryStore
-	clock Clock
+	store  statestore.WorkerRegistryStore
+	clock  Clock
+	issuer CertificateIssuer
 }
 
 func New(cfg Config) (*Service, error) {
@@ -87,7 +126,7 @@ func New(cfg Config) (*Service, error) {
 	case cfg.Clock == nil:
 		return nil, fmt.Errorf("%w: Clock is required", ErrInvalidConfig)
 	}
-	return &Service{store: cfg.Store, clock: cfg.Clock}, nil
+	return &Service{store: cfg.Store, clock: cfg.Clock, issuer: cfg.Issuer}, nil
 }
 
 // IssueRequest asks for one enrollment credential.
@@ -247,4 +286,70 @@ func (s *Service) Authorize(ctx context.Context, principal WorkerPrincipal) (wor
 		return workerregistry.Worker{}, ErrWorkerNotUsable
 	}
 	return w, nil
+}
+
+// Enrolled is the result of Enroll: the new registry entry and its first
+// certificate.
+type Enrolled struct {
+	Worker      workerregistry.Worker
+	Certificate IssuedCertificate
+}
+
+// Enroll spends the secret, creates the Worker, and signs a certificate for
+// the public key the Worker generated (ADR-0027 section 2.2 items 7 and 8).
+// The refusal behavior of ConsumeEnrollmentCredential applies.
+//
+// The caller validates the CSR before calling, because the secret is spent
+// here. If signing fails after the secret is spent, the Worker exists without
+// a certificate and the administrator issues a new credential; the secret is
+// never reusable.
+func (s *Service) Enroll(ctx context.Context, presented, trustDomain string, key crypto.PublicKey) (Enrolled, error) {
+	if s.issuer == nil {
+		return Enrolled{}, ErrNoIssuer
+	}
+	worker, err := s.ConsumeEnrollmentCredential(ctx, presented, trustDomain)
+	if err != nil {
+		return Enrolled{}, err
+	}
+	cert, worker, err := s.issueAndRecord(ctx, worker, key)
+	if err != nil {
+		return Enrolled{}, fmt.Errorf("worker %s is registered but has no certificate: %w", worker.Identity, err)
+	}
+	return Enrolled{Worker: worker, Certificate: cert}, nil
+}
+
+// Renew signs a new certificate for a Worker that authenticated with its
+// current one (ADR-0027 section 2.4 item 15). The registry is consulted first:
+// only a registered Worker renews, so a disabled or revoked Worker cannot. The
+// caller has already verified that the current certificate is valid now, which
+// is why an expired certificate cannot renew.
+func (s *Service) Renew(ctx context.Context, principal WorkerPrincipal, key crypto.PublicKey) (IssuedCertificate, error) {
+	if s.issuer == nil {
+		return IssuedCertificate{}, ErrNoIssuer
+	}
+	worker, err := s.Authorize(ctx, principal)
+	if err != nil {
+		return IssuedCertificate{}, err
+	}
+	cert, _, err := s.issueAndRecord(ctx, worker, key)
+	return cert, err
+}
+
+// issueAndRecord signs, then records the serial and expiry. The certificate is
+// returned only after the record is stored.
+func (s *Service) issueAndRecord(ctx context.Context, worker workerregistry.Worker, key crypto.PublicKey) (IssuedCertificate, workerregistry.Worker, error) {
+	now := s.clock.Now()
+	cert, err := s.issuer.IssueCertificate(CertificateRequest{
+		Identity: worker.Identity, TrustDomain: worker.TrustDomain, PublicKey: key, Now: now,
+	})
+	if err != nil {
+		return IssuedCertificate{}, worker, err
+	}
+	updated, err := s.store.RecordWorkerCertificate(ctx, worker.Identity, workerregistry.Certificate{
+		Serial: cert.Serial, NotAfter: cert.NotAfter,
+	}, now)
+	if err != nil {
+		return IssuedCertificate{}, worker, err
+	}
+	return cert, updated, nil
 }

@@ -66,10 +66,17 @@ type HTTPConfig struct {
 }
 
 type httpHandler struct {
-	claims   workerplane.ClaimClient
+	claimEndpoint
 	sessions []session
-	maxBody  int64
-	log      *slog.Logger
+}
+
+// claimEndpoint is the part of the claim route after authentication. The
+// static-table handler and the mTLS handler share it, so the body checks and
+// the error mapping cannot drift apart.
+type claimEndpoint struct {
+	claims  workerplane.ClaimClient
+	maxBody int64
+	log     *slog.Logger
 }
 
 // NewHTTPHandler builds the handler for testprofile.Path. The handler
@@ -85,7 +92,7 @@ func NewHTTPHandler(cfg HTTPConfig) (http.Handler, error) {
 	if cfg.MaxBodyBytes < 0 {
 		return nil, fmt.Errorf("%w: negative body limit", ErrInvalidConfig)
 	}
-	h := &httpHandler{claims: cfg.Claims, maxBody: cfg.MaxBodyBytes, log: cfg.Logger}
+	h := &httpHandler{claimEndpoint: claimEndpoint{claims: cfg.Claims, maxBody: cfg.MaxBodyBytes, log: cfg.Logger}}
 	if h.maxBody == 0 {
 		h.maxBody = DefaultMaxBodyBytes
 	}
@@ -138,6 +145,11 @@ func (h *httpHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		reply(w, http.StatusUnauthorized, "unauthorized")
 		return
 	}
+	h.serveClaim(w, r, principal)
+}
+
+// serveClaim handles the request body of an authenticated claim.
+func (h *claimEndpoint) serveClaim(w http.ResponseWriter, r *http.Request, principal workerplane.Principal) {
 	if mt, _, _ := strings.Cut(r.Header.Get("Content-Type"), ";"); strings.TrimSpace(mt) != testprofile.ContentType {
 		reply(w, http.StatusUnsupportedMediaType, "unsupported_media_type")
 		return
