@@ -28,6 +28,9 @@ type Principal struct {
 type Config struct {
 	Store  statestore.Store
 	Policy Policy
+	// Results reads the durable AcceptedResult of a Task. It is optional: when
+	// nil, Result is unavailable and the Client API answers 501 for it.
+	Results statestore.ResultAcceptanceStore
 	// Now returns the current time. Nil means time.Now.
 	Now func() time.Time
 	// NewTaskID creates a Task ID. Nil means ids.NewTaskID.
@@ -39,6 +42,7 @@ type Config struct {
 
 type Service struct {
 	store     statestore.Store
+	results   statestore.ResultAcceptanceStore
 	policy    Policy
 	now       func() time.Time
 	newTaskID func() (ids.TaskID, error)
@@ -52,7 +56,7 @@ func New(cfg Config) (*Service, error) {
 	if err := cfg.Policy.validate(); err != nil {
 		return nil, err
 	}
-	s := &Service{store: cfg.Store, policy: cfg.Policy, now: cfg.Now, newTaskID: cfg.NewTaskID, onError: cfg.OnInternalError}
+	s := &Service{store: cfg.Store, results: cfg.Results, policy: cfg.Policy, now: cfg.Now, newTaskID: cfg.NewTaskID, onError: cfg.OnInternalError}
 	if s.now == nil {
 		s.now = time.Now
 	}

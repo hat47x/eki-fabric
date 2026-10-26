@@ -78,6 +78,7 @@ const (
 	routeSubmitTask
 	routeGetTask
 	routeCancelTask
+	routeGetResult
 	routeNotImplemented
 )
 
@@ -102,7 +103,7 @@ func match(path string) matched {
 		case tail == "cancel":
 			return matched{route: routeCancelTask, taskID: id, allow: http.MethodPost}
 		case tail == "result":
-			return matched{route: routeNotImplemented, allow: http.MethodGet}
+			return matched{route: routeGetResult, taskID: id, allow: http.MethodGet}
 		}
 		return matched{}
 	}
@@ -176,6 +177,12 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		h.status(rec, r, identity, m.taskID)
 	case routeCancelTask:
 		h.cancel(rec, r, identity, m.taskID)
+	case routeGetResult:
+		if !h.svc.ResultsEnabled() {
+			writeProblem(rec, http.StatusNotImplemented, &admission.Error{Kind: admission.KindInternal, Code: "NOT_IMPLEMENTED", Title: "This operation is not available in this deployment"})
+			return
+		}
+		h.result(rec, r, identity, m.taskID)
 	default:
 		writeProblem(rec, http.StatusNotImplemented, &admission.Error{Kind: admission.KindInternal, Code: "NOT_IMPLEMENTED", Title: "This operation is not available in this deployment"})
 	}
@@ -264,6 +271,35 @@ func (h *Handler) status(w http.ResponseWriter, r *http.Request, id Identity, ta
 		UpdatedAt:     status.UpdatedAt.UTC().Format(time.RFC3339Nano),
 		TerminalCode:  status.TerminalCode,
 		PublicMessage: status.PublicMessage,
+	})
+}
+
+// taskResult is eki.task-result/v1. Artifacts is always present (the schema
+// requires it) and is empty: the AcceptedResult records no artifact size, media
+// type or data class, so no ArtifactDescriptor can be built from it truthfully.
+type taskResult struct {
+	Schema    string                 `json:"schema"`
+	TaskID    string                 `json:"task_id"`
+	Artifacts []struct{}             `json:"artifacts"`
+	Assurance publicAssuranceSummary `json:"assurance"`
+}
+
+type publicAssuranceSummary struct {
+	Profile string `json:"profile"`
+	Status  string `json:"status"`
+}
+
+func (h *Handler) result(w http.ResponseWriter, r *http.Request, id Identity, taskID string) {
+	res, err := h.svc.Result(r.Context(), id.Principal, taskID)
+	if err != nil {
+		h.fail(w, r, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, taskResult{
+		Schema:    "eki.task-result/v1",
+		TaskID:    res.TaskID.String(),
+		Artifacts: []struct{}{},
+		Assurance: publicAssuranceSummary{Profile: res.AssuranceProfile, Status: "satisfied"},
 	})
 }
 
