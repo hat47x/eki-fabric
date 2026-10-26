@@ -864,3 +864,15 @@ ResultClaimの配送は、これまでプロセス内の接続（`workerplane.Cl
 - Agentの設定は、フラグとJSON設定ファイルで、トークンは`--token-file`、環境変数`EKI_AGENT_TOKEN`、`--token`のいずれか一つとした。
 
 未決: Workerの認証・登録とトークンの更新・失効（#198）、通信契約、恒久的な拒否の扱い、複数のAgentと実ネットワークの障害、署名つきの連鎖と組み合わせたプロセス単位の通し試験。
+
+### 2026-10-26 Workerの認証と登録（ADR-0027）
+
+[ADR-0027](adr/0027-worker-authentication-and-enrollment.md)で、Workerの認証と登録の方式を仮承認で決めた（Issue [#222](https://github.com/hat47x/eki-fabric/issues/222)）。これまでは#220の試験用profile（静的Bearerの表）だけがあり、OAuthやmTLSの方式は「後続で比べる」と書いていた。
+
+- 既定は、管理者が発行する一回限り・短命のenrollment資格で登録し、Workerごとの短命なクライアント証明書（mTLS）で認証する形とした。Workerは秘密鍵を端末の中で作り、識別子は登録簿が発行する。
+- 認証の結果は既存の`Principal{WorkerIdentity, TrustDomain}`へ正規化し、Claimの所有検査は変えない。登録は主体の同一性だけを作り、Delegation Classは与えない。
+- 失効の根拠はWorker登録簿の状態とし、要求ごとに引く。証明書の有効期間は、登録簿を引けない構成の歯止めとする。
+- 静的Bearerの表は試験用に限る。企業のPKI、OIDC、SPIFFEは、同じPrincipalへ正規化するAdapterとして受け入れる。
+- 保証しないこと: 登録済みのWorkerが自己申告を偽ること、悪意のある端末を管理者が正規に登録すること、端末の侵害による鍵の窃取、すでに配送したLeaseを即座に止めること。
+
+未決: CAの運用、更新の手順と長く眠った端末の再登録、失効の伝播の遅れの上限、端末のattestation、ブラウザ・仮名のWorkerの認証、TLSを終端するプロキシ、enrollment資格の発行の区分、通信契約（#198）への写像、試験用profileの制限の実装。
