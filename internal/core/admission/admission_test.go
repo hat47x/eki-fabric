@@ -717,3 +717,30 @@ func mustDigest(t testing.TB) contract.Digest {
 	t.Helper()
 	return contract.SHA256([]byte("task ir"))
 }
+
+// The wall clock can step backwards between the submission and the
+// cancellation (an NTP correction, a VM clock sync, a restart). The record
+// must keep a non-decreasing update time, or the cancellation is rejected as
+// an invalid record and surfaces as an internal error (issue #219).
+func TestCancelSurvivesTheClockSteppingBackwards(t *testing.T) {
+	now := testNow
+	svc, store := newService(t, func(c *Config) { c.Now = func() time.Time { return now } })
+	ctx := context.Background()
+	alice := Principal{ID: "alice"}
+	got, err := svc.Submit(ctx, alice, "key-00000001", []byte(requestWithoutInputs()))
+	if err != nil {
+		t.Fatalf("Submit() error = %v", err)
+	}
+
+	now = testNow.Add(-8 * time.Second)
+	if _, err := svc.Cancel(ctx, alice, got.TaskID.String()); err != nil {
+		t.Fatalf("Cancel() with the clock behind the creation time error = %v", err)
+	}
+	record, err := store.LoadTask(ctx, got.TaskID)
+	if err != nil {
+		t.Fatalf("LoadTask() error = %v", err)
+	}
+	if record.UpdatedAt.Before(record.CreatedAt) {
+		t.Fatalf("updated %v precedes created %v", record.UpdatedAt, record.CreatedAt)
+	}
+}
