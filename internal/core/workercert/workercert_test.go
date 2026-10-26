@@ -2,6 +2,7 @@ package workercert
 
 import (
 	"net/url"
+	"strings"
 	"testing"
 	"time"
 
@@ -55,4 +56,30 @@ func TestRenewAtIsOneThirdBeforeExpiry(t *testing.T) {
 	if got, want := RenewAt(nb, na), nb.Add(48*time.Hour); !got.Equal(want) {
 		t.Fatalf("RenewAt = %v, want %v", got, want)
 	}
+}
+
+func TestFingerprint(t *testing.T) {
+	fp := Fingerprint([]byte("der"))
+	if len(fp) != 64 {
+		t.Fatalf("fingerprint = %q", fp)
+	}
+	for _, in := range []string{fp, strings.ToUpper(fp), "sha256:" + fp, " " + fp + "\n", colons(fp)} {
+		got, err := ParseFingerprint(in)
+		if err != nil || got != fp {
+			t.Fatalf("ParseFingerprint(%q) = %q, %v", in, got, err)
+		}
+	}
+	for _, in := range []string{"", "abcd", fp[:63], fp + "00", strings.Repeat("g", 64)} {
+		if _, err := ParseFingerprint(in); err == nil {
+			t.Fatalf("ParseFingerprint(%q) succeeded", in)
+		}
+	}
+}
+
+func colons(fp string) string {
+	var parts []string
+	for i := 0; i < len(fp); i += 2 {
+		parts = append(parts, fp[i:i+2])
+	}
+	return strings.Join(parts, ":")
 }

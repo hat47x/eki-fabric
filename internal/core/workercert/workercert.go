@@ -6,6 +6,8 @@
 package workercert
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"net/url"
@@ -72,4 +74,27 @@ func ParseURI(u *url.URL) (trustDomain string, identity ids.WorkerIdentity, err 
 // lifetime remains (ADR-0027 section 2.4 item 14).
 func RenewAt(notBefore, notAfter time.Time) time.Time {
 	return notAfter.Add(-notAfter.Sub(notBefore) / 3)
+}
+
+// Fingerprint is the lowercase hex SHA-256 of a certificate's DER encoding. An
+// administrator hands it to a Worker together with the enrollment secret, and
+// the Worker pins the Control Plane with it (ADR-0027 section 2.2 item 6).
+func Fingerprint(der []byte) string {
+	sum := sha256.Sum256(der)
+	return hex.EncodeToString(sum[:])
+}
+
+var ErrInvalidFingerprint = errors.New("invalid certificate fingerprint")
+
+// ParseFingerprint accepts a SHA-256 fingerprint as 64 hex digits, in either
+// case, with optional colon separators and an optional "sha256:" prefix. It
+// returns the canonical lowercase form.
+func ParseFingerprint(text string) (string, error) {
+	t := strings.TrimPrefix(strings.ToLower(strings.TrimSpace(text)), "sha256:")
+	t = strings.ReplaceAll(t, ":", "")
+	raw, err := hex.DecodeString(t)
+	if err != nil || len(raw) != sha256.Size {
+		return "", fmt.Errorf("%w: want 64 hex digits of a SHA-256", ErrInvalidFingerprint)
+	}
+	return hex.EncodeToString(raw), nil
 }
