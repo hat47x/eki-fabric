@@ -22,6 +22,23 @@
 
 同期は、期限付きのpollingです。固定時間のsleepで待ちません。
 
+## WorkerごとのmTLS（ADR-0027 段階2）
+
+`mtls_test.go`は、Worker listenerを`auth: "mtls"`で起動して、運用者のsubcommand、Agent、Control Planeを通して確かめます。CAは`eki-control gen-worker-ca`、資格は`eki-control enroll-token`、登録は`eki-agent enroll`、失効は`eki-control worker-state`で作ります。この試験は、認証の方式を確かめるもので、通信契約（#198）の決定ではありません。
+
+| 試験 | 内容 |
+|---|---|
+| `TestMTLSEnrollWithCLICredentialThenDeliverClaim` | 運用者が発行した資格でAgentが登録し、登録簿の識別子の証明書でmTLS接続して、Claimを届けるとAttemptがverifyingへ進む。同じ資格の2回目は拒否され、存在しない資格と同じ401と本文になる。URLのクエリに資格を置くと400。資格がどのプロセスのログにも出ない |
+| `TestMTLSWrongFingerprintAbortsEnrollmentBeforeTheSecretIsSent` | 指紋が違うと、Agentは資格を送らずに止まる。Control Planeのログに登録要求が現れず、資格は未使用のまま、正しい指紋で登録できる |
+| `TestMTLSRevokedWorkerIsRefusedOnItsNextRequest` | Agentが接続を保持している間に失効すると、次のClaimは401で拒否され、AgentのqueueにClaimが残り、Attemptは変わらない。失効は最終で、更新もできない |
+| `TestMTLSAgentRenewsItsCertificateAndExpiredCertificatesAreRefused` | 有効期間30秒の証明書を、Agentが残り3分の1で自動更新する（識別子は同じ、登録簿の通し番号が変わる）。元の期限を過ぎても、更新後の証明書でClaimが届く。更新していない別のWorkerの期限切れの証明書は、Claimも更新も401 |
+| `TestMTLSRefusesCertificatesOfOtherCAsAndTrustDomains` | 未知のCA、別の信頼領域のCA、サブドメイン、別の名前空間（`/admin/`）、未登録の識別子の証明書は401。同じClaimは正しい証明書では通る |
+| `TestMTLSForgedCSRSubjectStillGetsTheRegistryIdentity` | 別のWorkerの識別子を名乗るCSRでも、登録簿の識別子の証明書になる。その証明書で他のWorkerのClaimを送ると、変更していない所有検査が403で拒否する |
+| `TestMTLSWorkerAndClientCredentialsDoNotCross` | ClientのトークンはWorker listenerの全経路で401。Worker証明書はClient APIで401（Client APIはTLSで起動して確かめる） |
+| `TestMTLSConfigurationFailsClosed` | 静的な表との併用、CA鍵がない、別の信頼領域のCA、TLSなし、のどれでも`eki-control`は起動せず失敗する |
+
+更新の試験は、証明書の有効期間が壁時計で判定されることを使います。待ちは壁時計で行います。WSLのように壁時計と単調時計がずれる環境で、固定のsleepが期限より短くならないようにするためです。
+
 ## 確かめないこと
 
-実ネットワークの障害、複数のAgent、署名つきのPlacement・Lease・WorkOrderの連鎖、Verificationの結果、Executorの実行は対象外です。Control Planeを強制終了しても、再起動後に同じClaimが届くことまでを確かめます。電源断は対象外です。seedのTask・Attempt・Leaseは、State Storeの公開APIで作った合成の入力で、署名の検証を経たものではありません。
+TLSを終端するプロキシを挟んだ構成、CA鍵のKMS・HSM保管、実時間の長い運用（72時間の更新）、実ネットワークの障害、複数のAgent、署名つきのPlacement・Lease・WorkOrderの連鎖、Verificationの結果、Executorの実行は対象外です。Control Planeを強制終了しても、再起動後に同じClaimが届くことまでを確かめます。電源断は対象外です。seedのTask・Attempt・Leaseは、State Storeの公開APIで作った合成の入力で、署名の検証を経たものではありません。
