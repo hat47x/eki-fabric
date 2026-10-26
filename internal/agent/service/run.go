@@ -10,6 +10,7 @@ package service
 
 import (
 	"context"
+	"crypto/x509"
 	"errors"
 	"fmt"
 	"log/slog"
@@ -18,6 +19,7 @@ import (
 	queuesqlite "github.com/hat47x/eki-fabric/internal/adapters/reference/claimqueue/sqlite"
 	"github.com/hat47x/eki-fabric/internal/agent/claimclient"
 	"github.com/hat47x/eki-fabric/internal/agent/claimqueue"
+	"github.com/hat47x/eki-fabric/internal/agent/enroll"
 	"github.com/hat47x/eki-fabric/internal/spi/workerplane"
 )
 
@@ -46,8 +48,16 @@ type Config struct {
 	TokenFile string `json:"token_file,omitempty"`
 	// WorkerIdentity and TrustDomain are the principal this Agent expects the
 	// token to authenticate as. Claims naming another Worker are never sent.
-	WorkerIdentity string `json:"worker_identity"`
+	// With StateDir they come from the certificate; a value given here must
+	// match it.
+	WorkerIdentity string `json:"worker_identity,omitempty"`
 	TrustDomain    string `json:"trust_domain,omitempty"`
+	// StateDir holds the identity that "eki-agent enroll" wrote. When set, the
+	// Agent authenticates with its client certificate (mTLS, ADR-0027), renews
+	// it when a third of its lifetime remains, and trusts only the Control
+	// Plane certificate it pinned at enrollment. It excludes Token, TokenFile
+	// and CAFile.
+	StateDir string `json:"state_dir,omitempty"`
 
 	// Interval is how often the queue is checked. Zero means the default.
 	Interval time.Duration `json:"-"`
@@ -82,17 +92,44 @@ func Run(ctx context.Context, cfg Config, token string, log *slog.Logger) error 
 	if limit == 0 {
 		limit = DefaultBatchLimit
 	}
+	mtls := cfg.StateDir != ""
 	switch {
 	case interval < 0 || base < 0 || max < 0 || limit < 0:
 		return fmt.Errorf("%w: negative interval, retry delay or batch limit", ErrInvalidConfig)
 	case cfg.QueueDB == "":
 		return fmt.Errorf("%w: queue database is required", ErrInvalidConfig)
-	case cfg.WorkerIdentity == "":
+	case !mtls && cfg.WorkerIdentity == "":
 		return fmt.Errorf("%w: worker identity is required", ErrInvalidConfig)
+	case mtls && (token != "" || cfg.Token != "" || cfg.TokenFile != "" || cfg.CAFile != ""):
+		return fmt.Errorf("%w: state_dir (certificate authentication) excludes a token and a CA file", ErrInvalidConfig)
 	}
 	var cfgHTTP claimclient.HTTPConfig
 	cfgHTTP.ControlURL, cfgHTTP.Token = cfg.ControlURL, token
-	if cfg.CAFile != "" {
+	principal := workerplane.Principal{WorkerIdentity: cfg.WorkerIdentity, TrustDomain: cfg.TrustDomain}
+	var holder *enroll.Holder
+	if mtls {
+		id, err := enroll.Load(cfg.StateDir)
+		if err != nil {
+			return fmt.Errorf("%w: %v", ErrInvalidConfig, err)
+		}
+		if id.Expired(time.Now()) {
+			return fmt.Errorf("%w: %v", ErrInvalidConfig, enroll.ErrExpired)
+		}
+		if (cfg.WorkerIdentity != "" && cfg.WorkerIdentity != string(id.WorkerIdentity)) ||
+			(cfg.TrustDomain != "" && cfg.TrustDomain != id.TrustDomain) {
+			return fmt.Errorf("%w: the configured identity differs from the certificate's", ErrInvalidConfig)
+		}
+		anchor, err := enroll.LoadAnchor(cfg.StateDir)
+		if err != nil {
+			return fmt.Errorf("%w: %v", ErrInvalidConfig, err)
+		}
+		pool := x509.NewCertPool()
+		pool.AddCert(anchor)
+		holder = enroll.NewHolder(id)
+		cfgHTTP.RootCAs = pool
+		cfgHTTP.ClientCertificate = holder.ClientCertificate
+		principal = workerplane.Principal{WorkerIdentity: string(id.WorkerIdentity), TrustDomain: id.TrustDomain}
+	} else if cfg.CAFile != "" {
 		pool, err := claimclient.LoadRootCAs(cfg.CAFile)
 		if err != nil {
 			return err
@@ -104,7 +141,7 @@ func Run(ctx context.Context, cfg Config, token string, log *slog.Logger) error 
 		return err
 	}
 	defer api.CloseIdleConnections()
-	client, err := claimclient.New(api, workerplane.Principal{WorkerIdentity: cfg.WorkerIdentity, TrustDomain: cfg.TrustDomain})
+	client, err := claimclient.New(api, principal)
 	if err != nil {
 		return err
 	}
@@ -121,7 +158,16 @@ func Run(ctx context.Context, cfg Config, token string, log *slog.Logger) error 
 		return err
 	}
 
-	log.Info("agent delivering claims", "control", cfg.ControlURL, "worker", cfg.WorkerIdentity)
+	if holder != nil {
+		renewCtx, stopRenew := context.WithCancel(ctx)
+		renewDone := make(chan struct{})
+		go func() {
+			defer close(renewDone)
+			enroll.RenewLoop(renewCtx, holder, cfg.ControlURL, cfg.StateDir, max, log, api.CloseIdleConnections)
+		}()
+		defer func() { stopRenew(); <-renewDone }()
+	}
+	log.Info("agent delivering claims", "control", cfg.ControlURL, "worker", principal.WorkerIdentity, "auth", map[bool]string{true: "mtls", false: "token"}[mtls])
 	timer := time.NewTimer(0)
 	defer timer.Stop()
 	for {

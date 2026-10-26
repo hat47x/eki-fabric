@@ -1,9 +1,12 @@
 // Command eki-agent is the Worker-side process.
 //
 // Today it delivers the ResultClaims in its durable queue to a Control Plane.
-// That is the process-level TEST PROFILE: the Worker Protocol and Worker
-// enrollment (#198) are undecided, and the bearer token is not an enrollment
-// decision. It does not execute Tasks.
+// The Worker Protocol (#198) is undecided, so the body format is the
+// process-level test profile. Authentication is not: "eki-agent enroll"
+// registers the device with a one-time credential and a pinned Control Plane,
+// and the run mode then authenticates with a client certificate it renews
+// itself (ADR-0027, mTLS). The static bearer token remains for the test
+// profile only. The Agent does not execute Tasks.
 package main
 
 import (
@@ -30,6 +33,9 @@ func main() {
 }
 
 func run(args []string, stdout, stderr io.Writer) int {
+	if len(args) > 0 && args[0] == "enroll" {
+		return enrollCommand(args[1:], stdout, stderr)
+	}
 	fs := flag.NewFlagSet("eki-agent", flag.ContinueOnError)
 	fs.SetOutput(stderr)
 	showVersion := fs.Bool("version", false, "print the development version and exit")
@@ -40,6 +46,7 @@ func run(args []string, stdout, stderr io.Writer) int {
 	token := fs.String("token", "", "session token (visible in the process list; prefer --token-file or "+tokenEnv+")")
 	tokenFile := fs.String("token-file", "", "file holding the session token")
 	worker := fs.String("worker-identity", "", "Worker identity the token authenticates as")
+	stateDir := fs.String("state-dir", "", "directory written by \"eki-agent enroll\"; authenticates with its client certificate (mTLS) instead of a token")
 	trustDomain := fs.String("trust-domain", "", "Trust Domain of the Worker identity")
 	interval := fs.Duration("interval", 0, "how often the queue is checked (default 2s)")
 	retryBase := fs.Duration("retry-base", 0, "first retry delay after a failed delivery (default 1s)")
@@ -74,6 +81,7 @@ func run(args []string, stdout, stderr io.Writer) int {
 	override("token", func() { cfg.Token = *token })
 	override("token-file", func() { cfg.TokenFile = *tokenFile })
 	override("worker-identity", func() { cfg.WorkerIdentity = *worker })
+	override("state-dir", func() { cfg.StateDir = *stateDir })
 	override("trust-domain", func() { cfg.TrustDomain = *trustDomain })
 	override("interval", func() { cfg.Interval = *interval })
 	override("retry-base", func() { cfg.RetryBase = *retryBase })
@@ -83,10 +91,14 @@ func run(args []string, stdout, stderr io.Writer) int {
 		fmt.Fprintln(stdout, "eki-agent: no worker session configured (pass --control-url and --queue-db, or --config)")
 		return 0
 	}
-	secret, err := resolveToken(cfg)
-	if err != nil {
-		fmt.Fprintf(stderr, "eki-agent: %v\n", err)
-		return 2
+	var secret string
+	if cfg.StateDir == "" {
+		var err error
+		secret, err = resolveToken(cfg)
+		if err != nil {
+			fmt.Fprintf(stderr, "eki-agent: %v\n", err)
+			return 2
+		}
 	}
 
 	log := slog.New(slog.NewTextHandler(stderr, nil))
@@ -158,4 +170,3 @@ func loadConfig(path string) (service.Config, error) {
 	}
 	return cfg, nil
 }
-
