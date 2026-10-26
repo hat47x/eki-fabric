@@ -94,3 +94,7 @@ EKIは特定のOSSや組織に専属する基盤ではなく、SEI Cognition、T
 | AI時代の位置づけと接続案 | [価値の検討](research/topics/ai-era-value-positioning.md)・[オーケストレータ連携](research/integration/orchestrator-integration-and-layering.md) |
 
 要求やArchitecture Baselineの確定した部分と、研究・将来の構想は別に読んでください。[Upstream Plan](plan/UPSTREAM_PLAN.md)には初期の検討順序が、[ADR-0014](plan/adr/0014-authorities-for-delegation-budget-capacity.md)と[ADR-0018](plan/adr/0018-single-machine-delegation-profile.md)〜[ADR-0021](plan/adr/0021-observation-plane-and-disclosure-tiers.md)には設計判断の経緯が残されています。文書の正本と開発時の作業規則は[AGENTS.md](AGENTS.md)にあります。
+
+## ライセンス
+
+[MIT](LICENSE)
