@@ -27,7 +27,7 @@ Connect handler（認証・framing）
 - 認証は本文を読む前に行います。未知のトークンは401、別のWorkerを名乗るClaimは`claimplane`が拒否して403、本文の上限超過は413（既定64 KiB）です。応答に出すのは固定のコードだけで、Attempt IDやDBの経路などの内部の文字列は含めません。詳細はログにだけ残します。
 - 本文は`internal/spi/workerplane/testprofile`のJSONです。AgentとControl Planeが同じ符号化・復号を使い、未知の項目と末尾のデータを拒否します。
 
-`internal/control/service`の設定で、`worker`を指定したときだけ、Client APIとは別のlistenerを開きます。TLSが必須で、loopbackアドレスだけは平文でも開けます。設定が不正な場合は、Client APIも含めて起動せずに失敗します。
+`internal/control/service`の設定で、`worker`を指定したときだけ、Client APIとは別のlistenerを開きます。これは静的Bearerの表を使う試験用profileなので、既定ではloopbackアドレス（`127.0.0.1`、`::1`、`localhost`）だけを受け付け、`0.0.0.0`、`::`、空のホスト、`localhost`以外のホスト名は、名前を引かずにloopback以外として拒否します。loopback以外は、`allow_test_profile_off_loopback`（仮の名前）を明示した場合に限り許し、起動時に警告を出します。その場合もTLSは必須で、loopbackアドレスだけが平文でも開けます（[ADR-0027](../../../plan/adr/0027-worker-authentication-and-enrollment.md) 2.5、[#224](https://github.com/hat47x/eki-fabric/issues/224)）。設定が不正な場合は、Client APIも含めて起動せずに失敗します。
 
 プロセス全体の確認は[`conformance/process`](../../../conformance/process/README.md)にあります。
 

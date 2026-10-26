@@ -16,7 +16,9 @@
 |---|---|
 | `TestAgentDeliversClaimToControlAcrossControlRestart` | dispatched AttemptのClaimを届けると、Control PlaneのAttemptがverifyingに進みClaimが記録され、Agentのqueueが空になる。Control Planeを強制終了（SIGKILL）して次のClaimを積むと、Agentは保持して再送を重ね、Control Plane側は何も変わらない。同じ状態ファイルで再起動すると届く。Agentはinterruptで正常終了する |
 | `TestControlRejectsUnknownTokenAndWrongPrincipalWithoutChange` | 未知のトークンは401、別のWorkerのセッションで他のWorkerのClaimを送ると403。どちらもAgentのqueueに残り、Control PlaneのAttemptとClaimは変わらず、ログにトークンが出ない |
-| `TestControlRefusesPlaintextWorkerListenerOffLoopback` | loopback以外で平文のWorker listenerを設定すると、`eki-control`は起動せずに失敗する |
+| `TestControlRefusesTestProfileOffLoopbackByDefault` | TLSを付けても、loopback以外のWorker listenerは既定で起動を拒否する。理由に、試験用であることとADR-0027を含む |
+| `TestControlAllowsTestProfileOffLoopbackOnlyWhenExplicitAndWarns` | `allow_test_profile_off_loopback`とTLSがあるときだけloopback以外で起動し、試験用profileであることを警告に出す |
+| `TestControlRefusesPlaintextWorkerListenerOffLoopback` | `allow_test_profile_off_loopback`を指定しても、TLSがなければ`eki-control`は起動せずに失敗する |
 
 同期は、期限付きのpollingです。固定時間のsleepで待ちません。
 

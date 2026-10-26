@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/hat47x/eki-fabric/internal/control/clientapi"
@@ -41,6 +42,67 @@ func TestWorkerListenerConfigFailsClosed(t *testing.T) {
 			}
 			if _, err := Start(context.Background(), cfg, quietLogger()); !errors.Is(err, ErrInvalidConfig) {
 				t.Fatalf("Start = %v, want ErrInvalidConfig", err)
+			}
+		})
+	}
+}
+
+func TestWorkerListenerLoopbackDecision(t *testing.T) {
+	tls := &TLSConfig{CertFile: "c.pem", KeyFile: "k.pem"}
+	cases := []struct {
+		listen     string
+		off        bool // non-loopback
+		wantNoFlag bool // valid without the flag
+	}{
+		{"127.0.0.1:9443", false, true},
+		{"127.0.0.2:9443", false, true},
+		{"[::1]:9443", false, true},
+		{"localhost:9443", false, true},
+		{"0.0.0.0:9443", true, false},
+		{"[::]:9443", true, false},
+		{":9443", true, false},
+		{"192.168.1.10:9443", true, false},
+		{"10.0.0.5:9443", true, false},
+		{"control.example.org:9443", true, false},
+		{"[fe80::1%lo]:9443", true, false},
+	}
+	for _, tc := range cases {
+		t.Run(tc.listen, func(t *testing.T) {
+			base := func(allow bool, withTLS bool) WorkerConfig {
+				w := WorkerConfig{
+					Listen: tc.listen, AllowTestProfileOffLoopback: allow,
+					Sessions: []WorkerSessionConfig{{WorkerIdentity: "worker-a", SessionTokenSHA256: clientapi.HashToken("worker-token-0123456789abcdef")}},
+				}
+				if withTLS {
+					w.TLS = tls
+				}
+				return w
+			}
+			// Without the flag: only loopback is accepted, with or without TLS.
+			for _, withTLS := range []bool{false, true} {
+				err := base(false, withTLS).validate()
+				if tc.wantNoFlag {
+					if err != nil {
+						t.Fatalf("loopback tls=%v: %v", withTLS, err)
+					}
+					continue
+				}
+				if !errors.Is(err, ErrInvalidConfig) || !strings.Contains(err.Error(), "test profile") || !strings.Contains(err.Error(), "ADR-0027") {
+					t.Fatalf("off loopback without flag tls=%v: %v", withTLS, err)
+				}
+			}
+			// With the flag: off loopback needs TLS; loopback stays valid.
+			err := base(true, true).validate()
+			if err != nil {
+				t.Fatalf("flag with tls: %v", err)
+			}
+			err = base(true, false).validate()
+			if tc.off {
+				if !errors.Is(err, ErrInvalidConfig) || !strings.Contains(err.Error(), "needs tls") {
+					t.Fatalf("flag without tls off loopback: %v", err)
+				}
+			} else if err != nil {
+				t.Fatalf("flag on loopback: %v", err)
 			}
 		})
 	}

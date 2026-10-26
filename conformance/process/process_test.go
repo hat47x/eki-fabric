@@ -522,13 +522,55 @@ func TestControlRejectsUnknownTokenAndWrongPrincipalWithoutChange(t *testing.T) 
 	}
 }
 
-func TestControlRefusesPlaintextWorkerListenerOffLoopback(t *testing.T) {
-	e := newEnv(t)
+// offLoopbackConfig writes an eki-control configuration whose Worker listener
+// is on 0.0.0.0 with the given extra worker fields (raw JSON, may be empty).
+func (e *env) offLoopbackConfig(t *testing.T, workerPort, extraWorker string) {
+	t.Helper()
 	cfg := fmt.Sprintf(`{"listen":"127.0.0.1:0","database":%q,"tokens":[{"principal":"alice","role":"client","token_sha256":%q}],
 "policy":{"approved_executors":["dev.example.transform"],"per_task":{"cpu_millis":1000,"memory_bytes":1,"wall_time_seconds":60,"output_bytes_max":1,"network_bytes_max":1,"temporary_disk_bytes":1},"max_attempts":3,"max_outstanding_tasks":4},
-"worker":{"listen":"0.0.0.0:0","sessions":[{"worker_identity":"worker-a","session_token_sha256":%q}]}}`,
-		e.controlDB, clientapi.HashToken(clientToken), clientapi.HashToken(workerAToken))
+"worker":{"listen":"0.0.0.0:%s",%s"sessions":[{"worker_identity":"worker-a","session_token_sha256":%q}]}}`,
+		e.controlDB, clientapi.HashToken(clientToken), workerPort, extraWorker, clientapi.HashToken(workerAToken))
 	must(t, os.WriteFile(e.cfgPath, []byte(cfg), 0o600))
+}
+
+func TestControlRefusesTestProfileOffLoopbackByDefault(t *testing.T) {
+	e := newEnv(t)
+	tlsField := fmt.Sprintf(`"tls":{"cert_file":%q,"key_file":%q},`, e.pki.certFile, e.pki.keyFile)
+	e.offLoopbackConfig(t, "0", tlsField) // even with TLS
+	p := startProc(t, "eki-control", "--config", e.cfgPath)
+	select {
+	case <-p.exited:
+	case <-time.After(30 * time.Second):
+		t.Fatal("eki-control kept running with a test-profile Worker listener off loopback")
+	}
+	var exit *exec.ExitError
+	if !errors.As(p.err, &exit) || exit.ExitCode() == 0 {
+		t.Fatalf("exit = %v, want a failure\n%s", p.err, p.out.String())
+	}
+	if !strings.Contains(p.out.String(), "test profile") || !strings.Contains(p.out.String(), "ADR-0027") {
+		t.Fatalf("unexpected refusal text:\n%s", p.out.String())
+	}
+}
+
+func TestControlAllowsTestProfileOffLoopbackOnlyWhenExplicitAndWarns(t *testing.T) {
+	e := newEnv(t)
+	_, port, err := net.SplitHostPort(freeAddr(t))
+	must(t, err)
+	tlsField := fmt.Sprintf(`"tls":{"cert_file":%q,"key_file":%q},"allow_test_profile_off_loopback":true,`, e.pki.certFile, e.pki.keyFile)
+	e.offLoopbackConfig(t, port, tlsField)
+	p := startProc(t, "eki-control", "--config", e.cfgPath)
+	waitFor(t, "eki-control warning for the off-loopback test profile", func() (bool, string) {
+		if !p.running() {
+			t.Fatalf("eki-control exited early: %v\n%s", p.err, p.out.String())
+		}
+		return strings.Contains(p.out.String(), "TEST PROFILE"), p.out.String()
+	})
+}
+
+func TestControlRefusesPlaintextWorkerListenerOffLoopback(t *testing.T) {
+	e := newEnv(t)
+	// The explicit opt-in does not lift the TLS requirement.
+	e.offLoopbackConfig(t, "0", `"allow_test_profile_off_loopback":true,`)
 	p := startProc(t, "eki-control", "--config", e.cfgPath)
 	select {
 	case <-p.exited:
