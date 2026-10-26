@@ -154,6 +154,9 @@ func (s *Server) startWorker(ctx context.Context, w *WorkerConfig, store *sqlite
 		}
 		tlsConfig = &tls.Config{MinVersion: tls.VersionTLS12, Certificates: []tls.Certificate{cert}}
 	}
+	if host, _, err := net.SplitHostPort(w.Listen); err == nil && !isLoopback(host) {
+		s.log.Warn("worker listener is the TEST PROFILE (static Bearer token table) on a non-loopback address; allowed only by allow_test_profile_off_loopback, not for production (ADR-0027 2.5)", "addr", w.Listen)
+	}
 	var lc net.ListenConfig
 	listener, err := lc.Listen(ctx, "tcp", w.Listen)
 	if err != nil {

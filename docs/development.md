@@ -8,7 +8,7 @@
 
 現在は、M0 executable skeletonの最初の段階です。
 
-Task APIは`--config`で起動できます。Worker sessionは、試験用のWorker listener（#198の決定ではない）だけが任意で起動します。
+Task APIは`--config`で起動できます。Worker sessionは、試験用のWorker listener（#198の決定ではない）だけが任意で起動します。このlistenerは静的Bearerの表を使う試験用profileなので、既定ではloopbackアドレスだけを受け付けます。loopback以外は、`worker.allow_test_profile_off_loopback`（仮の名前）を明示した場合に限り、TLSを付けたうえで許し、起動時に警告を出します（[ADR-0027](../plan/adr/0027-worker-authentication-and-enrollment.md) 2.5、[#224](https://github.com/hat47x/eki-fabric/issues/224)）。
 
 現時点で入っているものは、次のとおりです。
 

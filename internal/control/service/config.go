@@ -14,6 +14,7 @@ import (
 	"net"
 	"net/http"
 	"os"
+	"strings"
 	"time"
 
 	"github.com/hat47x/eki-fabric/internal/control/clientapi"
@@ -68,6 +69,11 @@ type WorkerConfig struct {
 	Listen string `json:"listen"`
 	// TLS is required unless Listen is a loopback address.
 	TLS *TLSConfig `json:"tls,omitempty"`
+	// AllowTestProfileOffLoopback permits this test profile (a static table of
+	// hashed Bearer tokens) on a non-loopback Listen address. Without it such
+	// an address is refused (ADR-0027 2.5). The name is provisional. TLS is
+	// still required off loopback, and startup logs a warning.
+	AllowTestProfileOffLoopback bool `json:"allow_test_profile_off_loopback,omitempty"`
 	// MaxBodyBytes bounds a request body. Zero means the default.
 	MaxBodyBytes int64 `json:"max_body_bytes,omitempty"`
 	// Sessions maps token hashes to the Worker they authenticate.
@@ -87,6 +93,9 @@ func (w WorkerConfig) validate() error {
 	}
 	if w.TLS != nil && (w.TLS.CertFile == "" || w.TLS.KeyFile == "") {
 		return fmt.Errorf("%w: worker.tls requires both cert_file and key_file", ErrInvalidConfig)
+	}
+	if !isLoopback(host) && !w.AllowTestProfileOffLoopback {
+		return fmt.Errorf("%w: worker.listen %q is not a loopback address; the Worker listener is a test profile (a static Bearer token table) and is accepted only on loopback by default (ADR-0027 2.5); set allow_test_profile_off_loopback to override deliberately", ErrInvalidConfig, w.Listen)
 	}
 	if w.TLS == nil && !isLoopback(host) {
 		return fmt.Errorf("%w: the Worker listener on %q needs tls; plaintext is accepted only on a loopback address", ErrInvalidConfig, w.Listen)
@@ -219,8 +228,12 @@ func (c Config) Validate() error {
 	return nil
 }
 
+// isLoopback reports whether host is the literal name "localhost" or an IP
+// literal that is a loopback address. It does not resolve names: an empty
+// host, an unspecified address (0.0.0.0, ::), a zoned address and any other
+// hostname are all treated as non-loopback, so doubt fails closed.
 func isLoopback(host string) bool {
-	if host == "localhost" {
+	if strings.EqualFold(host, "localhost") {
 		return true
 	}
 	ip := net.ParseIP(host)
