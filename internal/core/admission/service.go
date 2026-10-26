@@ -204,7 +204,14 @@ func (s *Service) Cancel(ctx context.Context, p Principal, taskID string) (Cance
 		next := current
 		next.CancellationRequested = true
 		next.Revision = current.Revision + 1
+		// The wall clock can step backwards (NTP correction, VM clock sync,
+		// a restart on another host), so the new time is never earlier than
+		// what the record already carries. Otherwise the record would fail
+		// Validate and a valid cancellation would surface as a 500.
 		next.UpdatedAt = s.now().UTC()
+		if next.UpdatedAt.Before(current.UpdatedAt) {
+			next.UpdatedAt = current.UpdatedAt
+		}
 		if current.Phase == taskstate.TaskPhaseAdmitted || current.Phase == taskstate.TaskPhaseReady {
 			next.Phase = taskstate.TaskPhaseTerminal
 			next.TerminalOutcome = taskstate.TerminalOutcomeCancelled
