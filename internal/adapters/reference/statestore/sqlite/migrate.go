@@ -783,6 +783,100 @@ BEFORE DELETE ON rejected_results
 BEGIN
 	SELECT RAISE(ABORT, 'rejected result is immutable');
 END`,
+	// 15: Worker registry and enrollment credentials (ADR-0027 stage 1). A
+	// credential spends once and creates exactly one Worker: workers.credential_id
+	// is UNIQUE, the worker insert guard accepts only an issued, unexpired
+	// credential of the same trust domain, and the credential can become consumed
+	// only when the Worker it names exists. Worker identities are primary keys
+	// of rows that are never deleted, so an identity is never issued twice, even
+	// after revocation. Revoked is terminal. Only the SHA-256 of an enrollment
+	// secret is stored.
+	`CREATE TABLE enrollment_credentials (
+	credential_id   TEXT    NOT NULL PRIMARY KEY CHECK (length(credential_id) = 36 AND substr(credential_id, 1, 4) = 'enr_'),
+	secret_sha256   TEXT    NOT NULL UNIQUE CHECK (length(secret_sha256) = 64),
+	trust_domain    TEXT    NOT NULL CHECK (length(trust_domain) BETWEEN 1 AND 253),
+	issued_by       TEXT    NOT NULL CHECK (length(issued_by) BETWEEN 1 AND 256),
+	issued_at_ns    INTEGER NOT NULL,
+	expires_at_ns   INTEGER NOT NULL,
+	state           TEXT    NOT NULL CHECK (state IN ('issued','consumed','revoked')),
+	consumed_worker TEXT,
+	consumed_at_ns  INTEGER,
+	revoked_by      TEXT    CHECK (revoked_by IS NULL OR length(revoked_by) BETWEEN 1 AND 256),
+	revoked_at_ns   INTEGER,
+	CHECK (expires_at_ns > issued_at_ns AND expires_at_ns - issued_at_ns <= 604800000000000),
+	CHECK ((state = 'consumed') = (consumed_worker IS NOT NULL) AND (state = 'consumed') = (consumed_at_ns IS NOT NULL)),
+	CHECK ((state = 'revoked') = (revoked_by IS NOT NULL) AND (state = 'revoked') = (revoked_at_ns IS NOT NULL))
+) STRICT;
+CREATE TABLE workers (
+	worker_identity    TEXT    NOT NULL PRIMARY KEY CHECK (length(worker_identity) = 36 AND substr(worker_identity, 1, 4) = 'wrk_'),
+	trust_domain       TEXT    NOT NULL CHECK (length(trust_domain) BETWEEN 1 AND 253),
+	state              TEXT    NOT NULL CHECK (state IN ('registered','disabled','revoked')),
+	revision           INTEGER NOT NULL CHECK (revision >= 1),
+	credential_id      TEXT    NOT NULL UNIQUE REFERENCES enrollment_credentials (credential_id),
+	state_changed_by   TEXT    NOT NULL CHECK (length(state_changed_by) <= 256),
+	cert_serial        TEXT    CHECK (cert_serial IS NULL OR length(cert_serial) BETWEEN 1 AND 128),
+	cert_not_after_ns  INTEGER,
+	created_at_ns      INTEGER NOT NULL,
+	updated_at_ns      INTEGER NOT NULL CHECK (updated_at_ns >= created_at_ns),
+	CHECK ((cert_serial IS NULL) = (cert_not_after_ns IS NULL)),
+	CHECK (revision > 1 OR (state = 'registered' AND state_changed_by = '' AND cert_serial IS NULL))
+) STRICT;
+CREATE INDEX workers_by_trust_domain ON workers (trust_domain);
+CREATE TRIGGER workers_insert_guard
+BEFORE INSERT ON workers
+WHEN NOT EXISTS (
+	SELECT 1 FROM enrollment_credentials c
+	WHERE c.credential_id = NEW.credential_id
+	  AND c.state = 'issued'
+	  AND c.trust_domain = NEW.trust_domain
+	  AND NEW.created_at_ns < c.expires_at_ns
+)
+BEGIN
+	SELECT RAISE(ABORT, 'a worker needs an issued, unexpired credential of its trust domain');
+END;
+CREATE TRIGGER workers_update_guard
+BEFORE UPDATE ON workers
+WHEN OLD.state = 'revoked'
+	OR NEW.worker_identity <> OLD.worker_identity
+	OR NEW.trust_domain <> OLD.trust_domain
+	OR NEW.credential_id <> OLD.credential_id
+	OR NEW.created_at_ns <> OLD.created_at_ns
+	OR NEW.revision <> OLD.revision + 1
+	OR NEW.updated_at_ns < OLD.updated_at_ns
+BEGIN
+	SELECT RAISE(ABORT, 'a revoked worker is final and a worker keeps its identity');
+END;
+CREATE TRIGGER workers_no_delete
+BEFORE DELETE ON workers
+BEGIN
+	SELECT RAISE(ABORT, 'a worker identity is never removed or reused');
+END;
+CREATE TRIGGER enrollment_credentials_update_guard
+BEFORE UPDATE ON enrollment_credentials
+WHEN OLD.state <> 'issued'
+	OR NEW.credential_id <> OLD.credential_id
+	OR NEW.secret_sha256 <> OLD.secret_sha256
+	OR NEW.trust_domain <> OLD.trust_domain
+	OR NEW.issued_by <> OLD.issued_by
+	OR NEW.issued_at_ns <> OLD.issued_at_ns
+	OR NEW.expires_at_ns <> OLD.expires_at_ns
+BEGIN
+	SELECT RAISE(ABORT, 'a consumed or revoked credential does not change');
+END;
+CREATE TRIGGER enrollment_credentials_consume_guard
+BEFORE UPDATE ON enrollment_credentials
+WHEN NEW.state = 'consumed' AND NOT EXISTS (
+	SELECT 1 FROM workers w
+	WHERE w.credential_id = NEW.credential_id AND w.worker_identity = NEW.consumed_worker
+)
+BEGIN
+	SELECT RAISE(ABORT, 'a credential is consumed only by the worker it created');
+END;
+CREATE TRIGGER enrollment_credentials_no_delete
+BEFORE DELETE ON enrollment_credentials
+BEGIN
+	SELECT RAISE(ABORT, 'an enrollment credential is not removed');
+END`,
 }
 
 // migrate brings the database to the latest version. It is idempotent, rejects

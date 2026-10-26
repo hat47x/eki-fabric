@@ -16,6 +16,14 @@ type TaskID string
 type AttemptID string
 type LeaseID string
 
+// WorkerIdentity is issued by the Worker registry (ADR-0027 section 2.2). A
+// Worker never chooses it, and a revoked identity is never issued again.
+type WorkerIdentity string
+
+// EnrollmentCredentialID names an enrollment credential without revealing its
+// secret. An administrator uses it to look up or revoke the credential.
+type EnrollmentCredentialID string
+
 func NewTaskID() (TaskID, error) {
 	v, err := newID("tsk_")
 	return TaskID(v), err
@@ -29,6 +37,30 @@ func NewAttemptID() (AttemptID, error) {
 func NewLeaseID() (LeaseID, error) {
 	v, err := newID("les_")
 	return LeaseID(v), err
+}
+
+func NewWorkerIdentity() (WorkerIdentity, error) {
+	v, err := newID("wrk_")
+	return WorkerIdentity(v), err
+}
+
+func NewEnrollmentCredentialID() (EnrollmentCredentialID, error) {
+	v, err := newID("enr_")
+	return EnrollmentCredentialID(v), err
+}
+
+func ParseWorkerIdentity(v string) (WorkerIdentity, error) {
+	if err := validateID("wrk_", v); err != nil {
+		return "", err
+	}
+	return WorkerIdentity(v), nil
+}
+
+func ParseEnrollmentCredentialID(v string) (EnrollmentCredentialID, error) {
+	if err := validateID("enr_", v); err != nil {
+		return "", err
+	}
+	return EnrollmentCredentialID(v), nil
 }
 
 func ParseTaskID(v string) (TaskID, error) {
@@ -55,6 +87,9 @@ func ParseLeaseID(v string) (LeaseID, error) {
 func (v TaskID) String() string    { return string(v) }
 func (v AttemptID) String() string { return string(v) }
 func (v LeaseID) String() string   { return string(v) }
+
+func (v WorkerIdentity) String() string         { return string(v) }
+func (v EnrollmentCredentialID) String() string { return string(v) }
 
 func newID(prefix string) (string, error) {
 	var raw [randomBytes]byte
