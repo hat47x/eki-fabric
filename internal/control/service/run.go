@@ -183,9 +183,6 @@ func (s *Server) startWorker(ctx context.Context, w *WorkerConfig, store *sqlite
 	}
 	srv := clientapi.NewServer(w.Listen, handler)
 	srv.ErrorLog = slog.NewLogLogger(s.log.Handler(), slog.LevelWarn)
-	if w.mtls() {
-		srv.ConnContext = workerplane.ConnContext
-	}
 	s.workerHTTP, s.workerListener, s.workerDone = srv, listener, make(chan struct{})
 	go func() {
 		defer close(s.workerDone)

@@ -86,7 +86,6 @@ func newMTLSFixture(t *testing.T) *mtlsFixture {
 	}
 	f.srv = httptest.NewUnstartedServer(h)
 	f.srv.TLS = &tls.Config{ClientAuth: tls.RequestClientCert, MinVersion: tls.VersionTLS13}
-	f.srv.Config.ConnContext = server.ConnContext
 	f.srv.Config.ConnState = func(c net.Conn, s http.ConnState) {
 		f.mu.Lock()
 		defer f.mu.Unlock()

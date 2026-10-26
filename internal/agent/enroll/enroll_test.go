@@ -109,7 +109,6 @@ func newFixture(t *testing.T, chain bool, validity time.Duration) *fixture {
 		Certificates: []tls.Certificate{{Certificate: chainDER, PrivateKey: leafKey}},
 		ClientAuth:   tls.RequestClientCert, MinVersion: tls.VersionTLS13,
 	}
-	f.srv.Config.ConnContext = server.ConnContext
 	f.srv.StartTLS()
 	t.Cleanup(f.srv.Close)
 	return f

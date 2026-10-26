@@ -8,9 +8,10 @@ import (
 )
 
 const (
-	// maxCheck bounds how long the loop sleeps at a time, so a wall clock that
-	// jumps does not delay renewal by more than this.
-	maxCheck = time.Minute
+	// maxCheck bounds how long the loop sleeps at a time. Timers count
+	// monotonic time, and certificates expire by the wall clock; after a
+	// suspend or a clock step the loop looks again within this time.
+	maxCheck = 5 * time.Second
 	// DefaultRenewRetry is the wait after a failed renewal.
 	DefaultRenewRetry = 15 * time.Second
 )

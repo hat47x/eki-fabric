@@ -1,7 +1,6 @@
 package workerplane
 
 import (
-	"context"
 	"crypto/ecdsa"
 	"crypto/x509"
 	"encoding/json"
@@ -10,7 +9,6 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
-	"net"
 	"net/http"
 	"strings"
 	"time"
@@ -110,15 +108,6 @@ func NewMTLSHandler(cfg MTLSConfig) (http.Handler, error) {
 	return h, nil
 }
 
-type connKey struct{}
-
-// ConnContext is for http.Server.ConnContext. It lets a handler close the
-// connection of a request it refused, so a Worker that was revoked loses its
-// session and not only the one request (ADR-0027 section 2.4 item 16).
-func ConnContext(ctx context.Context, c net.Conn) context.Context {
-	return context.WithValue(ctx, connKey{}, c)
-}
-
 func (h *mtlsHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	switch r.URL.Path {
 	case testprofile.Path, enrollwire.RenewPath, enrollwire.EnrollPath:
@@ -138,7 +127,7 @@ func (h *mtlsHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	// Authenticate before reading the body, as the static-table handler does.
 	principal, leaf, status := h.authenticate(r)
 	if status != 0 {
-		h.refuse(w, r, status)
+		h.refuse(w, status)
 		return
 	}
 	if r.URL.Path == enrollwire.RenewPath {
@@ -188,18 +177,19 @@ func (h *mtlsHandler) authenticate(r *http.Request) (workerenrollment.WorkerPrin
 }
 
 // refuse answers a request that failed authentication and closes the
-// connection, so a refused Worker does not keep a session.
-func (h *mtlsHandler) refuse(w http.ResponseWriter, r *http.Request, status int) {
+// connection after the answer, so a refused Worker does not keep a session.
+//
+// The close is asked for with "Connection: close" and left to net/http, which
+// first discards the unread request body. Closing the socket from the handler
+// would reset the connection while the client is still sending, and the
+// client could lose the 401 it should see.
+func (h *mtlsHandler) refuse(w http.ResponseWriter, status int) {
 	code := "unauthorized"
 	if status == http.StatusServiceUnavailable {
 		code = "unavailable"
 	}
 	w.Header().Set("Connection", "close")
 	reply(w, status, code)
-	_ = http.NewResponseController(w).Flush()
-	if c, ok := r.Context().Value(connKey{}).(net.Conn); ok {
-		_ = c.Close()
-	}
 }
 
 func (h *mtlsHandler) enroll(w http.ResponseWriter, r *http.Request) {
@@ -261,7 +251,7 @@ func (h *mtlsHandler) renew(w http.ResponseWriter, r *http.Request, principal wo
 	cert, err := h.registry.Renew(r.Context(), principal, pub)
 	if err != nil {
 		if errors.Is(err, workerenrollment.ErrWorkerNotUsable) {
-			h.refuse(w, r, http.StatusUnauthorized)
+			h.refuse(w, http.StatusUnauthorized)
 			return
 		}
 		h.log.Error("worker certificate renewal failed", "worker", principal.Identity, "error", err.Error())

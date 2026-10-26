@@ -36,6 +36,9 @@ var (
 	ErrInvalidCSR = errors.New("invalid certificate signing request")
 )
 
+// CABackdate is how far before its creation a new CA certificate starts.
+const CABackdate = 5 * time.Minute
+
 // DefaultCAValidity is the lifetime GenerateCA gives a new CA certificate. A
 // provisional default; CA rotation is an open question (ADR-0027 section 5).
 const DefaultCAValidity = 5 * 365 * 24 * time.Hour
@@ -194,7 +197,9 @@ func GenerateCA(trustDomain string, validity time.Duration, now time.Time) (cert
 	if err != nil {
 		return nil, nil, err
 	}
-	start := now.UTC().Truncate(time.Second)
+	// The start is backdated, so a clock that is a little behind the one that
+	// made the CA does not find the CA "not yet valid" when it signs.
+	start := now.UTC().Add(-CABackdate).Truncate(time.Second)
 	tmpl := &x509.Certificate{
 		SerialNumber:                serial,
 		Subject:                     pkix.Name{CommonName: "EKI Worker CA " + trustDomain},

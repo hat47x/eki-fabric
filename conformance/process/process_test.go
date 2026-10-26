@@ -190,7 +190,12 @@ func startProc(t *testing.T, name string, args ...string) *proc {
 	p.cmd.Stdout, p.cmd.Stderr = p.out, p.out
 	must(t, p.cmd.Start())
 	go func() { p.err = p.cmd.Wait(); close(p.exited) }()
-	t.Cleanup(func() { p.kill() })
+	t.Cleanup(func() {
+		p.kill()
+		if t.Failed() {
+			t.Logf("%s output:\n%s", name, p.out.String())
+		}
+	})
 	return p
 }
 
@@ -316,6 +321,13 @@ func seedPolicy(t *testing.T, s *statesqlite.Store, now time.Time) policystate.S
 // that Worker would send. The Placement inputs are synthetic.
 func seedClaim(t *testing.T, s *statesqlite.Store, policy policystate.State, n int, now time.Time) resultclaim.Claim {
 	t.Helper()
+	return seedClaimFor(t, s, policy, n, now, "worker-a")
+}
+
+// seedClaimFor is seedClaim for a Worker with the given identity. The mTLS
+// tests use the identity the registry issued at enrollment.
+func seedClaimFor(t *testing.T, s *statesqlite.Store, policy policystate.State, n int, now time.Time, worker string) resultclaim.Claim {
+	t.Helper()
 	ctx := context.Background()
 	task, err := taskstate.NewTask(ids.TaskID(fmt.Sprintf("tsk_%032x", n)), contract.SHA256([]byte(fmt.Sprintf("taskir-%d", n))), now.Add(-time.Minute))
 	must(t, err)
@@ -325,13 +337,13 @@ func seedClaim(t *testing.T, s *statesqlite.Store, policy policystate.State, n i
 	must(t, err)
 	must(t, s.CreateAttempt(ctx, attempt))
 	placing := attempt
-	placing.Phase, placing.WorkerIdentity = attemptstate.AttemptPhasePlacing, "worker-a"
+	placing.Phase, placing.WorkerIdentity = attemptstate.AttemptPhasePlacing, worker
 	placing.Revision++
 	must(t, s.CompareAndSwapAttempt(ctx, attempt.ID, attempt.Revision, placing))
 	reservation, err := s.ReserveLease(ctx, statestore.LeaseReservation{
 		LeaseID: ids.LeaseID(fmt.Sprintf("les_%032x", n)), TaskID: task.ID, TaskIRDigest: task.TaskIRDigest,
 		ExpectedTaskRevision: task.Revision, AttemptID: attempt.ID, ExpectedAttemptRevision: placing.Revision,
-		WorkerIdentity: "worker-a", PlacementTrustDomain: "example.org", PlacementAuthorityPrincipal: "placement-1",
+		WorkerIdentity: worker, PlacementTrustDomain: "example.org", PlacementAuthorityPrincipal: "placement-1",
 		PlacementDecisionID: fmt.Sprintf("decision-%d", n), PlacementPayloadDigest: contract.SHA256([]byte("placement")),
 		PlacementExpiresAt: now.Add(2 * time.Hour), PolicyRevision: policy.Revision, ExpectedPolicyEpoch: policy.Epoch,
 		IssuedAt: now.Add(-time.Second), ExpiresAt: now.Add(time.Hour),
@@ -345,7 +357,7 @@ func seedClaim(t *testing.T, s *statesqlite.Store, policy policystate.State, n i
 	must(t, s.CompareAndSwapAttempt(ctx, attempt.ID, assigned.Revision, dispatched))
 
 	claim, err := resultclaim.NewClaim(resultclaim.ClaimConfig{
-		TaskID: task.ID, TaskIRDigest: task.TaskIRDigest, AttemptID: attempt.ID, WorkerIdentity: "worker-a",
+		TaskID: task.ID, TaskIRDigest: task.TaskIRDigest, AttemptID: attempt.ID, WorkerIdentity: worker,
 		LeaseID: reservation.Lease.ID, FenceEpoch: reservation.Lease.FenceEpoch, WorkOrderDecision: "workorder-1",
 		ExecutorDigest: contract.SHA256([]byte("executor")), Nonce: []byte("0123456789abcdef"),
 		Status: resultclaim.StatusCompleted, OutputBytes: 42, OutputDigest: contract.SHA256([]byte("output")),
