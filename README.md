@@ -2,118 +2,95 @@
 
 > 本リポジトリは、生成AIを用いた初期開発中のソースコードを公開するものです。現時点で人的レビューを伴っておらず、仕様や実装は変更される場合があります。
 
-EKI Fabricは、業務端末、個人のワークステーション、専用サーバ、ブラウザ、クラウドなどに生じる計算の余力を活用する、実験的なOSSプロジェクトです。安全性や利用者への影響、データの所在、ネットワークの負荷、コストを考慮した分散計算基盤を目指しています。
+EKI Fabricは、**仕事をほかの計算資源へ、安全に任せるための仕組み**を目指す実験的なOSSプロジェクトです。
 
-EKIの本質（コア）は、分散処理そのものではなく、委任先ごとに信頼の水準を定め、条件の合う委任先へ範囲と期限を限って仕事を任せ、その結果を確かめて記録する「委任の核」です。委任先は目的に応じて指名するほか、EKIに委ねて、許された余力、管理資源、クラウドを予算の範囲で一元的に最適化させることもできます。広域の資源最適化と分散計算は、この核の上に置く外面の一つで、ほかにAIの推論とツール実行の統治、AIが生成したコードの隔離実行、常駐する軽量な認知処理の実行面を外面とします。詳しくは[Product Value](product/value.md)の「外面とコア」と[ADR-0013](plan/adr/0013-product-core-and-faces.md)を参照してください。
+業務端末、個人のワークステーション、専用サーバー、ブラウザー、クラウドなどを対象にします。計算能力に余裕があっても、利用者の作業、データの所在、通信負荷、安全性、費用を優先して扱います。
 
-一つの製品や一つの組織だけの計算基盤にはしません。SEI Cognition、TEI、SUIなど既知のOSSに加えて、将来現れる未知のOSS、Webアプリ、他社製品からも共通して使えることを前提にしています。
+## EKIの中心にある「委任」
 
-Architecture Entry Gateを通過し、現在の設計基準（Architecture Baseline）0.2を定めています。NATS、WASM、SPIFFEなどの技術を先に固定せず、守る対象、利用場面、悪意のあるClientやWorkerに対して保証する範囲を要求から導きます。
+EKIの中心は、計算資源を集めること自体ではありません。**誰に、どの仕事を、どの条件と期限で任せ、その結果をどう確認するか**という委任の仕組みです。
 
-## まず全体像を知りたい方へ
+例えば、ある計算を別の端末に任せる場合でも、次の点を分けて考えます。
 
-初めてEKI Fabricを読む場合は、[はじめてEKI Fabricを読む方へ](docs/for-readers.md)から始めてください。
+| 段階 | 確認したいこと |
+| --- | --- |
+| 依頼 | 誰が、どの範囲の仕事を依頼したか |
+| 受理 | 委任先が、その仕事を受け付けたか |
+| 実行 | 実際に仕事が行われたか |
+| 結果 | 返ってきた結果を、そのTaskに必要な方法で確認したか |
+| 記録 | 後から依頼・処理・検証の経緯をたどれるか |
 
-分散システムやRemote Attestationの専門知識がなくても読めるよう、次の背景から説明しています。
+仕事の委任先は利用者が指定することも、許可された範囲でEKIに選ばせることも想定しています。将来的には、余剰資源・管理対象の資源・クラウドを、制約と予算を守りながら組み合わせることも検討します。
 
-- なぜ個人PCや業務端末の余力を使うのか
-- なぜ一般的な固定クラスタとは違うのか
-- なぜClientもWorkerも無条件には信用しないのか
-- 悪意を前提にしながら、なぜ善意のアドホック参加者を受け入れられるのか
-- Workerの結果をどのように検証するのか
-- Compute Grantや資源提供実績を、EKI自身がどこまで扱うのか
+この「委任の核」を、広域の資源活用、AIの推論やツール実行の統治、AI生成コードの隔離実行、軽量な常駐処理などに利用する構想です。詳しくは[Product Value](product/value.md)と[ADR-0013](plan/adr/0013-product-core-and-faces.md)を参照してください。
 
-文書全体の案内は[ドキュメント案内](docs/README.md)に、専門用語は[用語集](docs/glossary.md)にまとめています。
+## なぜ業務端末の余力を考えるのか
 
-## EKI Fabricがめざすもの
+日常の作業に十分な性能を持つ端末には、使われていない時間があります。その余力を組織や社会の計算へ活用できれば、専用の計算資源に頼る場面を減らせる可能性があります。
 
-出発点の一つは、価格競争力の高い個人PCやワークステーションを、日常業務に十分な性能で用意する考え方です。そして、本人が使っていない時間だけ、その余力を組織全体の計算資源として活用します。
-
-ただし、「空いている資源をできるだけ使い切る」ことは目標にしません。
-
-```text
-利用者の本来作業
-        ↓ 最優先
-端末・ネットワーク・電力の安全余力
-        ↓
-残った計算余力
-        ↓
-組織や社会の認知活動へ還流
-```
-
-業務端末では、利用者が戻った時点で、計算を縮小または停止できることを重視します。分散するとネットワークの負荷が増える場合は、ローカルで実行することを選べなければなりません。
-
-また、高価な高可用性を、すべての処理に一律には求めません。途中で失敗しても再実行できる処理では、一時的で安価なWorkerを組み合わせます。こうして、Fabric全体として必要な信頼性を得ることをめざします。
-
-## 安全性についての基本姿勢
-
-EKI Fabricでは、ClientもWorkerも、信頼の境界の外に置きます。
-
-認証されていること、社内の端末であること、公式のAgentを使っていること、過去に正しく動いたことだけでは、善意や未改変であることは保証できないからです。
-
-そのため、たとえば次のものを区別します。
+ただし、利用者の仕事が最優先です。
 
 ```text
-認証された
-    ≠
-あらゆる操作を許可される
-
-Workerが結果を返した
-    ≠
-その結果が正しい
-
-Workerが資源を提供したと申告した
-    ≠
-その量の貢献が確認された
+利用者の本来の作業
+  ↓
+端末・ネットワーク・電力の安全な余力
+  ↓
+条件に合う計算処理
 ```
 
-この考え方は、参加者を排除するためのものではありません。安全性を、参加者の人柄や善意に頼らずに成り立たせます。そのため、公開データを使う検証可能な処理などでは、一時的な個人の参加やブラウザからの参加も受け入れられます。
+業務端末を使っている人が作業を再開したら、委任した計算を縮小・停止できることを重視します。通信による負荷が大きい場合は、別の端末へ送るよりローカルで処理する方が適切な場合もあります。
 
-## 企業内から公益利用まで
+途中で失敗してもやり直せる処理には、一時的なWorkerを使う選択肢があります。すべての仕事に同じ水準の可用性を求めるのではなく、仕事の性質に応じて必要な信頼性を確保する設計を検討しています。
 
-EKI Fabricは、まず、企業内の遊休計算資源を安全に使えることを、重要な利用形態とします。そのうえで、同じ基本モデルを、複数の組織の間や公益の用途へ広げられることを想定しています。
+## 認証・信頼・結果検証を分ける
 
-たとえば、クラウド事業者や大手企業が、通常の利用を妨げない範囲の余剰の計算能力を、研究機関、OSS、公益性の高い団体へ提供する構成が考えられます。
+EKIでは、Client（仕事を依頼する側）とWorker（実行する側）を無条件には信頼しません。社内の端末や公式のAgentであっても、認証されたことだけで任意の操作を認めるわけではありません。
 
-このような利用枠を、現段階では**Compute Grant**と呼んでいます。
+次の違いが重要です。
 
-また、資源を提供した事実を、検証できる形で記録します。その記録を、社内の配賦、相互利用の枠、寄付の実績、コミュニティでの評価など、外部の価値交換の制度へ接続する余地を持たせます。
+| 確認できたこと | それだけでは確定しないこと |
+| --- | --- |
+| Clientを認証できた | あらゆるTaskの実行権限 |
+| Workerが結果を返した | 結果の正しさ |
+| Workerが資源提供を申告した | 実際の貢献量 |
+| Taskが受付状態になった | Taskの実行完了 |
 
-ただし、EKI Core自身が、通貨を発行すること、現金化の手段、市場価格、交換レートを提供することは、目標にしません。どのような価値に対応づけるかは、それぞれの主体に任せます。
+こうした条件を明確にすることで、信頼関係の異なる端末や組織の参加を検討できます。実際の検証方法と許可範囲は、Taskと利用場面によって定めます。[Threat Model](requirements/THREAT_MODEL.md)と[Worker Assurance Model](requirements/ASSURANCE_MODEL.md)に設計上の前提があります。
 
-## 現在の主要な前提
+## 想定する利用場面
 
-- 特定の利用OSSやプログラミング言語に依存しない。
-- Reference ImplementationにはGoを採用するが、外部との契約はGo専用にしない。
-- 業務端末、専用ノード、Browser Worker、他組織の資源、クラウドなどを、同じ性質のWorkerとはみなさない。
-- 業務端末では、利用者の本来の作業と、端末側のローカルな安全判断を、中央のSchedulerより優先する。
-- ClientもWorkerも悪意を持ち得るものとして設計する。
-- Workerの結果は、そのTaskに必要な検証を通るまで、確定した結果とはみなさない。
-- Workerの離脱を、異常な出来事としてだけでなく、通常の状態の変化として扱う。
-- 計算性能だけでなく、データの局所性や転送量も、配置の判断に含める。
-- 公益の利用や組織間の利用を可能にするが、参加しただけで互いに包括的な信頼を与えることはしない。
+まずは企業内の余剰計算資源を、安全に利用することを重視します。その先には、組織間の共同利用や研究・OSS・公益目的への資源提供も想定しています。
 
-## 要件のレビューに参加する方へ
+このような資源提供の利用枠を、現段階では**Compute Grant**と呼びます。提供実績を検証可能な形で記録し、別の制度が配賦・寄付・評価などへ利用できる余地を設けます。
 
-要求の正本は[Product Requirements](requirements/PRODUCT_REQUIREMENTS.md)です。
+EKI Core自体が通貨、現金化手段、市場価格、交換レートを提供する構想ではありません。どのような価値と対応させるかは、それぞれの主体が判断します。
 
-初めて要求の文書を読む場合は、先に[要求文書の読み方](requirements/README.md)を読んでください。そのあと、関心に応じて次の文書へ進めます。
+EKIは特定のOSSや組織に専属する基盤ではなく、SEI Cognition、TEI、SUIなどの関連製品や、他社製品、将来の新しいソフトウェアからも利用できることを目指します。
 
-- [Threat Model](requirements/THREAT_MODEL.md): どの攻撃者を想定し、何を守るか
-- [Worker Assurance Model](requirements/ASSURANCE_MODEL.md): Workerの保証を、単一のTrust Levelにしない理由
-- [Acceptance Scenarios](requirements/ACCEPTANCE_SCENARIOS.md): 実際の利用や攻撃の場面に当てはめて、要求を厳しく確かめる
-- [Reference Systems Research](research/topics/reference-systems.md): 既存のシステムや標準から何を学ぶか
-- [AI時代の価値と位置づけ](research/topics/ai-era-value-positioning.md)と[既存オーケストレータとの接続](research/integration/orchestrator-integration-and-layering.md): 今後2〜5年を想定した位置づけの検討（調査メモであり、正本ではない）
-- [Upstream Plan](plan/UPSTREAM_PLAN.md): Architectureに入るまでに何を確認するか
+## 現在の開発状況
 
-## 現在地
+**Architecture Baseline 0.2**を定義し、GoによるReference Implementationの開発を進めています。BaselineはAuthority、Contract、Control-Data Plane、Deployment Profile、Task State Model、Extension SPIの六つの領域から成ります。
 
-Architecture Entry Gateを通過し、**Architecture Baseline 0.2**を定義済みです。Baselineは、Authority、Contract、Control-Data Plane、Deployment Profile、Task State Model、Extension SPIで構成されます。2026-09-21に0.1を定め、2026-10-20〜21に、ADR-0013で定めたプロダクトの方向（委任の核と四つの外面）に合わせて六つの文書をすべて0.2へ上げました（[ADR-0014](plan/adr/0014-authorities-for-delegation-budget-capacity.md)、[ADR-0018](plan/adr/0018-single-machine-delegation-profile.md)〜[ADR-0021](plan/adr/0021-observation-plane-and-disclosure-tiers.md)）。
+外部Client向けにはHTTPS・JSON・OpenAPI、Worker／Adapterとの接続にはProtobuf IDL・Connect、署名付きAuthority Decisionにはdeterministic CBOR・CDDL・COSE_Sign1を設計基準として採用しています。P0の機械可読な契約は[OpenAPI仕様](spec/external/openapi.json)で確認できます。
 
-External Client Planeには、HTTPS、JSON、OpenAPIを採用しました。P0の機械可読な契約は、[`spec/external/openapi.json`](spec/external/openapi.json)に置いています。Worker PlaneとAdapter Planeは、Protobuf IDLとConnectを使います。署名付きのAuthority Decisionは、deterministic CBOR、CDDL、COSE_Sign1をBaselineとしています。
+現在、M0の実行可能な最小構成を検証しています。Control APIで合成Taskを受け付け、`queued`状態を観測する参照試験があります。一方で、**Workerによる実処理、結果の独立検証、本番環境での安全な委任までが完成したという意味ではありません。**
 
-Reference ImplementationにはGoを採用しました。External ContractとGo内部の型を分けたうえで、M0のexecutable skeletonに進む段階です。初回のMVPでは、悪意のあるClientからTaskを受理し、2台以上のNative Workerへ安全に配置し、reclaim、retry、Resultの検証までを一続きで確認する、vertical sliceを中心にします。
+初回MVPでは、悪意のあるClientも考慮したTask受理から、2台以上のNative Workerへの配置、仕事の回収、再試行、結果検証までを一続きで確認することを目標にしています。Federation、Browser Worker、TEE、zkVM、学習型Schedulerなどは将来の拡張候補で、初回MVPの成立条件には含めません。
 
-高度なFederation、Browser Worker、TEE、zkVM、learned schedulerなどは、Extension Pointを確保します。ただし、初回のMVPが成り立つための条件には含めません。
+技術要素を先に増やすより、利用者への影響、責任と権限の範囲、検証可能な結果を重視します。
 
-文書の正本の関係と書き方のルールは[AGENTS.md](AGENTS.md)に、Architectureの現在地は[architecture/README.md](architecture/README.md)に、実装計画は[MVP Implementation Plan](architecture/MVP_IMPLEMENTATION_PLAN.md)にあります。
+## 読み進めるには
+
+初めて読む方は、[はじめてEKI Fabricを読む方へ](docs/for-readers.md)から始めてください。分散処理の専門知識がなくても、余剰資源の活用、悪意のある参加者、結果検証の考え方を順に読めます。
+
+| 関心 | 資料 |
+| --- | --- |
+| 文書全体の入口と用語 | [ドキュメント案内](docs/README.md)・[用語集](docs/glossary.md) |
+| 満たすべき要求 | [要求文書の読み方](requirements/README.md)・[Product Requirements](requirements/PRODUCT_REQUIREMENTS.md) |
+| 想定する攻撃と保証 | [Threat Model](requirements/THREAT_MODEL.md)・[Assurance Model](requirements/ASSURANCE_MODEL.md) |
+| 実際の利用・攻撃場面 | [Acceptance Scenarios](requirements/ACCEPTANCE_SCENARIOS.md) |
+| 設計基準と実装計画 | [Architecture](architecture/README.md)・[MVP Implementation Plan](architecture/MVP_IMPLEMENTATION_PLAN.md) |
+| 関連技術の調査 | [既存システム調査](research/topics/reference-systems.md) |
+| AI時代の位置づけと接続案 | [価値の検討](research/topics/ai-era-value-positioning.md)・[オーケストレータ連携](research/integration/orchestrator-integration-and-layering.md) |
+
+要求やArchitecture Baselineの確定した部分と、研究・将来の構想は別に読んでください。文書の正本と開発時の作業規則は[AGENTS.md](AGENTS.md)にあります。
