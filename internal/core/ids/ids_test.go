@@ -42,3 +42,23 @@ func TestIDsRejectWrongPrefixAndMalformedSuffix(t *testing.T) {
 		})
 	}
 }
+
+func TestWorkerRegistryIDsRoundTrip(t *testing.T) {
+	w, err := NewWorkerIdentity()
+	if err != nil || !strings.HasPrefix(w.String(), "wrk_") {
+		t.Fatalf("NewWorkerIdentity() = %q, %v", w, err)
+	}
+	if got, err := ParseWorkerIdentity(w.String()); err != nil || got != w {
+		t.Fatalf("ParseWorkerIdentity() = %q, %v", got, err)
+	}
+	c, err := NewEnrollmentCredentialID()
+	if err != nil || !strings.HasPrefix(c.String(), "enr_") {
+		t.Fatalf("NewEnrollmentCredentialID() = %q, %v", c, err)
+	}
+	if got, err := ParseEnrollmentCredentialID(c.String()); err != nil || got != c {
+		t.Fatalf("ParseEnrollmentCredentialID() = %q, %v", got, err)
+	}
+	if _, err := ParseWorkerIdentity(c.String()); !errors.Is(err, ErrInvalidID) {
+		t.Fatalf("a credential ID parsed as a worker identity: %v", err)
+	}
+}

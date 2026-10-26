@@ -895,3 +895,19 @@ Taskの結果を読む経路は`501`のままだった。Taskの状態が`comple
 - 却下された申告は、Taskを終端にしないため`RESULT_NOT_READY`に見える。
 
 未決: 出力digestをClientへ渡す仕様の変更（`TaskResult`への項目の追加か、成果物の記述子の記録）、成果物の経路（`/v1/artifacts/...`）、Adminが他人のTaskの結果を読む規則、`result_profile`の耐久化。
+
+### 2026-10-27 Worker登録簿とenrollment資格のState Store（ADR-0027 段階1）
+
+ADR-0027の段階1として、Worker登録簿とenrollment資格をState Storeに耐久化した（Issue [#222](https://github.com/hat47x/eki-fabric/issues/222)、[#57](https://github.com/hat47x/eki-fabric/issues/57)）。CA、HTTPのendpoint、mTLSは含まない。
+
+- `internal/core/workerregistry`に、Workerの記録（登録簿が発行する識別子、信頼領域、`registered`・`disabled`・`revoked`、段階2用の証明書の通し番号と期限）と、enrollment資格の記録（256bitの秘密のSHA-256だけを保存、接頭辞`eki_enroll_v1_`、信頼領域に束縛、既定24時間・上限7日、一回限り）と、遷移の規則を置いた。`internal/core/workerenrollment`に、発行・失効・消費・状態変更・自己失効・要求ごとの確認を置いた。
+- 消費は、資格の使用済みへの変更とWorkerの作成を一つのトランザクションで行う。同時に使っても、Workerは一つだけ作られる。使えない資格（期限切れ、失効済み、使用済み、別の信頼領域、未知）は、同じ外部のエラーで拒否し、理由は監査用にだけ区別する。
+- `revoked`は終端で、識別子は再利用しない。Workerは自分の識別子だけを失効できる。更新時刻は巻き戻らない（#226と同じ扱い）。
+- `statestore.WorkerRegistryStore`を、memoryとSQLite（migration 15）に実装した。SQLiteは、単一消費、終端、識別子の不変と非再利用、有効期間の上限を、制約とtriggerでも守る。
+- 適合性試験（`RunWorkerRegistryContract`、`RunWorkerRegistryDurabilityContract`）を両Adapterに適用した。
+
+仮決め: 信頼領域の書式は`federation.ParseTrustDomain`と同じ。管理者の権限は、型付きの能力`workerenrollment.Admin`で受け取る。`Worker.StateChangedBy`などの操作者の記録は`admin:<id>`、`worker:<identity>`の形。
+
+未決: 管理者の認証（`clientapi`のRole）から`Admin`を作る配線、状態変更の監査ログの出力、資格・Workerの一覧の操作、登録簿の項目の保持期間。
+
+次の段階2: Worker専用のCA、enrollmentのendpoint、mTLSのauthenticator、要求ごとの登録簿の確認の配線、プロセス単位の通し試験を、別のPRで加える。

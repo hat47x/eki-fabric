@@ -169,6 +169,26 @@ RAC-1が結果を却下したときの記録の契約です（#57の証跡）。
 - SQLiteを再起動しても、待っている再投入（NotBeforeを含む）、窓の予算、Permitとその使用の状態が変わらない
 - SQLiteは、Adapterを経由する書き込みだけでなく、Permitの書き換え、二度目の使用、確定した処理の変更、sequenceの飛びをtriggerで拒否する。保存されたPermitの行は、ダイジェストが一致しなければ読み出し時に拒否する
 
+## `RunWorkerRegistryContract` / `RunWorkerRegistryDurabilityContract`
+
+`statestore.WorkerRegistryStore`を実装するAdapter向けの契約です。Worker登録簿とenrollment資格（[ADR-0027](../../plan/adr/0027-worker-authentication-and-enrollment.md)の段階1、Issue #222）を確認します。操作は`workerenrollment.Service`を通して呼ぶので、Serviceの権限検査とStoreの原子性を一緒に確かめます。
+
+- 発行したenrollment資格を使うと、`registered`のWorkerが一つ作られる。識別子は登録簿が発行し、同じ資格を二度使えない
+- 同じ資格を16個のgoroutineが同時に使っても、Workerは一つだけ作られ、残りは拒否される
+- 期限切れ、失効済み、使用済み、別の信頼領域、未知、形式の誤りの資格は、同じ外部のエラー（`ErrCredentialRefused`、同じ文面）で拒否する。監査用の理由は`RefusalReason`で区別できる。拒否した試行は資格を消費しない
+- 期限は、ちょうど期限の時刻から使えない。資格の有効期間は既定24時間、上限7日で、7日を超える指定（負の値を含む）は、Serviceでも、Storeに直接渡した場合も拒否する
+- 管理者の権限を持たない呼び出しは、資格の発行・失効、Workerの状態変更のいずれも拒否する
+- 未使用の資格は失効でき（二度目は無害）、使用済みの資格は失効できない
+- Workerの状態は`registered`、`disabled`、`revoked`。`disabled`は管理者が`registered`へ戻せる。`revoked`は終端で、どの状態へも戻せない（管理者でも、自己失効の後でも）
+- Workerは自分の識別子だけを失効できる。他のWorker、別の信頼領域、空の主体からの失効は`ErrNotSelf`で拒否し、対象は変わらない
+- 失効したWorkerの識別子を、別のWorkerに発行しない。識別子の衝突で失敗した登録は、資格を消費しない
+- 要求ごとの確認（`Authorize`）は、未知、別の信頼領域、`disabled`、`revoked`を同じエラーで拒否する
+- 時計が巻き戻っても、更新時刻はすでに記録された時刻より前にならない
+- 証明書の通し番号と有効期限の記録（段階2が使う）は、失効したWorkerには書けない
+- 再起動（SQLiteの再オープン）の後も、Worker、資格の状態、失効済みの終端、未使用の資格が保たれる
+
+enrollment資格の秘密がDBのbytes（本体、WAL）に現れないことと、DB制約・triggerがAdapterを経由しない書き込みも拒否することは、SQLite固有の試験（`sqlite/worker_registry_test.go`）で確認します。
+
 ## 未決事項（Open Question）
 
 - `A-ASSIGNED`で保持されたLeaseへの同じPlacement Decisionの再送を許すかどうかは未決です。現在の契約（`reserve-load-replay`、`exact-replay-keeps-attempt-revision-and-fence`）と両Adapterは、この再送が既存のLeaseへ収束することを確認しています。ただし、これは「配送前の段階でも再送を許す」という設計判断を確定したものではありません。Leaseをまだ配送していない段階で再送を許してよいかは、後続の設計判断で決めます。それまで、この挙動は暫定です。
