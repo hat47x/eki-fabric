@@ -16,6 +16,7 @@ import (
 
 	"github.com/hat47x/eki-fabric/internal/adapters/reference/statestore/memory"
 	"github.com/hat47x/eki-fabric/internal/core/admission"
+	"github.com/hat47x/eki-fabric/internal/spi/statestore"
 )
 
 const (
@@ -41,6 +42,13 @@ type env struct {
 
 func newEnv(t *testing.T, mutate ...func(*Config, *admission.Policy)) *env {
 	t.Helper()
+	return newEnvWith(t, nil, mutate...)
+}
+
+// newEnvWith wires a result reader. A nil reader leaves the result operation
+// unavailable, as in a deployment that has not enabled it.
+func newEnvWith(t *testing.T, results statestore.ResultAcceptanceStore, mutate ...func(*Config, *admission.Policy)) *env {
+	t.Helper()
 	store := memory.New()
 	policy := admission.Policy{
 		ApprovedExecutors: []string{"dev.example.transform"},
@@ -63,7 +71,11 @@ func newEnv(t *testing.T, mutate ...func(*Config, *admission.Policy)) *env {
 	for _, m := range mutate {
 		m(&cfg, &policy)
 	}
-	svc, err := admission.New(admission.Config{Store: store, Policy: policy})
+	var reader statestore.ResultAcceptanceStore
+	if results != nil {
+		reader = results
+	}
+	svc, err := admission.New(admission.Config{Store: store, Results: reader, Policy: policy})
 	if err != nil {
 		t.Fatalf("admission.New() error = %v", err)
 	}

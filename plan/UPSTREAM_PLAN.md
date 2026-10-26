@@ -877,6 +877,25 @@ ResultClaimの配送は、これまでプロセス内の接続（`workerplane.Cl
 
 未決: CAの運用、更新の手順と長く眠った端末の再登録、失効の伝播の遅れの上限、端末のattestation、ブラウザ・仮名のWorkerの認証、TLSを終端するプロキシ、enrollment資格の発行の区分、通信契約（#198）への写像、試験用profileの制限の実装。
 
+### 2026-10-27 Client APIの結果取得（`GET /v1/tasks/{task_id}/result`）
+
+Taskの結果を読む経路は`501`のままだった。Taskの状態が`completed`でも、それは受理された結果（AcceptedResult、RAC-1）を意味しない。他のプロジェクト（hat47x/tai-pleroma#67）が、`completed`を受理と取り違えずに委任の結果を読めるよう、`GET /v1/tasks/{task_id}/result`を実装した（#57）。
+
+- 認証・Role・所有の判定は状態の取得と同じで、存在しないTaskと他人のTaskは同じ404を返す。
+- Taskが終端でなければ`409 RESULT_NOT_READY`（再試行可）、終端でもAcceptedResultがなければ`409 RESULT_NOT_AVAILABLE`、完了しAcceptedResultが耐久化されていれば`200 TaskResult`を返す。`completed`でも記録がなければ結果にしない。
+- 読み出しは既存の`ResultAcceptanceStore.LoadAcceptedResult`を使い、SPI・Adapter・migrationは変えていない。`admission.Config.Results`を渡した構成だけで有効になり、渡さない構成は従来どおり`501`。
+- 応答に出さないもの: Worker識別子、Lease、fence、Attempt、検証者、policyのdigest、却下の理由、出力・申告のdigest。
+- 試験: Clientのhandler試験（認証、所有と存在の区別がつかないこと、未完了、完了と記録なし、終端の各結果、メソッド、内部情報の不在、store障害の不透明さ）と、縦断スライスでの通し試験（受理の前後と、検証者が割れて保留になった場合）。
+
+仮決め（承認待ち）:
+
+- `TaskResult`に出力digestの欄がなく、`ArtifactDescriptor`の必須項目（大きさ、media type、data class）をAcceptedResultが持たないため、`artifacts`は空の配列とし、digestは返さない。仕様は変えていない。
+- `assurance`は`{profile: 受理時の保証水準, status: "satisfied"}`とした。
+- 取消・失敗などの終端でAcceptedResultがない場合は、仕様が409しか定めないため、`RESULT_NOT_AVAILABLE`の409とし、公開の終端コードは状態の取得に委ねた。
+- 却下された申告は、Taskを終端にしないため`RESULT_NOT_READY`に見える。
+
+未決: 出力digestをClientへ渡す仕様の変更（`TaskResult`への項目の追加か、成果物の記述子の記録）、成果物の経路（`/v1/artifacts/...`）、Adminが他人のTaskの結果を読む規則、`result_profile`の耐久化。
+
 ### 2026-10-27 Worker登録簿とenrollment資格のState Store（ADR-0027 段階1）
 
 ADR-0027の段階1として、Worker登録簿とenrollment資格をState Storeに耐久化した（Issue [#222](https://github.com/hat47x/eki-fabric/issues/222)、[#57](https://github.com/hat47x/eki-fabric/issues/57)）。CA、HTTPのendpoint、mTLSは含まない。
