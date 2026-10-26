@@ -145,3 +145,62 @@ func TestNoWorkerListenerWithoutConfiguration(t *testing.T) {
 		t.Fatalf("worker listener without configuration: %q", s.WorkerAddr())
 	}
 }
+
+func mtlsWorkerConfig(t *testing.T, mutate func(*Config)) Config {
+	t.Helper()
+	cfg := testConfig(t, t.TempDir())
+	cfg.Worker = &WorkerConfig{
+		Listen: "0.0.0.0:9443",
+		Auth:   WorkerAuthMTLS,
+		TLS:    &TLSConfig{CertFile: "server.pem", KeyFile: "server.key"},
+		MTLS:   &WorkerMTLSConfig{TrustDomain: "example.org", CACertFile: "worker-ca.pem", CAKeyFile: "worker-ca.key"},
+	}
+	if mutate != nil {
+		mutate(&cfg)
+	}
+	return cfg
+}
+
+// The mTLS mode is the one that may listen off loopback. Every inconsistent
+// combination with the test profile fails closed.
+func TestWorkerMTLSConfig(t *testing.T) {
+	if err := mtlsWorkerConfig(t, nil).Validate(); err != nil {
+		t.Fatalf("a well-formed mTLS configuration off loopback is refused: %v", err)
+	}
+	cases := map[string]func(*Config){
+		"unknown auth":            func(c *Config) { c.Worker.Auth = "oauth" },
+		"mtls without tls":        func(c *Config) { c.Worker.TLS = nil },
+		"mtls without tls, local": func(c *Config) { c.Worker.TLS = nil; c.Worker.Listen = "127.0.0.1:9443" },
+		"mtls without settings":   func(c *Config) { c.Worker.MTLS = nil },
+		"mtls with static table": func(c *Config) {
+			c.Worker.Sessions = []WorkerSessionConfig{{WorkerIdentity: "w", SessionTokenSHA256: clientapi.HashToken("worker-token-0123456789abcdef")}}
+		},
+		"mtls with test override": func(c *Config) { c.Worker.AllowTestProfileOffLoopback = true },
+		"no CA files":             func(c *Config) { c.Worker.MTLS.CACertFile = "" },
+		"no CA key":               func(c *Config) { c.Worker.MTLS.CAKeyFile = "" },
+		"CA shares the TLS cert":  func(c *Config) { c.Worker.MTLS.CACertFile = c.Worker.TLS.CertFile },
+		"CA shares the TLS key":   func(c *Config) { c.Worker.MTLS.CAKeyFile = c.Worker.TLS.KeyFile },
+		"bad trust domain":        func(c *Config) { c.Worker.MTLS.TrustDomain = "Example.ORG" },
+		"no trust domain":         func(c *Config) { c.Worker.MTLS.TrustDomain = "" },
+		"validity too short":      func(c *Config) { c.Worker.MTLS.CertValiditySeconds = 1 },
+		"validity too long":       func(c *Config) { c.Worker.MTLS.CertValiditySeconds = 365 * 24 * 3600 },
+		"negative body limit":     func(c *Config) { c.Worker.MaxBodyBytes = -1 },
+		"static with mtls block":  func(c *Config) { c.Worker.Auth = ""; c.Worker.Listen = "127.0.0.1:9443" },
+		"static_token with mtls":  func(c *Config) { c.Worker.Auth = WorkerAuthStaticToken; c.Worker.Listen = "127.0.0.1:9443" },
+	}
+	for name, mutate := range cases {
+		t.Run(name, func(t *testing.T) {
+			cfg := mtlsWorkerConfig(t, mutate)
+			if err := cfg.Validate(); !errors.Is(err, ErrInvalidConfig) {
+				t.Fatalf("Validate = %v, want ErrInvalidConfig", err)
+			}
+		})
+	}
+}
+
+func TestWorkerMTLSStartFailsClosedWithoutTheCAFiles(t *testing.T) {
+	cfg := mtlsWorkerConfig(t, func(c *Config) { c.Worker.Listen = "127.0.0.1:0" })
+	if _, err := Start(context.Background(), cfg, quietLogger()); err == nil {
+		t.Fatal("Start succeeded without a Worker CA")
+	}
+}

@@ -12,11 +12,13 @@ import (
 	"time"
 
 	"github.com/hat47x/eki-fabric/internal/adapters/reference/statestore/sqlite"
+	"github.com/hat47x/eki-fabric/internal/adapters/reference/workerca"
 	"github.com/hat47x/eki-fabric/internal/control/claimaccept"
 	"github.com/hat47x/eki-fabric/internal/control/claimplane"
 	"github.com/hat47x/eki-fabric/internal/control/clientapi"
 	"github.com/hat47x/eki-fabric/internal/control/workerplane"
 	"github.com/hat47x/eki-fabric/internal/core/admission"
+	"github.com/hat47x/eki-fabric/internal/core/workerenrollment"
 )
 
 // Server is a running Control Plane process.
@@ -143,10 +145,6 @@ func (s *Server) startWorker(ctx context.Context, w *WorkerConfig, store *sqlite
 	if err != nil {
 		return err
 	}
-	handler, err := w.handler(api, s.log)
-	if err != nil {
-		return fmt.Errorf("%w: %v", ErrInvalidConfig, err)
-	}
 	var tlsConfig *tls.Config
 	if w.TLS != nil {
 		cert, err := tls.LoadX509KeyPair(w.TLS.CertFile, w.TLS.KeyFile)
@@ -155,7 +153,24 @@ func (s *Server) startWorker(ctx context.Context, w *WorkerConfig, store *sqlite
 		}
 		tlsConfig = &tls.Config{MinVersion: tls.VersionTLS12, Certificates: []tls.Certificate{cert}}
 	}
-	if host, _, err := net.SplitHostPort(w.Listen); err == nil && !isLoopback(host) {
+	var handler http.Handler
+	if w.mtls() {
+		handler, err = s.mtlsHandler(w, store, plane)
+		if err != nil {
+			return err
+		}
+		// The client certificate is requested here and verified per request,
+		// so the enrollment route works without one and a revoked Worker is
+		// refused on its next request, not at its next handshake.
+		tlsConfig.MinVersion = tls.VersionTLS13
+		tlsConfig.ClientAuth = tls.RequestClientCert
+	} else {
+		handler, err = w.handler(api, s.log)
+		if err != nil {
+			return fmt.Errorf("%w: %v", ErrInvalidConfig, err)
+		}
+	}
+	if host, _, err := net.SplitHostPort(w.Listen); err == nil && !w.mtls() && !isLoopback(host) {
 		s.log.Warn("worker listener is the TEST PROFILE (static Bearer token table) on a non-loopback address; allowed only by allow_test_profile_off_loopback, not for production (ADR-0027 2.5)", "addr", w.Listen)
 	}
 	var lc net.ListenConfig
@@ -168,6 +183,9 @@ func (s *Server) startWorker(ctx context.Context, w *WorkerConfig, store *sqlite
 	}
 	srv := clientapi.NewServer(w.Listen, handler)
 	srv.ErrorLog = slog.NewLogLogger(s.log.Handler(), slog.LevelWarn)
+	if w.mtls() {
+		srv.ConnContext = workerplane.ConnContext
+	}
 	s.workerHTTP, s.workerListener, s.workerDone = srv, listener, make(chan struct{})
 	go func() {
 		defer close(s.workerDone)
@@ -177,8 +195,33 @@ func (s *Server) startWorker(ctx context.Context, w *WorkerConfig, store *sqlite
 			_ = s.http.Close()
 		}
 	}()
-	s.log.Info("control plane worker listener", "addr", listener.Addr().String(), "tls", w.TLS != nil)
+	s.log.Info("control plane worker listener", "addr", listener.Addr().String(), "tls", w.TLS != nil, "auth", w.authMode())
 	return nil
+}
+
+// mtlsHandler builds the Worker listener of ADR-0027: the Worker CA from its
+// files, the registry service over the State Store, and the mTLS handler.
+func (s *Server) mtlsHandler(w *WorkerConfig, store *sqlite.Store, plane *claimplane.Service) (http.Handler, error) {
+	api, err := workerplane.New(workerplane.Config{Claims: plane})
+	if err != nil {
+		return nil, err
+	}
+	ca, err := workerca.LoadFiles(w.MTLS.CACertFile, w.MTLS.CAKeyFile, w.MTLS.TrustDomain, w.MTLS.validity())
+	if err != nil {
+		return nil, fmt.Errorf("%w: %v", ErrInvalidConfig, err)
+	}
+	registry, err := workerenrollment.New(workerenrollment.Config{Store: store, Clock: systemClock{}, Issuer: ca})
+	if err != nil {
+		return nil, err
+	}
+	handler, err := workerplane.NewMTLSHandler(workerplane.MTLSConfig{
+		Claims: api, Registry: registry, WorkerCA: ca.Certificate(), TrustDomain: w.MTLS.TrustDomain,
+		MaxBodyBytes: w.MaxBodyBytes, Logger: s.log,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("%w: %v", ErrInvalidConfig, err)
+	}
+	return handler, nil
 }
 
 type systemClock struct{}
