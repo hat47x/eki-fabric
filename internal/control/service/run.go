@@ -61,8 +61,9 @@ func Start(ctx context.Context, cfg Config, log *slog.Logger) (*Server, error) {
 	}
 
 	svc, err := admission.New(admission.Config{
-		Store:  store,
-		Policy: policy,
+		Store:   store,
+		Results: store,
+		Policy:  policy,
 		OnInternalError: func(operation string, err error) {
 			log.Error("internal error", "operation", operation, "error", err.Error())
 		},

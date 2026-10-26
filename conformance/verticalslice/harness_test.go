@@ -153,7 +153,8 @@ func (w *world) workerQueueStore(worker string) *queuesqlite.Store {
 func (w *world) admissionService(maxOutstanding uint32) *admission.Service {
 	w.t.Helper()
 	svc, err := admission.New(admission.Config{
-		Store: w.state,
+		Store:   w.state,
+		Results: w.state,
 		Policy: admission.Policy{
 			ApprovedExecutors: []string{"dev.example.transform"},
 			PerTask: admission.ResourceCeiling{
