@@ -947,3 +947,19 @@ ADR-0027の段階2として、Worker専用のCA、enrollmentとmTLS、更新、�
 - enrollmentへの総当たり対策（流量制限）と、資格の一括発行での人間の承認（ADR-0022の区分）。
 - 管理者の認証（`clientapi`のRole）と、`workerenrollment.Admin`の接続。資格・Workerの一覧の操作。
 - ブラウザ・仮名のWorker（DP-3）、Federationをまたぐ認証、OIDCやSPIFFEなどのIDV-1のAdapter、通信契約（#198）への写像。
+
+### 2026-10-27 ResultClaimと受理確認の通信仕様への対応（ADR-0028）
+
+[ADR-0028](adr/0028-result-claim-wire-mapping.md)で、Coreの`resultclaim.Claim`・`ClaimAck`と`spec/worker/v1/worker.proto`の対応を仮承認で決めた（Issue [#198](https://github.com/hat47x/eki-fabric/issues/198)、[#173](https://github.com/hat47x/eki-fabric/issues/173)、[#57](https://github.com/hat47x/eki-fabric/issues/57)）。評価の全文はIssue #198のコメントにある。
+
+- 方針は、protoの加算拡張（protocol revision 2）とした。既存の項目の番号・型・意味は変えず、Coreの値も狭めない。adapterは構造の変換だけを行い、結果の種類の統合や、Control Planeによる束縛値の補完をしない。
+- 結果の種類は、`DEADLINE_EXCEEDED`・`OUTPUT_EXCEEDED`・`RUNNER_STUCK`を足して7種類を一対一に対応させた。`SANDBOX_LIMIT`はCoreに対応がなく、Control Planeが拒否する。
+- TaskIR・Executorのダイジェスト、nonce、WorkOrderのDecision ID、出力のダイジェスト、終了コード（`sint64`）、出力のbyte数を、新しい項目で運ぶ。`FenceEpoch`は`observed_lease_revision`と同じ値（`decisions.cddl`のLeaseの項目6）とし、`RenewalSequence`とは区別する。
+- `claim_id`は`Claim.Digest`のhexとし、Control Planeが認証された`Principal`から再計算して照合する。Workerの主体はbodyに置かない。
+- 受理確認は、`EventReceipt.result_claim`で、4種類の判定、適用後の段階、検証の要否、`claim_id`の写しを運ぶ。`ACCEPTED`を結果の受理と読まない。
+- 未知のenum・項目・不足する項目は、受理しない。`failure_code`と`outputs`は、revision 2では空でなければならない。
+- `spec/worker/v1/worker.proto`へ反映した。検証は、既存の静的な検査（`conformance/protocol`）と、protocompileによるコンパイルだけである。生成コード、Connect、実通信、往復は未確認。Goの実装は含まない。
+
+仮決め（承認待ち）: revision 2への加算拡張という方針、`claim_id`を`Claim.Digest`にすること、`SANDBOX_LIMIT`の拒否、`claimed_at`を無視すること、`failure_code`と`outputs`をrevision 2で使えなくすること、`error_code`の仮の語彙。
+
+未決: `outputs`の正規化と解禁（#233、Artifactの確定）、`SANDBOX_LIMIT`と`failure_code`の行き先、拒否の恒久・一時の分類、申告ごとの署名、再登録で主体が変わった場合のqueue、実通信・生成コード・2つのWorkerの分離・session期限切れの確認（#198の完了条件の後半）。
