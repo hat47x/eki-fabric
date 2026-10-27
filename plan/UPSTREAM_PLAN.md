@@ -846,6 +846,10 @@ Worker側には署名済みWorkOrderを検証・受理する境界（`workorderv
 
 #160で未決の論点のうち、一つのLeaseからWorkOrderは一つだけ、`A-ASSIGNED`のAttemptだけが受け取れる、Artifact Grantは含めない、Executor Approvalは呼び出し側の参照を結び付ける、の四点を仮決めとした（[`internal/core/workorderissue/README.md`](../internal/core/workorderissue/README.md)）。署名中にWOR-1 keyのprimaryが入れ替わった場合は、[ADR-0025](adr/0025-lease-policy-currentness-and-key-rotation.md)のLSE-1と同じくABORTEDとし、署名し直さない。
 
+### 2026-10-24 広域の資源最適化（ADR-0026）
+
+[ADR-0026](adr/0026-wide-area-resource-optimization.md)で、広域の最適化を、提案だけを出す構造のまま設計した。制約（持ち主の拒否権、Data Class、信頼の水準、Grant、予算、隔離の水準、利用の許可、指名）と目的（期限、費用、転送量、持ち主への影響、実績）を分け、制約は目的の重みで埋め合わせない。委任先は、余力、管理資源、費用を生む容量の順に使い、間に合う見込みが閾値を下回ったら次へ引き上げる。引き上げは、予算の予約、閾値以下は承認なしの確保、閾値超は承認の要求の順で、確保できなければ期限の前に通知する。学習した予測は入力の一つで、権限を持たない。判断の計算量に上限を置き、止まっても受理や配置の承認は動き続ける。
+
 ### 2026-10-25 申告の配送を別プロセスで通す（#57、#173）
 
 ResultClaimの配送は、これまでプロセス内の接続（`workerplane.ClaimClient`）と、TLSの往復を測ったSpike（`spikes/claim-wire-roundtrip`）でしか確かめていなかった。`eki-agent`が耐久queueのClaimを、実行中の`eki-control`へTLS越しに届ける最初のプロセス単位の経路を加えた。
