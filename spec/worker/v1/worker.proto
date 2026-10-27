@@ -62,6 +62,42 @@ message EventReceipt {
   EventReceiptStatus status = 2;
   // Stable machine-readable category. Human text is not a protocol branch key.
   string error_code = 3;
+  // Protocol revision 2 (ADR-0028). Present exactly when the event was a
+  // ResultClaim and status is not REJECTED. ACCEPTED means the claim was
+  // recorded; it never means a result was accepted. The decision below is the
+  // meaning, and it must not be inferred from status or from the claim outcome.
+  ResultClaimReceipt result_claim = 4;
+}
+
+enum ClaimDecision {
+  CLAIM_DECISION_UNSPECIFIED = 0;
+  CLAIM_DECISION_NEW = 1;
+  CLAIM_DECISION_DUPLICATE = 2;
+  CLAIM_DECISION_STALE = 3;
+  CLAIM_DECISION_LATE = 4;
+}
+
+enum AttemptPhase {
+  ATTEMPT_PHASE_UNSPECIFIED = 0;
+  ATTEMPT_PHASE_CREATED = 1;
+  ATTEMPT_PHASE_PLACING = 2;
+  ATTEMPT_PHASE_ASSIGNED = 3;
+  ATTEMPT_PHASE_DISPATCHED = 4;
+  ATTEMPT_PHASE_CLAIMED = 5;
+  ATTEMPT_PHASE_VERIFYING = 6;
+  ATTEMPT_PHASE_CLOSED = 7;
+}
+
+// What the Control Plane did with one ResultClaim (protocol revision 2).
+message ResultClaimReceipt {
+  // Echo of the ResultClaim.claim_id the receipt answers. A receipt for another
+  // claim must be treated as malformed by the Worker.
+  string claim_id = 1;
+  ClaimDecision decision = 2;
+  // The Attempt phase after the claim was applied.
+  AttemptPhase attempt_phase = 3;
+  // Presence is required. True exactly when attempt_phase is VERIFYING.
+  optional bool verification_required = 4;
 }
 
 message PollCommandsRequest {
@@ -330,6 +366,11 @@ enum ExecutionClaimOutcome {
   EXECUTION_CLAIM_OUTCOME_SANDBOX_LIMIT = 3;
   EXECUTION_CLAIM_OUTCOME_CANCELLED = 4;
   EXECUTION_CLAIM_OUTCOME_RECLAIMED = 5;
+  // Protocol revision 2 (ADR-0028). One value per Core status; a status is
+  // never folded into another value.
+  EXECUTION_CLAIM_OUTCOME_DEADLINE_EXCEEDED = 6;
+  EXECUTION_CLAIM_OUTCOME_OUTPUT_EXCEEDED = 7;
+  EXECUTION_CLAIM_OUTCOME_RUNNER_STUCK = 8;
 }
 
 message ExecutionClaim {
@@ -337,17 +378,47 @@ message ExecutionClaim {
   optional int32 exit_code = 2;
   google.protobuf.Timestamp started_at = 3;
   google.protobuf.Timestamp finished_at = 4;
+  // Protocol revision 2: must be empty. The Core claim has no place for it.
   string failure_code = 5;
+  // Protocol revision 2 (ADR-0028). The only exit status a revision 2 claim
+  // uses; field 2 must be absent. Presence is required, and 0 is a value.
+  optional sint64 exit_status = 6;
+  // Bytes the executor produced. Not the sum of ResultClaim.outputs sizes.
+  // Presence is required.
+  optional uint64 output_bytes = 7;
 }
 
+// ResultClaim is the Worker's report of how one Attempt ended. ADR-0028 defines
+// the exact mapping to the Core claim. Fields 10 to 14 exist from protocol
+// revision 2; a session that selected revision 1 must not carry a ResultClaim.
+// The Worker identity is never a field: it comes from the authenticated channel.
 message ResultClaim {
+  // Must equal the lowercase hex of the Core claim digest, which the Control
+  // Plane recomputes with the authenticated Worker identity.
   string claim_id = 1;
   string task_id = 2;
   string attempt_id = 3;
+  // The WorkOrder ID inside the signed payload. Checked against the WorkOrder
+  // the Control Plane issued for the Lease. Not the Decision ID (field 11).
   string work_order_id = 4;
   string lease_id = 5;
+  // The Lease revision, which is the fencing epoch (decisions.cddl, lease body
+  // field 6). It is not the renewal sequence.
   uint64 observed_lease_revision = 6;
+  // Protocol revision 2: must be empty until the output list normalization is
+  // specified. Use output_digest.
   repeated ArtifactOutputClaim outputs = 7;
   ExecutionClaim execution = 8;
+  // Diagnostic only. Not in the claim digest and never used as an end time.
   google.protobuf.Timestamp claimed_at = 9;
+  // SHA-256 digest of the TaskIR the Worker executed.
+  Digest task_ir_digest = 10;
+  // The Decision ID of the signed WorkOrder, not work_order_id.
+  string work_order_decision_id = 11;
+  // SHA-256 digest of the Executor artifact the Worker ran.
+  Digest executor_digest = 12;
+  // The single-use nonce of the WorkOrder. 16 to 32 bytes.
+  bytes nonce = 13;
+  // Required for a completed outcome, absent for every other outcome.
+  Digest output_digest = 14;
 }

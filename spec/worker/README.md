@@ -109,6 +109,8 @@ Output Artifactのfinalization / Digest、Result Verification、Result Acceptanc
 
 `exit_code`、failure code、実行時刻もself-reported Observationであり、高保証事実へ自動昇格しません。
 
+Coreの申告との項目・結果の種類・受理確認の対応は、[ADR-0028](../../plan/adr/0028-result-claim-wire-mapping.md)で定めます（protocol revision 2）。Worker identityは通信路から得て、bodyの項目にしません。未知のenum・項目は受理しません。
+
 ## 成果物のデータ本体
 
 Artifact input/outputのbulk bytesはWorker Protocol messageへ埋め込みません。
