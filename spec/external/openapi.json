@@ -990,8 +990,12 @@
           },
           "assurance": {
             "$ref": "#/components/schemas/PublicAssuranceSummary"
+          },
+          "output_digest": {
+            "$ref": "#/components/schemas/Digest"
           }
-        }
+        },
+        "description": "Public projection of an accepted result. output_digest is optional and additive within eki.task-result/v1: it is the digest of the output as recorded in the durable AcceptedResult, never recomputed. It lets a Client pin the accepted result and detect substitution or loss. It is not an ArtifactDescriptor and does not make the output retrievable; artifacts stays empty until artifact retrieval is specified. The claim digest, verification digests, verifier identities, policy digest, Worker and Lease data are not exposed."
       },
       "CancelAccepted": {
         "type": "object",

@@ -224,6 +224,6 @@ P1はメッセージの配送を扱います。権限判断の署名対象とな
 
 - `401` — 認証がない、または認証に失敗した
 - `405` — 対象pathに対して許可されないmethod
-- `501` — `getTaskResult`と、Artifact関連のoperation。Result取得とArtifact Storeは未実装
+- `501` — Artifact関連のoperation（Artifact Storeは未実装）。`getTaskResult`は、State Storeの読み出し口が渡されていない構成だけで`501`
 
 Artifactを入力にするTaskは、入力を認可できないため`422`（`ARTIFACT_NOT_AVAILABLE`）で拒否します。

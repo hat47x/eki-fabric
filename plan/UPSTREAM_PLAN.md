@@ -947,3 +947,23 @@ ADR-0027の段階2として、Worker専用のCA、enrollmentとmTLS、更新、�
 - enrollmentへの総当たり対策（流量制限）と、資格の一括発行での人間の承認（ADR-0022の区分）。
 - 管理者の認証（`clientapi`のRole）と、`workerenrollment.Admin`の接続。資格・Workerの一覧の操作。
 - ブラウザ・仮名のWorker（DP-3）、Federationをまたぐ認証、OIDCやSPIFFEなどのIDV-1のAdapter、通信契約（#198）への写像。
+
+### 2026-10-27 TaskResultへ出力のダイジェストを足す（Issue #233）
+
+`GET /v1/tasks/{task_id}/result`は、`artifacts`が空で`assurance`だけを返していた。Clientが受理された結果を版固定して参照し、差替えや欠損を検出できるよう（hat47x/tai-pleroma#67）、出力のダイジェストを返す欄を足した（#57）。
+
+- **spec**: `spec/external/openapi.json`の`TaskResult`へ、任意の`output_digest`（既存の`Digest`、`{algorithm: "sha256", value: <64桁の16進>}`）を足した。ADR-0001の互換性のルール（任意で追加されるフィールドは小さな変更の候補）に沿い、`eki.task-result/v1`の中の追加とした。必須にしないので、既存の読み手は壊れない。版は上げない。
+- **値の出どころ**: 耐久化されたAcceptedResultが記録した出力ダイジェスト（#203でResultClaimの`OutputDigest`と結び付けたもの）を、そのまま返す。入力から再計算しない。`admission.Service.Result`が`PublicResult.OutputDigest`として渡し、handlerが写す。
+- **返さないもの**: 申告のdigest、検証のdigest、検証者の識別子、policyのdigest、Worker、Lease、fence、Attempt。`artifacts`は空のまま。成果物の取得は範囲外で、`ArtifactDescriptor`が要るsize・media type・data classはAcceptedResultに記録がない。
+- **migration、State Storeの変更はない**。
+- **試験**: handler（digestが記録と一致する、spec上は任意の欄である、`RESULT_NOT_READY`・`RESULT_NOT_AVAILABLE`・404・状態の取得・store障害の応答にdigestが出ない、禁止項目が出ない）と、縦断スライス（Clientが読んだdigestが、受理時に記録されたdigestと等しく、申告のdigestとは別）。
+
+仮決め（承認待ち）:
+
+- 欄の形は、依頼の例の`{sha256: <hex>}`ではなく、仕様に既にある`Digest`（`{algorithm, value}`）にした。`ArtifactDescriptor`と同じ形で、将来のアルゴリズムの追加にも耐えるため。
+- `eki.task-result/v1`の中の任意の追加とし、v1.1やv2にはしない。
+
+未決:
+
+- 成果物の取得経路と、それに伴う`ArtifactDescriptor`（size、media type、data class）をAcceptedResultへ記録するか。
+- #198（ResultClaimとworker.protoの対応）との整合。出力ダイジェストの算出方法（何のバイト列のdigestか）は、その決定に従う。
