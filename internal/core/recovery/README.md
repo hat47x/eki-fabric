@@ -60,9 +60,17 @@ policyが変わった後に古い`Permit`を使おうとすると、期限より
 
 `Release`も同じです。同じTaskの同じ`Pending`が二度届いた場合は一件に畳み、内容が違う場合はエラーにします。
 
+## 耐久化（State Store）
+
+`Pending`、`Budget`、`Permit`は、State Storeの`RecoveryStore`が、AttemptやTaskと同じ境界に保存します（#154）。
+
+- 待っている再投入は、Taskごとに一つだけ保存します。同じ再投入を積み直しても保存済みのものが返るため、`NotBefore`は動きません。積めるのは、中断（`reclaimed`、`worker_lost`、`lease_expired`、`deadline`など）で閉じたAttemptについてだけです（`attemptstate.CloseReason.IsInterruption`）。
+- 時間窓の予算（`Budget`）は一行で保存します。処理（`Release`）の確定は、`Pending`の削除、`Permit`の保存、予算の更新、sequenceの記録を一つのtransactionで行います。sequenceは一つずつ進み、同じ内容の再送は何も変えません。
+- 保存の前に`CheckRelease`が、処理が消費したと申告する量を検算します。予算を少なく申告する、別のsequenceやpolicy revisionの`Permit`を混ぜる、窓の境界をまたいでいないのに予算を戻す、といった処理は確定できません。policy revisionが変わると新しい窓から始まり、前のrevisionの予算は持ち越しません。
+- `Permit`からの新しいAttemptの作成と、`Permit`の使用済みの印は、一つのtransactionで行います。`Permit.Validate`は保存側でも通り、期限切れ・開始前・別のpolicy revisionの`Permit`は使えません。保存された`Permit`の行は、ダイジェストが一致しなければ読み出し時に拒否します（`RestorePermit`）。
+
 ## まだ決めていないこと
 
-- `Pending`、`Budget`、`Permit`を、どのState Storeの表へ、どのtransaction境界で保存するか。durableなAttempt / Leaseの更新と同じ境界にする必要があります。
 - 回収イベントを誰が確定するか。Workerの自己申告ではなく、Leaseの失効とAttemptのcloseから導く必要があります。
 - 窓をまたいだ公平性。urgentなTaskが続くとbest-effortが飢える可能性があり、aging、fair share、reserved recovery capacityの比較が要ります。
 - 一つのTaskが窓の予算を超える場合の扱い。現在は`single_item_exceeds_window_budget`としてdeferし、暗黙に予算を上げません。

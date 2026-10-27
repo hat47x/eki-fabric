@@ -11,8 +11,10 @@ import (
 	"github.com/hat47x/eki-fabric/internal/core/leaseemission"
 	"github.com/hat47x/eki-fabric/internal/core/leasestate"
 	"github.com/hat47x/eki-fabric/internal/core/policystate"
+	"github.com/hat47x/eki-fabric/internal/core/rejectedresult"
 	"github.com/hat47x/eki-fabric/internal/core/resultclaim"
 	"github.com/hat47x/eki-fabric/internal/core/taskstate"
+	"github.com/hat47x/eki-fabric/internal/core/workerregistry"
 	"github.com/hat47x/eki-fabric/internal/core/workorderemission"
 	"github.com/hat47x/eki-fabric/internal/spi/statestore"
 )
@@ -51,6 +53,11 @@ type Store struct {
 	policyHistory     map[uint64]policystate.State
 	claims            map[ids.AttemptID]resultclaim.Claim
 	accepted          map[ids.TaskID]acceptedresult.Record
+	rejected          map[ids.AttemptID]rejectedresult.Record
+	recovery          recoveryState
+	credentials       map[ids.EnrollmentCredentialID]workerregistry.Credential
+	credentialByHash  map[string]ids.EnrollmentCredentialID
+	workers           map[ids.WorkerIdentity]workerregistry.Worker
 }
 
 func New() *Store {
@@ -69,6 +76,11 @@ func New() *Store {
 		policyHistory:     make(map[uint64]policystate.State),
 		claims:            make(map[ids.AttemptID]resultclaim.Claim),
 		accepted:          make(map[ids.TaskID]acceptedresult.Record),
+		rejected:          make(map[ids.AttemptID]rejectedresult.Record),
+		recovery:          newRecoveryState(),
+		credentials:       make(map[ids.EnrollmentCredentialID]workerregistry.Credential),
+		credentialByHash:  make(map[string]ids.EnrollmentCredentialID),
+		workers:           make(map[ids.WorkerIdentity]workerregistry.Worker),
 	}
 }
 

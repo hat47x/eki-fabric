@@ -151,7 +151,7 @@ func (s *Service) Accept(ctx context.Context, claim resultclaim.Claim) (Result, 
 			claimed := attempt
 			claimed.Phase = attemptstate.AttemptPhaseClaimed
 			claimed.Revision++
-			claimed.UpdatedAt = now
+			claimed.UpdatedAt = laterOf(now, attempt.UpdatedAt)
 			if err := s.attempts.CompareAndSwapAttempt(ctx, attempt.ID, attempt.Revision, claimed); err != nil {
 				return Result{}, err
 			}
@@ -161,7 +161,7 @@ func (s *Service) Accept(ctx context.Context, claim resultclaim.Claim) (Result, 
 			next = attempt
 			next.Phase = attemptstate.AttemptPhaseVerifying
 			next.Revision++
-			next.UpdatedAt = now
+			next.UpdatedAt = laterOf(now, attempt.UpdatedAt)
 			needsTransition = true
 		}
 	case decision.CloseAttempt && attempt.Phase != attemptstate.AttemptPhaseClosed:
@@ -169,7 +169,7 @@ func (s *Service) Accept(ctx context.Context, claim resultclaim.Claim) (Result, 
 		next.Phase = attemptstate.AttemptPhaseClosed
 		next.CloseReason = closeReason(claim.Status())
 		next.Revision++
-		next.UpdatedAt = now
+		next.UpdatedAt = laterOf(now, attempt.UpdatedAt)
 		needsTransition = true
 	}
 
@@ -232,4 +232,13 @@ func closeReason(status resultclaim.Status) attemptstate.CloseReason {
 		return attemptstate.CloseReasonBudgetExhausted
 	}
 	return attemptstate.CloseReasonNone
+}
+
+// laterOf keeps a record's time from moving backwards when the wall clock
+// has stepped back since the record was last written.
+func laterOf(now, recorded time.Time) time.Time {
+	if recorded.After(now) {
+		return recorded
+	}
+	return now
 }

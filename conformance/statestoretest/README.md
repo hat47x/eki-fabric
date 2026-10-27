@@ -137,8 +137,57 @@ WOR-1の署名境界（`workorderissue.Issuer`）を、実際のState Storeに�
 - commitが成功すると、三つがそろって反映される。受理済みの結果はTask単位で読み出せる
 - 同じ内容の再送は`ErrAlreadyExists`で、同じTaskへの別の内容は`ErrConflict`。最初の受理済みの結果は置き換わらない
 - 拒否されたcommit（古いAttempt revision、古いTask revision、A-VERIFYINGではないAttempt、記録された申告がない、申告のdigestや出力のdigestが違う、Taskが終端に達している、取消しの要求がある、別のTaskのAttempt）は、受理済みの結果を作らず、AttemptもTaskも変えない
+- A-VERIFYINGのまま待つ間にLeaseの期限が切れ、同じTaskが新しいFenceEpochで配置し直された場合、元のAttemptの結果は受理しない（V3の遅れて届いた結果）。申告と検証が整っていても`ErrStaleFence`で拒否し、AttemptもTaskも変えない。`ErrStaleFence`は`ErrConflict`を含まない。FenceEpochは増える一方なので、読み直して再試行しても成功しないからです。SQLiteでは、アダプタを通らない書き込みもmigration 13のトリガーが拒否する
+- そのように置き換えられたA-VERIFYINGのAttemptは、`CloseStaleAttempt`で`stale_attempt`として閉じられる。ストアは同じtransactionの中で、AttemptのLeaseがもうTaskの最新のFenceEpochを持たないことを確かめる。Taskは変えず、受理済みの結果も作らない。`stale_attempt`は中断（`IsInterruption`）ではないため、回収後の再投入の対象にならない
+- 最新のFenceEpochを持つAttempt、A-VERIFYINGではないAttempt、古いrevisionの指定、二度目の呼び出しは`ErrConflict`で、何も変えない。`stale_attempt`以外の理由で閉じようとすると`ErrInvalidAcceptance`
 - 形が壊れたcommit（Attemptを別の理由で閉じる、Taskを完了にしない、など）は、状態を読む前に`ErrInvalidAcceptance`で拒否される
 - SQLiteを再起動しても、受理済みの結果、閉じたAttempt、完了したTaskがそろって残り、再送は`ErrAlreadyExists`のまま
+
+## `RunResultRejectionContract` / `RunResultRejectionDurabilityContract`
+
+RAC-1が結果を却下したときの記録の契約です（#57の証跡）。却下の記録と、Attemptの`result_rejected`での終了を、一つのcommitで行います。Taskは変えません。
+
+確認する行は次のとおりです。
+
+- commitが成功すると、記録とAttemptの終了がそろって反映される。記録には食い違った検証、根拠にできた検証者、除外した検証者が残り、Taskは変わらず、受理済みの結果もできない
+- 同じ内容の再送は`ErrAlreadyExists`で、同じAttemptへの別の内容は`ErrConflict`
+- 拒否されたcommit（古いAttempt revision、A-VERIFYINGではないAttempt、記録された申告がない、`completed`でない、申告のdigestが違う）は、記録を作らず、Attemptも変えない
+- 形が壊れたcommitは、状態を読む前に`ErrInvalidAcceptance`で拒否される
+- commitの前にSQLiteを閉じても何も残らず、再起動後のcommitの後は、さらに再起動しても記録と閉じたAttemptがそろって残る
+
+## `RunRecoveryStoreContract` / `RunRecoveryDurabilityContract`
+
+回収された後の再投入を支える、回復の状態の契約です（#154）。待っている再投入（Pending）、時間窓の予算の消費量、発行済みのPermitを、AttemptやTaskと同じStateに耐久的に置きます。
+
+確認する行は次のとおりです。
+
+- 中断（`reclaimed`、`worker_lost`、`lease_expired`、`deadline`など）で閉じたAttemptについてだけ、再投入を積める。結果が決まった閉じ方、取消し、`superseded`、外部副作用の不明、policyの取消では積めない。Taskは再投入を一つしか待たない
+- 同じ再投入を積み直すと、保存済みのものが返る。開始時刻（NotBefore）は動かない
+- 一回の処理（pass）の確定で、Pendingが消え、Permitが保存され、窓の消費量とsequenceが更新される。同じ内容の再送は何も変えず、同じsequenceの別の内容は拒否される。sequenceは一つずつ進む
+- 窓の消費量は、処理をまたいで引き継がれる。古い（巻き戻した）予算から始める処理、消費量を少なく申告する処理、対応するPendingのないPermitは拒否される。policy revisionが変わると新しい窓から始まり、前の予算は持ち越されない
+- Permitからの新しいAttemptの作成と、Permitの使用済みの印は、一つのtransactionで行う。期限切れ・開始前・別のpolicy revisionのPermit、Permitが許さないAttempt、受け付けられないTask、すでに存在するAttemptは、Permitを使わずに拒否する。使ったPermitは二度目を拒否する
+- SQLiteを再起動しても、待っている再投入（NotBeforeを含む）、窓の予算、Permitとその使用の状態が変わらない
+- SQLiteは、Adapterを経由する書き込みだけでなく、Permitの書き換え、二度目の使用、確定した処理の変更、sequenceの飛びをtriggerで拒否する。保存されたPermitの行は、ダイジェストが一致しなければ読み出し時に拒否する
+
+## `RunWorkerRegistryContract` / `RunWorkerRegistryDurabilityContract`
+
+`statestore.WorkerRegistryStore`を実装するAdapter向けの契約です。Worker登録簿とenrollment資格（[ADR-0027](../../plan/adr/0027-worker-authentication-and-enrollment.md)の段階1、Issue #222）を確認します。操作は`workerenrollment.Service`を通して呼ぶので、Serviceの権限検査とStoreの原子性を一緒に確かめます。
+
+- 発行したenrollment資格を使うと、`registered`のWorkerが一つ作られる。識別子は登録簿が発行し、同じ資格を二度使えない
+- 同じ資格を16個のgoroutineが同時に使っても、Workerは一つだけ作られ、残りは拒否される
+- 期限切れ、失効済み、使用済み、別の信頼領域、未知、形式の誤りの資格は、同じ外部のエラー（`ErrCredentialRefused`、同じ文面）で拒否する。監査用の理由は`RefusalReason`で区別できる。拒否した試行は資格を消費しない
+- 期限は、ちょうど期限の時刻から使えない。資格の有効期間は既定24時間、上限7日で、7日を超える指定（負の値を含む）は、Serviceでも、Storeに直接渡した場合も拒否する
+- 管理者の権限を持たない呼び出しは、資格の発行・失効、Workerの状態変更のいずれも拒否する
+- 未使用の資格は失効でき（二度目は無害）、使用済みの資格は失効できない
+- Workerの状態は`registered`、`disabled`、`revoked`。`disabled`は管理者が`registered`へ戻せる。`revoked`は終端で、どの状態へも戻せない（管理者でも、自己失効の後でも）
+- Workerは自分の識別子だけを失効できる。他のWorker、別の信頼領域、空の主体からの失効は`ErrNotSelf`で拒否し、対象は変わらない
+- 失効したWorkerの識別子を、別のWorkerに発行しない。識別子の衝突で失敗した登録は、資格を消費しない
+- 要求ごとの確認（`Authorize`）は、未知、別の信頼領域、`disabled`、`revoked`を同じエラーで拒否する
+- 時計が巻き戻っても、更新時刻はすでに記録された時刻より前にならない
+- 証明書の通し番号と有効期限の記録（段階2が使う）は、失効したWorkerには書けない
+- 再起動（SQLiteの再オープン）の後も、Worker、資格の状態、失効済みの終端、未使用の資格が保たれる
+
+enrollment資格の秘密がDBのbytes（本体、WAL）に現れないことと、DB制約・triggerがAdapterを経由しない書き込みも拒否することは、SQLite固有の試験（`sqlite/worker_registry_test.go`）で確認します。
 
 ## 未決事項（Open Question）
 

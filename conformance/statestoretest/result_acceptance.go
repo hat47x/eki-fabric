@@ -144,6 +144,105 @@ func RunResultAcceptanceContract(t *testing.T, newStore ResultAcceptanceFactory)
 		assertAcceptanceRejected(t, store, fx, commit, statestore.ErrConflict)
 	})
 
+	t.Run("an-attempt-whose-lease-fence-was-superseded-is-not-accepted", func(t *testing.T) {
+		// V3: A1 reached verification, its Lease expired, and the Task was
+		// placed again on A2 under a newer FenceEpoch. A1 no longer holds the
+		// Task's execution authority, so its result must not complete the
+		// Task, even though its claim and evidence are well formed.
+		// The refusal is ErrStaleFence, not a revision conflict to retry.
+		store := newStore(t)
+		fx := newAcceptanceFixture(t, store, "accept-superseded-fence", acceptanceOptions{})
+		fx = supersedeAcceptanceFixture(t, store, fx, "accept-superseded-fence")
+		err := store.CommitAcceptedResult(ctx, acceptanceCommit(t, fx))
+		if !errors.Is(err, statestore.ErrStaleFence) || errors.Is(err, statestore.ErrConflict) {
+			t.Fatalf("CommitAcceptedResult() error = %v, want %v and not %v", err, statestore.ErrStaleFence, statestore.ErrConflict)
+		}
+		assertNothingAccepted(t, store, fx)
+	})
+
+	t.Run("a-superseded-attempt-in-verification-closes-as-stale", func(t *testing.T) {
+		// The Attempt would otherwise wait in A-VERIFYING forever. Its close
+		// reason is not an interruption, so it does not enter recovery and does
+		// not consume the Task's attempt budget again.
+		store := newStore(t)
+		fx := newAcceptanceFixture(t, store, "stale-close", acceptanceOptions{})
+		fx = supersedeAcceptanceFixture(t, store, fx, "stale-close")
+		stale := staleClose(fx)
+		if err := store.CloseStaleAttempt(ctx, stale); err != nil {
+			t.Fatalf("CloseStaleAttempt() error = %v", err)
+		}
+		attempt, err := store.LoadAttempt(ctx, fx.attempt.ID)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if attempt.Phase != attemptstate.AttemptPhaseClosed || attempt.CloseReason != attemptstate.CloseReasonStaleAttempt ||
+			attempt.Revision != fx.attempt.Revision+1 {
+			t.Fatalf("Attempt = %+v, want closed as %s", attempt, attemptstate.CloseReasonStaleAttempt)
+		}
+		if attempt.CloseReason.IsInterruption() {
+			t.Fatalf("%s must not be an interruption", attempt.CloseReason)
+		}
+		task, err := store.LoadTask(ctx, fx.task.ID)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if task.Phase != fx.task.Phase || task.Revision != fx.task.Revision {
+			t.Fatalf("the Task changed: %+v, want %+v", task, fx.task)
+		}
+		if _, ok, err := store.LoadAcceptedResult(ctx, fx.task.ID); err != nil || ok {
+			t.Fatalf("an accepted result was recorded: %v, %v", ok, err)
+		}
+		// A repeat is a conflict: the Attempt is no longer in verification.
+		if err := store.CloseStaleAttempt(ctx, stale); !errors.Is(err, statestore.ErrConflict) {
+			t.Fatalf("repeat CloseStaleAttempt() error = %v, want %v", err, statestore.ErrConflict)
+		}
+	})
+
+	t.Run("an-attempt-holding-the-latest-fence-is-not-closed-as-stale", func(t *testing.T) {
+		store := newStore(t)
+		fx := newAcceptanceFixture(t, store, "stale-close-current", acceptanceOptions{})
+		if err := store.CloseStaleAttempt(ctx, staleClose(fx)); !errors.Is(err, statestore.ErrConflict) {
+			t.Fatalf("CloseStaleAttempt() error = %v, want %v", err, statestore.ErrConflict)
+		}
+		assertNothingAccepted(t, store, fx)
+		// The Attempt can still be accepted.
+		if err := store.CommitAcceptedResult(ctx, acceptanceCommit(t, fx)); err != nil {
+			t.Fatalf("CommitAcceptedResult() error = %v", err)
+		}
+	})
+
+	t.Run("a-stale-close-needs-the-attempt-in-verification-at-its-revision", func(t *testing.T) {
+		store := newStore(t)
+		fx := newAcceptanceFixture(t, store, "stale-close-revision", acceptanceOptions{})
+		fx = supersedeAcceptanceFixture(t, store, fx, "stale-close-revision")
+		stale := staleClose(fx)
+		stale.ExpectedAttemptRevision--
+		stale.NextAttempt.Revision--
+		if err := store.CloseStaleAttempt(ctx, stale); !errors.Is(err, statestore.ErrConflict) {
+			t.Fatalf("CloseStaleAttempt() error = %v, want %v", err, statestore.ErrConflict)
+		}
+
+		claimed := newAcceptanceFixture(t, store, "stale-close-claimed", acceptanceOptions{stopAt: attemptstate.AttemptPhaseClaimed})
+		claimed = supersedeAcceptanceFixture(t, store, claimed, "stale-close-claimed")
+		if err := store.CloseStaleAttempt(ctx, staleClose(claimed)); !errors.Is(err, statestore.ErrConflict) {
+			t.Fatalf("CloseStaleAttempt(A-CLAIMED) error = %v, want %v", err, statestore.ErrConflict)
+		}
+		assertNothingAccepted(t, store, fx)
+		assertNothingAccepted(t, store, claimed)
+	})
+
+	t.Run("a-stale-close-must-name-the-stale-reason", func(t *testing.T) {
+		store := newStore(t)
+		fx := newAcceptanceFixture(t, store, "stale-close-reason", acceptanceOptions{})
+		fx = supersedeAcceptanceFixture(t, store, fx, "stale-close-reason")
+		stale := staleClose(fx)
+		stale.NextAttempt.CloseReason = attemptstate.CloseReasonLeaseExpired
+		if err := store.CloseStaleAttempt(ctx, stale); !errors.Is(err, statestore.ErrInvalidAcceptance) {
+			t.Fatalf("CloseStaleAttempt() error = %v, want %v", err, statestore.ErrInvalidAcceptance)
+		}
+		assertNothingAccepted(t, store, fx)
+	})
+
 	t.Run("only-an-attempt-in-verification-can-be-accepted", func(t *testing.T) {
 		store := newStore(t)
 		fx := newAcceptanceFixture(t, store, "accept-claimed", acceptanceOptions{stopAt: attemptstate.AttemptPhaseClaimed})
@@ -420,6 +519,40 @@ func acceptanceCommit(t testing.TB, fx acceptanceFixture) statestore.ResultAccep
 		ExpectedTaskRevision:    fx.task.Revision,
 		NextTask:                nextTask,
 	}
+}
+
+// supersedeAcceptanceFixture places the fixture's Task again on a second
+// Attempt after the first Lease expired (V3), so the fixture's Attempt no longer
+// holds the Task's latest fence. It returns the fixture with the Task reloaded.
+func supersedeAcceptanceFixture(t testing.TB, store ResultAcceptanceTestStore, fx acceptanceFixture, seed string) acceptanceFixture {
+	t.Helper()
+	ctx := context.Background()
+	a1Lease, err := store.LoadLease(ctx, fx.attempt.LeaseID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	reserved, err := store.ReserveLease(ctx, leaseReservation(t, store, fx.task, "placement-"+seed+"-a2",
+		a1Lease.ExpiresAt.Add(time.Minute), a1Lease.ExpiresAt.Add(2*time.Minute)))
+	if err != nil {
+		t.Fatalf("ReserveLease(A2) error = %v", err)
+	}
+	if reserved.Lease.FenceEpoch <= a1Lease.FenceEpoch {
+		t.Fatalf("A2 fence %d does not supersede A1 fence %d", reserved.Lease.FenceEpoch, a1Lease.FenceEpoch)
+	}
+	if fx.task, err = store.LoadTask(ctx, fx.task.ID); err != nil {
+		t.Fatal(err)
+	}
+	return fx
+}
+
+// staleClose is the close a correct caller would make for a superseded Attempt.
+func staleClose(fx acceptanceFixture) statestore.StaleAttemptClose {
+	next := fx.attempt
+	next.Phase = attemptstate.AttemptPhaseClosed
+	next.CloseReason = attemptstate.CloseReasonStaleAttempt
+	next.Revision++
+	next.UpdatedAt = fx.attempt.UpdatedAt.Add(2 * time.Second)
+	return statestore.StaleAttemptClose{ExpectedAttemptRevision: fx.attempt.Revision, NextAttempt: next}
 }
 
 // assertAcceptanceRejected checks that a commit fails with want and leaves no

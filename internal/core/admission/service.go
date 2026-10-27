@@ -28,6 +28,9 @@ type Principal struct {
 type Config struct {
 	Store  statestore.Store
 	Policy Policy
+	// Results reads the durable AcceptedResult of a Task. It is optional: when
+	// nil, Result is unavailable and the Client API answers 501 for it.
+	Results statestore.ResultAcceptanceStore
 	// Now returns the current time. Nil means time.Now.
 	Now func() time.Time
 	// NewTaskID creates a Task ID. Nil means ids.NewTaskID.
@@ -39,6 +42,7 @@ type Config struct {
 
 type Service struct {
 	store     statestore.Store
+	results   statestore.ResultAcceptanceStore
 	policy    Policy
 	now       func() time.Time
 	newTaskID func() (ids.TaskID, error)
@@ -52,7 +56,7 @@ func New(cfg Config) (*Service, error) {
 	if err := cfg.Policy.validate(); err != nil {
 		return nil, err
 	}
-	s := &Service{store: cfg.Store, policy: cfg.Policy, now: cfg.Now, newTaskID: cfg.NewTaskID, onError: cfg.OnInternalError}
+	s := &Service{store: cfg.Store, results: cfg.Results, policy: cfg.Policy, now: cfg.Now, newTaskID: cfg.NewTaskID, onError: cfg.OnInternalError}
 	if s.now == nil {
 		s.now = time.Now
 	}
@@ -204,7 +208,14 @@ func (s *Service) Cancel(ctx context.Context, p Principal, taskID string) (Cance
 		next := current
 		next.CancellationRequested = true
 		next.Revision = current.Revision + 1
+		// The wall clock can step backwards (NTP correction, VM clock sync,
+		// a restart on another host), so the new time is never earlier than
+		// what the record already carries. Otherwise the record would fail
+		// Validate and a valid cancellation would surface as a 500.
 		next.UpdatedAt = s.now().UTC()
+		if next.UpdatedAt.Before(current.UpdatedAt) {
+			next.UpdatedAt = current.UpdatedAt
+		}
 		if current.Phase == taskstate.TaskPhaseAdmitted || current.Phase == taskstate.TaskPhaseReady {
 			next.Phase = taskstate.TaskPhaseTerminal
 			next.TerminalOutcome = taskstate.TerminalOutcomeCancelled

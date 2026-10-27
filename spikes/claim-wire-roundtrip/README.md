@@ -39,12 +39,30 @@ GOARCH=386 go test -count=1 ./...
 
 独立したGo moduleなので、ルートの`go test ./...`には含まれません。Windowsでは`GOOS=windows GOARCH=amd64 go test -c`で作った実行ファイルをWindows上で実行しました。
 
+## TLS通信と再送キューをつなぐ実験
+
+`TestTLSQueueRecovery`は、テスト内のHTTP/1.1 over TLSで、次の経路をつなぎます。HTTPのclientとhandlerは`_test.go`だけに置き、既定のAgentや製品の通信処理には組み込みません。
+
+```text
+Worker SQLite queue -> claimclient -> 実験用Protobuf -> TLS通信
+  -> 実験用handler -> 既存WorkerPlaneServer -> CP SQLite
+  -> Protobufの受理確認 -> queueの削除
+```
+
+`completed`・`reclaimed`・`runner_stuck`の3状態で、HTTP 503、CP記録後の接続切断、別申告の受理確認、壊れた受理確認、送信期限切れの5条件を確認します。失敗後に両方のSQLiteを閉じて開き直し、再送予定と申告の保持、予定前の未送信、再送後の記録とキューの削除を検査します。CPに既に記録された場合は、再送が`duplicate`になり、Attemptの改訂番号が増えないことも確認します。
+
+`TestTLSWorkerBindingAndInputRejection`は、テストで固定した2つのWorkerの主体を使います。本文のダイジェストを別Workerとして計算し直しても、他方のAttemptへの申告をCPが拒否すること、拒否後も両方のAttemptが変わらないことを検査します。許可した申告が他方のAttemptを変更しないこと、不明なsession識別子、不正なHTTP入力、信頼していない証明書、平文の送信先を拒否することも確認します。
+
+TLS証明書、session識別子からPrincipalを引く表、Policy・Placementはfixtureです。これは製品の認証や署名連鎖を検証した実験ではありません。送信期限切れのhandlerはrequestの取消に協調します。処理が取消に応じない場合の強制停止は確認していません。
+
+この追加実験だけを実行する場合は、同じディレクトリで`go test -race -count=1 -timeout=120s -run TestTLS ./...`を使います。
+
 ## 実験の範囲と残る判断
 
-この実験では1 messageを64 KiB以下に限定し、未知の項目・enum・実験profile、欠落、不正なID・ダイジェスト・時刻を拒否します。これは実験の条件です。製品で使う上限や将来の項目追加との互換方針を決めたものではありません。Coreが受け付ける時刻でも、この実験の時刻範囲を超えれば拒否します。
+この実験では1 messageを64 KiB以下に限定し、未知の項目・enum・実験profile、欠落、不正なID・ダイジェスト・時刻を拒否します。これは実験の条件です。製品で使う上限や将来の項目追加との互換方針を決めたものではありません。UnixNanoの表現範囲外の時刻は、現在のCoreも構築時に拒否します。2026-10-23の実行記録はこのCoreの検査を加える前の固定したrevisionの観測として残しています。
 
-Principalはテストで与えています。ダイジェストは署名ではなく、本文を作る主体は再計算できます。認証済みの主体を取得する処理、TrustDomain間の分離、CPの現在のTask・Attempt・Leaseとの束縛、session期限、protocolの版の交渉は検証していません。実際のネットワーク、Connect、応答消失後の再送、SQLiteキューの削除との接続も対象外です。
+Principalはテストで与えています。ダイジェストは署名ではなく、本文を作る主体は再計算できます。TLS実験では既存CPによるAttemptとの束縛も使いますが、認証済みの主体を取得する処理、TrustDomain間の分離、sessionの発行・期限・失効、protocolの版の交渉、Connectは検証していません。ループバック通信であることを主体の根拠にはしていません。
 
 OutputDigestは既存Coreの値をそのまま運びます。Artifactの一覧の正規化やダイジェストの算出は行いません。既存仕様の`outputs`・`claim_id`・`claimed_at`等との対応、加算拡張か別版かの選択、生成コードとhandlerの検証は、引き続き#198で決める必要があります。既存仕様との互換性や、#173・#160の完了を示す実験ではありません。
 
-実行条件と結果は[2026-10-23の記録](RESULTS_2026-10-23.md)にあります。
+実行条件と結果は、codec単体については[2026-10-23の記録](RESULTS_2026-10-23.md)、TLSと再送キューについては[2026-10-24の記録](RESULTS_2026-10-24.md)にあります。

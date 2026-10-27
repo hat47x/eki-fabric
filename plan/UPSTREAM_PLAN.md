@@ -846,6 +846,124 @@ Worker側には署名済みWorkOrderを検証・受理する境界（`workorderv
 
 #160で未決の論点のうち、一つのLeaseからWorkOrderは一つだけ、`A-ASSIGNED`のAttemptだけが受け取れる、Artifact Grantは含めない、Executor Approvalは呼び出し側の参照を結び付ける、の四点を仮決めとした（[`internal/core/workorderissue/README.md`](../internal/core/workorderissue/README.md)）。署名中にWOR-1 keyのprimaryが入れ替わった場合は、[ADR-0025](adr/0025-lease-policy-currentness-and-key-rotation.md)のLSE-1と同じくABORTEDとし、署名し直さない。
 
+### 2026-10-25 申告の配送を別プロセスで通す（#57、#173）
+
+ResultClaimの配送は、これまでプロセス内の接続（`workerplane.ClaimClient`）と、TLSの往復を測ったSpike（`spikes/claim-wire-roundtrip`）でしか確かめていなかった。`eki-agent`が耐久queueのClaimを、実行中の`eki-control`へTLS越しに届ける最初のプロセス単位の経路を加えた。
+
+- Control Plane: `service.Config`に任意の`worker`を加え、Client APIとは別のlistenerを開く。TLS必須で、loopbackだけ平文を許す。不正な設定は起動せずに失敗する。同じSQLiteのState Storeの上に`claimaccept`、`claimplane`、`workerplane.Server`を組み、`workerplane/httpserver.go`が認証（トークンのSHA-256の定数時間比較）、本文の上限、固定コードのエラー応答を担う。
+- Agent: `claimclient/http.go`が`workerplane.ClaimClient`をHTTP(S)で実装し、`cmd/eki-agent`が`claimqueue.DeliverDue`を一定間隔で回す。SIGINT・SIGTERMで終了する。
+- 試験: `conformance/process`が両バイナリを`go build`し、別プロセスで起動して、申告の配送、Control Planeの強制終了中の保持と再起動後の配送、未知のトークンと別のWorkerの拒否を確かめる。
+
+これは**試験用のprofile**であり、#198の決定ではない。Workerの認証・登録（enrollment）と通信契約は未決のままで、`session_token_sha256 → {worker_identity, trust_domain}`の表とClaimのJSON（`internal/spi/workerplane/testprofile`）は、その決定を先取りしない。`worker.proto`との互換性は主張せず、ResultClaimとprotoの対応と申告queueの意味には触れていない。
+
+仮決め（承認待ち）:
+
+- 試験用のURLパスは`/test-profile/v1/claims`、本文は`application/json`とした。
+- Worker listenerには、Client APIにある「プロキシがTLSを終端する」ための平文の許可を設けなかった。
+- 拒否された申告（401・403など）は、Agentのqueueに残り再送され続ける。恒久的な拒否の扱いは決めていない。
+- Agentの設定は、フラグとJSON設定ファイルで、トークンは`--token-file`、環境変数`EKI_AGENT_TOKEN`、`--token`のいずれか一つとした。
+
+未決: Workerの認証・登録とトークンの更新・失効（#198）、通信契約、恒久的な拒否の扱い、複数のAgentと実ネットワークの障害、署名つきの連鎖と組み合わせたプロセス単位の通し試験。
+
+### 2026-10-26 Workerの認証と登録（ADR-0027）
+
+[ADR-0027](adr/0027-worker-authentication-and-enrollment.md)で、Workerの認証と登録の方式を仮承認で決めた（Issue [#222](https://github.com/hat47x/eki-fabric/issues/222)）。これまでは#220の試験用profile（静的Bearerの表）だけがあり、OAuthやmTLSの方式は「後続で比べる」と書いていた。
+
+- 既定は、管理者が発行する一回限り・短命のenrollment資格で登録し、Workerごとの短命なクライアント証明書（mTLS）で認証する形とした。Workerは秘密鍵を端末の中で作り、識別子は登録簿が発行する。
+- 認証の結果は既存の`Principal{WorkerIdentity, TrustDomain}`へ正規化し、Claimの所有検査は変えない。登録は主体の同一性だけを作り、Delegation Classは与えない。
+- 失効の根拠はWorker登録簿の状態とし、要求ごとに引く。証明書の有効期間は、登録簿を引けない構成の歯止めとする。
+- 静的Bearerの表は試験用に限る。企業のPKI、OIDC、SPIFFEは、同じPrincipalへ正規化するAdapterとして受け入れる。
+- 保証しないこと: 登録済みのWorkerが自己申告を偽ること、悪意のある端末を管理者が正規に登録すること、端末の侵害による鍵の窃取、すでに配送したLeaseを即座に止めること。
+
+未決: CAの運用、更新の手順と長く眠った端末の再登録、失効の伝播の遅れの上限、端末のattestation、ブラウザ・仮名のWorkerの認証、TLSを終端するプロキシ、enrollment資格の発行の区分、通信契約（#198）への写像、試験用profileの制限の実装。
+
+### 2026-10-27 Client APIの結果取得（`GET /v1/tasks/{task_id}/result`）
+
+Taskの結果を読む経路は`501`のままだった。Taskの状態が`completed`でも、それは受理された結果（AcceptedResult、RAC-1）を意味しない。他のプロジェクト（hat47x/tai-pleroma#67）が、`completed`を受理と取り違えずに委任の結果を読めるよう、`GET /v1/tasks/{task_id}/result`を実装した（#57）。
+
+- 認証・Role・所有の判定は状態の取得と同じで、存在しないTaskと他人のTaskは同じ404を返す。
+- Taskが終端でなければ`409 RESULT_NOT_READY`（再試行可）、終端でもAcceptedResultがなければ`409 RESULT_NOT_AVAILABLE`、完了しAcceptedResultが耐久化されていれば`200 TaskResult`を返す。`completed`でも記録がなければ結果にしない。
+- 読み出しは既存の`ResultAcceptanceStore.LoadAcceptedResult`を使い、SPI・Adapter・migrationは変えていない。`admission.Config.Results`を渡した構成だけで有効になり、渡さない構成は従来どおり`501`。
+- 応答に出さないもの: Worker識別子、Lease、fence、Attempt、検証者、policyのdigest、却下の理由、出力・申告のdigest。
+- 試験: Clientのhandler試験（認証、所有と存在の区別がつかないこと、未完了、完了と記録なし、終端の各結果、メソッド、内部情報の不在、store障害の不透明さ）と、縦断スライスでの通し試験（受理の前後と、検証者が割れて保留になった場合）。
+
+仮決め（承認待ち）:
+
+- `TaskResult`に出力digestの欄がなく、`ArtifactDescriptor`の必須項目（大きさ、media type、data class）をAcceptedResultが持たないため、`artifacts`は空の配列とし、digestは返さない。仕様は変えていない。
+- `assurance`は`{profile: 受理時の保証水準, status: "satisfied"}`とした。
+- 取消・失敗などの終端でAcceptedResultがない場合は、仕様が409しか定めないため、`RESULT_NOT_AVAILABLE`の409とし、公開の終端コードは状態の取得に委ねた。
+- 却下された申告は、Taskを終端にしないため`RESULT_NOT_READY`に見える。
+
+未決: 出力digestをClientへ渡す仕様の変更（`TaskResult`への項目の追加か、成果物の記述子の記録）、成果物の経路（`/v1/artifacts/...`）、Adminが他人のTaskの結果を読む規則、`result_profile`の耐久化。
+
+### 2026-10-27 Worker登録簿とenrollment資格のState Store（ADR-0027 段階1）
+
+ADR-0027の段階1として、Worker登録簿とenrollment資格をState Storeに耐久化した（Issue [#222](https://github.com/hat47x/eki-fabric/issues/222)、[#57](https://github.com/hat47x/eki-fabric/issues/57)）。CA、HTTPのendpoint、mTLSは含まない。
+
+- `internal/core/workerregistry`に、Workerの記録（登録簿が発行する識別子、信頼領域、`registered`・`disabled`・`revoked`、段階2用の証明書の通し番号と期限）と、enrollment資格の記録（256bitの秘密のSHA-256だけを保存、接頭辞`eki_enroll_v1_`、信頼領域に束縛、既定24時間・上限7日、一回限り）と、遷移の規則を置いた。`internal/core/workerenrollment`に、発行・失効・消費・状態変更・自己失効・要求ごとの確認を置いた。
+- 消費は、資格の使用済みへの変更とWorkerの作成を一つのトランザクションで行う。同時に使っても、Workerは一つだけ作られる。使えない資格（期限切れ、失効済み、使用済み、別の信頼領域、未知）は、同じ外部のエラーで拒否し、理由は監査用にだけ区別する。
+- `revoked`は終端で、識別子は再利用しない。Workerは自分の識別子だけを失効できる。更新時刻は巻き戻らない（#226と同じ扱い）。
+- `statestore.WorkerRegistryStore`を、memoryとSQLite（migration 15）に実装した。SQLiteは、単一消費、終端、識別子の不変と非再利用、有効期間の上限を、制約とtriggerでも守る。
+- 適合性試験（`RunWorkerRegistryContract`、`RunWorkerRegistryDurabilityContract`）を両Adapterに適用した。
+
+仮決め: 信頼領域の書式は`federation.ParseTrustDomain`と同じ。管理者の権限は、型付きの能力`workerenrollment.Admin`で受け取る。`Worker.StateChangedBy`などの操作者の記録は`admin:<id>`、`worker:<identity>`の形。
+
+未決: 管理者の認証（`clientapi`のRole）から`Admin`を作る配線、状態変更の監査ログの出力、資格・Workerの一覧の操作、登録簿の項目の保持期間。
+
+次の段階2: Worker専用のCA、enrollmentのendpoint、mTLSのauthenticator、要求ごとの登録簿の確認の配線、プロセス単位の通し試験を、別のPRで加える。
+
+### 2026-10-27 WorkerごとのmTLS認証とenrollment（ADR-0027 段階2）
+
+ADR-0027の段階2として、Worker専用のCA、enrollmentとmTLS、更新、失効を実装した（Issue [#222](https://github.com/hat47x/eki-fabric/issues/222)、[#57](https://github.com/hat47x/eki-fabric/issues/57)）。Worker listenerに`auth: "mtls"`の方式が加わり、静的Bearerの表は従来どおり試験用に限る。
+
+- **CA**（`internal/adapters/reference/workerca`）: ECDSA P-256。鍵はLeaseとWorkOrderの署名鍵とは別のファイルで、読み込みだけを行う。CA証明書は、パス長0で、許可するURIの領域を1つの信頼領域に限る、重要なName Constraintを持つ。起動時に、制約のないCA、別の信頼領域のCA、P-256以外の鍵、鍵と証明書の不一致を拒否する。発行する証明書のSANは、登録簿の識別子から作る`eki://<信頼領域>/worker/<識別子>`の一つだけ、拡張鍵用途はクライアント認証だけ。CSRの主体・名前・拡張は無視する。通し番号は127bitの乱数で、`RecordWorkerCertificate`に記録してから返す。
+- **enrollmentと更新**（`internal/control/workerplane/mtls.go`）: 資格は`Authorization`ヘッダだけで受け、URLのクエリは400で拒否する。使えない資格は、理由によらず同じ401と本文で返し、理由は監査ログだけに残す。CSRは資格を消費する前に検証する。更新は現在の証明書のmTLSで行い、同じ鍵は拒否、期限切れ・無効化・失効のWorkerは拒否する。
+- **認証**: TLSでは証明書を要求するだけにして、検証は要求ごとにhandlerで行う（Worker CAだけを信頼、クライアント認証の用途、現在時刻）。信頼領域は完全一致で比べる（GoのURI名制約はサブドメインも通すため）。毎回`Authorize`を呼ぶので、失効・無効化したWorkerは、既存の接続の次の要求から401になり、`Connection: close`で接続を閉じる。Claimの所有検査は変えていない。Worker listenerとClient APIは別のlistenerと別のauthenticatorで、互いの資格を受け付けない。
+- **設定**: `worker.auth: "mtls"`と`worker.mtls`（`trust_domain`、`ca_cert_file`、`ca_key_file`、`cert_validity_seconds`）。TLS必須（loopbackでも）。静的な表、`allow_test_profile_off_loopback`、CAとlistenerの鍵の共用などの矛盾は、起動前に拒否する。
+- **運用者向けsubcommand**（`eki-control`）: `gen-worker-ca`、`enroll-token`（秘密を一度だけ表示し、DBにはSHA-256だけを残す）、`worker-state`（無効化・再有効化・失効）。設定が指すDBを直接開く、ホスト上の運用者の操作であり、Client APIやWorker APIからは呼べない。
+- **Agent**: `eki-agent enroll`が、秘密鍵を端末内で作り、CAの指紋でControl Planeを確かめてから、資格を一度だけ送る。指紋が違えば、資格を送らずに止まる。実行時は、証明書（mTLS）で接続し、残り3分の1で自動更新する。鍵と証明書は一つのファイルに、0600で、置き換えとして書く。
+- **試験**: CA（SAN、拡張鍵用途、名前制約、有効期間、通し番号、CSRの検証）、登録・更新の規則、handler（偽のCSR、一様な拒否、失効後の次の要求、期限切れ・未知のCA・別の信頼領域・サブドメイン）、Agent（指紋の固定、更新）、設定の矛盾、運用者のsubcommandの単体試験と、`conformance/process`のプロセス単位の試験（運用者の資格での登録、mTLSでの申告の配送、同じ資格の2回目の拒否、指紋違いで資格を送らない、失効後の次の要求の拒否、自動更新、期限切れ、役割の分離）を加えた。
+
+仮決め（承認待ち）:
+
+- 証明書の有効期間の既定は72時間、更新は残り3分の1。設定できる範囲は10秒から30日（下限は試験のため）。
+- 鍵はECDSA P-256だけ。Ed25519はTLSのクライアント認証の互換性を確かめていないため使わない。
+- Worker listenerのmTLSは、TLS 1.3以上。
+- Control Planeの固定は、Worker listenerのTLS証明書の鎖の最上位の証明書のSHA-256とした。Agentは、鎖の中で指紋が一致する証明書を信頼の起点にして検証し、以後の接続はその証明書だけを信頼する。CAの指紋と呼んでいるが、Worker CAの指紋ではない（Worker CAは、Workerを検証する側）。サーバ証明書の葉だけを固定すると、サーバ証明書の更新で壊れる。
+- 更新後も、古い証明書は期限まで有効（登録簿の通し番号との一致は求めない）。更新の応答が失われても、Workerが締め出されないようにするため。Workerの失効で止められる。
+- 資格の発行・失効の運用は、`eki-control`のsubcommandとした（Client APIのRoleとは接続しない）。操作者の名前（`admin:<札>`）は、認証ではない札。
+- 失敗した登録（資格の消費後にCAの署名が失敗した場合）は、Workerが証明書なしで残り、管理者が新しい資格を発行する。
+- CAの鍵ファイルの権限は検査しない（Agentの鍵ファイルは、Unix系で他者が読めると読み込まない）。
+- 状態ディレクトリのファイル名、`/v1/worker/enroll`と`/v1/worker/renew`の経路、`application/pkcs10`の本文は、この試験用profileの形で、#198の決定ではない。
+
+未決（ADR-0027 §5のうち、残るもの）:
+
+- CAの運用: 鍵の保管（KMS、HSM）、中間CA、鍵の更新、バックアップ、企業のPKIとの接続、鍵ファイルの権限の検査。
+- 失効の伝播の遅れの上限の測定（登録簿を引けない構成を含む）。今の実装は、Control Planeが登録簿を読める前提で、遅れはほぼ0。
+- 端末のattestationと、鍵を非エクスポートにする条件。
+- TLSを終端するプロキシや、企業のTLS検査での構成（mTLSの素通しか、信頼するGatewayの終端）。
+- 有効期間を超えて眠った端末の再登録と、同じ`WorkerIdentity`の引き継ぎ。時計のずれへの対処。
+- sessionの識別子を証明書に束縛すること、再接続のたびの新しいsession（2.3 項13）。
+- enrollmentへの総当たり対策（流量制限）と、資格の一括発行での人間の承認（ADR-0022の区分）。
+- 管理者の認証（`clientapi`のRole）と、`workerenrollment.Admin`の接続。資格・Workerの一覧の操作。
+- ブラウザ・仮名のWorker（DP-3）、Federationをまたぐ認証、OIDCやSPIFFEなどのIDV-1のAdapter、通信契約（#198）への写像。
+
+### 2026-10-27 ResultClaimと受理確認の通信仕様への対応（ADR-0028）
+
+[ADR-0028](adr/0028-result-claim-wire-mapping.md)で、Coreの`resultclaim.Claim`・`ClaimAck`と`spec/worker/v1/worker.proto`の対応を仮承認で決めた（Issue [#198](https://github.com/hat47x/eki-fabric/issues/198)、[#173](https://github.com/hat47x/eki-fabric/issues/173)、[#57](https://github.com/hat47x/eki-fabric/issues/57)）。評価の全文はIssue #198のコメントにある。
+
+- 方針は、protoの加算拡張（protocol revision 2）とした。既存の項目の番号・型・意味は変えず、Coreの値も狭めない。adapterは構造の変換だけを行い、結果の種類の統合や、Control Planeによる束縛値の補完をしない。
+- 結果の種類は、`DEADLINE_EXCEEDED`・`OUTPUT_EXCEEDED`・`RUNNER_STUCK`を足して7種類を一対一に対応させた。`SANDBOX_LIMIT`はCoreに対応がなく、Control Planeが拒否する。
+- TaskIR・Executorのダイジェスト、nonce、WorkOrderのDecision ID、出力のダイジェスト、終了コード（`sint64`）、出力のbyte数を、新しい項目で運ぶ。`FenceEpoch`は`observed_lease_revision`と同じ値（`decisions.cddl`のLeaseの項目6）とし、`RenewalSequence`とは区別する。
+- `claim_id`は`Claim.Digest`のhexとし、Control Planeが認証された`Principal`から再計算して照合する。Workerの主体はbodyに置かない。
+- 受理確認は、`EventReceipt.result_claim`で、4種類の判定、適用後の段階、検証の要否、`claim_id`の写しを運ぶ。`ACCEPTED`を結果の受理と読まない。
+- 未知のenum・項目・不足する項目は、受理しない。`failure_code`と`outputs`は、revision 2では空でなければならない。
+- `spec/worker/v1/worker.proto`へ反映した。検証は、既存の静的な検査（`conformance/protocol`）と、protocompileによるコンパイルだけである。生成コード、Connect、実通信、往復は未確認。Goの実装は含まない。
+
+仮決め（承認待ち）: revision 2への加算拡張という方針、`claim_id`を`Claim.Digest`にすること、`SANDBOX_LIMIT`の拒否、`claimed_at`を無視すること、`failure_code`と`outputs`をrevision 2で使えなくすること、`error_code`の仮の語彙。
+
+未決: `outputs`の正規化と解禁（#233、Artifactの確定）、`SANDBOX_LIMIT`と`failure_code`の行き先、拒否の恒久・一時の分類、申告ごとの署名、再登録で主体が変わった場合のqueue、実通信・生成コード・2つのWorkerの分離・session期限切れの確認（#198の完了条件の後半）。
+
 ### 2026-10-24 広域の資源最適化（ADR-0026）
 
 [ADR-0026](adr/0026-wide-area-resource-optimization.md)で、広域の最適化を、提案だけを出す構造のまま設計した。制約（持ち主の拒否権、Data Class、信頼の水準、Grant、予算、隔離の水準、利用の許可、指名）と目的（期限、費用、転送量、持ち主への影響、実績）を分け、制約は目的の重みで埋め合わせない。委任先は、余力、管理資源、費用を生む容量の順に使い、間に合う見込みが閾値を下回ったら次へ引き上げる。引き上げは、予算の予約、閾値以下は承認なしの確保、閾値超は承認の要求の順で、確保できなければ期限の前に通知する。学習した予測は入力の一つで、権限を持たない。判断の計算量に上限を置き、止まっても受理や配置の承認は動き続ける。

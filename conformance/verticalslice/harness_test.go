@@ -16,6 +16,7 @@ import (
 	"github.com/hat47x/eki-fabric/internal/agent/governor"
 	"github.com/hat47x/eki-fabric/internal/control/claimaccept"
 	"github.com/hat47x/eki-fabric/internal/control/claimplane"
+	"github.com/hat47x/eki-fabric/internal/control/recoveryadmission"
 	"github.com/hat47x/eki-fabric/internal/control/resultacceptance"
 	workerserver "github.com/hat47x/eki-fabric/internal/control/workerplane"
 	"github.com/hat47x/eki-fabric/internal/core/admission"
@@ -52,24 +53,37 @@ func (c *manualClock) advance(d time.Duration) { c.now = c.now.Add(d) }
 
 // world is one Control Plane and any number of Workers.
 type world struct {
-	t       *testing.T
-	ctx     context.Context
-	dir     string
-	clock   *manualClock
-	state   *statesqlite.Store
-	queues  map[string]*queuesqlite.Store
-	attempt map[ids.TaskID][]ids.AttemptID
-	policy  policystate.State
-	seq     int
+	t              *testing.T
+	ctx            context.Context
+	dir            string
+	clock          *manualClock
+	state          *statesqlite.Store
+	queues         map[string]*queuesqlite.Store
+	attempt        map[ids.TaskID][]ids.AttemptID
+	awaiting       map[ids.TaskID]attemptstate.AttemptRecord
+	recoveryPolicy recovery.Policy
+	terms          recoveryadmission.Terms
+	policy         policystate.State
+	seq            int
 }
 
 func newWorld(t *testing.T) *world {
 	t.Helper()
 	w := &world{
 		t: t, ctx: context.Background(), dir: t.TempDir(),
-		clock:   &manualClock{now: time.Now().UTC().Truncate(time.Second)},
-		queues:  map[string]*queuesqlite.Store{},
-		attempt: map[ids.TaskID][]ids.AttemptID{},
+		clock:    &manualClock{now: time.Now().UTC().Truncate(time.Second)},
+		queues:   map[string]*queuesqlite.Store{},
+		attempt:  map[ids.TaskID][]ids.AttemptID{},
+		awaiting: map[ids.TaskID]attemptstate.AttemptRecord{},
+		recoveryPolicy: recovery.Policy{
+			Revision: 1, BaseBackoff: time.Second, MaxBackoff: time.Minute, Window: time.Minute,
+			MaxReleasesPerWindow: 4, MaxTransferBytesPerWindow: 1 << 30, MaxComputeMillisPerWindow: 1 << 30,
+			PermitTTL: 10 * time.Minute,
+		},
+		terms: recoveryadmission.Terms{
+			Retryable: true, MaxAttempts: 3, Priority: recovery.PriorityNormal,
+			EstimatedTransferBytes: 1 << 20, EstimatedComputeMillis: 100,
+		},
 	}
 	w.openState()
 	policy, err := policystate.NewActive(1, "policy-1", w.clock.now.Add(-time.Hour))
@@ -139,7 +153,8 @@ func (w *world) workerQueueStore(worker string) *queuesqlite.Store {
 func (w *world) admissionService(maxOutstanding uint32) *admission.Service {
 	w.t.Helper()
 	svc, err := admission.New(admission.Config{
-		Store: w.state,
+		Store:   w.state,
+		Results: w.state,
 		Policy: admission.Policy{
 			ApprovedExecutors: []string{"dev.example.transform"},
 			PerTask: admission.ResourceCeiling{
@@ -249,19 +264,10 @@ func (w *world) tryPlace(taskID ids.TaskID, worker string) (placement, error) {
 	w.t.Helper()
 	w.seq++
 	task := w.task(taskID)
-	attemptID, err := ids.NewAttemptID()
+	attempt, err := w.nextAttempt(taskID)
 	if err != nil {
-		w.t.Fatal(err)
-	}
-	number := uint64(len(w.attempt[taskID]) + 1)
-	attempt, err := attemptstate.New(attemptID, taskID, task.TaskIRDigest, number, w.clock.now)
-	if err != nil {
-		w.t.Fatal(err)
-	}
-	if err := w.state.CreateAttempt(w.ctx, attempt); err != nil {
 		return placement{}, err
 	}
-	w.attempt[taskID] = append(w.attempt[taskID], attemptID)
 
 	placing := attempt
 	placing.Phase, placing.WorkerIdentity = attemptstate.AttemptPhasePlacing, worker
@@ -462,44 +468,94 @@ func (r recordingAPI) SubmitClaim(ctx context.Context, p workerplane.Principal, 
 
 // --- recovery ---
 
-var recoveryPolicy = recovery.Policy{
-	Revision: 1, BaseBackoff: time.Second, MaxBackoff: time.Minute, Window: time.Minute,
-	MaxReleasesPerWindow: 4, MaxTransferBytesPerWindow: 1 << 30, MaxComputeMillisPerWindow: 1 << 30,
-	PermitTTL: 10 * time.Minute,
+// terms are what the admitted Task says about retrying. They mirror the request
+// that taskBody builds (retryable, three attempts), and a test can change them.
+type fixedTerms struct{ w *world }
+
+func (f fixedTerms) RecoveryTerms(context.Context, ids.TaskID) (recoveryadmission.Terms, error) {
+	return f.w.terms, nil
 }
 
-// recoverAttempt reads the closed Attempt from durable state, classifies it, waits
-// out the backoff and releases it. It returns the Permit for the next Attempt.
-func (w *world) recoverAttempt(taskID ids.TaskID, previous ids.AttemptID, sequence uint64) recovery.Permit {
+type fixedPolicy struct{ w *world }
+
+func (f fixedPolicy) RecoveryPolicy(context.Context) (recovery.Policy, error) {
+	return f.w.recoveryPolicy, nil
+}
+
+func (w *world) recovery() *recoveryadmission.Service {
 	w.t.Helper()
+	svc, err := recoveryadmission.New(recoveryadmission.Config{
+		Store: w.state, Contracts: fixedTerms{w}, Policies: fixedPolicy{w}, Clock: w.clock,
+	})
+	if err != nil {
+		w.t.Fatal(err)
+	}
+	return svc
+}
+
+// nextAttempt returns the Attempt that waits to be placed. After a recovery that is
+// the one the Permit created; otherwise it is a new first Attempt.
+func (w *world) nextAttempt(taskID ids.TaskID) (attemptstate.AttemptRecord, error) {
+	if waiting, ok := w.awaiting[taskID]; ok {
+		delete(w.awaiting, taskID)
+		return waiting, nil
+	}
 	task := w.task(taskID)
-	prev := w.attemptRecord(previous)
-	intake, err := recovery.Classify(w.clock.now, recoveryPolicy, []recovery.Interruption{{
-		AttemptID: previous, AttemptNumber: uint32(prev.Number),
-		Contract: recovery.Contract{TaskID: taskID, TaskIRDigest: task.TaskIRDigest, Retryable: true, MaxAttempts: 3},
-		Priority: recovery.PriorityNormal,
-	}})
-	if err != nil || len(intake.Pending) != 1 || len(intake.Held) != 0 {
-		w.t.Fatalf("Classify() = %+v, %v", intake, err)
+	attemptID, err := ids.NewAttemptID()
+	if err != nil {
+		w.t.Fatal(err)
 	}
-	pending := intake.Pending[0]
-	if pending.NextAttemptNumber != uint32(prev.Number)+1 {
-		w.t.Fatalf("next Attempt number = %d, want %d", pending.NextAttemptNumber, uint32(prev.Number)+1)
+	attempt, err := attemptstate.New(attemptID, taskID, task.TaskIRDigest, uint64(len(w.attempt[taskID])+1), w.clock.now)
+	if err != nil {
+		w.t.Fatal(err)
 	}
-	if w.clock.now.Before(pending.NotBefore) {
-		w.clock.now = pending.NotBefore
+	if err := w.state.CreateAttempt(w.ctx, attempt); err != nil {
+		return attemptstate.AttemptRecord{}, err
 	}
-	decision, err := recovery.Release(w.clock.now, recoveryPolicy, intake.Pending, recovery.Budget{WindowStart: w.clock.now}, sequence)
-	if err != nil || len(decision.Permits) != 1 {
-		w.t.Fatalf("Release() = %+v, %v", decision, err)
+	w.attempt[taskID] = append(w.attempt[taskID], attemptID)
+	return attempt, nil
+}
+
+// recoverAttempt takes a closed Attempt through the recovery boundary: the retry
+// is queued from the durable Attempt, waits out its backoff, is released within
+// the window budget, and the Permit creates the next Attempt. The new Attempt
+// waits to be placed. Nothing is kept in test memory except that it exists.
+func (w *world) recoverAttempt(taskID ids.TaskID, previous ids.AttemptID) attemptstate.AttemptRecord {
+	w.t.Helper()
+	svc := w.recovery()
+	intake, err := svc.Intake(w.ctx, previous)
+	if err != nil || intake.Hold != nil {
+		w.t.Fatalf("Intake() = %+v, %v", intake, err)
 	}
-	permit := decision.Permits[0]
-	if err := permit.Validate(w.clock.now, recovery.Subject{
-		TaskID: taskID, TaskIRDigest: task.TaskIRDigest, PreviousAttemptID: previous, PolicyRevision: recoveryPolicy.Revision,
-	}); err != nil {
-		w.t.Fatalf("Permit.Validate() error = %v", err)
+	if w.clock.now.Before(intake.Pending.NotBefore) {
+		w.clock.now = intake.Pending.NotBefore
 	}
-	return permit
+	released, err := svc.Release(w.ctx)
+	if err != nil {
+		w.t.Fatalf("Release() error = %v", err)
+	}
+	found := false
+	for _, permit := range released.Permits {
+		if permit.PreviousAttemptID() == previous {
+			found = true
+		}
+	}
+	if !found {
+		w.t.Fatalf("the retry of %s was not released: %+v", previous, released)
+	}
+	return w.admitRecovery(taskID, previous)
+}
+
+// admitRecovery creates the next Attempt from the Permit stored for previous.
+func (w *world) admitRecovery(taskID ids.TaskID, previous ids.AttemptID) attemptstate.AttemptRecord {
+	w.t.Helper()
+	next, err := w.recovery().Admit(w.ctx, previous)
+	if err != nil {
+		w.t.Fatalf("Admit() error = %v", err)
+	}
+	w.attempt[taskID] = append(w.attempt[taskID], next.ID)
+	w.awaiting[taskID] = next
+	return next
 }
 
 // --- verification and acceptance ---
@@ -525,7 +581,7 @@ func (producers) ProducerDimensions(_ context.Context, worker string) (map[resul
 func (w *world) acceptance() *resultacceptance.Service {
 	w.t.Helper()
 	svc, err := resultacceptance.New(resultacceptance.Config{
-		Attempts: w.state, Tasks: w.state, Claims: w.state, Results: w.state,
+		Attempts: w.state, Tasks: w.state, Claims: w.state, Results: w.state, Rejections: w.state,
 		Policies: policySource{resultacceptance.ResultPolicy{
 			Policy: resultaccept.Policy{
 				Level: resultaccept.LevelRA2, Threshold: 2,

@@ -60,6 +60,17 @@ func (s *Store) CommitAcceptedResult(ctx context.Context, commit statestore.Resu
 		return fmt.Errorf("%w: attempt %s has no completed claim matching the accepted result", statestore.ErrConflict, attemptID)
 	}
 
+	// The Attempt must still hold the Task's latest fence. A later Lease means
+	// the Task was placed again, so this Attempt's result is a stale late
+	// result and must not complete the Task (V3).
+	lease, ok := s.leases[attempt.LeaseID]
+	if !ok || lease.AttemptID != attemptID || lease.FenceEpoch != claim.FenceEpoch() {
+		return fmt.Errorf("%w: attempt %s claim does not name the fence of its own lease", statestore.ErrConflict, attemptID)
+	}
+	if s.maxFence[taskID] != lease.FenceEpoch {
+		return fmt.Errorf("%w: attempt %s, task %s", statestore.ErrStaleFence, attemptID, taskID)
+	}
+
 	task, ok := s.tasks[taskID]
 	if !ok {
 		return fmt.Errorf("%w: task %s", statestore.ErrNotFound, taskID)
@@ -72,5 +83,38 @@ func (s *Store) CommitAcceptedResult(ctx context.Context, commit statestore.Resu
 	s.accepted[taskID] = commit.Result
 	s.attempts[attemptID] = commit.NextAttempt
 	s.tasks[taskID] = commit.NextTask
+	return nil
+}
+
+func (s *Store) CloseStaleAttempt(ctx context.Context, stale statestore.StaleAttemptClose) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	if err := stale.Validate(); err != nil {
+		return err
+	}
+
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	attemptID := stale.NextAttempt.ID
+	attempt, ok := s.attempts[attemptID]
+	if !ok {
+		return fmt.Errorf("%w: attempt %s", statestore.ErrNotFound, attemptID)
+	}
+	if attempt.Revision != stale.ExpectedAttemptRevision || attempt.Phase != attemptstate.AttemptPhaseVerifying {
+		return fmt.Errorf("%w: attempt %s is not in verification at revision %d", statestore.ErrConflict, attemptID, stale.ExpectedAttemptRevision)
+	}
+	if err := attemptstate.ValidateTransition(attempt, stale.NextAttempt); err != nil {
+		return fmt.Errorf("%w: %v", statestore.ErrConflict, err)
+	}
+	lease, ok := s.leases[attempt.LeaseID]
+	if !ok || lease.AttemptID != attemptID || lease.TaskID != attempt.TaskID {
+		return fmt.Errorf("%w: attempt %s has no lease of its own", statestore.ErrConflict, attemptID)
+	}
+	if s.maxFence[attempt.TaskID] == lease.FenceEpoch {
+		return fmt.Errorf("%w: attempt %s still holds the latest fence of task %s", statestore.ErrConflict, attemptID, attempt.TaskID)
+	}
+	s.attempts[attemptID] = stale.NextAttempt
 	return nil
 }

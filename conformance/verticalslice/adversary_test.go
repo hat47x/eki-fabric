@@ -100,7 +100,7 @@ func TestV5MaliciousWorker(t *testing.T) {
 		first := w.place(task, "worker-a")
 		claim, _ := w.execute(first, runnerFunc(runsUntilStopped), sourceFunc(userReturns))
 		w.report("worker-a", claim)
-		w.recoverAttempt(task, first.attempt, 1)
+		w.recoverAttempt(task, first.attempt)
 		second := w.place(task, "worker-b")
 		genuine, _ := w.execute(second, producesOutput("hello"), sourceFunc(quiet))
 
@@ -214,15 +214,12 @@ func TestV5MaliciousWorker(t *testing.T) {
 		}
 	})
 
-	// The next two need pieces the slice does not wire yet: a signed WorkOrder and
-	// a Worker that starts from one. They are covered at their own packages
-	// (workorderverify, the native Runner's re-hash of the registered file), and
-	// they are listed here so that the gap stays visible.
+	// A mutated WorkOrder is covered by the signed chain (TestSignedLeaseAndWorkOrder
+	// OnTheWorker). The executable whose bytes changed needs the native Runner, which
+	// the slice does not start from a WorkOrder; it is covered by the native Runner
+	// tests and listed here so that the gap stays visible.
 	t.Run("an executable whose bytes changed is not run", func(t *testing.T) {
 		t.Skip("not wired into the slice: covered by the native Runner tests (ErrExecutorChanged)")
-	})
-	t.Run("a mutated WorkOrder is not accepted", func(t *testing.T) {
-		t.Skip("not wired into the slice: covered by workorderverify; the slice has no signed WorkOrder")
 	})
 }
 
@@ -239,9 +236,9 @@ func TestV6Restart(t *testing.T) {
 		w.restart()
 
 		// Everything the next step needs is read back from the durable state.
-		permit := w.recoverAttempt(task, first.attempt, 1)
-		if permit.NextAttemptNumber() != 2 {
-			t.Fatalf("permit = %+v", permit)
+		next := w.recoverAttempt(task, first.attempt)
+		if next.Number != 2 {
+			t.Fatalf("next Attempt = %+v", next)
 		}
 		second := w.place(task, "worker-b")
 		claim2, _ := w.execute(second, producesOutput("hello"), sourceFunc(quiet))

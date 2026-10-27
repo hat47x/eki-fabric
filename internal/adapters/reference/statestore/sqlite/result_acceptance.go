@@ -83,10 +83,13 @@ FROM attempts WHERE attempt_id = ?`, attemptID.String()))
 		return fmt.Errorf("%w: %v", statestore.ErrConflict, err)
 	}
 
-	var status, claimDigest, outputDigest string
+	var (
+		status, claimDigest, outputDigest string
+		claimFence                        int64
+	)
 	err = tx.QueryRowContext(ctx,
-		`SELECT status, claim_digest, output_digest FROM result_claims WHERE attempt_id = ?`, attemptID.String()).
-		Scan(&status, &claimDigest, &outputDigest)
+		`SELECT status, claim_digest, output_digest, fence_epoch FROM result_claims WHERE attempt_id = ?`, attemptID.String()).
+		Scan(&status, &claimDigest, &outputDigest, &claimFence)
 	if errors.Is(err, sql.ErrNoRows) ||
 		(err == nil && (status != string(resultclaim.StatusCompleted) ||
 			claimDigest != commit.Result.ClaimDigest().Hex() || outputDigest != commit.Result.OutputDigest().Hex())) {
@@ -94,6 +97,26 @@ FROM attempts WHERE attempt_id = ?`, attemptID.String()))
 	}
 	if err != nil {
 		return fmt.Errorf("load ResultClaim %s for acceptance: %w", attemptID, err)
+	}
+
+	// The Attempt must still hold the Task's latest fence. A later Lease means
+	// the Task was placed again, so this Attempt's result is a stale late
+	// result and must not complete the Task (V3). The schema trigger
+	// accepted_results_fence_guard repeats this check.
+	var leaseAttempt string
+	var leaseFence, lastFence int64
+	err = tx.QueryRowContext(ctx, `
+SELECT l.attempt_id, l.fence_epoch, lf.last_fence_epoch
+FROM leases l JOIN lease_fences lf ON lf.task_id = l.task_id
+WHERE l.lease_id = ?`, attempt.LeaseID.String()).Scan(&leaseAttempt, &leaseFence, &lastFence)
+	if errors.Is(err, sql.ErrNoRows) || (err == nil && (leaseAttempt != attemptID.String() || leaseFence != claimFence)) {
+		return fmt.Errorf("%w: attempt %s claim does not name the fence of its own lease", statestore.ErrConflict, attemptID)
+	}
+	if err != nil {
+		return fmt.Errorf("load Lease fence of %s for acceptance: %w", attemptID, err)
+	}
+	if lastFence != leaseFence {
+		return fmt.Errorf("%w: attempt %s, task %s", statestore.ErrStaleFence, attemptID, taskID)
 	}
 
 	task, err := scanTask(tx.QueryRowContext(ctx, `
@@ -157,6 +180,76 @@ INSERT INTO accepted_results (
 
 	if err := tx.Commit(); err != nil {
 		return fmt.Errorf("commit accepted result for %s: %w", taskID, err)
+	}
+	return nil
+}
+
+func (s *Store) CloseStaleAttempt(ctx context.Context, stale statestore.StaleAttemptClose) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	if err := stale.Validate(); err != nil {
+		return err
+	}
+	attemptID := stale.NextAttempt.ID
+
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("close stale attempt %s: %w", attemptID, err)
+	}
+	defer func() { _ = tx.Rollback() }()
+
+	attempt, err := scanAttempt(tx.QueryRowContext(ctx, `
+SELECT attempt_id, task_id, task_ir_digest, attempt_number, phase,
+       worker_identity, lease_id, close_reason, revision, created_at_ns, updated_at_ns
+FROM attempts WHERE attempt_id = ?`, attemptID.String()))
+	if errors.Is(err, sql.ErrNoRows) {
+		return fmt.Errorf("%w: attempt %s", statestore.ErrNotFound, attemptID)
+	}
+	if err != nil {
+		return fmt.Errorf("load attempt %s for stale close: %w", attemptID, err)
+	}
+	if attempt.Revision != stale.ExpectedAttemptRevision || attempt.Phase != attemptstate.AttemptPhaseVerifying {
+		return fmt.Errorf("%w: attempt %s is not in verification at revision %d", statestore.ErrConflict, attemptID, stale.ExpectedAttemptRevision)
+	}
+	if err := attemptstate.ValidateTransition(attempt, stale.NextAttempt); err != nil {
+		return fmt.Errorf("%w: %v", statestore.ErrConflict, err)
+	}
+
+	// The staleness is checked here, in the transaction that closes the
+	// Attempt, and not taken from the caller. A fence only grows, so an Attempt
+	// found stale stays stale.
+	var leaseAttempt, leaseTask string
+	var leaseFence, lastFence int64
+	err = tx.QueryRowContext(ctx, `
+SELECT l.attempt_id, l.task_id, l.fence_epoch, lf.last_fence_epoch
+FROM leases l JOIN lease_fences lf ON lf.task_id = l.task_id
+WHERE l.lease_id = ?`, attempt.LeaseID.String()).Scan(&leaseAttempt, &leaseTask, &leaseFence, &lastFence)
+	if errors.Is(err, sql.ErrNoRows) || (err == nil && (leaseAttempt != attemptID.String() || leaseTask != attempt.TaskID.String())) {
+		return fmt.Errorf("%w: attempt %s has no lease of its own", statestore.ErrConflict, attemptID)
+	}
+	if err != nil {
+		return fmt.Errorf("load Lease fence of %s for stale close: %w", attemptID, err)
+	}
+	if lastFence == leaseFence {
+		return fmt.Errorf("%w: attempt %s still holds the latest fence of task %s", statestore.ErrConflict, attemptID, attempt.TaskID)
+	}
+
+	res, err := tx.ExecContext(ctx, `
+UPDATE attempts
+SET phase = ?, close_reason = ?, revision = ?, updated_at_ns = ?
+WHERE attempt_id = ? AND revision = ?`,
+		string(stale.NextAttempt.Phase), string(stale.NextAttempt.CloseReason),
+		int64(stale.NextAttempt.Revision), stale.NextAttempt.UpdatedAt.UTC().UnixNano(),
+		attemptID.String(), int64(stale.ExpectedAttemptRevision))
+	if err != nil {
+		return fmt.Errorf("close stale attempt %s: %w", attemptID, err)
+	}
+	if n, err := res.RowsAffected(); err != nil || n != 1 {
+		return fmt.Errorf("%w: attempt %s revision changed", statestore.ErrConflict, attemptID)
+	}
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("close stale attempt %s: %w", attemptID, err)
 	}
 	return nil
 }

@@ -137,7 +137,11 @@ func TestTasksSurviveARestartOfTheControlPlane(t *testing.T) {
 
 	// A new process on the same state file knows the task, and a client that
 	// retries because it never saw the reply gets the same task, not a second.
-	second := start(t, cfg)
+	var secondLog bytes.Buffer
+	second, err := Start(context.Background(), cfg, slog.New(slog.NewTextHandler(&secondLog, nil)))
+	if err != nil {
+		t.Fatalf("Start() error = %v", err)
+	}
 	defer stop(t, second)
 	base = "http://" + second.Addr()
 
@@ -160,8 +164,8 @@ func TestTasksSurviveARestartOfTheControlPlane(t *testing.T) {
 	}
 
 	// A cancellation also survives.
-	if status, _ := call(t, client, http.MethodPost, base+"/v1/tasks/"+id+"/cancel", aliceToken, "key-cancel-1", ""); status != http.StatusAccepted {
-		t.Fatalf("cancel status = %d", status)
+	if status, body := call(t, client, http.MethodPost, base+"/v1/tasks/"+id+"/cancel", aliceToken, "key-cancel-1", ""); status != http.StatusAccepted {
+		t.Fatalf("cancel status = %d %v\nserver log:\n%s", status, body, secondLog.String())
 	}
 }
 

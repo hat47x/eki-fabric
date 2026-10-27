@@ -24,11 +24,24 @@ transportが期限切れのエラーを返すと、queueは申告を保持して
 
 transportはcontextの取消に応じて返る必要があります。このclientはcontextを無視する実装を強制終了せず、放置したgoroutineを作って待機を打ち切ることもしません。実ネットワークでの取消や期限の扱いは、transportの接続時に別に確かめます。
 
+## プロセス間の試験用HTTP client（`http.go`）
+
+`HTTPClient`は、`workerplane.ClaimClient`のHTTP(S)実装です。`cmd/eki-agent`が別プロセスのControl Planeへ申告を送るために使います。**Worker Protocolではなく、Workerの認証・登録（enrollment）の決定でもありません**（[#198](https://github.com/hat47x/eki-fabric/issues/198)）。`worker.proto`との互換性は主張しません。
+
+- URLは`https`が必須です。`http`を許すのはloopbackアドレスだけで、パス・問い合わせ・userinfoを含むURLは拒否します。検証に使うCAは`LoadRootCAs`で与え、証明書の検証を省略する設定はありません。
+- bearerトークンを`Authorization`ヘッダに付けます。リダイレクトには従いません（トークンが別の送信先へ渡るため）。
+- 200以外の応答、読めない応答、上限を超える応答は、すべて「未配送」のエラーとしてqueueへ返し、申告を保持します。拒否（401、403など）の申告も、人が原因を直すまでqueueに残り、再送され続けます。
+- 本文は`internal/spi/workerplane/testprofile`のJSONです。
+
 ## まだ無いもの
 
-- Core/SPIの`ResultClaim`・`ClaimAck`とProtobufの対応の確定（[#198](https://github.com/hat47x/eki-fabric/issues/198)）。
-- `ClaimClient`の実装。Connect clientの生成コードと接続設定。
-- 認証情報の更新と失効時の扱い。
+- Core/SPIの`ResultClaim`・`ClaimAck`とProtobufの対応の確定（[#198](https://github.com/hat47x/eki-fabric/issues/198)）。Connect clientの生成コード。
+- 認証情報の更新と失効時の扱い、Workerの登録（enrollment）、mTLS。
+- 恒久的に拒否された申告の扱い（上限回数、隔離、通知）。
 - Control Plane側の流量制限。
 
-`ClaimClient`と`ClaimAck`は、現在はプロセス内で接続するための型です。既存のProtobufとの対応は#198で確定する必要があります。CoreのテストやSQLiteの再送テストが通っても、通信経路で値が欠落しないことや認証の成立を確認したことにはなりません。
+`ClaimClient`と`ClaimAck`のProtobufとの対応は#198で確定する必要があります。`conformance/process`の試験が通っても、それは試験用の接続で二つのプロセスが申告を受け渡せたことを示すだけです。worker.protoとの互換性、認証方式の妥当性、Workerが実際にTaskを実行したことは示しません。
+
+試験用JSONの受理確認では、`decision`・`attempt_phase`・`verification_required`の3項目を省略できず、`null`も拒否します。`verification_required: false`は有効ですが、項目の欠落を`false`として補いません。不完全な受理確認では申告を保持し、再起動後も再送時刻と失敗回数を引き継ぎます。これはJSONの項目の存在を確かめる検査であり、送った申告と応答の対応を証明するものではありません。
+
+`HTTPConfig.ClientCertificate`を指定すると、Bearerトークンの代わりにクライアント証明書（mTLS、[ADR-0027](../../../plan/adr/0027-worker-authentication-and-enrollment.md)）で認証します。証明書は新しい接続ごとにcallbackから取得するので、更新した証明書は次の接続から使われます。トークンとは同時に指定できず、httpsが必須です。

@@ -1408,7 +1408,7 @@ Worker credential
 
 このような、senderとaudienceの分離を実現できる構造を選びます。
 
-具体的なOAuthやmTLSの方式は、後続で比べます。
+Workerの認証と登録の方式は、[ADR-0027](../plan/adr/0027-worker-authentication-and-enrollment.md)で、管理されたenrollmentとWorkerごとのmTLSを既定に仮承認した。Clientの認証の本番向けの方式は、後続で比べます。
 
 ---
 
