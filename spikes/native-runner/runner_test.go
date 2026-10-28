@@ -112,6 +112,14 @@ func TestRunRejectsExecutableDigestMismatch(t *testing.T) {
 	}
 }
 
+func TestRunRejectsGPULimit(t *testing.T) {
+	limited := spec(100)
+	limited.Sandbox.GPU = &decisionpayload.GPULimit{DeviceCount: 1}
+	if _, err := helper("hello").Run(context.Background(), limited); err == nil {
+		t.Fatal("unenforced GPU limit was accepted")
+	}
+}
+
 func TestRunRejectsUnenforcedNetworkLimit(t *testing.T) {
 	limited := spec(100)
 	limited.Limits.NetworkBytesMax = 1
