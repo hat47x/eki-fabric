@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"os/exec"
 	"testing"
 	"time"
 
@@ -20,15 +21,26 @@ func spec(limit uint64) executor.Spec {
 	}
 }
 
-func helper(mode string) Runner {
-	return Runner{Command: os.Args[0], Args: []string{"-test.run=TestHelperProcess", "--", mode}}
+func helper(mode string, extra ...string) Runner {
+	args := []string{"-test.run=TestHelperProcess", "--", mode}
+	args = append(args, extra...)
+	return Runner{Command: os.Args[0], Args: args}
 }
 
 func TestHelperProcess(t *testing.T) {
-	if len(os.Args) < 4 || os.Args[len(os.Args)-2] != "--" {
+	index := -1
+	for i, arg := range os.Args {
+		if arg == "--" {
+			index = i
+			break
+		}
+	}
+	if index < 0 || index+1 >= len(os.Args) {
 		return
 	}
-	switch os.Args[len(os.Args)-1] {
+	mode := os.Args[index+1]
+	extra := os.Args[index+2:]
+	switch mode {
 	case "hello":
 		fmt.Fprint(os.Stdout, "hello")
 	case "exit7":
@@ -41,6 +53,16 @@ func TestHelperProcess(t *testing.T) {
 		for {
 			fmt.Fprint(os.Stdout, "x")
 		}
+	case "tree":
+		cmd := exec.Command(os.Args[0], "-test.run=TestHelperProcess", "--", "write", extra[0])
+		cmd.Env = []string{}
+		if err := cmd.Start(); err != nil {
+			os.Exit(2)
+		}
+		time.Sleep(5 * time.Second)
+	case "write":
+		time.Sleep(1 * time.Second)
+		_ = os.WriteFile(extra[0], []byte("survived"), 0o644)
 	case "sleep":
 		time.Sleep(5 * time.Second)
 	}

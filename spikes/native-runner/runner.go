@@ -71,6 +71,8 @@ func (r Runner) Run(ctx context.Context, spec executor.Spec) (executor.Result, e
 		}
 	}
 	cmd := exec.CommandContext(runCtx, executable, r.Args...)
+	prepareProcess(cmd)
+	cmd.Cancel = func() error { return cancelProcess(cmd) }
 	// An empty non-nil Env means the child receives no inherited environment.
 	cmd.Env = append([]string{}, r.Env...)
 	cmd.Stdout = writer

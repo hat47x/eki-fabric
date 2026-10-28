@@ -6,7 +6,7 @@
 
 ## 確認すること
 
-- `context`の取消しでコマンドが停止する。
+- `context`の取消しでコマンドが停止する。Unixではプロセスグループ、Windowsでは直接の子プロセスを停止する。
 - 終了コードを返す。
 - stdout/stderrを上限byteまで保持し、上限超過を`ErrOutputCeiling`として返す。上限超過時は子プロセスを停止する。
 - 正常終了時に出力のSHA-256を返す。
@@ -26,6 +26,7 @@ go test ./... -count=1
 ## 限界
 
 - sandbox、cgroup、Job Object、CPU/メモリ制限は未実装。
-- 実行可能ファイルのdigest照合、引数の許可リスト、環境変数の除去は未実装。
+- 引数の許可リストは未実装。`ExecutableSHA256`は任意設定で、設定経路の完全性は未検証。
+- Windowsではプロセスグループの停止を行わず、直接の子プロセスだけを停止する。
 - `runner_stuck`後の強制停止、checkpoint、結果の意味検証は未実装。
 - このspikeの成功は、Native Runnerの採用や、未信頼Taskの安全な実行を意味しない。
