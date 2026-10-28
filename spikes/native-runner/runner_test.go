@@ -120,6 +120,22 @@ func TestRunRejectsGPULimit(t *testing.T) {
 	}
 }
 
+func TestRunRejectsArgumentOutsideAllowlist(t *testing.T) {
+	runner := helper("hello")
+	runner.AllowedArgs = []string{"-test.run=TestHelperProcess", "--"}
+	if _, err := runner.Run(context.Background(), spec(100)); err == nil {
+		t.Fatal("argument outside allowlist was accepted")
+	}
+}
+
+func TestRunAllowsListedArguments(t *testing.T) {
+	runner := helper("hello")
+	runner.AllowedArgs = append([]string(nil), runner.Args...)
+	if _, err := runner.Run(context.Background(), spec(100)); err != nil {
+		t.Fatal(err)
+	}
+}
+
 func TestRunRejectsUnenforcedNetworkLimit(t *testing.T) {
 	limited := spec(100)
 	limited.Limits.NetworkBytesMax = 1

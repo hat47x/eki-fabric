@@ -14,6 +14,7 @@
 - `SandboxPolicy.Profile`が`native-fixed-spike`以外なら拒否する。
 - network bytes limitや一時disk limitが非ゼロなら拒否する。実装していない上限を黙って無視しない。
 - GPU制限が指定されたら拒否する。GPUを扱わないため。
+- `AllowedArgs`が設定されていれば、許可リスト外の引数を実行前に拒否する。
 - `ExecutableSHA256`が設定されていれば、実行ファイルのSHA-256を照合し、不一致なら実行しない。
 - 子プロセスへ親の環境変数を継承せず、`Runner.Env`で明示した値だけを渡す。
 - Supervisorの期限到達を`deadline_exceeded`、呼出し側の取消しを`cancelled`として観測する。
@@ -27,7 +28,7 @@ go test ./... -count=1
 ## 限界
 
 - sandbox、cgroup、Job Object、CPU/メモリ制限は未実装。
-- 引数の許可リストは未実装。`ExecutableSHA256`は任意設定で、設定経路の完全性は未検証。
+- `AllowedArgs`は任意設定で、nilなら全引数を許可する。`ExecutableSHA256`も任意設定で、設定経路の完全性は未検証。
 - Windowsのツリー停止は外部`taskkill`に依存し、Job Objectは使っていない。
 - `runner_stuck`後の強制停止、checkpoint、結果の意味検証は未実装。
 - このspikeの成功は、Native Runnerの採用や、未信頼Taskの安全な実行を意味しない。

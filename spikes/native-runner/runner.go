@@ -29,6 +29,7 @@ const SandboxProfile = "native-fixed-spike"
 type Runner struct {
 	Command          string
 	Args             []string
+	AllowedArgs      []string
 	Env              []string
 	ExecutableSHA256 string
 }
@@ -36,6 +37,17 @@ type Runner struct {
 func (r Runner) Run(ctx context.Context, spec executor.Spec) (executor.Result, error) {
 	if r.Command == "" {
 		return executor.Result{}, errors.New("native runner command is empty")
+	}
+	if r.AllowedArgs != nil {
+		allowed := make(map[string]struct{}, len(r.AllowedArgs))
+		for _, arg := range r.AllowedArgs {
+			allowed[arg] = struct{}{}
+		}
+		for _, arg := range r.Args {
+			if _, ok := allowed[arg]; !ok {
+				return executor.Result{}, fmt.Errorf("native runner argument is not allowed: %q", arg)
+			}
+		}
 	}
 	if spec.Sandbox.Profile != SandboxProfile {
 		return executor.Result{}, fmt.Errorf("native runner does not implement sandbox profile %q", spec.Sandbox.Profile)
