@@ -43,6 +43,9 @@ func (r Runner) Run(ctx context.Context, spec executor.Spec) (executor.Result, e
 	if spec.Sandbox.NetworkProfile != "" && spec.Sandbox.NetworkProfile != "none" {
 		return executor.Result{}, fmt.Errorf("native runner does not implement network profile %q", spec.Sandbox.NetworkProfile)
 	}
+	if spec.Sandbox.GPU != nil {
+		return executor.Result{}, errors.New("native runner does not enforce GPU limits")
+	}
 	if spec.Limits.NetworkBytesMax != 0 {
 		return executor.Result{}, errors.New("native runner does not enforce network limits")
 	}
