@@ -1,0 +1,25 @@
+# Native Runner feasibility spike
+
+固定コマンドを`executor.Runner`として実行できるかだけを確認するspikeです。
+
+**sandboxではありません。** コマンドと引数は信頼された設定であり、Task入力から組み立てません。CPU・メモリ・network・一時disk・強制停止は適用しません。未信頼のTaskに使わないでください。
+
+## 確認すること
+
+- `context`の取消しでコマンドが停止する。
+- 終了コードを返す。
+- stdout/stderrを上限byteまで保持し、上限超過を`ErrOutputCeiling`として返す。
+- 正常終了時に出力のSHA-256を返す。
+
+## 実行
+
+```text
+go test ./... -count=1
+```
+
+## 限界
+
+- sandbox、cgroup、Job Object、CPU/メモリ制限は未実装。
+- 実行可能ファイルのdigest照合、引数の許可リスト、環境変数の除去は未実装。
+- `runner_stuck`後の強制停止、checkpoint、結果の意味検証は未実装。
+- このspikeの成功は、Native Runnerの採用や、未信頼Taskの安全な実行を意味しない。
