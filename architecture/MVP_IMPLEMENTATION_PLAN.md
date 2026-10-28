@@ -1058,17 +1058,17 @@ Section 20の最初の列挙は、すでに一部が完了しています。そ�
 
 未達で、優先するものは、次のとおりです。
 
-1. **M0の永続的なState Store** — SQLiteのreference adapterを実装し、Task、Attempt、Lease reservation、FenceEpoch、Policy Epochまで耐久化しています。再起動後のidentityとrevision、Leaseのfencing、Placement replay、Policy revokeとの競合をconformanceで固定しています。未実装の中心は、outboxとWorker deliveryです。
+1. **M0の永続的なState Store** — SQLiteのreference adapterを実装し、Task、Attempt、Lease reservation、FenceEpoch、Policy Epochまで耐久化しています。再起動後のidentityとrevision、Leaseのfencing、Placement replay、Policy revokeとの競合をconformanceで固定しています。Worker→Control Planeの申告の配送（`claimqueue`、`claimclient`、`workerplane`）は実装済みで、`conformance/process`が別プロセスで確かめています。未実装の中心は、Control PlaneからWorkerへのLease・WorkOrderの配送です（[#243](https://github.com/hat47x/eki-fabric/issues/243)）。現状の正本は`docs/development.md`の「現在の実装段階」です。
 2. ~~**P2の具体的なCOSE decoder**~~ — 厳格なCOSE_Sign1 decoderと、Signature1 encoderを、実装済みです（2026-10-06、ADR-0005 §18）。
-   - Placement Approvalのpayloadについては、型付きのCore contract、decoder SPI、厳格なCBORのReference adapterを、`feature/placement-approval-payload-decoder`で実装中です。
+   - Placement Approvalのpayloadについては、型付きのCore contract、decoder SPI、厳格なCBORのReference adapterを、実装済みです（`internal/core/decisionpayload/placement.go`、`internal/adapters/reference/decisiondecoder/cbor/placement.go`）。
    - RFC 8949の決定的な再エンコードの比較、閉じたschema、重複したkey、長さを定めないitem、未知のfield、P2のbindingについての、negativeなtestを含みます。
    - 外部のmoduleを取得したfocused testは、2026-10-06に実施済みです（Go 1.27.0、WSL2）。
-   - COSE envelopeのdecode -> payloadのdecode -> 暗号の検証 -> 現在のstateでの再検証という組み合わせは、`internal/core/placementverify`に、実装済みです（2026-10-06）。LSE-1自体は、未実装です。
+   - COSE envelopeのdecode -> payloadのdecode -> 暗号の検証 -> 現在のstateでの再検証という組み合わせは、`internal/core/placementverify`に、実装済みです（2026-10-06）。LSE-1は、このあとの項目3のとおり、実装済みです。
 3. 永続的なstateを前提に、M0のE2Eを、Task submitとstatus -> Workerの登録 -> 一つのWorkerでのローカルな実行まで接続する。
    - Task submit、status、cancelは実装済みです。再起動後も、Task、冪等性、未完了Task数の上限を保持します。
    - Attempt、Lease reservation、FenceEpoch、Policy Epoch、検証済みPlacementからLease reservationへ進むLSE-1の前半は実装済みです。
    - canonical Lease payloadの署名と、署名済みbytesの耐久的な発行確定（LSE-1の後半、`leaseissue.Emitter`）は実装済みです。
-   - 次の中心作業は、Worker deliveryとWorker側検証、一つのWorkerでのローカル実行です。
+   - 次の中心作業は、Worker deliveryとWorker側検証、一つのWorkerでのローカル実行です。作業は[#242](https://github.com/hat47x/eki-fabric/issues/242)と[#243](https://github.com/hat47x/eki-fabric/issues/243)で管理しています。
 
 `learned scheduler`は、Section 4と11で定義したとおり、MVPの必須ではありません。Researchの実装がmainに存在しても、上記のM0とM1のgateの優先順位を変更しません。
 
