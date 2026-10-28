@@ -53,8 +53,10 @@ func (r Runner) Run(ctx context.Context, spec executor.Spec) (executor.Result, e
 	if limit == 0 {
 		limit = 1 << 20
 	}
+	runCtx, cancel := context.WithCancel(ctx)
+	defer cancel()
 	var output bytes.Buffer
-	writer := &limitWriter{writer: &output, limit: limit}
+	writer := &limitWriter{writer: &output, limit: limit, onExceed: cancel}
 	executable, err := exec.LookPath(r.Command)
 	if err != nil {
 		return executor.Result{}, err
@@ -68,7 +70,7 @@ func (r Runner) Run(ctx context.Context, spec executor.Spec) (executor.Result, e
 			return executor.Result{}, fmt.Errorf("executable digest mismatch: got %s", actual)
 		}
 	}
-	cmd := exec.CommandContext(ctx, executable, r.Args...)
+	cmd := exec.CommandContext(runCtx, executable, r.Args...)
 	// An empty non-nil Env means the child receives no inherited environment.
 	cmd.Env = append([]string{}, r.Env...)
 	cmd.Stdout = writer
@@ -103,17 +105,28 @@ type limitWriter struct {
 	writer   *bytes.Buffer
 	limit    uint64
 	exceeded bool
+	onExceed func()
+}
+
+func (w *limitWriter) stop() {
+	if w.exceeded {
+		return
+	}
+	w.exceeded = true
+	if w.onExceed != nil {
+		w.onExceed()
+	}
 }
 
 func (w *limitWriter) Write(p []byte) (int, error) {
 	remaining := w.limit - uint64(w.writer.Len())
 	if remaining == 0 {
-		w.exceeded = true
+		w.stop()
 		return len(p), nil
 	}
 	if uint64(len(p)) > remaining {
 		_, _ = w.writer.Write(p[:remaining])
-		w.exceeded = true
+		w.stop()
 		return len(p), nil
 	}
 	_, _ = w.writer.Write(p)
