@@ -29,6 +29,7 @@ const SandboxProfile = "native-fixed-spike"
 type Runner struct {
 	Command          string
 	Args             []string
+	Env              []string
 	ExecutableSHA256 string
 }
 
@@ -68,6 +69,8 @@ func (r Runner) Run(ctx context.Context, spec executor.Spec) (executor.Result, e
 		}
 	}
 	cmd := exec.CommandContext(ctx, executable, r.Args...)
+	// An empty non-nil Env means the child receives no inherited environment.
+	cmd.Env = append([]string{}, r.Env...)
 	cmd.Stdout = writer
 	cmd.Stderr = writer
 	err = cmd.Run()

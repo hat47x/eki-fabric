@@ -35,10 +35,35 @@ func TestHelperProcess(t *testing.T) {
 		os.Exit(7)
 	case "ten":
 		fmt.Fprint(os.Stdout, "1234567890")
+	case "env":
+		fmt.Fprint(os.Stdout, os.Getenv("TAI_SECRET"))
 	case "sleep":
 		time.Sleep(5 * time.Second)
 	}
 	os.Exit(0)
+}
+
+func TestRunDropsInheritedEnvironment(t *testing.T) {
+	t.Setenv("TAI_SECRET", "leak")
+	result, err := helper("env").Run(context.Background(), spec(100))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.OutputBytes != 0 {
+		t.Fatalf("inherited environment leaked %d bytes", result.OutputBytes)
+	}
+}
+
+func TestRunPassesExplicitEnvironment(t *testing.T) {
+	runner := helper("env")
+	runner.Env = []string{"TAI_SECRET=explicit"}
+	result, err := runner.Run(context.Background(), spec(100))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.OutputDigest != contract.SHA256([]byte("explicit")) {
+		t.Fatalf("explicit environment was not passed: %+v", result)
+	}
 }
 
 func TestRunChecksExecutableDigest(t *testing.T) {
