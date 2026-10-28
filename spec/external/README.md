@@ -218,12 +218,13 @@ P1はメッセージの配送を扱います。権限判断の署名対象とな
 
 ## M0の参照実装での扱い
 
-参照実装（`internal/control/clientapi`）では、P0のOpenAPIに記した`submitTask`、`getTaskStatus`、`cancelTask`を実装しています。応答のschemaが`openapi.json`と一致することは、テストが同じ文書を読んで確認します。
+参照実装（`internal/control/clientapi`）では、P0のOpenAPIに記した`submitTask`、`getTaskStatus`、`cancelTask`、`getTaskResult`を実装しています。操作ごとの実装状況と応答の一覧は、契約ではなく実装に属するため、[clientapi/README.md](../../internal/control/clientapi/README.md)を正本とします。この節は、P0が宣言していない応答の存在だけを記します。応答のschemaが`openapi.json`と一致することは、テストが同じ文書を読んで確認します。
 
 認証には、M0に限り固定のBearer tokenを使います（[ADR-0006](../../plan/adr/0006-m0-client-api-authentication-and-admission.md)）。P0が宣言していない次の応答を返します。契約へ反映する場合は、別の変更として`openapi.json`を更新してください。
 
 - `401` — 認証がない、または認証に失敗した
 - `405` — 対象pathに対して許可されないmethod
-- `501` — Artifact関連のoperation（Artifact Storeは未実装）。`getTaskResult`は、State Storeの読み出し口が渡されていない構成だけで`501`
+- `501` — Artifact関連のoperation（Artifact Storeは未実装）。`getTaskResult`も、結果の読み出し口を持たない構成に限って`501`を返す
+- `409` — `getTaskResult`の409は、`openapi.json`では1種類の説明だけです。実装は、結果をまだ得られない場合（`RESULT_NOT_READY`、待てば得られる）と、得られない場合（`RESULT_NOT_AVAILABLE`、再試行しても変わらない）の2種類を返す
 
 Artifactを入力にするTaskは、入力を認可できないため`422`（`ARTIFACT_NOT_AVAILABLE`）で拒否します。
