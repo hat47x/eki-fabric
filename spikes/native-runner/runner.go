@@ -34,6 +34,15 @@ func (r Runner) Run(ctx context.Context, spec executor.Spec) (executor.Result, e
 	if spec.Sandbox.Profile != SandboxProfile {
 		return executor.Result{}, fmt.Errorf("native runner does not implement sandbox profile %q", spec.Sandbox.Profile)
 	}
+	if spec.Sandbox.NetworkProfile != "" && spec.Sandbox.NetworkProfile != "none" {
+		return executor.Result{}, fmt.Errorf("native runner does not implement network profile %q", spec.Sandbox.NetworkProfile)
+	}
+	if spec.Limits.NetworkBytesMax != 0 {
+		return executor.Result{}, errors.New("native runner does not enforce network limits")
+	}
+	if spec.Limits.TemporaryDiskBytes != 0 {
+		return executor.Result{}, errors.New("native runner does not enforce temporary-disk limits")
+	}
 	limit := spec.Limits.OutputBytesMaximum
 	if limit == 0 {
 		limit = 1 << 20
