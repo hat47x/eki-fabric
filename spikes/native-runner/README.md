@@ -11,6 +11,7 @@
 - stdout/stderrを上限byteまで保持し、上限超過を`ErrOutputCeiling`として返す。
 - 正常終了時に出力のSHA-256を返す。
 - `executor.Supervisor`との接続で、正常終了を`completed`、終了コード7を`failed`として観測する。
+- `SandboxPolicy.Profile`が`native-fixed-spike`以外なら拒否する。
 
 ## 実行
 

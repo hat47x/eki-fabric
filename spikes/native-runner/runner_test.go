@@ -14,7 +14,10 @@ import (
 )
 
 func spec(limit uint64) executor.Spec {
-	return executor.Spec{Limits: decisionpayload.ResourceLimits{OutputBytesMaximum: limit}}
+	return executor.Spec{
+		Limits:  decisionpayload.ResourceLimits{OutputBytesMaximum: limit},
+		Sandbox: decisionpayload.SandboxPolicy{Profile: SandboxProfile},
+	}
 }
 
 func helper(mode string) Runner {
@@ -36,6 +39,14 @@ func TestHelperProcess(t *testing.T) {
 		time.Sleep(5 * time.Second)
 	}
 	os.Exit(0)
+}
+
+func TestRunRejectsUnknownSandbox(t *testing.T) {
+	unsupported := spec(100)
+	unsupported.Sandbox.Profile = "container"
+	if _, err := helper("hello").Run(context.Background(), unsupported); err == nil {
+		t.Fatal("unsupported sandbox profile was accepted")
+	}
 }
 
 func TestRunCapturesOutputAndDigest(t *testing.T) {

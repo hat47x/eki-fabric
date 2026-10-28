@@ -34,7 +34,7 @@ func validSpec(now time.Time) executor.Spec {
 			WallTimeMillis:     1000,
 			OutputBytesMaximum: 100,
 		},
-		Sandbox:  decisionpayload.SandboxPolicy{Profile: "test"},
+		Sandbox:  decisionpayload.SandboxPolicy{Profile: SandboxProfile},
 		Deadline: now.Add(time.Minute),
 		Nonce:    make([]byte, 16),
 	}

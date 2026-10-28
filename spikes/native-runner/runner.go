@@ -16,6 +16,10 @@ import (
 
 var ErrOutputCeiling = errors.New("native runner output ceiling exceeded")
 
+// SandboxProfile is the only profile this spike claims to handle. It does not
+// provide isolation; the name makes that limitation explicit at the boundary.
+const SandboxProfile = "native-fixed-spike"
+
 // Runner executes one fixed command. The command and arguments are trusted
 // configuration, not task input.
 type Runner struct {
@@ -26,6 +30,9 @@ type Runner struct {
 func (r Runner) Run(ctx context.Context, spec executor.Spec) (executor.Result, error) {
 	if r.Command == "" {
 		return executor.Result{}, errors.New("native runner command is empty")
+	}
+	if spec.Sandbox.Profile != SandboxProfile {
+		return executor.Result{}, fmt.Errorf("native runner does not implement sandbox profile %q", spec.Sandbox.Profile)
 	}
 	limit := spec.Limits.OutputBytesMaximum
 	if limit == 0 {
