@@ -37,6 +37,10 @@ func TestHelperProcess(t *testing.T) {
 		fmt.Fprint(os.Stdout, "1234567890")
 	case "env":
 		fmt.Fprint(os.Stdout, os.Getenv("TAI_SECRET"))
+	case "spam":
+		for {
+			fmt.Fprint(os.Stdout, "x")
+		}
 	case "sleep":
 		time.Sleep(5 * time.Second)
 	}
@@ -132,6 +136,16 @@ func TestRunStopsAtOutputCeiling(t *testing.T) {
 	}
 	if result.OutputBytes != 5 {
 		t.Fatalf("output bytes = %d, want 5", result.OutputBytes)
+	}
+}
+
+func TestRunStopsProducerAtCeiling(t *testing.T) {
+	started := time.Now()
+	if _, err := helper("spam").Run(context.Background(), spec(10)); !errors.Is(err, ErrOutputCeiling) {
+		t.Fatalf("err = %v, want ErrOutputCeiling", err)
+	}
+	if elapsed := time.Since(started); elapsed > 2*time.Second {
+		t.Fatalf("producer was not stopped promptly: %s", elapsed)
 	}
 }
 
