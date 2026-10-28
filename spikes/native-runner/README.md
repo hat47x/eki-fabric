@@ -13,6 +13,7 @@
 - `executor.Supervisor`との接続で、正常終了を`completed`、終了コード7を`failed`として観測する。
 - `SandboxPolicy.Profile`が`native-fixed-spike`以外なら拒否する。
 - network bytes limitや一時disk limitが非ゼロなら拒否する。実装していない上限を黙って無視しない。
+- `ExecutableSHA256`が設定されていれば、実行ファイルのSHA-256を照合し、不一致なら実行しない。
 
 ## 実行
 

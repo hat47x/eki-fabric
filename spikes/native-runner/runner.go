@@ -6,9 +6,13 @@ package nativerunner
 import (
 	"bytes"
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"errors"
 	"fmt"
+	"os"
 	"os/exec"
+	"strings"
 
 	"github.com/hat47x/eki-fabric/internal/agent/executor"
 	"github.com/hat47x/eki-fabric/internal/core/contract"
@@ -23,8 +27,9 @@ const SandboxProfile = "native-fixed-spike"
 // Runner executes one fixed command. The command and arguments are trusted
 // configuration, not task input.
 type Runner struct {
-	Command string
-	Args    []string
+	Command          string
+	Args             []string
+	ExecutableSHA256 string
 }
 
 func (r Runner) Run(ctx context.Context, spec executor.Spec) (executor.Result, error) {
@@ -49,10 +54,23 @@ func (r Runner) Run(ctx context.Context, spec executor.Spec) (executor.Result, e
 	}
 	var output bytes.Buffer
 	writer := &limitWriter{writer: &output, limit: limit}
-	cmd := exec.CommandContext(ctx, r.Command, r.Args...)
+	executable, err := exec.LookPath(r.Command)
+	if err != nil {
+		return executor.Result{}, err
+	}
+	if r.ExecutableSHA256 != "" {
+		actual, err := executableDigest(executable)
+		if err != nil {
+			return executor.Result{}, err
+		}
+		if !strings.EqualFold(actual, r.ExecutableSHA256) {
+			return executor.Result{}, fmt.Errorf("executable digest mismatch: got %s", actual)
+		}
+	}
+	cmd := exec.CommandContext(ctx, executable, r.Args...)
 	cmd.Stdout = writer
 	cmd.Stderr = writer
-	err := cmd.Run()
+	err = cmd.Run()
 	result := executor.Result{OutputBytes: uint64(output.Len())}
 	if writer.exceeded {
 		return result, fmt.Errorf("%w: limit=%d", ErrOutputCeiling, limit)
@@ -67,6 +85,15 @@ func (r Runner) Run(ctx context.Context, spec executor.Spec) (executor.Result, e
 	}
 	result.OutputDigest = contract.SHA256(output.Bytes())
 	return result, nil
+}
+
+func executableDigest(path string) (string, error) {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return "", err
+	}
+	sum := sha256.Sum256(data)
+	return hex.EncodeToString(sum[:]), nil
 }
 
 type limitWriter struct {
