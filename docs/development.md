@@ -6,7 +6,16 @@
 
 ## 現在の実装段階
 
-現在は、M0 executable skeletonの最初の段階です。
+この節が、実装の現状（何が動き、何が動かないか）の正本です。他の文書は、ここを参照します。
+
+M0 executable skeletonのうち、Client API、永続State Store、Worker CA・enrollment・mTLS、Worker→Control Planeの申告の配送までが動きます。Control PlaneからWorkerへLease・WorkOrderを配る経路と、Taskを実際に実行する経路は、まだありません。動かないものと、その作業は、次のIssueで管理しています。
+
+- [#242](https://github.com/hat47x/eki-fabric/issues/242): `eki-control`の起動経路に、Lease発行・WorkOrder発行・結果受理の実行系を配線する
+- [#243](https://github.com/hat47x/eki-fabric/issues/243): Control PlaneからWorkerへLease・WorkOrderを配る経路を、Worker Planeに定める
+- [#245](https://github.com/hat47x/eki-fabric/issues/245): Clientの入力Artifactの取り込み経路を実装する単位に分ける
+- [#267](https://github.com/hat47x/eki-fabric/issues/267): Taskのphaseを`admitted`から`ready`・`active`へ進める遷移の主体を決める
+
+上の一覧は作業の例です。最新の状況は、GitHub Issueで確かめてください。
 
 Task APIは`--config`で起動できます。Worker listenerは任意で、二つの認証の方式があります。
 
@@ -197,7 +206,7 @@ SQLiteの参照アダプタは`internal/adapters/reference/statestore/sqlite`に
 
 Taskのsubmit、status、cancelは、`eki-control --config`で起動するClient APIとして、実装済みです（[ADR-0006](../plan/adr/0006-m0-client-api-authentication-and-admission.md)）。起動の方法は、次の節を参照してください。
 
-次の作業単位は、AttemptとLeaseの永続化と、LSE-1（Lease Authority）です。
+Attempt・Leaseの永続化（`internal/adapters/reference/statestore/sqlite`）と、LSE-1（`internal/core/leaseissue`）は実装済みです。次の作業は、固定の文章にせず、「現在の実装段階」の節に挙げたIssueとGitHub Issueの一覧を参照してください。
 
 ## Control Planeを起動する
 
