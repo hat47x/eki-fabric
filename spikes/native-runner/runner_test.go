@@ -41,6 +41,26 @@ func TestHelperProcess(t *testing.T) {
 	os.Exit(0)
 }
 
+func TestRunChecksExecutableDigest(t *testing.T) {
+	digest, err := executableDigest(os.Args[0])
+	if err != nil {
+		t.Fatal(err)
+	}
+	runner := helper("hello")
+	runner.ExecutableSHA256 = digest
+	if _, err := runner.Run(context.Background(), spec(100)); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestRunRejectsExecutableDigestMismatch(t *testing.T) {
+	runner := helper("hello")
+	runner.ExecutableSHA256 = "0000000000000000000000000000000000000000000000000000000000000000"
+	if _, err := runner.Run(context.Background(), spec(100)); err == nil {
+		t.Fatal("executable digest mismatch was accepted")
+	}
+}
+
 func TestRunRejectsUnenforcedNetworkLimit(t *testing.T) {
 	limited := spec(100)
 	limited.Limits.NetworkBytesMax = 1
