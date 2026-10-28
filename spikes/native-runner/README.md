@@ -15,7 +15,7 @@
 - network bytes limitや一時disk limitが非ゼロなら拒否する。実装していない上限を黙って無視しない。
 - GPU制限が指定されたら拒否する。GPUを扱わないため。
 - `AllowedArgs`が設定されていれば、許可リスト外の引数を実行前に拒否する。
-- `ExecutableSHA256`が設定されていれば、実行ファイルのSHA-256を照合し、不一致なら実行しない。
+- `ExecutableSHA256`が設定されていれば、実行ファイルのSHA-256をストリームで照合し、不一致なら実行しない。
 - 子プロセスへ親の環境変数を継承せず、`Runner.Env`で明示した値だけを渡す。
 - Supervisorの期限到達を`deadline_exceeded`、呼出し側の取消しを`cancelled`として観測する。
 
