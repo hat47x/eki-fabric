@@ -41,6 +41,14 @@ func TestHelperProcess(t *testing.T) {
 	os.Exit(0)
 }
 
+func TestRunRejectsUnenforcedNetworkLimit(t *testing.T) {
+	limited := spec(100)
+	limited.Limits.NetworkBytesMax = 1
+	if _, err := helper("hello").Run(context.Background(), limited); err == nil {
+		t.Fatal("unenforced network limit was accepted")
+	}
+}
+
 func TestRunRejectsUnknownSandbox(t *testing.T) {
 	unsupported := spec(100)
 	unsupported.Sandbox.Profile = "container"
