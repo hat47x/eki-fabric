@@ -136,6 +136,14 @@ func TestRunAllowsListedArguments(t *testing.T) {
 	}
 }
 
+func TestRunRejectsAllArgumentsWhenAllowlistIsEmpty(t *testing.T) {
+	runner := helper("hello")
+	runner.AllowedArgs = []string{}
+	if _, err := runner.Run(context.Background(), spec(100)); err == nil {
+		t.Fatal("empty allowlist allowed arguments")
+	}
+}
+
 func TestRunRejectsUnenforcedNetworkLimit(t *testing.T) {
 	limited := spec(100)
 	limited.Limits.NetworkBytesMax = 1
