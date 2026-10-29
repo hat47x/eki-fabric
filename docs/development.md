@@ -163,6 +163,7 @@ External Client Planeは、`spec/external/openapi.json`を基準にします。
 ~~~bash
 ./scripts/verify.sh          # gofmt / go vet / go test -count=1（キャッシュを使わず再実行する）
 ./scripts/verify.sh --quick  # gofmt / go vet だけ
+./scripts/verify.sh --race   # go testの代わりにgo test -raceを実行する
 ~~~
 
 Windowsでは、`scripts\verify.ps1`を使います。Windowsの既定の実行ポリシーでは、スクリプトを直接起動できない場合があります。その場合は、次のように実行ポリシーを明示的に緩めて起動します。
@@ -170,11 +171,23 @@ Windowsでは、`scripts\verify.ps1`を使います。Windowsの既定の実行�
 ~~~powershell
 powershell -NoProfile -ExecutionPolicy Bypass -File scripts\verify.ps1
 powershell -NoProfile -ExecutionPolicy Bypass -File scripts\verify.ps1 -Quick
+powershell -NoProfile -ExecutionPolicy Bypass -File scripts\verify.ps1 -Race
 ~~~
 
 どちらのスクリプトも、最後に`VERIFY: PASS`または`VERIFY: FAIL`を出力します。PRには、この行と、失敗した場合の差分を貼ってください。
 
 スクリプトの`go test`は、CONTRIBUTING.mdの検証と同じ`-count=1`で実行します。Goのtest cacheが前回の結果を`(cached)`で返し、別プロセスの通信に依存する失敗を隠すことを避けるためです。3か所のコマンドが一致していることは、`scripts/check-verify-parity.sh`（Go不要）で確かめられます。
+
+### データ競合の検出（`-race`）
+
+このリポジトリは、Client APIとWorker listenerを別goroutineで動かすなど、並行に動くコードを含みます。データ競合は通常の`go test`では見つからないため、`go test -race`を使えるようにしました。ただし、次の理由で、既定の検証（`go test ./... -count=1`）には入れず、明示的に選ぶ検証（`--race`、`-Race`）としています。
+
+- `-race`にはcgo（`CGO_ENABLED=1`）とCコンパイラが要ります。Windowsの開発端末には、Cコンパイラが入っていない場合があります。使えない環境では、スクリプトが足りないものを示して失敗します。通ったように見せることはしません。
+- 実行時間が長くなります。WSLのネイティブファイルシステム上で、`internal/adapters/reference/...`と`internal/control/...`だけで約7分でした。SQLiteを使う`internal/adapters/reference/statestore/sqlite`が、そのうち約6.6分を占めます。スクリプトは、Goの既定の10分では打ち切られるため、`-timeout 30m`を付けます。
+
+並行に関わる変更（goroutine、lock、CAS、複数のプロセスが同じDBを開く処理）をするときは、`--race`の結果をPRへ残してください。`--race`は`go test`の代わりに実行するので、`--quick`とは同時に指定できません。
+
+CIが無い間は、このスクリプトの結果が、データ競合についての唯一の記録になります。CIを置く場合に、`-race`をどのpackageへ、どの頻度で走らせるかは、#244で決めます。
 
 `gofmt`の判定は、CRLFの作業ツリーでもLFと同じ結果になるようにしています。改行コードの違いを整形の差分として扱いません。
 

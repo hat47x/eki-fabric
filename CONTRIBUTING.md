@@ -29,6 +29,7 @@ EKI Fabricは初期開発中です。変更は小さく、Requirement・Architec
 - `gofmt -l .`
 - `go vet ./...`
 - `go test ./... -count=1`
+- 並行に動くコードを変えたときは、`./scripts/verify.sh --race`（Windowsでは`scripts\verify.ps1 -Race`）も実行する。cgoとCコンパイラが要る。理由と実行時間は`docs/development.md`の「データ競合の検出」を参照
 - `spec/`・`conformance/`の契約変更は、対応するCDDL・OpenAPI・testを同時に更新する。
 
 ## 文書
