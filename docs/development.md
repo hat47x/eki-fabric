@@ -161,7 +161,7 @@ External Client Planeは、`spec/external/openapi.json`を基準にします。
 整形、静的検査、Testを一度に確かめるには、リポジトリのルートで次を実行します。
 
 ~~~bash
-./scripts/verify.sh          # gofmt / go vet / go test
+./scripts/verify.sh          # gofmt / go vet / go test -count=1（キャッシュを使わず再実行する）
 ./scripts/verify.sh --quick  # gofmt / go vet だけ
 ~~~
 
@@ -173,6 +173,8 @@ powershell -NoProfile -ExecutionPolicy Bypass -File scripts\verify.ps1 -Quick
 ~~~
 
 どちらのスクリプトも、最後に`VERIFY: PASS`または`VERIFY: FAIL`を出力します。PRには、この行と、失敗した場合の差分を貼ってください。
+
+スクリプトの`go test`は、CONTRIBUTING.mdの検証と同じ`-count=1`で実行します。Goのtest cacheが前回の結果を`(cached)`で返し、別プロセスの通信に依存する失敗を隠すことを避けるためです。3か所のコマンドが一致していることは、`scripts/check-verify-parity.sh`（Go不要）で確かめられます。
 
 `gofmt`の判定は、CRLFの作業ツリーでもLFと同じ結果になるようにしています。改行コードの違いを整形の差分として扱いません。
 
