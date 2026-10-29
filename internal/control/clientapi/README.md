@@ -26,10 +26,13 @@ Client向けのHTTPS・JSONの境界です。契約の正本は[`spec/external/o
 | 終端だがAcceptedResultがない（取消・失敗・枯渇・放棄、または`completed`なのに記録がない） | `409 RESULT_NOT_AVAILABLE`（再試行しても変わらない） |
 | 完了しAcceptedResultがある | `200 TaskResult` |
 
-`200`の本文は`eki.task-result/v1`で、`artifacts`は空の配列、`assurance`は`{profile: <受理時の保証水準>, status: "satisfied"}`です。Worker識別子、Lease、fence、Attempt、検証者の識別子、policyのdigest、却下の理由、出力・申告のdigestは返しません。部分的な結果も返しません。
+`200`の本文は`eki.task-result/v1`で、`artifacts`は空の配列、`assurance`は`{profile: <受理時の保証水準>, status: "satisfied"}`、`output_digest`は`{algorithm: "sha256", value: <64桁の16進>}`です。`output_digest`は、耐久化されたAcceptedResultが記録した出力のdigestをそのまま返すもので、入力から再計算しません。Clientはこれで、受理された結果を版固定して参照し、差替えや欠損を検出できます。
+
+Worker識別子、Lease、fence、Attempt、検証者の識別子、policyのdigest、申告（claim）のdigest、検証のdigest、却下の理由は返しません。部分的な結果も返しません。`output_digest`は`RESULT_NOT_READY`、`RESULT_NOT_AVAILABLE`、状態の取得、エラー応答には現れません。
 
 ### 仕様とcoreの型の差（仮決め）
 
-- `TaskResult`には出力digestの欄がなく、`ArtifactDescriptor`は`size_bytes`、`media_type`、`data_class`を必須とします。AcceptedResultはこれらを記録していないため、成果物の記述子を作り出さず`artifacts`を空にしています。出力digestをClientへ渡す経路は、仕様の変更として別に決める必要があります。
+- `TaskResult`へ、任意の`output_digest`を`eki.task-result/v1`の中で足しました（[ADR-0001](../../plan/adr/0001-protocol-surfaces-and-canonical-encoding.md)の互換性のルール「任意で追加されるフィールドは、小さな変更の候補」に沿う追加で、必須にしないため、既存の読み手は壊れません）。形は、`ArtifactDescriptor`が使う既存の`Digest`と同じです。
+- `ArtifactDescriptor`は`size_bytes`、`media_type`、`data_class`を必須とします。AcceptedResultはこれらを記録していないため、成果物の記述子を作り出さず`artifacts`を空にしています。成果物の取得経路は引き続き未実装で、`output_digest`は取得できることを意味しません。
 - 受理時の保証水準（`RA-1`、`RA-2`）を`assurance.profile`へ写します。Taskの`result_profile`は耐久化されていないため使いません。
 - 却下された申告は、Taskを終端にしません（再投入の判断はRecoveryにあります）。そのためClientには`RESULT_NOT_READY`として見え、却下の事実や理由は出ません。
