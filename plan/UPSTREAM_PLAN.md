@@ -947,3 +947,26 @@ ADR-0027の段階2として、Worker専用のCA、enrollmentとmTLS、更新、�
 - enrollmentへの総当たり対策（流量制限）と、資格の一括発行での人間の承認（ADR-0022の区分）。
 - 管理者の認証（`clientapi`のRole）と、`workerenrollment.Admin`の接続。資格・Workerの一覧の操作。
 - ブラウザ・仮名のWorker（DP-3）、Federationをまたぐ認証、OIDCやSPIFFEなどのIDV-1のAdapter、通信契約（#198）への写像。
+
+### 2026-10-27 署名済みのLeaseとWorkOrderをControl PlaneからWorkerへ届ける（#57、#160）: Control Plane側
+
+MVPの一続きの流れで、Control Planeが署名して保存したLeaseとWorkOrderは、まだ認証したWorkerへ届く経路を持たなかった（`leasedelivery`は試験用の配送の接合点で、実際の通信を持たない）。この節は、Control Plane側の経路を加えた。Agent側の検証と開始の関門は次のPRで加える。
+
+**これは試験用profileであり、#198のWorker Protocolではない。** `POST /test-profile/v1/assignments`は、申告の`/test-profile/v1/claims`と同じ扱いで、本文はJSONである。`spec/`と申告の通信には触れていない。#198が`worker.proto`を決めたら、この経路は置き換える。
+
+- **割当の読取**: `statestore.AssignmentStore.ListEmittedAssignments`を加えた（memory・SQLite）。Attemptが当のWorkerに結び付き、ASSIGNEDまたはDISPATCHEDで、LeaseとWorkOrderの両方がEMITTEDのものだけを、古い順に返す。既存の表と索引の読取だけで、DBの移行は加えていない。
+- **配送の方式**: 「配送済み」の印は作らず、同じ問い合わせには同じbytesを返す（冪等な再配送）。重複した開始は、Worker側のnonceの一回限りの消費で防ぐ。
+- **経路**: mTLSのWorker listenerに`/test-profile/v1/assignments`を加えた。Workerは要求ごとに証明書から決まり、本文は空のJSONオブジェクトだけを受け、Workerを名指す欄は400で拒否する。返すのは保存されたbytesそのままで、署名し直さない。`MTLSConfig.Assignments`がnilなら経路は存在しない。静的な表（bearer）のlistenerには加えていない。
+- **試験**: 契約試験（memory・SQLite、`RunAssignmentContract`）、handlerの試験（証明書だけで決まる、他のWorkerの資料を返さない、失効後の要求の拒否、本文の検査）、`conformance/process`のプロセス単位の試験（実際のPLC-1・LSE-1・WOR-1の署名を`conformance/signedchain`でState Storeへ書き、`eki-control`がWorkerごとに配る。他のWorkerには渡らない、失効で止まる）。
+
+仮決め（承認待ち）:
+
+- 返す対象をASSIGNEDとDISPATCHEDのAttemptとした。DISPATCHEDを含めるのは、Agentが再起動して、受け取り直せるようにするため。
+- 一回の応答は最大64件。Workerが同時に持つAttemptの数としては十分とみなした。
+- 経路の名前（`/test-profile/v1/assignments`）と本文（base64のbytesを含むJSON）は、この試験用profileの形で、#198の決定ではない。
+
+未決:
+
+- Worker側が受け取ったことの確認（ackと、DISPATCHEDへの遷移の誰が行うか）。今は印を付けない。
+- Placement Approvalの署名つきbytesはState Storeに保存されていない（`leases`はdecision IDとdigestだけを持つ）。Workerが独立に検証するには、配送の対象に加えて保存するか、別の経路が要る。
+- #198のWorker Protocolへの写像。

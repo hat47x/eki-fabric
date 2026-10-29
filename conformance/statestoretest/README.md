@@ -189,6 +189,15 @@ RAC-1が結果を却下したときの記録の契約です（#57の証跡）。
 
 enrollment資格の秘密がDBのbytes（本体、WAL）に現れないことと、DB制約・triggerがAdapterを経由しない書き込みも拒否することは、SQLite固有の試験（`sqlite/worker_registry_test.go`）で確認します。
 
+## `RunAssignmentContract`
+
+`statestore.AssignmentStore`を実装するAdapter向けの契約です。Control Planeが、認証したWorkerへ署名済みのLeaseとWorkOrderを配るときの読取を確かめます（試験用profile、#198ではない）。
+
+- 保持するWorkerには、EMITTEDのLeaseとWorkOrderの保存されたbytesがそのまま返る。同じ問い合わせには同じbytesが返る（「配送済み」の印は付けない）
+- 他のWorker、空の識別子、前方一致するだけの識別子には何も返らない
+- WorkOrderがまだ無いLease、署名前のRESERVEDのLeaseは返らない
+- DISPATCHEDのAttemptは返り、閉じたAttemptは返らない
+
 ## 未決事項（Open Question）
 
 - `A-ASSIGNED`で保持されたLeaseへの同じPlacement Decisionの再送を許すかどうかは未決です。現在の契約（`reserve-load-replay`、`exact-replay-keeps-attempt-revision-and-fence`）と両Adapterは、この再送が既存のLeaseへ収束することを確認しています。ただし、これは「配送前の段階でも再送を許す」という設計判断を確定したものではありません。Leaseをまだ配送していない段階で再送を許してよいかは、後続の設計判断で決めます。それまで、この挙動は暫定です。
