@@ -29,6 +29,7 @@ go test ./... -count=1
 
 - sandbox、cgroup、Job Object、CPU/メモリ制限は未実装。
 - `AllowedArgs`は任意設定で、nilなら全引数を許可する。`ExecutableSHA256`も任意設定で、設定経路の完全性は未検証。
+- digestの照合から起動までの間にファイルが差し替えられる場合（検査時と使用時の差）は扱っていない。信頼された設定のファイルを使う前提である。
 - Windowsのツリー停止は外部`taskkill`に依存し、Job Objectは使っていない。
 - `runner_stuck`後の強制停止、checkpoint、結果の意味検証は未実装。
 - このspikeの成功は、Native Runnerの採用や、未信頼Taskの安全な実行を意味しない。
