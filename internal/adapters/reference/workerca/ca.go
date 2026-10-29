@@ -24,6 +24,7 @@ import (
 	"math/big"
 	"net/url"
 	"os"
+	"runtime"
 	"time"
 
 	"github.com/hat47x/eki-fabric/internal/core/federation"
@@ -96,17 +97,40 @@ func New(certPEM, keyPEM []byte, trustDomain string, validity time.Duration) (*C
 	return &CA{cert: cert, key: key, trustDomain: trustDomain, validity: validity}, nil
 }
 
-// LoadFiles reads the CA certificate and key from PEM files.
+// LoadFiles reads the CA certificate and key from PEM files. On a platform
+// with Unix permissions it refuses a key file that anyone but the owner can
+// read or write (the same rule the Agent applies to its identity file). The
+// mode of the key's directory is not checked.
 func LoadFiles(certPath, keyPath, trustDomain string, validity time.Duration) (*CA, error) {
 	certPEM, err := os.ReadFile(certPath)
 	if err != nil {
 		return nil, fmt.Errorf("read worker CA certificate: %w", err)
+	}
+	if err := checkKeyFileMode(keyPath); err != nil {
+		return nil, err
 	}
 	keyPEM, err := os.ReadFile(keyPath)
 	if err != nil {
 		return nil, fmt.Errorf("read worker CA key: %w", err)
 	}
 	return New(certPEM, keyPEM, trustDomain, validity)
+}
+
+// checkKeyFileMode refuses a key file whose group or other permission bits are
+// set. Permission bits carry no meaning on Windows, so the check is skipped
+// there.
+func checkKeyFileMode(path string) error {
+	if runtime.GOOS == "windows" {
+		return nil
+	}
+	info, err := os.Stat(path)
+	if err != nil {
+		return fmt.Errorf("read worker CA key: %w", err)
+	}
+	if info.Mode().Perm()&0o077 != 0 {
+		return fmt.Errorf("%w: the CA key file %s is accessible to other users (mode %04o); run chmod 600", ErrInvalidCA, path, info.Mode().Perm())
+	}
+	return nil
 }
 
 // Certificate returns the CA certificate that verifiers trust.
