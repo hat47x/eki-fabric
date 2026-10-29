@@ -12,3 +12,9 @@
 - 失敗した申告はqueueに残り、`RetryBase`から`RetryMax`までの指数的な待ちで再送します。Agentを再起動しても、待ちの計画は保持されます。
 - contextの取消（SIGINT・SIGTERM）でループを止め、queueを閉じて正常に終了します。送信中の申告は、queueに残るので失われません。
 - 設定の誤り（必須項目の欠落、不正なURL、読めないCA）は、queueを開く前に失敗します。トークンはログに出しません。
+
+## 割当の受け取りと検証（試験用profile、`assignments`）
+
+設定の`assignments`を与えると、Agentは申告の配送と並行して`POST /test-profile/v1/assignments`を呼び、署名済みのLeaseとWorkOrderを受け取って検証し、開始の関門を通します（[`assignment`](../assignment/README.md)）。`state_dir`（mTLS）が必須で、無ければ起動しません。信頼の起点のファイル（[`trustanchor`](../trustanchor/README.md)）、nonceの耐久DB（`replay_db`）、承認するExecutor、機械の容量、天井の割合は、すべて必須で、欠けると、何も開く前に失敗します。
+
+結果は`events_file`にJSON Linesで追記します（`ready`、`replayed`、`deferred`、`rejected`と理由）。Agentは、Taskをまだ実行しません。`ready`は、検証・受け入れ・開始の関門を通り、何もしない実行側のインターフェースへ渡した、という意味です。

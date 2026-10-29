@@ -1010,3 +1010,29 @@ MVPの一続きの流れで、Control Planeが署名して保存したLeaseとWo
 仮決め（承認待ち）: revision 2への加算拡張という方針、`claim_id`を`Claim.Digest`にすること、`SANDBOX_LIMIT`の拒否、`claimed_at`を無視すること、`failure_code`と`outputs`をrevision 2で使えなくすること、`error_code`の仮の語彙。
 
 未決: `outputs`の正規化と解禁（#233、Artifactの確定）、`SANDBOX_LIMIT`と`failure_code`の行き先、拒否の恒久・一時の分類、申告ごとの署名、再登録で主体が変わった場合のqueue、実通信・生成コード・2つのWorkerの分離・session期限切れの確認（#198の完了条件の後半）。
+
+### 2026-10-29 Workerが受け取ったLeaseとWorkOrderを検証し、開始の関門を通す（#57、#160）: Agent側
+
+前の節（Control Plane側、#292）に続き、Agentが割当を受け取り、検証して、開始の関門まで通す。**試験用profileであり、#198のWorker Protocolではない。** Taskは実行しない。
+
+- **受け取り**: `claimclient.HTTPClient.ListAssignments`が、申告と同じmTLSの接続で割当を取る。Workerは証明書で決まる。
+- **検証**（`internal/agent/assignment`）: `leaseverify`（署名、信頼の起点、有効期間、Trust Bundleの新しさ）、Policy revisionの一致、`workorderverify`、`workorderaccept`（Leaseへの結び付き、Workerが承認したExecutor、nonceの耐久的な一回限りの消費）、`startgate`の順。通ったものだけを実行側のインターフェースへ渡す。改ざん・食い違いはnonceを消費しない。Local Governorが新規を受けない間は、nonceを消費せずに保留する。
+- **信頼の起点**（`internal/agent/trustanchor`）: 公開鍵とbundleをファイルから読み、無ければ、読めなければ、LSE-1・WOR-1の鍵が無ければ起動しない。
+- **Agentの設定**: `assignments`（信頼の起点、nonce DB、イベントファイル、承認Executor、機械の容量、天井の割合）。`state_dir`が必須。結果はイベントファイルにJSON Linesで残す。
+- **試験**: プロセス内（`internal/agent/assignment`）で、改ざん（nonceを消費しない）、期限切れ、別のWorker宛て、別のWorkerのWorkOrderの混入、再起動後の再生、別の鍵の偽造、Policy revisionの不一致、未承認のExecutor、古いTrust Bundle、荷札の食い違い、Governorの保留、開始の関門の拒否、設定の欠落。プロセス間（`conformance/process`）で、`eki-control`と`eki-agent`を通し、本物の署名の割当の`ready`、期限切れLeaseの拒否、別のWorkerへ届かないこと、再起動後の`replayed`、別の信頼の起点での拒否、失効したWorkerの無受信、信頼の起点なしでは起動しないこと。
+
+仮決め（承認待ち）:
+
+- 信頼の起点のファイルの形（JSON、Ed25519だけ、bundleの`validated_at`が古ければ失敗）。
+- 受け入れるPolicy revisionは、信頼の起点のファイルが名指す一つ。
+- Local Governorは固定の割合（`ceiling_percent`）、機械の容量は設定値。実際の`agent/governor`との接続は別の作業単位。
+- Executor Approvalは、Workerの設定の一覧との一致だけ（EXE-1は署名されていない）。
+- 実行側のインターフェースの既定は何もしない。結果の記録は、イベントファイル。
+
+未決:
+
+- Placement Approvalの独立な検証（署名つきbytesの保存と配送）。今のWorkerは、WorkOrder自身の参照を配置の証拠にするので、その比較は意味を持たない。
+- 信頼の起点の配布・更新・失効、Policy revisionの現在性（#78）。
+- 受領の確認（ack）とDISPATCHEDへの遷移、Taskの実行、結果の申告との接続。
+- 開始の関門がnonce消費後に拒否した場合の扱い（今は消費済みで、回収に任せる）。
+- #198のWorker Protocolへの写像。

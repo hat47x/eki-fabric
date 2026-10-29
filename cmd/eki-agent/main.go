@@ -1,6 +1,7 @@
 // Command eki-agent is the Worker-side process.
 //
-// Today it delivers the ResultClaims in its durable queue to a Control Plane.
+// Today it delivers the ResultClaims in its durable queue to a Control Plane,
+// and, when configured, fetches, verifies and start-gates its assignments.
 // The Worker Protocol (#198) is undecided, so the body format is the
 // process-level test profile. Authentication is not: "eki-agent enroll"
 // registers the device with a one-time credential and a pinned Control Plane,
