@@ -169,6 +169,16 @@ Created At
 Updated At
 ~~~
 
+## 4.2 受理内容（TaskRequestの正本）
+
+Task State Authorityは、受理したTaskRequestの本文そのものも、Admissionと同じ取引で残します。TaskIRのdigestは逆算できないため、digestだけでは、実行体の要件、parameters、資源の上限、deadline、priority、result_profileを、WorkOrderの発行と期限の判断に使えません。
+
+- 保存するのは、受理審査が通した要求の本文です。Clientが送った字节そのままを保持します。
+- 保存した本文から再計算したTaskIRのdigestは、受理時のdigestと一致しなければなりません。一致の検査は、State Storeの契約試験が持ちます。
+- 本文の大きさには上限があります。上限を超える要求は、受理の時点で拒否します。
+- 本文は、Client向けの公開状態や結果には現れません。読むのは、Scheduler、WorkOrderの発行、期限の判断、Adminの操作です。
+- この欄が存在する前のAdmissionは、本文なしで読めます。その場合、Taskの内容はdigestからは復元できません。
+
 ## 4.1 State Revision
 
 TaskRecordの更新には、単調に増えるState Revisionを持たせます。

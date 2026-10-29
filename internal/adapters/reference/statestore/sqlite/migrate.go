@@ -877,6 +877,14 @@ BEFORE DELETE ON enrollment_credentials
 BEGIN
 	SELECT RAISE(ABORT, 'an enrollment credential is not removed');
 END`,
+	// 16: the admitted Task content, kept verbatim on the admission row so
+	// WorkOrder issuance and deadline decisions can read the request the Task
+	// was admitted from. The digest is not reversible; parameters and the
+	// deadline were lost at admission before this column. It is nullable
+	// because rows written before it existed keep loading; they carry no
+	// content and the admission contract test binds a present content to the
+	// Task's TaskIR digest.
+	`ALTER TABLE admissions ADD COLUMN content BLOB;`,
 }
 
 // migrate brings the database to the latest version. It is idempotent, rejects
