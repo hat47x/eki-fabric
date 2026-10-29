@@ -42,8 +42,9 @@ func (w *world) clientGetResult(taskID ids.TaskID) (int, map[string]any, string)
 }
 
 // A Client reads the outcome through the Client API. The result appears only
-// when the durable AcceptedResult exists, and it names no Worker, Lease,
-// verifier or digest. A rejected claim never shows as a result.
+// when the durable AcceptedResult exists, and it carries the accepted output
+// digest but names no Worker, Lease,
+// verifier, claim digest or policy. A rejected claim never shows as a result.
 func TestClientReadsTheResultOnlyAfterAcceptance(t *testing.T) {
 	w := newWorld(t)
 	task := w.submit("client-result")
@@ -77,9 +78,18 @@ func TestClientReadsTheResultOnlyAfterAcceptance(t *testing.T) {
 	if got := body["assurance"].(map[string]any)["profile"]; got != string(stored.Level()) {
 		t.Fatalf("profile = %v, want the stored level %s", got, stored.Level())
 	}
+	// The Client reads the digest the acceptance recorded, in the contract's
+	// Digest shape. This is what a caller pins the accepted result by.
+	digest, ok := body["output_digest"].(map[string]any)
+	if !ok || len(digest) != 2 || digest["algorithm"] != stored.OutputDigest().Algorithm() || digest["value"] != stored.OutputDigest().Hex() {
+		t.Fatalf("output_digest = %v, want the accepted output digest %s", body["output_digest"], stored.OutputDigest())
+	}
+	if digest["value"] == stored.ClaimDigest().Hex() {
+		t.Fatal("the output digest must not be the claim digest")
+	}
 	lower := strings.ToLower(raw)
 	for _, leak := range []string{
-		"worker", "lease", "fence", "attempt", "verifier", stored.OutputDigest().Hex(),
+		"worker", "lease", "fence", "attempt", "verifier", "claim", "policy",
 		stored.ClaimDigest().Hex(), stored.PolicyDigest().Hex(),
 	} {
 		if strings.Contains(lower, leak) {

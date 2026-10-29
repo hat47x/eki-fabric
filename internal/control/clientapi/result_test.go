@@ -130,7 +130,14 @@ func TestAcceptedResultIsProjectedWithoutInternals(t *testing.T) {
 	if !ok || assurance["status"] != "satisfied" || assurance["profile"] != "RA-2" || len(assurance) != 2 {
 		t.Fatalf("assurance = %v", body["assurance"])
 	}
-	if len(body) != 4 {
+	// The digest is the one in the durable record, in the spec Digest shape, and
+	// nothing else about the output is exposed.
+	want := results.records[ids.TaskID(id)].OutputDigest()
+	digest, ok := body["output_digest"].(map[string]any)
+	if !ok || len(digest) != 2 || digest["algorithm"] != "sha256" || digest["value"] != want.Hex() {
+		t.Fatalf("output_digest = %v, want sha256 %s", body["output_digest"], want.Hex())
+	}
+	if len(body) != 5 {
 		t.Fatalf("unexpected keys in %s", res.body)
 	}
 
@@ -138,15 +145,15 @@ func TestAcceptedResultIsProjectedWithoutInternals(t *testing.T) {
 	text := strings.ToLower(string(res.body))
 	for _, forbidden := range []string{
 		"worker", "lease", "fence", "attempt", "atm_", "verifier", "policy", "claim",
-		"digest", "sha256", "output", "alice", "principal", "reason",
-		contract.SHA256([]byte("output")).Hex(), contract.SHA256([]byte("claim")).Hex(),
+		"alice", "principal", "reason",
+		contract.SHA256([]byte("claim")).Hex(),
 		contract.SHA256([]byte("policy")).Hex(),
 	} {
 		if strings.Contains(text, forbidden) {
 			t.Errorf("the result mentions %q: %s", forbidden, res.body)
 		}
 	}
-	for _, key := range []string{"worker_identity", "lease_id", "fence_epoch", "attempt_id", "verifiers", "policy_digest", "claim_digest", "output_digest"} {
+	for _, key := range []string{"worker_identity", "lease_id", "fence_epoch", "attempt_id", "verifiers", "policy_digest", "claim_digest", "verification_digests"} {
 		if _, present := body[key]; present {
 			t.Errorf("forbidden key %q is present", key)
 		}
@@ -248,5 +255,44 @@ func TestResultStoreFailureIsOpaque(t *testing.T) {
 	wantProblem(t, res, http.StatusInternalServerError, "INTERNAL_ERROR")
 	if strings.Contains(string(res.body), "secret") || strings.Contains(string(res.body), "sqlite") {
 		t.Fatalf("the internal error leaks detail: %s", res.body)
+	}
+}
+
+// The digest is an additive, optional field of eki.task-result/v1. It must stay
+// optional so that existing readers of the v1 contract keep working.
+func TestSpecDeclaresTheOutputDigestAsOptional(t *testing.T) {
+	schema := specSchema(t, "TaskResult")
+	props := schema["properties"].(map[string]any)
+	def, ok := props["output_digest"].(map[string]any)
+	if !ok || def["$ref"] != "#/components/schemas/Digest" {
+		t.Fatalf("output_digest = %v, want a reference to Digest", props["output_digest"])
+	}
+	for _, r := range schema["required"].([]any) {
+		if r == "output_digest" {
+			t.Fatal("output_digest must stay optional within eki.task-result/v1")
+		}
+	}
+}
+
+// Every response that is not a result must stay free of the digest, even when
+// a durable record exists.
+func TestOutputDigestIsOnlyInTheSuccessfulResult(t *testing.T) {
+	hex := contract.SHA256([]byte("output")).Hex()
+	results := newFakeResults()
+	e := newEnvWith(t, results)
+	id := submitFor(t, e, aliceToken, "key-00000001")
+	results.records[ids.TaskID(id)] = acceptedRecord(t, id)
+
+	notReady := e.result(aliceToken, id)
+	wantProblem(t, notReady, http.StatusConflict, "RESULT_NOT_READY")
+	e.finish(id, taskstate.TerminalOutcomeCancelled)
+	notAvailable := e.result(aliceToken, id)
+	wantProblem(t, notAvailable, http.StatusConflict, "RESULT_NOT_AVAILABLE")
+	notFound := e.result(bobToken, id)
+	results.err = errString("boom")
+	for name, r := range map[string]response{"not ready": notReady, "not available": notAvailable, "not found": notFound, "status": e.get(aliceToken, id)} {
+		if strings.Contains(string(r.body), hex) || strings.Contains(string(r.body), "output_digest") {
+			t.Errorf("%s: the response carries the digest: %s", name, r.body)
+		}
 	}
 }

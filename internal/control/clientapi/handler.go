@@ -277,11 +277,19 @@ func (h *Handler) status(w http.ResponseWriter, r *http.Request, id Identity, ta
 // taskResult is eki.task-result/v1. Artifacts is always present (the schema
 // requires it) and is empty: the AcceptedResult records no artifact size, media
 // type or data class, so no ArtifactDescriptor can be built from it truthfully.
+// OutputDigest is the digest the durable AcceptedResult recorded.
 type taskResult struct {
-	Schema    string                 `json:"schema"`
-	TaskID    string                 `json:"task_id"`
-	Artifacts []struct{}             `json:"artifacts"`
-	Assurance publicAssuranceSummary `json:"assurance"`
+	Schema       string                 `json:"schema"`
+	TaskID       string                 `json:"task_id"`
+	Artifacts    []struct{}             `json:"artifacts"`
+	Assurance    publicAssuranceSummary `json:"assurance"`
+	OutputDigest publicDigest           `json:"output_digest"`
+}
+
+// publicDigest is the Digest schema of the OpenAPI contract.
+type publicDigest struct {
+	Algorithm string `json:"algorithm"`
+	Value     string `json:"value"`
 }
 
 type publicAssuranceSummary struct {
@@ -296,10 +304,11 @@ func (h *Handler) result(w http.ResponseWriter, r *http.Request, id Identity, ta
 		return
 	}
 	writeJSON(w, http.StatusOK, taskResult{
-		Schema:    "eki.task-result/v1",
-		TaskID:    res.TaskID.String(),
-		Artifacts: []struct{}{},
-		Assurance: publicAssuranceSummary{Profile: res.AssuranceProfile, Status: "satisfied"},
+		Schema:       "eki.task-result/v1",
+		TaskID:       res.TaskID.String(),
+		Artifacts:    []struct{}{},
+		Assurance:    publicAssuranceSummary{Profile: res.AssuranceProfile, Status: "satisfied"},
+		OutputDigest: publicDigest{Algorithm: res.OutputDigest.Algorithm(), Value: res.OutputDigest.Hex()},
 	})
 }
 
