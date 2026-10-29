@@ -28,6 +28,7 @@ import (
 	"github.com/hat47x/eki-fabric/internal/core/ids"
 	"github.com/hat47x/eki-fabric/internal/core/workerenrollment"
 	"github.com/hat47x/eki-fabric/internal/core/workerregistry"
+	"github.com/hat47x/eki-fabric/internal/spi/workerplane"
 	"github.com/hat47x/eki-fabric/internal/spi/workerplane/enrollwire"
 	"github.com/hat47x/eki-fabric/internal/spi/workerplane/testprofile"
 )
@@ -46,6 +47,7 @@ type mtlsFixture struct {
 	svc     *workerenrollment.Service
 	admin   workerenrollment.Admin
 	claims  *fakeClaims
+	assign  *fakeAssignments
 	clock   *mtlsClock
 	caCert  *x509.Certificate
 	caKey   *ecdsa.PrivateKey
@@ -72,13 +74,13 @@ func newMTLSFixture(t *testing.T) *mtlsFixture {
 		t.Fatal(err)
 	}
 	admin, _ := workerenrollment.NewAdmin("operator")
-	f := &mtlsFixture{svc: svc, admin: admin, claims: &fakeClaims{}, clock: clock, caCert: ca.Certificate(), logs: &bytes.Buffer{}, conns: map[net.Conn]http.ConnState{}}
+	f := &mtlsFixture{svc: svc, admin: admin, claims: &fakeClaims{}, assign: &fakeAssignments{byWorker: map[string][]workerplane.Assignment{}}, clock: clock, caCert: ca.Certificate(), logs: &bytes.Buffer{}, conns: map[net.Conn]http.ConnState{}}
 	kb, _ := pem.Decode(keyPEM)
 	k, _ := x509.ParsePKCS8PrivateKey(kb.Bytes)
 	f.caKey = k.(*ecdsa.PrivateKey)
 
 	h, err := server.NewMTLSHandler(server.MTLSConfig{
-		Claims: f.claims, Registry: svc, WorkerCA: ca.Certificate(), TrustDomain: "example.org",
+		Claims: f.claims, Assignments: f.assign, Registry: svc, WorkerCA: ca.Certificate(), TrustDomain: "example.org",
 		Clock: clock.Now, Logger: slog.New(slog.NewTextHandler(&syncWriter{w: f.logs}, nil)),
 	})
 	if err != nil {

@@ -176,6 +176,8 @@ powershell -NoProfile -ExecutionPolicy Bypass -File scripts\verify.ps1 -Quick
 
 スクリプトの`go test`は、CONTRIBUTING.mdの検証と同じ`-count=1`で実行します。Goのtest cacheが前回の結果を`(cached)`で返し、別プロセスの通信に依存する失敗を隠すことを避けるためです。3か所のコマンドが一致していることは、`scripts/check-verify-parity.sh`（Go不要）で確かめられます。
 
+`spikes/`の下の各Spikeは、`go.mod`を持つ独立したmoduleです。ルートの`go test ./...`と`go vet ./...`は、入れ子のmoduleを対象にしません。このうち、ルートmoduleを`replace`で取り込み、`internal`のpackageをimportするSpikeは、ルートの変更で壊れても、ルートの検証だけでは見つかりません。そのため、検証スクリプトは、`go.mod`に`replace github.com/hat47x/eki-fabric`を持つSpikeを`git ls-files`で列挙して、それぞれで`go vet ./...`を実行します（新しいSpikeは自動で対象に入ります）。`go vet`は試験コードも型検査するため、コンパイルできることは確かめられます。一方、Spikeの`go test`はスクリプトに含めません。Linux専用の試験（`spikes/local-governor/*/linux-cgroup`）やプロセスを起動する試験があり、ルートの検証を遅くするためです。Spikeの`go test`の結果は、`RESULTS_*.md`に記録した時点のmainでの観測であり、その後のルートの変更でも保たれているとは、この検証では言えません。
+
 `gofmt`の判定は、CRLFの作業ツリーでもLFと同じ結果になるようにしています。改行コードの違いを整形の差分として扱いません。
 
 ### 検証の記録として残すもの

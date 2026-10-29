@@ -44,6 +44,9 @@ var ErrInvalidMTLSConfig = errors.New("invalid Worker mTLS configuration")
 // MTLSConfig configures NewMTLSHandler.
 type MTLSConfig struct {
 	Claims workerplane.ClaimClient
+	// Assignments serves the assignment route of the test profile. Nil means
+	// the route does not exist (404).
+	Assignments workerplane.AssignmentSource
 	// Registry authorizes every request and runs enrollment and renewal. It
 	// must have a certificate issuer.
 	Registry *workerenrollment.Service
@@ -62,6 +65,7 @@ type MTLSConfig struct {
 
 type mtlsHandler struct {
 	claimEndpoint
+	assignments workerplane.AssignmentSource
 	registry    *workerenrollment.Service
 	roots       *x509.CertPool
 	caPEM       string
@@ -89,6 +93,7 @@ func NewMTLSHandler(cfg MTLSConfig) (http.Handler, error) {
 	}
 	h := &mtlsHandler{
 		claimEndpoint: claimEndpoint{claims: cfg.Claims, maxBody: cfg.MaxBodyBytes, log: cfg.Logger},
+		assignments:   cfg.Assignments,
 		registry:      cfg.Registry,
 		roots:         x509.NewCertPool(),
 		caPEM:         string(pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: cfg.WorkerCA.Raw})),
@@ -111,6 +116,11 @@ func NewMTLSHandler(cfg MTLSConfig) (http.Handler, error) {
 func (h *mtlsHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	switch r.URL.Path {
 	case testprofile.Path, enrollwire.RenewPath, enrollwire.EnrollPath:
+	case testprofile.AssignmentsPath:
+		if h.assignments == nil {
+			reply(w, http.StatusNotFound, "not_found")
+			return
+		}
 	default:
 		reply(w, http.StatusNotFound, "not_found")
 		return
@@ -134,7 +144,12 @@ func (h *mtlsHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		h.renew(w, r, principal, leaf)
 		return
 	}
-	h.serveClaim(w, r, workerplane.Principal{WorkerIdentity: string(principal.Identity), TrustDomain: principal.TrustDomain})
+	caller := workerplane.Principal{WorkerIdentity: string(principal.Identity), TrustDomain: principal.TrustDomain}
+	if r.URL.Path == testprofile.AssignmentsPath {
+		h.serveAssignments(w, r, caller)
+		return
+	}
+	h.serveClaim(w, r, caller)
 }
 
 // authenticate verifies the client certificate of the request and asks the
