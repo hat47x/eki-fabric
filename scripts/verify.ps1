@@ -91,6 +91,28 @@ try {
 	& go vet ./...
 	if ($LASTEXITCODE -ne 0) { $status = 1 }
 
+	# spikes/配下の独立したmoduleのうち、ルートmoduleをreplaceで取り込むものは、
+	# ルートの go vet ./... の対象にならない。ルートの変更で壊れていないかを、
+	# 型検査（試験コードを含む）だけで確かめる。Dockerやlinux専用の試験は走らせない。
+	Write-Output ''
+	Write-Output '== go vet (ルートをreplaceで取り込むSpike) =='
+	$spikeCount = 0
+	foreach ($mod in (git ls-files spikes | Where-Object { $_ -match '/go\.mod$' })) {
+		$modPath = Join-Path $root $mod
+		if (-not (Select-String -LiteralPath $modPath -Pattern '^replace\s+github\.com/hat47x/eki-fabric\s+=>' -Quiet)) { continue }
+		$dir = Split-Path -Parent $modPath
+		$spikeCount++
+		Write-Output ('-- ' + (Split-Path -Parent $mod))
+		Push-Location $dir
+		try {
+			& go vet ./...
+			if ($LASTEXITCODE -ne 0) { $status = 1 }
+		} finally {
+			Pop-Location
+		}
+	}
+	Write-Output ("対象のSpike: $spikeCount")
+
 	if (-not $Quick -and -not $Race) {
 		Write-Output ''
 		Write-Output '== go test =='

@@ -38,3 +38,20 @@ type ClaimAck struct {
 type ClaimClient interface {
 	SubmitClaim(ctx context.Context, principal Principal, claim resultclaim.Claim) (ClaimAck, error)
 }
+
+// Assignment is one Attempt's signed Lease and WorkOrder, as the Control Plane
+// stored them when it emitted them. The bytes are hostile to the receiver until
+// it verifies them; the identifiers are hints for logging and carry no
+// authority.
+type Assignment struct {
+	AttemptID         string
+	LeaseID           string
+	LeaseEnvelope     []byte
+	WorkOrderEnvelope []byte
+}
+
+// AssignmentSource lists the assignments of the authenticated Worker. The
+// transport produces the Principal; no request field may name another Worker.
+type AssignmentSource interface {
+	ListAssignments(ctx context.Context, principal Principal) ([]Assignment, error)
+}

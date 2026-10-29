@@ -30,6 +30,7 @@ EKI Fabricは初期開発中です。変更は小さく、Requirement・Architec
 - `go vet ./...`
 - `go test ./... -count=1`
 - 並行に動くコードを変えたときは、`./scripts/verify.sh --race`（Windowsでは`scripts\verify.ps1 -Race`）も実行する。cgoとCコンパイラが要る。理由と実行時間は`docs/development.md`の「データ競合の検出」を参照
+- `spikes/`の下は、`go.mod`を持つ独立したmoduleで、ルートの`go vet`・`go test`の対象に含まれない。ルートmoduleを`replace`で取り込む（`internal`をimportする）Spikeだけは、`scripts/verify.sh`・`scripts/verify.ps1`が`go vet ./...`を実行し、ルートの変更でコンパイルできなくなっていないかを確かめる。Spikeの`go test`は、そのSpikeのREADMEに従って各自で実行する。
 - `spec/`・`conformance/`の契約変更は、対応するCDDL・OpenAPI・testを同時に更新する。
 
 ## 文書

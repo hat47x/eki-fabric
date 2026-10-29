@@ -94,3 +94,10 @@ func TestWorkOrderSigningContract(t *testing.T) {
 		return New()
 	})
 }
+
+func TestAssignmentContract(t *testing.T) {
+	statestoretest.RunAssignmentContract(t, func(t testing.TB) statestoretest.AssignmentTestStore {
+		t.Helper()
+		return New()
+	})
+}

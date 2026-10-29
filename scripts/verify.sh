@@ -76,6 +76,27 @@ if ! go vet ./...; then
 	status=1
 fi
 
+# spikes/配下の独立したmoduleのうち、ルートmoduleをreplaceで取り込むものは、
+# ルートの go vet ./... の対象にならない。ルートの変更で壊れていないかを、
+# 型検査（試験コードを含む）だけで確かめる。Dockerやlinux専用の試験は走らせない。
+echo
+echo "== go vet (ルートをreplaceで取り込むSpike) =="
+spike_count=0
+while IFS= read -r mod; do
+	[ -n "$mod" ] || continue
+	dir=$(dirname "$mod")
+	spike_count=$((spike_count + 1))
+	echo "-- $dir"
+	if ! (cd "$dir" && go vet ./...); then
+		status=1
+	fi
+done <<EOF
+$(git ls-files spikes | grep '/go\.mod$' | while IFS= read -r m; do
+	grep -qE '^replace[[:space:]]+github\.com/hat47x/eki-fabric[[:space:]]+=>' "$m" && echo "$m"
+done)
+EOF
+echo "対象のSpike: ${spike_count}"
+
 if [ "$quick" -eq 0 ] && [ "$race" -eq 0 ]; then
 	echo
 	echo "== go test =="
