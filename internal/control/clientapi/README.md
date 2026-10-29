@@ -32,7 +32,7 @@ Worker識別子、Lease、fence、Attempt、検証者の識別子、policyのdig
 
 ### 仕様とcoreの型の差（仮決め）
 
-- `TaskResult`へ、任意の`output_digest`を`eki.task-result/v1`の中で足しました（[ADR-0001](../../plan/adr/0001-protocol-surfaces-and-canonical-encoding.md)の互換性のルール「任意で追加されるフィールドは、小さな変更の候補」に沿う追加で、必須にしないため、既存の読み手は壊れません）。形は、`ArtifactDescriptor`が使う既存の`Digest`と同じです。
+- `TaskResult`へ、任意の`output_digest`を`eki.task-result/v1`の中で足しました（[ADR-0001](../../../plan/adr/0001-protocol-surfaces-and-canonical-encoding.md)の互換性のルール「任意で追加されるフィールドは、小さな変更の候補」に沿う追加で、必須にしないため、既存の読み手は壊れません）。形は、`ArtifactDescriptor`が使う既存の`Digest`と同じです。
 - `ArtifactDescriptor`は`size_bytes`、`media_type`、`data_class`を必須とします。AcceptedResultはこれらを記録していないため、成果物の記述子を作り出さず`artifacts`を空にしています。成果物の取得経路は引き続き未実装で、`output_digest`は取得できることを意味しません。
 - 受理時の保証水準（`RA-1`、`RA-2`）を`assurance.profile`へ写します。Taskの`result_profile`は耐久化されていないため使いません。
 - 却下された申告は、Taskを終端にしません（再投入の判断はRecoveryにあります）。そのためClientには`RESULT_NOT_READY`として見え、却下の事実や理由は出ません。

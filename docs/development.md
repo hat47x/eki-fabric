@@ -180,6 +180,8 @@ powershell -NoProfile -ExecutionPolicy Bypass -File scripts\verify.ps1 -Race
 
 `spikes/`の下の各Spikeは、`go.mod`を持つ独立したmoduleです。ルートの`go test ./...`と`go vet ./...`は、入れ子のmoduleを対象にしません。このうち、ルートmoduleを`replace`で取り込み、`internal`のpackageをimportするSpikeは、ルートの変更で壊れても、ルートの検証だけでは見つかりません。そのため、検証スクリプトは、`go.mod`に`replace github.com/hat47x/eki-fabric`を持つSpikeを`git ls-files`で列挙して、それぞれで`go vet ./...`を実行します（新しいSpikeは自動で対象に入ります）。`go vet`は試験コードも型検査するため、コンパイルできることは確かめられます。一方、Spikeの`go test`はスクリプトに含めません。Linux専用の試験（`spikes/local-governor/*/linux-cgroup`）やプロセスを起動する試験があり、ルートの検証を遅くするためです。Spikeの`go test`の結果は、`RESULTS_*.md`に記録した時点のmainでの観測であり、その後のルートの変更でも保たれているとは、この検証では言えません。
 
+Markdownの相対リンクの先が存在することは、`conformance/doclinks`のtestが確かめます（`go test ./...`に含まれるため、検証スクリプトの`go test`の段階で走り、`--quick`では走りません）。対象は、リポジトリ内の`*.md`の`[文字列](相対パス)`と参照定義で、`#`断片は取り除いて存在だけを見ます。コードブロックとコード書式の中、`http(s)`のリンク、リンクではないパスの言及（別リポジトリの文書名など）、見出しの存在は対象にしません。解決を別Issueで扱っているリンク切れ（現在はLICENSE、#247）は、testの`knownBroken`に理由つきで置き、解決したら消します（消し忘れもtestが失敗にします）。
+
 `gofmt`の判定は、CRLFの作業ツリーでもLFと同じ結果になるようにしています。改行コードの違いを整形の差分として扱いません。
 
 ### データ競合の検出（`-race`）
