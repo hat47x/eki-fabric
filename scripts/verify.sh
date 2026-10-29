@@ -4,6 +4,7 @@
 # 使い方:
 #   ./scripts/verify.sh            # gofmt / go vet / go test
 #   ./scripts/verify.sh --quick    # gofmt / go vet のみ
+#   ./scripts/verify.sh --race     # go test の代わりに go test -race を実行する
 #
 # 出力は、そのままPRの検証欄へ貼れる形にしている。
 # CIの成否ではなく、この出力を実装のEvidenceにする（docs/development.md）。
@@ -13,11 +14,13 @@ root=$(cd "$(dirname "$0")/.." && pwd)
 cd "$root" || exit 1
 
 quick=0
+race=0
 for arg in "$@"; do
 	case "$arg" in
 	--quick) quick=1 ;;
+	--race) race=1 ;;
 	-h | --help)
-		sed -n '2,10p' "$0"
+		sed -n '2,11p' "$0"
 		exit 0
 		;;
 	*)
@@ -34,6 +37,11 @@ fi
 if ! command -v gofmt >/dev/null 2>&1; then
 	echo "gofmt が見つかりません。Goの配布物に含まれるgofmtをPATHへ入れてください。" >&2
 	exit 1
+fi
+
+if [ "$quick" -eq 1 ] && [ "$race" -eq 1 ]; then
+	echo "--quick と --race は同時に指定できません（--quick は go test を実行しません）。" >&2
+	exit 2
 fi
 
 status=0
@@ -89,11 +97,29 @@ done)
 EOF
 echo "対象のSpike: ${spike_count}"
 
-if [ "$quick" -eq 0 ]; then
+if [ "$quick" -eq 0 ] && [ "$race" -eq 0 ]; then
 	echo
 	echo "== go test =="
 	if ! go test ./... -count=1; then
 		status=1
+	fi
+fi
+
+if [ "$race" -eq 1 ]; then
+	echo
+	echo "== go test -race =="
+	# データ競合の検出はcgoとCコンパイラを要する。使えない環境では、
+	# 通ったように見せず、足りないものを示して失敗させる。
+	cc=$(go env CC)
+	if [ "$(go env CGO_ENABLED)" != "1" ] || ! command -v "${cc%% *}" >/dev/null 2>&1; then
+		echo "go test -race にはcgo（CGO_ENABLED=1）とCコンパイラ（CC=${cc}）が必要です。" >&2
+		status=1
+	else
+		# -raceは実行が数倍遅くなる。既定の10分では、SQLiteを使う
+		# packageが途中で打ち切られる場合があるため、時間の上限を広げる。
+		if ! go test -race ./... -count=1 -timeout 30m; then
+			status=1
+		fi
 	fi
 fi
 

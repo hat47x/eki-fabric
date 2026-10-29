@@ -11,16 +11,27 @@
 
     powershell -NoProfile -ExecutionPolicy Bypass -File scripts\verify.ps1
     powershell -NoProfile -ExecutionPolicy Bypass -File scripts\verify.ps1 -Quick
+    powershell -NoProfile -ExecutionPolicy Bypass -File scripts\verify.ps1 -Race
 
 .PARAMETER Quick
   go test を省略し、gofmt と go vet だけを実行する。
+
+.PARAMETER Race
+  go test の代わりに go test -race を実行する。データ競合の検出には cgo
+  （CGO_ENABLED=1）とCコンパイラが必要で、使えない環境では失敗として終了する。
+  Quick とは同時に指定できない。
 #>
 [CmdletBinding()]
 param(
-	[switch]$Quick
+	[switch]$Quick,
+	[switch]$Race
 )
 
 $ErrorActionPreference = 'Stop'
+if ($Quick -and $Race) {
+	Write-Error '-Quick と -Race は同時に指定できません（-Quick は go test を実行しません）。'
+	exit 2
+}
 $root = Split-Path -Parent $PSScriptRoot
 Push-Location $root
 try {
@@ -102,11 +113,30 @@ try {
 	}
 	Write-Output ("対象のSpike: $spikeCount")
 
-	if (-not $Quick) {
+	if (-not $Quick -and -not $Race) {
 		Write-Output ''
 		Write-Output '== go test =='
 		& go test ./... -count=1
 		if ($LASTEXITCODE -ne 0) { $status = 1 }
+	}
+
+	if ($Race) {
+		Write-Output ''
+		Write-Output '== go test -race =='
+		# データ競合の検出はcgoとCコンパイラを要する。使えない環境では、
+		# 通ったように見せず、足りないものを示して失敗させる。
+		$cgo = (& go env CGO_ENABLED)
+		$cc = (& go env CC)
+		$ccName = ($cc -split ' ')[0]
+		if ($cgo -ne '1' -or -not (Get-Command $ccName -ErrorAction SilentlyContinue)) {
+			Write-Output ("go test -race にはcgo（CGO_ENABLED=1）とCコンパイラ（CC=" + $cc + "）が必要です。")
+			$status = 1
+		} else {
+			# -raceは実行が数倍遅くなる。既定の10分では、SQLiteを使う
+			# packageが途中で打ち切られる場合があるため、時間の上限を広げる。
+			& go test -race ./... -count=1 -timeout 30m
+			if ($LASTEXITCODE -ne 0) { $status = 1 }
+		}
 	}
 
 	Write-Output ''
