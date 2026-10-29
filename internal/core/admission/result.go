@@ -4,19 +4,22 @@ import (
 	"context"
 	"errors"
 
+	"github.com/hat47x/eki-fabric/internal/core/contract"
 	"github.com/hat47x/eki-fabric/internal/core/ids"
 	"github.com/hat47x/eki-fabric/internal/core/taskstate"
 )
 
 // PublicResult is the Client-visible projection of an AcceptedResult.
 //
-// It carries only what P0's TaskResult can express: the Task and a public
-// assurance summary. It never carries the Attempt, the verifier identities, the
-// policy digest or the claim and output digests. P0 declares no field for the
-// digests, and an ArtifactDescriptor needs a size, a media type and a data
+// It carries the Task, the output digest and a public assurance summary. It
+// never carries the Attempt, the verifier identities, the policy digest or the
+// claim digest. An ArtifactDescriptor needs a size, a media type and a data
 // class that the AcceptedResult does not record, so none is invented.
 type PublicResult struct {
 	TaskID ids.TaskID
+	// OutputDigest is the output digest read from the durable AcceptedResult.
+	// It is never recomputed.
+	OutputDigest contract.Digest
 	// AssuranceProfile is the assurance level RAC-1 established, as recorded
 	// in the AcceptedResult.
 	AssuranceProfile string
@@ -77,5 +80,5 @@ func (s *Service) Result(ctx context.Context, p Principal, taskID string) (Publi
 	if record.TaskID() != id {
 		return PublicResult{}, s.internal("load accepted result", errors.New("accepted result belongs to another task"))
 	}
-	return PublicResult{TaskID: id, AssuranceProfile: string(record.Level())}, nil
+	return PublicResult{TaskID: id, OutputDigest: record.OutputDigest(), AssuranceProfile: string(record.Level())}, nil
 }
