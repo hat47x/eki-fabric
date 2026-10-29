@@ -19,6 +19,7 @@ import (
 	"context"
 	"crypto/ed25519"
 	"crypto/rand"
+	"encoding/base64"
 	"encoding/hex"
 	"fmt"
 	"testing"
@@ -28,6 +29,7 @@ import (
 
 	cosecbor "github.com/hat47x/eki-fabric/internal/adapters/reference/cosedecoder/cbor"
 	payloadcbor "github.com/hat47x/eki-fabric/internal/adapters/reference/decisiondecoder/cbor"
+	"github.com/hat47x/eki-fabric/internal/agent/trustanchor"
 	"github.com/hat47x/eki-fabric/internal/core/attemptstate"
 	"github.com/hat47x/eki-fabric/internal/core/authority"
 	"github.com/hat47x/eki-fabric/internal/core/contract"
@@ -335,4 +337,23 @@ func must(t testing.TB, err error) {
 	if err != nil {
 		t.Fatal(err)
 	}
+}
+
+// TrustAnchor is the file a Worker loads (internal/agent/trustanchor) to trust
+// these keys: the Lease and WorkOrder keys, the bundle validated at
+// validatedAt, and the Policy revision the Worker accepts.
+func (a *Authorities) TrustAnchor(validatedAt time.Time, policyRevision string) trustanchor.File {
+	doc := trustanchor.File{
+		TrustDomain: TrustDomain, PolicyRevision: policyRevision,
+		BundleRevision: BundleRevision, ValidatedAt: validatedAt,
+		MaxClockSkewSeconds: 5, MaxBundleStalenessSeconds: 3600, MaxDecisionLifetimeSeconds: 600,
+	}
+	for _, k := range a.PublicKeys {
+		doc.Keys = append(doc.Keys, trustanchor.Key{
+			KeyID: k.ID, Role: string(k.Role), Principal: k.Principal, Algorithm: "EdDSA",
+			PublicKey:        base64.StdEncoding.EncodeToString(k.Key),
+			SigningNotBefore: k.NotBefore, SigningNotAfter: k.NotAfter, KeyPolicy: KeyPolicy,
+		})
+	}
+	return doc
 }
