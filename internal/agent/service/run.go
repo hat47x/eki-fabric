@@ -17,9 +17,11 @@ import (
 	"time"
 
 	queuesqlite "github.com/hat47x/eki-fabric/internal/adapters/reference/claimqueue/sqlite"
+	"github.com/hat47x/eki-fabric/internal/agent/assignment"
 	"github.com/hat47x/eki-fabric/internal/agent/claimclient"
 	"github.com/hat47x/eki-fabric/internal/agent/claimqueue"
 	"github.com/hat47x/eki-fabric/internal/agent/enroll"
+	"github.com/hat47x/eki-fabric/internal/agent/trustanchor"
 	"github.com/hat47x/eki-fabric/internal/spi/workerplane"
 )
 
@@ -58,6 +60,10 @@ type Config struct {
 	// Plane certificate it pinned at enrollment. It excludes Token, TokenFile
 	// and CAFile.
 	StateDir string `json:"state_dir,omitempty"`
+
+	// Assignments turns on assignment delivery (TEST PROFILE). It needs
+	// state_dir. Nil means the Agent fetches no assignments.
+	Assignments *AssignmentConfig `json:"assignments,omitempty"`
 
 	// Interval is how often the queue is checked. Zero means the default.
 	Interval time.Duration `json:"-"`
@@ -102,6 +108,19 @@ func Run(ctx context.Context, cfg Config, token string, log *slog.Logger) error 
 		return fmt.Errorf("%w: worker identity is required", ErrInvalidConfig)
 	case mtls && (token != "" || cfg.Token != "" || cfg.TokenFile != "" || cfg.CAFile != ""):
 		return fmt.Errorf("%w: state_dir (certificate authentication) excludes a token and a CA file", ErrInvalidConfig)
+	}
+	var (
+		anchor *trustanchor.Anchor
+		execs  []assignment.ExecutorApproval
+	)
+	if cfg.Assignments != nil {
+		if !mtls {
+			return fmt.Errorf("%w: assignments need state_dir (certificate authentication)", ErrInvalidConfig)
+		}
+		var err error
+		if anchor, execs, err = prepareAssignments(cfg.Assignments); err != nil {
+			return err
+		}
 	}
 	var cfgHTTP claimclient.HTTPConfig
 	cfgHTTP.ControlURL, cfgHTTP.Token = cfg.ControlURL, token
@@ -166,6 +185,17 @@ func Run(ctx context.Context, cfg Config, token string, log *slog.Logger) error 
 			enroll.RenewLoop(renewCtx, holder, cfg.ControlURL, cfg.StateDir, max, log, api.CloseIdleConnections)
 		}()
 		defer func() { stopRenew(); <-renewDone }()
+	}
+	if cfg.Assignments != nil {
+		assignCtx, stopAssign := context.WithCancel(ctx)
+		assignDone := make(chan struct{})
+		go func() {
+			defer close(assignDone)
+			if err := runAssignments(assignCtx, cfg.Assignments, anchor, execs, api, principal, interval, log); err != nil {
+				log.Error("assignment loop stopped", "error", err.Error())
+			}
+		}()
+		defer func() { stopAssign(); <-assignDone }()
 	}
 	log.Info("agent delivering claims", "control", cfg.ControlURL, "worker", principal.WorkerIdentity, "auth", map[bool]string{true: "mtls", false: "token"}[mtls])
 	timer := time.NewTimer(0)
