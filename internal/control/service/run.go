@@ -211,8 +211,12 @@ func (s *Server) mtlsHandler(w *WorkerConfig, store *sqlite.Store, plane *claimp
 	if err != nil {
 		return nil, err
 	}
+	assignments, err := workerplane.NewAssignmentService(store)
+	if err != nil {
+		return nil, err
+	}
 	handler, err := workerplane.NewMTLSHandler(workerplane.MTLSConfig{
-		Claims: api, Registry: registry, WorkerCA: ca.Certificate(), TrustDomain: w.MTLS.TrustDomain,
+		Claims: api, Assignments: assignments, Registry: registry, WorkerCA: ca.Certificate(), TrustDomain: w.MTLS.TrustDomain,
 		MaxBodyBytes: w.MaxBodyBytes, Logger: s.log,
 	})
 	if err != nil {

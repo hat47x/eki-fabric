@@ -1125,3 +1125,16 @@ func newTaskRecord(t testing.TB, seed string) taskstate.TaskRecord {
 	}
 	return record
 }
+
+func TestAssignmentContract(t *testing.T) {
+	statestoretest.RunAssignmentContract(t, func(t testing.TB) statestoretest.AssignmentTestStore {
+		t.Helper()
+		store := openStore(t, filepath.Join(t.TempDir(), "state.db"))
+		t.Cleanup(func() {
+			if err := store.Close(); err != nil {
+				t.Errorf("Close() error = %v", err)
+			}
+		})
+		return store
+	})
+}
