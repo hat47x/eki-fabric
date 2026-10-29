@@ -48,11 +48,18 @@ type Params struct {
 	Secret string
 	// StateDir receives the identity. It is created with mode 0700.
 	StateDir string
+	// Clock is the time against which the Control Plane's certificate and the
+	// issued certificate are checked. Nil means the system clock.
+	Clock Clock
 }
 
 // Enroll generates a key on this device, enrolls with the Control Plane, and
 // saves the identity. It refuses to replace an identity that exists.
 func Enroll(ctx context.Context, p Params) (Identity, error) {
+	clock := p.Clock
+	if clock == nil {
+		clock = SystemClock{}
+	}
 	base, host, err := parseControlURL(p.ControlURL)
 	if err != nil {
 		return Identity{}, err
@@ -85,7 +92,7 @@ func Enroll(ctx context.Context, p Params) (Identity, error) {
 		return Identity{}, err
 	}
 
-	pinned := &pinnedVerifier{pin: pin, host: host}
+	pinned := &pinnedVerifier{pin: pin, host: host, now: clock.Now}
 	client := &http.Client{
 		Transport: &http.Transport{
 			TLSClientConfig: &tls.Config{
@@ -116,7 +123,7 @@ func Enroll(ctx context.Context, p Params) (Identity, error) {
 	if resp.status == http.StatusUnauthorized {
 		return Identity{}, ErrRefused
 	}
-	id, caPEM, err := parseResponse(resp, key)
+	id, caPEM, err := parseResponse(resp, key, clock.Now())
 	if err != nil {
 		return Identity{}, err
 	}
@@ -145,7 +152,8 @@ func saveAll(dir string, id Identity, anchor *x509.Certificate, caPEM string) er
 // Renew asks the Control Plane for a new certificate over mTLS with the
 // current one, using a new key, and saves the result. The Control Plane
 // refuses an expired certificate and a Worker that is disabled or revoked.
-func Renew(ctx context.Context, controlURL, stateDir string, current Identity) (Identity, error) {
+func Renew(ctx context.Context, controlURL, stateDir string, current Identity, opts ...Option) (Identity, error) {
+	clock := applyOptions(opts).clock
 	base, _, err := parseControlURL(controlURL)
 	if err != nil {
 		return Identity{}, err
@@ -154,7 +162,7 @@ func Renew(ctx context.Context, controlURL, stateDir string, current Identity) (
 	if err != nil {
 		return Identity{}, err
 	}
-	if current.Expired(time.Now()) {
+	if current.Expired(clock.Now()) {
 		return Identity{}, ErrExpired
 	}
 	key, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
@@ -170,7 +178,7 @@ func Renew(ctx context.Context, controlURL, stateDir string, current Identity) (
 	client := &http.Client{
 		Transport: &http.Transport{
 			TLSClientConfig: &tls.Config{
-				MinVersion: tls.VersionTLS13, RootCAs: roots,
+				MinVersion: tls.VersionTLS13, RootCAs: roots, Time: clock.Now,
 				GetClientCertificate: func(*tls.CertificateRequestInfo) (*tls.Certificate, error) {
 					return current.TLSCertificate(), nil
 				},
@@ -188,7 +196,7 @@ func Renew(ctx context.Context, controlURL, stateDir string, current Identity) (
 	if resp.status != http.StatusOK {
 		return Identity{}, fmt.Errorf("the Control Plane answered HTTP %d to the renewal", resp.status)
 	}
-	id, _, err := parseResponse(resp, key)
+	id, _, err := parseResponse(resp, key, clock.Now())
 	if err != nil {
 		return Identity{}, err
 	}
@@ -259,7 +267,7 @@ func post(ctx context.Context, c *http.Client, endpoint string, csr []byte, auth
 
 // parseResponse checks everything the Control Plane returned against the key
 // this device generated before it trusts the certificate.
-func parseResponse(r response, key *ecdsa.PrivateKey) (Identity, string, error) {
+func parseResponse(r response, key *ecdsa.PrivateKey, now time.Time) (Identity, string, error) {
 	if r.status != http.StatusOK {
 		return Identity{}, "", fmt.Errorf("the Control Plane answered HTTP %d", r.status)
 	}
@@ -282,7 +290,7 @@ func parseResponse(r response, key *ecdsa.PrivateKey) (Identity, string, error) 
 	if string(id.WorkerIdentity) != out.WorkerIdentity || id.TrustDomain != out.TrustDomain {
 		return Identity{}, "", fmt.Errorf("%w: the response disagrees with the certificate", ErrInvalidIdentity)
 	}
-	if id.Expired(time.Now()) {
+	if id.Expired(now) {
 		return Identity{}, "", fmt.Errorf("%w: the certificate is already expired", ErrInvalidIdentity)
 	}
 	if out.CAChainPEM != "" {
@@ -307,6 +315,7 @@ type pinnedVerifier struct {
 	host   string
 	anchor *x509.Certificate
 	failed bool
+	now    func() time.Time
 }
 
 func (v *pinnedVerifier) verify(cs tls.ConnectionState) error {
@@ -334,6 +343,7 @@ func (v *pinnedVerifier) verify(cs tls.ConnectionState) error {
 	}
 	if _, err := certs[0].Verify(x509.VerifyOptions{
 		Roots: roots, Intermediates: inter, KeyUsages: []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth},
+		CurrentTime: v.now(),
 	}); err != nil {
 		v.failed = true
 		return fmt.Errorf("%w: %v", ErrNotPinned, err)
