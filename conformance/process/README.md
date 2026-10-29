@@ -45,8 +45,20 @@
 |---|---|
 | `TestAssignmentsReachOnlyTheWorkerThatHoldsTheAttempt` | 登録した2つのWorkerに別々のAttemptを署名つきで配置する。Aは、自分のAttemptの保存されたLeaseとWorkOrderのbytesをそのまま受け取り、Bの識別子を応答に含まない。2回目も同じbytes。Bは自分のbytes。Attemptを持たないWorkerは空の一覧。別のWorkerを名指す本文は400。証明書なしは401。失効したWorkerは次の要求で401になり何も受け取らない。Bは影響を受けない |
 
+## 割当の検証（MVP #57、Agent側）
+
+`assignment_agent_test.go`は、`eki-agent`がmTLSで割当を受け取り、ファイルから読んだ信頼の起点で検証し、nonceを耐久DBに登録し、開始の関門を通すことを、実際の署名で確かめます。Taskは実行しません。
+
+| 試験 | 内容 |
+|---|---|
+| `TestAgentVerifiesAndGateStartsDeliveredAssignments` | 本物の署名のAttemptは`ready`（上限は付与とローカルの天井の小さい方）。10分前に署名されたLeaseは`lease_expired`で拒否。別のWorkerのAttemptはこのAgentに届かず、そのWorkerのAgentには届く。Agentを再起動して同じbytesを受けても、`replayed`で、二度は開始しない |
+| `TestAgentWithAnotherTrustAnchorRefusesGenuineAssignments` | 別の鍵の信頼の起点を持つAgentは、本物の割当をLeaseの検証で拒否する |
+| `TestRevokedWorkersAgentReceivesNothing` | 失効したWorkerのAgentは、要求が拒否され、何も決定しない |
+| `TestAgentRefusesToStartWithoutATrustAnchor` | 信頼の起点のファイルがないと、Agentは起動せず失敗する |
+
+改ざんしたbytes、別のWorkerのWorkOrderを混ぜたLease、Governorによる保留、Policy revisionの不一致などの否定の場合は、同じ署名を使うプロセス内の試験（`internal/agent/assignment`）で確かめます。
 更新の試験は、証明書の有効期間が壁時計で判定されることを使います。待ちは壁時計で行います。WSLのように壁時計と単調時計がずれる環境で、固定のsleepが期限より短くならないようにするためです。
 
 ## 確かめないこと
 
-TLSを終端するプロキシを挟んだ構成、CA鍵のKMS・HSM保管、実時間の長い運用（72時間の更新）、実ネットワークの障害、複数のAgent、Worker側でのLease・WorkOrderの検証、Verificationの結果、Executorの実行は対象外です。Control Planeを強制終了しても、再起動後に同じClaimが届くことまでを確かめます。電源断は対象外です。seedのTask・Attempt・Leaseは、State Storeの公開APIで作った合成の入力で、署名の検証を経たものではありません。
+TLSを終端するプロキシを挟んだ構成、CA鍵のKMS・HSM保管、実時間の長い運用（72時間の更新）、実ネットワークの障害、複数のAgent、Verificationの結果、Executorの実行は対象外です。Control Planeを強制終了しても、再起動後に同じClaimが届くことまでを確かめます。電源断は対象外です。seedのTask・Attempt・Leaseは、State Storeの公開APIで作った合成の入力で、署名の検証を経たものではありません。

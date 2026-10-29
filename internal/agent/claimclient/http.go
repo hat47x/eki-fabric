@@ -22,6 +22,7 @@ import (
 // TEST PROFILE. It is not the Worker Protocol (#198) and its bearer token is
 // not an enrollment decision. See testprofile for the body format.
 type HTTPClient struct {
+	base     string
 	endpoint string
 	token    string // empty when the client authenticates by certificate
 	http     *http.Client
@@ -79,6 +80,7 @@ func NewHTTP(cfg HTTPConfig) (*HTTPClient, error) {
 		DisableCompression:  true,
 	}
 	return &HTTPClient{
+		base:     u.Scheme + "://" + u.Host,
 		endpoint: u.Scheme + "://" + u.Host + testprofile.Path,
 		token:    cfg.Token,
 		http: &http.Client{
