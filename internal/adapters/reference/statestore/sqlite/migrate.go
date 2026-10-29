@@ -896,6 +896,25 @@ func migrate(ctx context.Context, db *sql.DB, steps []string) error {
 		if err != nil {
 			return fmt.Errorf("begin schema migration to version %d: %w", v+1, err)
 		}
+		// Another process may have applied this step between the read above and
+		// the write lock taken by BeginTx (the DSN uses _txlock=immediate). Read
+		// the version again under the lock and skip a step that is already
+		// recorded, so two processes opening an old database do not both run it.
+		var current int
+		if err := tx.QueryRowContext(ctx, `PRAGMA user_version`).Scan(&current); err != nil {
+			_ = tx.Rollback()
+			return fmt.Errorf("re-read schema version before migration to version %d: %w", v+1, err)
+		}
+		if current > len(steps) {
+			_ = tx.Rollback()
+			return fmt.Errorf("%w: database is at version %d, this adapter supports up to %d", ErrUnsupportedSchema, current, len(steps))
+		}
+		if current > v {
+			if err := tx.Rollback(); err != nil {
+				return fmt.Errorf("release schema migration to version %d: %w", v+1, err)
+			}
+			continue
+		}
 		if _, err := tx.ExecContext(ctx, steps[v]); err != nil {
 			_ = tx.Rollback()
 			return fmt.Errorf("apply schema migration to version %d: %w", v+1, err)

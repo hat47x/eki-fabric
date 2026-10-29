@@ -1,6 +1,7 @@
 package enroll_test
 
 import (
+	"bytes"
 	"context"
 	"crypto/ecdsa"
 	"crypto/elliptic"
@@ -19,6 +20,7 @@ import (
 	"path/filepath"
 	"runtime"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -40,11 +42,8 @@ func (noClaims) SubmitClaim(context.Context, workerplane.Principal, resultclaim.
 	return workerplane.ClaimAck{}, errors.New("unused")
 }
 
-type wall struct{}
-
-func (wall) Now() time.Time { return time.Now().UTC() }
-
 type fixture struct {
+	clock      *fakeClock
 	srv        *httptest.Server
 	svc        *workerenrollment.Service
 	admin      workerenrollment.Admin
@@ -55,8 +54,12 @@ type fixture struct {
 
 func newFixture(t *testing.T, chain bool, validity time.Duration) *fixture {
 	t.Helper()
-	f := &fixture{}
-	certPEM, keyPEM, err := workerca.GenerateCA("example.org", 0, time.Now().Add(-time.Hour))
+	// Every certificate the Control Plane issues or verifies, and every check
+	// the Agent makes, reads this clock. The host's wall clock is not used, so a
+	// step of it (WSL steps by seconds) cannot make a fresh certificate "not yet
+	// valid" or an unexpired one expired.
+	f := &fixture{clock: newFakeClock(time.Now().UTC().Truncate(time.Second))}
+	certPEM, keyPEM, err := workerca.GenerateCA("example.org", 0, f.clock.Now().Add(-time.Hour))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -64,7 +67,7 @@ func newFixture(t *testing.T, chain bool, validity time.Duration) *fixture {
 	if err != nil {
 		t.Fatal(err)
 	}
-	svc, err := workerenrollment.New(workerenrollment.Config{Store: memory.New(), Clock: wall{}, Issuer: ca})
+	svc, err := workerenrollment.New(workerenrollment.Config{Store: memory.New(), Clock: f.clock, Issuer: ca})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -72,7 +75,7 @@ func newFixture(t *testing.T, chain bool, validity time.Duration) *fixture {
 	f.admin, _ = workerenrollment.NewAdmin("operator")
 	h, err := server.NewMTLSHandler(server.MTLSConfig{
 		Claims: noClaims{}, Registry: svc, WorkerCA: ca.Certificate(), TrustDomain: "example.org",
-		Logger: slog.New(slog.NewTextHandler(io.Discard, nil)),
+		Logger: slog.New(slog.NewTextHandler(io.Discard, nil)), Clock: f.clock.Now,
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -82,7 +85,7 @@ func newFixture(t *testing.T, chain bool, validity time.Duration) *fixture {
 	caKey, _ := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
 	caTmpl := &x509.Certificate{
 		SerialNumber: big.NewInt(1), Subject: pkix.Name{CommonName: "test server CA"},
-		NotBefore: time.Now().Add(-time.Hour), NotAfter: time.Now().Add(24 * time.Hour),
+		NotBefore: f.clock.Now().Add(-time.Hour), NotAfter: f.clock.Now().Add(24 * time.Hour),
 		IsCA: true, BasicConstraintsValid: true, KeyUsage: x509.KeyUsageCertSign,
 	}
 	caDER, _ := x509.CreateCertificate(rand.Reader, caTmpl, caTmpl, &caKey.PublicKey, caKey)
@@ -90,7 +93,7 @@ func newFixture(t *testing.T, chain bool, validity time.Duration) *fixture {
 	leafKey, _ := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
 	leafTmpl := &x509.Certificate{
 		SerialNumber: big.NewInt(2), Subject: pkix.Name{CommonName: "eki-control"},
-		NotBefore: time.Now().Add(-time.Hour), NotAfter: time.Now().Add(24 * time.Hour),
+		NotBefore: f.clock.Now().Add(-time.Hour), NotAfter: f.clock.Now().Add(24 * time.Hour),
 		KeyUsage: x509.KeyUsageDigitalSignature, ExtKeyUsage: []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth},
 		IPAddresses: []net.IP{net.ParseIP("127.0.0.1")},
 	}
@@ -127,7 +130,7 @@ func (f *fixture) params(t *testing.T, pin *x509.Certificate) enroll.Params {
 	t.Helper()
 	return enroll.Params{
 		ControlURL: f.srv.URL, Fingerprint: workercert.Fingerprint(pin.Raw),
-		Secret: f.secret(t), StateDir: filepath.Join(t.TempDir(), "state"),
+		Secret: f.secret(t), StateDir: filepath.Join(t.TempDir(), "state"), Clock: f.clock,
 	}
 }
 
@@ -270,7 +273,7 @@ func TestRenewUsesANewKeyAndSavesIt(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	next, err := enroll.Renew(context.Background(), p.ControlURL, p.StateDir, first)
+	next, err := enroll.Renew(context.Background(), p.ControlURL, p.StateDir, first, enroll.WithClock(f.clock))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -285,7 +288,7 @@ func TestRenewUsesANewKeyAndSavesIt(t *testing.T) {
 	if _, err := f.svc.SetWorkerState(context.Background(), f.admin, first.WorkerIdentity, workerregistry.StateDisabled); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := enroll.Renew(context.Background(), p.ControlURL, p.StateDir, next); err == nil {
+	if _, err := enroll.Renew(context.Background(), p.ControlURL, p.StateDir, next, enroll.WithClock(f.clock)); err == nil {
 		t.Fatal("a disabled Worker renewed")
 	}
 	if again, _ := enroll.Load(p.StateDir); !again.Key.Equal(next.Key) {
@@ -330,34 +333,263 @@ func TestNewIdentityRefusesCertificatesThatAreNotThisKeysWorkerCertificate(t *te
 	}
 }
 
+// fakeClock is a Clock that moves only when the test says so. A timer fires
+// when Advance carries the clock to or past its time.
+type fakeClock struct {
+	mu     sync.Mutex
+	now    time.Time
+	timers map[*fakeTimer]struct{}
+}
+
+func newFakeClock(start time.Time) *fakeClock {
+	return &fakeClock{now: start, timers: map[*fakeTimer]struct{}{}}
+}
+
+func (c *fakeClock) Now() time.Time {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return c.now
+}
+
+type fakeTimer struct {
+	c    *fakeClock
+	when time.Time
+	ch   chan time.Time
+}
+
+func (t *fakeTimer) C() <-chan time.Time { return t.ch }
+
+func (t *fakeTimer) Stop() bool {
+	t.c.mu.Lock()
+	defer t.c.mu.Unlock()
+	_, active := t.c.timers[t]
+	delete(t.c.timers, t)
+	return active
+}
+
+func (c *fakeClock) NewTimer(d time.Duration) enroll.Timer {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	t := &fakeTimer{c: c, when: c.now.Add(d), ch: make(chan time.Time, 1)}
+	if d <= 0 {
+		t.ch <- c.now
+		return t
+	}
+	c.timers[t] = struct{}{}
+	return t
+}
+
+// Advance moves the clock forward and fires the timers that are due.
+func (c *fakeClock) Advance(d time.Duration) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.now = c.now.Add(d)
+	for t := range c.timers {
+		if !t.when.After(c.now) {
+			t.ch <- c.now
+			delete(c.timers, t)
+		}
+	}
+}
+
+// untilNextTimer is how far the clock is from the earliest timer that waits,
+// and false when no timer waits.
+func (c *fakeClock) untilNextTimer() (time.Duration, bool) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	var first time.Time
+	for t := range c.timers {
+		if first.IsZero() || t.when.Before(first) {
+			first = t.when
+		}
+	}
+	if first.IsZero() {
+		return 0, false
+	}
+	return first.Sub(c.now), true
+}
+
+// waitForTimer blocks until the loop sleeps on a timer. The real-time bound
+// only guards against a stuck loop; a correct run returns at once.
+func (c *fakeClock) waitForTimer(t *testing.T, logs *safeBuffer) time.Duration {
+	t.Helper()
+	deadline := time.Now().Add(time.Minute)
+	for {
+		if d, waiting := c.untilNextTimer(); waiting {
+			return d
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("the renewal loop sleeps on no timer; fake now=%s logs=%q", c.Now().Format(time.RFC3339), logs.String())
+		}
+		time.Sleep(time.Millisecond)
+	}
+}
+
+// safeBuffer collects the loop's log lines, which another goroutine writes.
+type safeBuffer struct {
+	mu sync.Mutex
+	b  bytes.Buffer
+}
+
+func (s *safeBuffer) Write(p []byte) (int, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.b.Write(p)
+}
+
+func (s *safeBuffer) String() string {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.b.String()
+}
+
+// loopRun is RenewLoop running on the fixture's fake clock. The loop sleeps
+// on fake timers only, so the test steps the clock from timer to timer and the
+// host's wall clock decides nothing.
+type loopRun struct {
+	t    *testing.T
+	f    *fixture
+	logs *safeBuffer
+	done chan struct{}
+	// renewedAt receives the fake time of each renewal.
+	renewedAt chan time.Time
+}
+
+func startLoop(t *testing.T, f *fixture, p enroll.Params, holder *enroll.Holder) *loopRun {
+	t.Helper()
+	ctx, cancel := context.WithCancel(context.Background())
+	r := &loopRun{t: t, f: f, logs: &safeBuffer{}, done: make(chan struct{}), renewedAt: make(chan time.Time, 16)}
+	t.Cleanup(func() { cancel(); <-r.done })
+	go func() {
+		defer close(r.done)
+		enroll.RenewLoop(ctx, holder, p.ControlURL, p.StateDir, 100*time.Millisecond,
+			slog.New(slog.NewTextHandler(r.logs, nil)),
+			func() { r.renewedAt <- f.clock.Now() },
+			enroll.WithClock(f.clock))
+	}()
+	return r
+}
+
+// untilRenewed advances the fake clock to each timer the loop waits on, until
+// the loop renews (ok) or returns (not ok). The real-time bound only guards
+// against a stuck loop.
+func (r *loopRun) untilRenewed() (renewedAt time.Time, ok bool) {
+	r.t.Helper()
+	deadline := time.Now().Add(time.Minute)
+	for time.Now().Before(deadline) {
+		select {
+		case at := <-r.renewedAt:
+			return at, true
+		case <-r.done:
+			return time.Time{}, false
+		default:
+		}
+		select {
+		case at := <-r.renewedAt:
+			return at, true
+		case <-r.done:
+			return time.Time{}, false
+		case <-time.After(time.Millisecond):
+		}
+		if d, waiting := r.f.clock.untilNextTimer(); waiting {
+			r.f.clock.Advance(d)
+		}
+	}
+	r.t.Fatalf("the renewal loop did not renew or return in a minute; fake now=%s logs=%q", r.f.clock.Now().Format(time.RFC3339), r.logs.String())
+	return time.Time{}, false
+}
+
 func TestRenewLoopRenewsWhenAThirdRemains(t *testing.T) {
-	f := newFixture(t, true, 12*time.Second)
+	f := newFixture(t, true, time.Minute)
+	p := f.params(t, f.serverCA)
+	first, err := enroll.Enroll(context.Background(), p)
+	if err != nil {
+		t.Fatal(err)
+	}
+	lifetime := first.Leaf.NotAfter.Sub(first.Leaf.NotBefore)
+	renewAt := first.Leaf.NotAfter.Add(-lifetime / 3)
+	holder := enroll.NewHolder(first)
+	run := startLoop(t, f, p, holder)
+
+	at, ok := run.untilRenewed()
+	if !ok {
+		t.Fatalf("the loop returned without renewing; logs=%q", run.logs.String())
+	}
+	// It renews once a third of the lifetime remains: not before, and within
+	// one check interval after.
+	if at.Before(renewAt) || at.Sub(renewAt) > 5*time.Second {
+		t.Fatalf("renewed at %s; renewal is due at %s (NotBefore %s, NotAfter %s)",
+			at.Format(time.RFC3339), renewAt.Format(time.RFC3339), first.Leaf.NotBefore.Format(time.RFC3339), first.Leaf.NotAfter.Format(time.RFC3339))
+	}
+	next := holder.Get()
+	if next.Leaf.SerialNumber.Cmp(first.Leaf.SerialNumber) == 0 {
+		t.Fatal("the holder still has the first certificate")
+	}
+	// The Control Plane issued the new certificate at the time of the renewal.
+	if !next.Leaf.NotBefore.Equal(at.Truncate(time.Second)) {
+		t.Fatalf("new certificate NotBefore %s, renewal at %s", next.Leaf.NotBefore.Format(time.RFC3339), at.Format(time.RFC3339))
+	}
+	if loaded, err := enroll.Load(p.StateDir); err != nil || loaded.Leaf.SerialNumber.Cmp(next.Leaf.SerialNumber) != 0 {
+		t.Fatalf("the renewed identity was not saved: %v", err)
+	}
+}
+
+func TestRenewLoopDoesNotRenewBeforeAThirdRemains(t *testing.T) {
+	f := newFixture(t, true, time.Minute)
 	p := f.params(t, f.serverCA)
 	first, err := enroll.Enroll(context.Background(), p)
 	if err != nil {
 		t.Fatal(err)
 	}
 	holder := enroll.NewHolder(first)
-	ctx, cancel := context.WithCancel(context.Background())
-	done := make(chan struct{})
-	renewed := make(chan struct{}, 1)
-	go func() {
-		defer close(done)
-		enroll.RenewLoop(ctx, holder, p.ControlURL, p.StateDir, 100*time.Millisecond, slog.New(slog.NewTextHandler(io.Discard, nil)), func() { renewed <- struct{}{} })
-	}()
+	run := startLoop(t, f, p, holder)
+	before := f.requests.Load()
+
+	// Step the clock through the loop's own timers up to one second before
+	// the renewal is due.
+	due := first.RenewAt()
+	for {
+		d := f.clock.waitForTimer(t, run.logs)
+		if f.clock.Now().Add(d).After(due.Add(-time.Second)) {
+			break
+		}
+		f.clock.Advance(d)
+	}
 	select {
-	case <-renewed:
-	case <-time.After(20 * time.Second):
-		t.Fatal("the certificate was not renewed")
+	case at := <-run.renewedAt:
+		t.Fatalf("renewed at %s, before it was due at %s", at.Format(time.RFC3339), due.Format(time.RFC3339))
+	default:
 	}
-	cancel()
-	<-done
-	next := holder.Get()
-	if next.Leaf.SerialNumber.Cmp(first.Leaf.SerialNumber) == 0 {
-		t.Fatal("the holder still has the first certificate")
+	if n := f.requests.Load(); n != before {
+		t.Fatalf("%d requests were sent before the renewal was due", n-before)
 	}
-	// It renewed once a third of the lifetime remained, not much earlier.
-	if at := next.Leaf.NotBefore; at.Sub(first.Leaf.NotBefore) < first.Leaf.NotAfter.Sub(first.Leaf.NotBefore)/2 {
-		t.Fatalf("renewed after only %v of a %v lifetime", at.Sub(first.Leaf.NotBefore), first.Leaf.NotAfter.Sub(first.Leaf.NotBefore))
+	if holder.Get().Leaf.SerialNumber.Cmp(first.Leaf.SerialNumber) != 0 {
+		t.Fatal("the certificate was replaced before it was due")
+	}
+}
+
+func TestRenewLoopStopsOnceTheCertificateHasExpired(t *testing.T) {
+	f := newFixture(t, true, time.Minute)
+	p := f.params(t, f.serverCA)
+	first, err := enroll.Enroll(context.Background(), p)
+	if err != nil {
+		t.Fatal(err)
+	}
+	holder := enroll.NewHolder(first)
+	run := startLoop(t, f, p, holder)
+	f.clock.waitForTimer(t, run.logs)
+	before := f.requests.Load()
+
+	// The clock passes NotAfter while the loop sleeps. An expired certificate
+	// cannot renew, so the loop reports it and ends without asking.
+	f.clock.Advance(first.Leaf.NotAfter.Sub(f.clock.Now()) + time.Second)
+	if _, ok := run.untilRenewed(); ok {
+		t.Fatal("an expired certificate was renewed")
+	}
+	if !strings.Contains(run.logs.String(), "expired and cannot renew") {
+		t.Fatalf("logs=%q", run.logs.String())
+	}
+	if f.requests.Load() != before {
+		t.Fatal("a request was sent with an expired certificate")
 	}
 }

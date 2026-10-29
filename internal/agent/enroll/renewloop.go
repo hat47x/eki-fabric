@@ -24,31 +24,36 @@ const (
 //
 // onRenewed runs after each success, for example to close idle connections so
 // the next one uses the new certificate.
-func RenewLoop(ctx context.Context, holder *Holder, controlURL, stateDir string, retry time.Duration, log *slog.Logger, onRenewed func()) {
+//
+// The loop reads the time from the clock given by WithClock, the system clock
+// by default. A certificate expires by the wall clock, so the default compares
+// it with the wall clock and re-reads it at least every maxCheck.
+func RenewLoop(ctx context.Context, holder *Holder, controlURL, stateDir string, retry time.Duration, log *slog.Logger, onRenewed func(), opts ...Option) {
+	clock := applyOptions(opts).clock
 	if retry <= 0 {
 		retry = DefaultRenewRetry
 	}
 	for {
 		id := holder.Get()
-		wait := time.Until(id.RenewAt())
+		wait := id.RenewAt().Sub(clock.Now())
 		if wait > maxCheck {
 			wait = maxCheck
 		}
 		if wait > 0 {
-			t := time.NewTimer(wait)
+			t := clock.NewTimer(wait)
 			select {
 			case <-ctx.Done():
 				t.Stop()
 				return
-			case <-t.C:
+			case <-t.C():
 			}
 			continue
 		}
-		if id.Expired(time.Now()) {
+		if id.Expired(clock.Now()) {
 			log.Error("worker certificate expired and cannot renew; enroll again with a new enrollment credential", "worker", id.WorkerIdentity)
 			return
 		}
-		next, err := Renew(ctx, controlURL, stateDir, id)
+		next, err := Renew(ctx, controlURL, stateDir, id, opts...)
 		switch {
 		case err == nil:
 			holder.Set(next)
@@ -64,12 +69,12 @@ func RenewLoop(ctx context.Context, holder *Holder, controlURL, stateDir string,
 			return
 		}
 		log.Warn("worker certificate renewal failed; will retry", "worker", id.WorkerIdentity, "error", err.Error(), "expires", id.Leaf.NotAfter.Format(time.RFC3339))
-		t := time.NewTimer(retry)
+		t := clock.NewTimer(retry)
 		select {
 		case <-ctx.Done():
 			t.Stop()
 			return
-		case <-t.C:
+		case <-t.C():
 		}
 	}
 }
