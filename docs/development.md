@@ -6,7 +6,16 @@
 
 ## 現在の実装段階
 
-現在は、M0 executable skeletonの最初の段階です。
+この節が、実装の現状（何が動き、何が動かないか）の正本です。他の文書は、ここを参照します。
+
+M0 executable skeletonのうち、Client API、永続State Store、Worker CA・enrollment・mTLS、Worker→Control Planeの申告の配送までが動きます。Control PlaneからWorkerへLease・WorkOrderを配る経路と、Taskを実際に実行する経路は、まだありません。動かないものと、その作業は、次のIssueで管理しています。
+
+- [#242](https://github.com/hat47x/eki-fabric/issues/242): `eki-control`の起動経路に、Lease発行・WorkOrder発行・結果受理の実行系を配線する
+- [#243](https://github.com/hat47x/eki-fabric/issues/243): Control PlaneからWorkerへLease・WorkOrderを配る経路を、Worker Planeに定める
+- [#245](https://github.com/hat47x/eki-fabric/issues/245): Clientの入力Artifactの取り込み経路を実装する単位に分ける
+- [#267](https://github.com/hat47x/eki-fabric/issues/267): Taskのphaseを`admitted`から`ready`・`active`へ進める遷移の主体を決める
+
+上の一覧は作業の例です。最新の状況は、GitHub Issueで確かめてください。
 
 Task APIは`--config`で起動できます。Worker listenerは任意で、二つの認証の方式があります。
 
@@ -152,7 +161,7 @@ External Client Planeは、`spec/external/openapi.json`を基準にします。
 整形、静的検査、Testを一度に確かめるには、リポジトリのルートで次を実行します。
 
 ~~~bash
-./scripts/verify.sh          # gofmt / go vet / go test
+./scripts/verify.sh          # gofmt / go vet / go test -count=1（キャッシュを使わず再実行する）
 ./scripts/verify.sh --quick  # gofmt / go vet だけ
 ~~~
 
@@ -164,6 +173,8 @@ powershell -NoProfile -ExecutionPolicy Bypass -File scripts\verify.ps1 -Quick
 ~~~
 
 どちらのスクリプトも、最後に`VERIFY: PASS`または`VERIFY: FAIL`を出力します。PRには、この行と、失敗した場合の差分を貼ってください。
+
+スクリプトの`go test`は、CONTRIBUTING.mdの検証と同じ`-count=1`で実行します。Goのtest cacheが前回の結果を`(cached)`で返し、別プロセスの通信に依存する失敗を隠すことを避けるためです。3か所のコマンドが一致していることは、`scripts/check-verify-parity.sh`（Go不要）で確かめられます。
 
 `gofmt`の判定は、CRLFの作業ツリーでもLFと同じ結果になるようにしています。改行コードの違いを整形の差分として扱いません。
 
@@ -197,7 +208,7 @@ SQLiteの参照アダプタは`internal/adapters/reference/statestore/sqlite`に
 
 Taskのsubmit、status、cancelは、`eki-control --config`で起動するClient APIとして、実装済みです（[ADR-0006](../plan/adr/0006-m0-client-api-authentication-and-admission.md)）。起動の方法は、次の節を参照してください。
 
-次の作業単位は、AttemptとLeaseの永続化と、LSE-1（Lease Authority）です。
+Attempt・Leaseの永続化（`internal/adapters/reference/statestore/sqlite`）と、LSE-1（`internal/core/leaseissue`）は実装済みです。次の作業は、固定の文章にせず、「現在の実装段階」の節に挙げたIssueとGitHub Issueの一覧を参照してください。
 
 ## Control Planeを起動する
 

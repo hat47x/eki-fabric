@@ -955,7 +955,8 @@
             "type": "string",
             "minLength": 1,
             "maxLength": 128,
-            "pattern": "^[A-Z][A-Z0-9_]{0,127}$"
+            "pattern": "^[A-Z][A-Z0-9_]{0,127}$",
+            "description": "Machine-readable reason a Task reached a terminal state. When the Task ended because its deadline passed, the value distinguishes two cases. DEADLINE_EXPIRED_NOT_STARTED: no Attempt had a dispatch record, so the Task is known not to have run. DEADLINE_EXPIRED_AFTER_DISPATCH: a dispatched Attempt remained, so it is unknown whether the work ran; this code is used only for side-effect-free work. A Task whose side effects are unknown stays reconciling and carries neither code. A Task ended by its deadline no longer counts toward the outstanding-Task limit. See architecture/TASK_STATE_MODEL.md section 7.3."
           },
           "public_message": {
             "type": "string",

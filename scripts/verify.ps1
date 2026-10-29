@@ -83,7 +83,7 @@ try {
 	if (-not $Quick) {
 		Write-Output ''
 		Write-Output '== go test =='
-		& go test ./...
+		& go test ./... -count=1
 		if ($LASTEXITCODE -ne 0) { $status = 1 }
 	}
 

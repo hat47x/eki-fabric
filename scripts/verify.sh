@@ -71,7 +71,7 @@ fi
 if [ "$quick" -eq 0 ]; then
 	echo
 	echo "== go test =="
-	if ! go test ./...; then
+	if ! go test ./... -count=1; then
 		status=1
 	fi
 fi
