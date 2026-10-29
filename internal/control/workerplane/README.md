@@ -40,6 +40,7 @@ Connect handler（認証・framing）
 | `POST /v1/worker/enroll` | クライアント証明書は不要。`Authorization: Bearer <enrollment資格>` | CSRを受け、資格を消費し、登録簿が発行した識別子の証明書とCAの証明書を返す |
 | `POST /v1/worker/renew` | 現在有効なクライアント証明書（mTLS） | 新しい鍵のCSRで、新しい証明書を返す。同じ鍵のCSRは400。期限切れ・無効化・失効のWorkerは401 |
 | `POST /test-profile/v1/claims`（試験用profileと同じ経路） | クライアント証明書（mTLS） | ResultClaimを受ける。Claimの本文は試験用profileのJSONのまま |
+| `POST /test-profile/v1/assignments`（試験用profile） | クライアント証明書（mTLS） | 証明書のWorkerが持つAttemptの、署名済みLeaseとWorkOrderを返す。本文は空のJSONオブジェクトだけで、Workerを名指す欄を持たない（持つ本文は400）。`MTLSConfig.Assignments`がnilなら経路自体がない（404） |
 
 ### 認証
 
@@ -65,3 +66,11 @@ Worker listenerは、Client APIとは別のlistenerと別のauthenticatorです�
 - sessionの識別子を証明書へ束縛すること、再接続のたびの新しいsession（ADR-0027の2.3 項13）。今は接続の単位でしか分けていない。
 - Leaseの配送、WorkOrderの配信。
 - 流量制限と監査用のrequest ID。enrollmentの総当たりへの対策も、まだ無い。
+
+### 割当の配送（`assignments.go`、試験用profile）
+
+`AssignmentService`は、State Storeの`ListEmittedAssignments`を読み、証明書が名指すWorkerに限って、EMITTEDのLeaseとWorkOrderの**保存されたbytesそのまま**を返します。署名し直しも、新しい発行もしません。返す条件は、Attemptが当のWorkerに結び付き、ASSIGNEDまたはDISPATCHEDで、LeaseとWorkOrderの両方がEMITTEDであることです。ABORTED、RESERVEDだけのLease、閉じたAttemptは返しません。
+
+- 「配送済み」の印は付けません。同じ問い合わせには同じbytesを返します（冪等な再配送）。DBの移行も要りません。重複して実行されないことは、Worker側のnonceの一回限りの消費が受け持ちます。
+- 通信は#198のWorker Protocolではなく、試験用profileのJSONです（`internal/spi/workerplane/testprofile`）。bytesはbase64で運びます。
+- 返したbytesは、Workerが検証するまで信用できません。この経路は配る側であり、実行を許可しません。
