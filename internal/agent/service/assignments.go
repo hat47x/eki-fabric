@@ -40,6 +40,20 @@ type AssignmentConfig struct {
 	// CeilingPercent is the Local Governor's ceiling for every resource, 1..100.
 	// A static stand-in for the real Local Governor.
 	CeilingPercent int `json:"ceiling_percent"`
+	// Execution turns on local execution of a ready assignment with one fixed
+	// command. Nil keeps the Agent record-only.
+	Execution *ExecutionConfig `json:"execution,omitempty"`
+}
+
+// ExecutionConfig is a fixed command the Agent runs for every ready
+// assignment. The command and arguments are trusted Worker configuration, not
+// Task input. This is not a sandbox.
+type ExecutionConfig struct {
+	Command          string   `json:"command"`
+	Args             []string `json:"args,omitempty"`
+	AllowedArgs      []string `json:"allowed_args,omitempty"`
+	ExecutableSHA256 string   `json:"executable_sha256,omitempty"`
+	StopGraceSeconds int      `json:"stop_grace_seconds,omitempty"`
 }
 
 type ExecutorApprovalConfig struct {
@@ -66,6 +80,8 @@ func prepareAssignments(c *AssignmentConfig) (*trustanchor.Anchor, []assignment.
 		return nil, nil, fmt.Errorf("%w: assignments need the machine's cpu_millis and memory_bytes", ErrInvalidConfig)
 	case c.CeilingPercent < 1 || c.CeilingPercent > 100:
 		return nil, nil, fmt.Errorf("%w: ceiling_percent must be 1..100", ErrInvalidConfig)
+	case c.Execution != nil && c.Execution.Command == "":
+		return nil, nil, fmt.Errorf("%w: execution.command is required when execution is enabled", ErrInvalidConfig)
 	}
 	anchor, err := trustanchor.Load(c.TrustAnchorFile)
 	if err != nil {
@@ -87,15 +103,20 @@ func prepareAssignments(c *AssignmentConfig) (*trustanchor.Anchor, []assignment.
 }
 
 type event struct {
-	Time       time.Time `json:"time"`
-	AttemptID  string    `json:"attempt_id"`
-	LeaseID    string    `json:"lease_id"`
-	Outcome    string    `json:"outcome"`
-	Reason     string    `json:"reason,omitempty"`
-	FenceEpoch uint64    `json:"fence_epoch,omitempty"`
-	CPUMillis  uint64    `json:"cpu_millis,omitempty"`
-	MemBytes   uint64    `json:"memory_bytes,omitempty"`
-	Deadline   time.Time `json:"deadline,omitzero"`
+	Time            time.Time `json:"time"`
+	AttemptID       string    `json:"attempt_id"`
+	LeaseID         string    `json:"lease_id"`
+	Outcome         string    `json:"outcome"`
+	Reason          string    `json:"reason,omitempty"`
+	FenceEpoch      uint64    `json:"fence_epoch,omitempty"`
+	CPUMillis       uint64    `json:"cpu_millis,omitempty"`
+	MemBytes        uint64    `json:"memory_bytes,omitempty"`
+	Deadline        time.Time `json:"deadline,omitzero"`
+	ExecutionStatus string    `json:"execution_status,omitempty"`
+	ExitCode        int       `json:"exit_code,omitempty"`
+	OutputBytes     uint64    `json:"output_bytes,omitempty"`
+	OutputDigest    string    `json:"output_digest,omitempty"`
+	Failure         string    `json:"failure,omitempty"`
 }
 
 type eventLog struct {
@@ -130,13 +151,19 @@ func runAssignments(ctx context.Context, c *AssignmentConfig, anchor *trustancho
 	}
 	defer guard.Close()
 	events := &eventLog{path: c.EventsFile}
+	var handler assignment.Handler = assignment.HandlerFunc(func(context.Context, assignment.Ready) error { return nil })
+	if c.Execution != nil {
+		execHandler, err := newExecutionHandler(c.Execution, events, log)
+		if err != nil {
+			return err
+		}
+		handler = execHandler
+	}
 	svc, err := assignment.New(assignment.Config{
 		Source: source, Principal: principal, Anchor: anchor, Replay: guard, Clock: systemClock{},
 		Executors: execs, Governor: assignment.StaticGovernor(c.CeilingPercent),
 		Machine: startgate.MachineProfile{CPUMillis: c.Machine.CPUMillis, MemoryBytes: c.Machine.MemoryBytes, GPUDevices: c.Machine.GPUDevices},
-		// The Agent does not execute Tasks yet: a ready assignment is recorded
-		// and nothing starts. The executor lives behind this Handler.
-		Handler: assignment.HandlerFunc(func(context.Context, assignment.Ready) error { return nil }),
+		Handler: handler,
 		Logger:  log,
 	})
 	if err != nil {
