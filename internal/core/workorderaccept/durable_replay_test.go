@@ -52,7 +52,7 @@ func TestSignedWorkOrderReplayIsRejectedAfterGuardRestart(t *testing.T) {
 	if err := guard.Close(); err != nil {
 		t.Fatal(err)
 	}
-	if admission, err := service.Accept(context.Background(), other); !errors.Is(err, ErrReplayUnknown) || !admission.IsZero() {
+	if admission, err := service.Accept(context.Background(), other); !errors.Is(err, ErrFenceUnknown) || !admission.IsZero() {
 		t.Fatalf("closed durable guard = %v, %v", admission, err)
 	}
 }

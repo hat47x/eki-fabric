@@ -415,3 +415,32 @@ func TestConfigurationFailsClosed(t *testing.T) {
 		t.Fatalf("empty config: %v", err)
 	}
 }
+
+func TestAnAssignmentBehindAnAcceptedFenceIsSuperseded(t *testing.T) {
+	w := newWorld(t)
+	clk := &clock{now: w.now.Add(time.Second)}
+	guard, err := replayguardmemory.New(clk, 1024)
+	if err != nil {
+		t.Fatal(err)
+	}
+	asg := w.place("worker-a", w.now)
+	a := w.agent("worker-a", options{replay: guard, clock: clk})
+	want(t, a.poll(t, asg), assignment.OutcomeReady, "")
+	task := a.started[0].Admission.TaskID().String()
+
+	// The Control Plane re-places the Task and the Worker accepts the newer
+	// Attempt. The fence record is the durable state a restart preserves,
+	// which the in-memory done map cannot keep.
+	if ok, err := guard.Fence(context.Background(), task, 42, clk.now.Add(time.Hour)); err != nil || !ok {
+		t.Fatalf("seed fence = %v, %v", ok, err)
+	}
+	// A restarted Worker refuses the older Attempt as superseded: its fence
+	// is behind the accepted one, and the refusal repeats on every poll
+	// instead of the Attempt being lost or started.
+	restarted := w.agent("worker-a", options{replay: guard, clock: clk})
+	want(t, restarted.poll(t, asg), assignment.OutcomeRejected, "work_order_superseded")
+	want(t, restarted.poll(t, asg), assignment.OutcomeRejected, "work_order_superseded")
+	if len(restarted.started) != 0 {
+		t.Fatal("a superseded Attempt was started")
+	}
+}

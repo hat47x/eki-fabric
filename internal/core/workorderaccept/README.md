@@ -8,13 +8,16 @@ signed WorkOrder bytes
   -> local Lease evidence         # Task / TaskIR / Attempt / Worker / Lease ref / expiry
   -> Placement Approval evidence  # decision ID / digest / subject
   -> Executor Approval evidence   # decision ID / digest / executor digest
+  -> fence claim                  # Taskの最大fenceより古ければ拒否（#296）
   -> nonce claim                  # 期限内で一度だけ
   -> Admission
 ```
 
 ## 順序
 
-nonceは、他のすべての確認が通った後にだけ獲得します。署名が不正なWorkOrder、Leaseと食い違うWorkOrder、期限切れのLeaseに対するWorkOrderは、nonceを消費しません。一度拒否された指示を、別の理由で後から再送しても、nonceの予算を無駄に使わないためです。
+fenceとnonceは、他のすべての確認が通った後にだけ獲得します。署名が不正なWorkOrder、Leaseと食い違うWorkOrder、期限切れのLeaseに対するWorkOrderは、どちらも消費しません。一度拒否された指示を、別の理由で後から再送しても、予算を無駄に使わないためです。
+
+fenceはnonceの前に記録します。同じAttemptの再発行は同じfenceを持つので通り、同じTaskの新しいAttemptはfenceが進むので通ります。逆に、受理済みのfenceより古いAttemptは、Leaseの期限が残っていても`ErrSuperseded`で拒否され、nonceを消費しません。fenceを先に記録するのは、nonce消費の直後に死んでも受理がfenceに残るようにするためです。このfenceの記録が、Worker側のTaskごとの重複排除（#296 item 3）の耐久的な側面です。メモリ上の処理済み記録はAttempt単位で再起動で消えますが、fenceとnonceの記録は`replayguard`に残ります。
 
 ## Admissionが表すもの
 
@@ -45,4 +48,4 @@ Admission != Local Governorの承認
 
 ## 失敗の扱い
 
-`ErrLeaseMismatch`、`ErrLeaseExpired`、`ErrPlacementMismatch`、`ErrExecutorMismatch`、`ErrReplay`、`ErrReplayUnknown`を返します。`ErrReplayUnknown`は、nonceの獲得結果が分からない状態であり、実行の許可として扱いません。署名検証の失敗は、`decisiontrust.VerificationFailure`としてそのまま返します。
+`ErrLeaseMismatch`、`ErrLeaseExpired`、`ErrPlacementMismatch`、`ErrExecutorMismatch`、`ErrSuperseded`、`ErrReplay`、`ErrFenceUnknown`、`ErrReplayUnknown`を返します。`ErrFenceUnknown`と`ErrReplayUnknown`は、fence・nonceの獲得結果が分からない状態であり、実行の許可として扱いません。署名検証の失敗は、`decisiontrust.VerificationFailure`としてそのまま返します。

@@ -56,6 +56,10 @@ func (g *fakeGuard) Claim(_ context.Context, nonce []byte, _ time.Time) (bool, e
 	return true, nil
 }
 
+func (g *fakeGuard) Fence(context.Context, string, uint64, time.Time) (bool, error) {
+	return true, nil
+}
+
 func admission(t *testing.T, now time.Time, mutate func(*decisionpayload.WorkOrderConfig)) workorderaccept.Admission {
 	t.Helper()
 	codec, err := cosecbor.New()

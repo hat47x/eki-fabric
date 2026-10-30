@@ -6,12 +6,14 @@ Control Planeが配る署名済みのLeaseとWorkOrderを、Workerが自分の�
 
 1. `leaseverify`: このWorker宛てで、信頼の起点に載るLSE-1の鍵の署名があり、有効期間内で、Trust Bundleが新しいこと。
 2. LeaseとWorkOrderがWorkerの受け入れるPolicy revisionを名指すこと。
-3. `workorderverify`と`workorderaccept`: このWorker宛てで、WOR-1の鍵の署名があり、そのLease（Decision IDとpayload digest）に結び付き、Workerが自分で承認したExecutor Approvalを名指し、一回限りのnonceをWorker自身の耐久的な重複検査に登録できること。
+3. `workorderverify`と`workorderaccept`: このWorker宛てで、WOR-1の鍵の署名があり、そのLease（Decision IDとpayload digest）に結び付き、Workerが自分で承認したExecutor Approvalを名指し、Taskのfenceが受理済みの最大より古くなく、一回限りのnonceをWorker自身の耐久的な重複検査に登録できること（#296 項目3）。
 4. `startgate`: Local Governorと機械の容量が開始を許し、実効の上限が、付与された上限とローカルの天井の小さい方になること。
 
 荷札のIDは参考情報です。署名済みのLeaseと食い違えば拒否します。
 
-結果は`Outcome`で返ります。`ready`（`Handler`へ渡した）、`replayed`（nonceは使用済み。同じbytesが再配送されたときの通常の答え）、`deferred`（Local Governorが新規を受け付けない、または開始の関門が容量や期限で拒否した。nonceは消費していないので、Control Planeは同じTaskに新しいnonceで再発行できる）、`rejected`（理由付き）です。nonceは、署名・結び付き・承認・開始関門の確認がすべて通ってから消費します。改ざんや食い違いのbytesはnonceを消費しません。開始関門の拒否もnonceを消費しません（#296 項目2の修正）。
+結果は`Outcome`で返ります。`ready`（`Handler`へ渡した）、`replayed`（nonceは使用済み。同じbytesが再配送されたときの通常の答え）、`deferred`（Local Governorが新規を受け付けない、または開始の関門が容量や期限で拒否した。nonceは消費していないので、Control Planeは同じTaskに新しいnonceで再発行できる）、`rejected`（理由付き）です。nonceとfenceは、署名・結び付き・承認・開始関門の確認がすべて通ってから記録します。改ざんや食い違いのbytesはどちらも記録しません。開始関門の拒否も記録しません（#296 項目2の修正）。
+
+再起動をまたぐ重複排除は二層です。同じAttemptの再配送はnonceの記録が`replayed`に落とし、同じTaskの古いAttempt（fenceが古い）はfenceの記録が`work_order_superseded`で拒否します。メモリ上の処理済み記録はAttempt単位で再起動で消えますが、この二つの記録は`replayguard`に残ります。拒否された割当は処理済みにしないので、期限が切れるまで毎回、再判定します。
 
 ## 確かめないこと
 

@@ -43,12 +43,17 @@ type fakeClock struct{ now time.Time }
 func (c *fakeClock) Now() time.Time { return c.now }
 
 type fakeGuard struct {
-	claimed map[string]bool
-	until   []time.Time
-	err     error
+	claimed  map[string]bool
+	until    []time.Time
+	fences   map[string]uint64
+	err      error
+	claimErr error
 }
 
 func (g *fakeGuard) Claim(_ context.Context, nonce []byte, until time.Time) (bool, error) {
+	if g.claimErr != nil {
+		return false, g.claimErr
+	}
 	if g.err != nil {
 		return false, g.err
 	}
@@ -61,6 +66,20 @@ func (g *fakeGuard) Claim(_ context.Context, nonce []byte, until time.Time) (boo
 	}
 	g.claimed[key] = true
 	g.until = append(g.until, until)
+	return true, nil
+}
+
+func (g *fakeGuard) Fence(_ context.Context, taskID string, epoch uint64, _ time.Time) (bool, error) {
+	if g.err != nil {
+		return false, g.err
+	}
+	if g.fences == nil {
+		g.fences = map[string]uint64{}
+	}
+	if stored, ok := g.fences[taskID]; ok && epoch < stored {
+		return false, nil
+	}
+	g.fences[taskID] = epoch
 	return true, nil
 }
 
@@ -366,6 +385,15 @@ func TestAcceptRejectsReplayedNonce(t *testing.T) {
 func TestAcceptReportsReplayGuardFailure(t *testing.T) {
 	fx := newFixture(t)
 	fx.guard.err = errors.New("store unavailable")
+	// The fence claim is the first durable touch, so its failure surfaces
+	// first; either unknown outcome is a refusal.
+	if _, err := fx.service.Accept(context.Background(), fx.request(nil)); !errors.Is(err, ErrFenceUnknown) {
+		t.Fatalf("error = %v, want %v", err, ErrFenceUnknown)
+	}
+	// A guard that answers the fence but fails the nonce claim is unknown too.
+	fx.guard.fences = map[string]uint64{fx.lease.TaskID.String(): fx.lease.FenceEpoch}
+	fx.guard.err = nil
+	fx.guard.claimErr = errors.New("store unavailable")
 	if _, err := fx.service.Accept(context.Background(), fx.request(nil)); !errors.Is(err, ErrReplayUnknown) {
 		t.Fatalf("error = %v, want %v", err, ErrReplayUnknown)
 	}

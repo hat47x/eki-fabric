@@ -9,6 +9,7 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"math"
 	"net/url"
 	"os"
 	"path/filepath"
@@ -24,6 +25,7 @@ import (
 var (
 	ErrInvalidGuard  = errors.New("invalid durable replay guard configuration")
 	ErrInvalidNonce  = errors.New("invalid nonce claim")
+	ErrInvalidFence  = errors.New("invalid fence claim")
 	ErrGuardCapacity = errors.New("replay guard is full")
 )
 
@@ -119,6 +121,14 @@ func (g *Guard) initialize(ctx context.Context) error {
  nonce_hash BLOB PRIMARY KEY NOT NULL CHECK(typeof(nonce_hash) = 'blob' AND length(nonce_hash) = 32),
  until_ns INTEGER NOT NULL CHECK(typeof(until_ns) = 'integer' AND until_ns > 0))`,
 		`CREATE INDEX IF NOT EXISTS nonce_claim_expiry ON nonce_claims(until_ns)`,
+		// The per-Task fence records (#296) are an additive table: a guard
+		// database written by an older schema keeps working, so the schema
+		// version stays 1.
+		`CREATE TABLE IF NOT EXISTS fence_claims (
+ task_id TEXT PRIMARY KEY NOT NULL CHECK(length(task_id) > 0),
+ epoch INTEGER NOT NULL CHECK(typeof(epoch) = 'integer' AND epoch > 0),
+ until_ns INTEGER NOT NULL CHECK(typeof(until_ns) = 'integer' AND until_ns > 0))`,
+		`CREATE INDEX IF NOT EXISTS fence_claim_expiry ON fence_claims(until_ns)`,
 	} {
 		if _, err := tx.ExecContext(ctx, statement); err != nil {
 			return err
@@ -198,6 +208,79 @@ func (g *Guard) Claim(ctx context.Context, nonce []byte, until time.Time) (bool,
 
 func validTime(t time.Time) bool {
 	return !t.IsZero() && t.UnixNano() > 0 && time.Unix(0, t.UnixNano()).UTC().Equal(t)
+}
+
+// Fence records the highest accepted fence epoch of one Task. A stale epoch
+// (lower than the stored maximum, whose record is still live) returns false
+// and writes nothing; the same or a higher epoch is recorded and returns true.
+// Expired records are purged and their capacity released, like nonce claims.
+// A commit error may still mean the record was written, so fail closed.
+func (g *Guard) Fence(ctx context.Context, taskID string, epoch uint64, until time.Time) (bool, error) {
+	if g == nil || g.db == nil || g.clock == nil {
+		return false, ErrInvalidGuard
+	}
+	if err := validateFence(taskID, epoch); err != nil {
+		return false, err
+	}
+	if err := ctx.Err(); err != nil {
+		return false, err
+	}
+	tx, err := g.db.BeginTx(ctx, nil)
+	if err != nil {
+		return false, err
+	}
+	defer tx.Rollback()
+	// Read the trusted clock after acquiring the write lock, not before waiting.
+	now := g.clock.Now().UTC()
+	until = until.UTC()
+	if !validTime(now) || !validTime(until) || !until.After(now) {
+		return false, ErrInvalidFence
+	}
+	if _, err := tx.ExecContext(ctx, `DELETE FROM fence_claims WHERE until_ns <= ?`, now.UnixNano()); err != nil {
+		return false, err
+	}
+	var stored int64
+	err = tx.QueryRowContext(ctx, `SELECT epoch FROM fence_claims WHERE task_id = ?`, taskID).Scan(&stored)
+	switch {
+	case err == nil:
+		if epoch < uint64(stored) {
+			return false, nil
+		}
+		if _, err := tx.ExecContext(ctx,
+			`UPDATE fence_claims SET epoch = ?, until_ns = MAX(until_ns, ?) WHERE task_id = ?`,
+			int64(epoch), until.UnixNano(), taskID); err != nil {
+			return false, err
+		}
+	case errors.Is(err, sql.ErrNoRows):
+		var count int
+		if err := tx.QueryRowContext(ctx, `SELECT COUNT(*) FROM fence_claims`).Scan(&count); err != nil {
+			return false, err
+		}
+		if count >= g.maxEntries {
+			return false, ErrGuardCapacity
+		}
+		if _, err := tx.ExecContext(ctx,
+			`INSERT INTO fence_claims(task_id, epoch, until_ns) VALUES (?, ?, ?)`,
+			taskID, int64(epoch), until.UnixNano()); err != nil {
+			return false, err
+		}
+	default:
+		return false, err
+	}
+	if err := tx.Commit(); err != nil {
+		return false, err
+	}
+	return true, nil
+}
+
+func validateFence(taskID string, epoch uint64) error {
+	switch {
+	case taskID == "":
+		return fmt.Errorf("%w: Task ID is required", ErrInvalidFence)
+	case epoch == 0 || epoch > math.MaxInt64:
+		return fmt.Errorf("%w: fence epoch must be 1..%d", ErrInvalidFence, int64(math.MaxInt64))
+	}
+	return nil
 }
 
 func dsn(path string) string {

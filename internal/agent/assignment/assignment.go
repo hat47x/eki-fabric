@@ -12,7 +12,9 @@
 //  3. workorderverify and workorderaccept: the WorkOrder is for this Worker,
 //     signed by a WOR-1 key, bound to exactly that Lease (decision and payload
 //     digest), names an Executor Approval from the Worker's own approved list,
-//     and its one-time nonce is claimed in the Worker's durable replay guard;
+//     and its Task's fence epoch is not behind a higher fence the Worker
+//     already accepted, and its one-time nonce is claimed in the Worker's
+//     durable replay guard;
 //  4. startgate: the Local Governor and the machine allow a start, and the
 //     effective limits are the smaller of the grant and the local ceiling.
 //
@@ -135,6 +137,10 @@ type Service struct {
 
 	mu   sync.Mutex
 	done map[string]struct{} // Attempts already handed over or already spent
+	// The in-memory done map dedupes per Attempt within one process. Across
+	// restarts, the durable dedupe is the replay guard: the nonce claim for a
+	// redelivery of the same Attempt, and the per-Task fence record for an
+	// Attempt a higher fence already replaced.
 }
 
 func New(cfg Config) (*Service, error) {
@@ -372,6 +378,10 @@ func acceptReason(err error) string {
 		return "work_order_placement_mismatch"
 	case errors.Is(err, workorderaccept.ErrExecutorMismatch):
 		return "work_order_executor_mismatch"
+	case errors.Is(err, workorderaccept.ErrSuperseded):
+		return "work_order_superseded"
+	case errors.Is(err, workorderaccept.ErrFenceUnknown):
+		return "fence_claim_unknown"
 	case errors.Is(err, workorderaccept.ErrReplayUnknown):
 		return "nonce_claim_unknown"
 	}
