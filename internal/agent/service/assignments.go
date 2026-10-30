@@ -117,6 +117,7 @@ type event struct {
 	OutputBytes     uint64    `json:"output_bytes,omitempty"`
 	OutputDigest    string    `json:"output_digest,omitempty"`
 	Failure         string    `json:"failure,omitempty"`
+	ClaimDecision   string    `json:"claim_decision,omitempty"`
 }
 
 type eventLog struct {
@@ -144,7 +145,7 @@ func (l *eventLog) write(e event) error {
 
 // runAssignments polls until ctx ends. It returns when the loop has stopped.
 func runAssignments(ctx context.Context, c *AssignmentConfig, anchor *trustanchor.Anchor, execs []assignment.ExecutorApproval,
-	source workerplane.AssignmentSource, principal workerplane.Principal, interval time.Duration, log *slog.Logger) error {
+	source workerplane.AssignmentSource, claims workerplane.ClaimClient, principal workerplane.Principal, interval time.Duration, log *slog.Logger) error {
 	guard, err := replaysqlite.Open(ctx, c.ReplayDB, systemClock{}, 4096)
 	if err != nil {
 		return fmt.Errorf("open replay guard: %w", err)
@@ -153,7 +154,7 @@ func runAssignments(ctx context.Context, c *AssignmentConfig, anchor *trustancho
 	events := &eventLog{path: c.EventsFile}
 	var handler assignment.Handler = assignment.HandlerFunc(func(context.Context, assignment.Ready) error { return nil })
 	if c.Execution != nil {
-		execHandler, err := newExecutionHandler(c.Execution, events, log)
+		execHandler, err := newExecutionHandler(c.Execution, events, log, claims, principal)
 		if err != nil {
 			return err
 		}

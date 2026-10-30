@@ -26,6 +26,7 @@
 - 実行結果は`events_file`へ`execution_status`、`exit_code`、`output_bytes`、`output_digest`、`failure`として追記します。
 - 期限・取消し・出力上限・プロセスツリー停止は`native-runner`が扱います。
 - **sandboxではありません。** CPU・メモリ・network・temp-diskの上限は強制しません。
-- Task結果をControl Planeへ報告する経路はまだありません。
+- 実行後、観測した`ResultClaim`をControl Planeのtest-profile claim endpointへsubmitし、ackを`claim_decision`として記録します。
+- ResultClaimは受理結果ではありません。Result VerificationとResult Acceptanceは別の段階です。
 
 `execution`を省略した場合、Agentは従来どおり記録のみで、Taskを実行しません。
