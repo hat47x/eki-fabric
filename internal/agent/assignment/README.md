@@ -11,7 +11,7 @@ Control Planeが配る署名済みのLeaseとWorkOrderを、Workerが自分の�
 
 荷札のIDは参考情報です。署名済みのLeaseと食い違えば拒否します。
 
-結果は`Outcome`で返ります。`ready`（`Handler`へ渡した）、`replayed`（nonceは使用済み。同じbytesが再配送されたときの通常の答え）、`deferred`（Local Governorが新規を受け付けず、nonceは消費していない）、`rejected`（理由付き）です。nonceは、署名・結び付き・承認の確認がすべて通ってから消費します。改ざんや食い違いのbytesはnonceを消費しません。Governorが開始を許したあとで開始の関門が拒否した場合は、nonceは消費済みです。
+結果は`Outcome`で返ります。`ready`（`Handler`へ渡した）、`replayed`（nonceは使用済み。同じbytesが再配送されたときの通常の答え）、`deferred`（Local Governorが新規を受け付けない、または開始の関門が容量や期限で拒否した。nonceは消費していないので、Control Planeは同じTaskに新しいnonceで再発行できる）、`rejected`（理由付き）です。nonceは、署名・結び付き・承認・開始関門の確認がすべて通ってから消費します。改ざんや食い違いのbytesはnonceを消費しません。開始関門の拒否もnonceを消費しません（#296 項目2の修正）。
 
 ## 確かめないこと
 
