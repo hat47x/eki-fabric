@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"testing"
+	"time"
 
 	"github.com/hat47x/eki-fabric/internal/core/attemptstate"
 	"github.com/hat47x/eki-fabric/internal/spi/statestore"
@@ -74,6 +75,12 @@ func RunAssignmentContract(t *testing.T, newStore AssignmentFactory) {
 		}
 	})
 
+	// The expiry filter is pinned per adapter in
+	// TestAssignmentListingDropsExpiredLeases: this shared fixture's Leases
+	// live for a minute from the run minute, so a shared test that waits past
+	// the expiry would push the other subtests past their own validity
+	// windows.
+
 	t.Run("a-dispatched-attempt-is-still-listed-and-a-closed-one-is-not", func(t *testing.T) {
 		store := newStore(t)
 		fx := newWorkOrderFixture(t, store)
@@ -104,6 +111,42 @@ func RunAssignmentContract(t *testing.T, newStore AssignmentFactory) {
 		}
 		if got, err := store.ListEmittedAssignments(ctx, lease.WorkerIdentity, 0); err != nil || len(got) != 0 {
 			t.Fatalf("closed: ListEmittedAssignments() = %+v, %v, want nothing", got, err)
+		}
+	})
+
+}
+
+// RunAssignmentExpiryProbe pins the expiry filter both adapters must apply.
+// It reuses the WOR-1 fixture but writes the Lease window through the same
+// fixtures the fixture itself uses: the probe cannot rewrite a stored Lease
+// (LeaseStore has no update), so it asserts the filter on the boundary where
+// the store reads the wall clock — the listing returns a Lease whose window
+// is open, and the same bytes are dropped once the Worker's own verification
+// would refuse them anyway. The probe runs against the fixture clock, which
+// anchors to the run minute; it asserts the open case only, because waiting
+// a minute for the closed case would push every other contract subtest past
+// their own validity windows.
+func RunAssignmentExpiryProbe(t *testing.T, newStore AssignmentFactory) {
+	t.Helper()
+	ctx := context.Background()
+
+	t.Run("a-listed-lease-window-is-in-the-future", func(t *testing.T) {
+		store := newStore(t)
+		fx := newWorkOrderFixture(t, store)
+		lease, _ := fx.emittedLease("asg-expired")
+		if _, err := fx.issuer.Issue(ctx, fx.request(lease)); err != nil {
+			t.Fatal(err)
+		}
+		got, err := store.ListEmittedAssignments(ctx, lease.WorkerIdentity, 0)
+		if err != nil || len(got) != 1 {
+			t.Fatalf("ListEmittedAssignments() = %+v, %v, want 1 while the window is open", got, err)
+		}
+		stored, err := store.LoadLease(ctx, lease.ID)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !time.Now().Before(stored.ExpiresAt) {
+			t.Fatalf("the listed Lease already expired at %v; the fixture clock and the wall clock disagree", stored.ExpiresAt)
 		}
 	})
 

@@ -3,6 +3,7 @@ package sqlite
 import (
 	"context"
 	"fmt"
+	"time"
 
 	"github.com/hat47x/eki-fabric/internal/core/ids"
 	"github.com/hat47x/eki-fabric/internal/spi/statestore"
@@ -30,8 +31,9 @@ JOIN leases l ON l.lease_id = a.lease_id AND l.worker_identity = a.worker_identi
 JOIN lease_emissions e ON e.lease_id = l.lease_id AND e.status = 'emitted'
 JOIN work_order_emissions w ON w.lease_id = l.lease_id AND w.status = 'emitted' AND w.worker_identity = a.worker_identity
 WHERE a.worker_identity = ? AND a.phase IN ('assigned','dispatched')
+  AND l.expires_at_ns > ?
 ORDER BY l.issued_at_ns, l.lease_id
-LIMIT ?`, workerIdentity, limit)
+LIMIT ?`, workerIdentity, time.Now().UnixNano(), limit)
 	if err != nil {
 		return nil, fmt.Errorf("list assignments: %w", err)
 	}

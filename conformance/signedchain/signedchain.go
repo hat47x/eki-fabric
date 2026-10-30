@@ -212,6 +212,12 @@ type Placed struct {
 //
 // policy is the active Policy the store already holds.
 func (a *Authorities) Place(t testing.TB, state State, policy policystate.State, n int, worker string, at time.Time) Placed {
+	return a.PlaceSandbox(t, state, policy, n, worker, at, Sandbox)
+}
+
+// PlaceSandbox is Place with a caller-supplied SandboxPolicy, for tests that
+// exercise WorkOrders that require resources the reference chain does not.
+func (a *Authorities) PlaceSandbox(t testing.TB, state State, policy policystate.State, n int, worker string, at time.Time, sandbox decisionpayload.SandboxPolicy) Placed {
 	t.Helper()
 	ctx := context.Background()
 	clk, bun := clock{now: at}, bundle{at: at}
@@ -260,7 +266,7 @@ func (a *Authorities) Place(t testing.TB, state State, policy policystate.State,
 	must(t, err)
 	order, err := issuer.Issue(ctx, workorderissue.IssueRequest{
 		LeaseID: reserved.Lease.ID, WorkerIdentity: worker,
-		ExecutorApproval: ExecutorApproval, Limits: Limits, Sandbox: Sandbox,
+		ExecutorApproval: ExecutorApproval, Limits: Limits, Sandbox: sandbox,
 	})
 	must(t, err)
 	return Placed{

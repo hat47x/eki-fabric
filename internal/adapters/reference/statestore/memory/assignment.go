@@ -3,6 +3,7 @@ package memory
 import (
 	"context"
 	"sort"
+	"time"
 
 	"github.com/hat47x/eki-fabric/internal/core/attemptstate"
 	"github.com/hat47x/eki-fabric/internal/core/leaseemission"
@@ -28,13 +29,14 @@ func (s *Store) ListEmittedAssignments(ctx context.Context, workerIdentity strin
 	defer s.mu.RUnlock()
 
 	var out []statestore.EmittedAssignment
+	now := time.Now()
 	for _, attempt := range s.attempts {
 		if attempt.WorkerIdentity != workerIdentity || attempt.LeaseID == "" ||
 			(attempt.Phase != attemptstate.AttemptPhaseAssigned && attempt.Phase != attemptstate.AttemptPhaseDispatched) {
 			continue
 		}
 		lease, ok := s.leases[attempt.LeaseID]
-		if !ok || lease.WorkerIdentity != workerIdentity {
+		if !ok || lease.WorkerIdentity != workerIdentity || !now.Before(lease.ExpiresAt) {
 			continue
 		}
 		le, ok := s.leaseEmissions[attempt.LeaseID]

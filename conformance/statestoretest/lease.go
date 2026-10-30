@@ -1172,7 +1172,10 @@ func RunLeaseBypassContract(t *testing.T, factory LeaseBypassFactory) {
 	}
 }
 
-var leaseNow = time.Date(2026, 10, 6, 12, 0, 0, 0, time.UTC)
+// leaseNow is the fixture clock. It anchors to the run minute so that signed
+// validity windows (a minute here, five there) stay in the future for the
+// listing route, which filters on the wall clock.
+var leaseNow = time.Now().UTC().Truncate(time.Minute)
 
 func readyTask(t testing.TB, store TaskLeaseStore, seed string) taskstate.TaskRecord {
 	t.Helper()
