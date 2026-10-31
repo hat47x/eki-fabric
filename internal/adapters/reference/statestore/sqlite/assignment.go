@@ -72,7 +72,7 @@ LIMIT ?`, workerIdentity, s.listingTime().UnixNano(), limit)
 		if err != nil {
 			return nil, err
 		}
-		out = append(out, statestore.EmittedAssignment{LeaseID: leaseID, AttemptID: attemptID, Lease: le, WorkOrder: wo})
+		out = append(out, statestore.EmittedAssignment{LeaseID: leaseID, AttemptID: attemptID, Lease: le, WorkOrder: wo, LeaseState: leaseDeliveryState(le, le.Status())})
 	}
 	return out, nil
 }

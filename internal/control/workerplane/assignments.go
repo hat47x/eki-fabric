@@ -58,7 +58,7 @@ func (s *AssignmentService) ListAssignments(ctx context.Context, principal worke
 			return nil, errors.New("assignment store returned another Worker's record")
 		}
 		out = append(out, workerplane.Assignment{
-			AttemptID: a.AttemptID.String(), LeaseID: a.LeaseID.String(),
+			AttemptID: a.AttemptID.String(), LeaseID: a.LeaseID.String(), LeaseState: string(a.LeaseState),
 			LeaseEnvelope: a.Lease.SignedEnvelope(), WorkOrderEnvelope: a.WorkOrder.SignedEnvelope(),
 		})
 	}

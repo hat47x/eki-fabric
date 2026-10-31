@@ -37,8 +37,8 @@ func (f *mtlsFixture) assignments(t *testing.T, w enrolledWorker, c *http.Client
 func TestMTLSAssignmentsAreTheCertificateWorkersOnly(t *testing.T) {
 	f := newMTLSFixture(t)
 	a, b := f.enroll(t, nil), f.enroll(t, nil)
-	f.assign.byWorker[string(a.id)] = []spi.Assignment{{AttemptID: "atm_a", LeaseID: "lse_a", LeaseEnvelope: []byte("lease-for-a"), WorkOrderEnvelope: []byte("order-for-a")}}
-	f.assign.byWorker[string(b.id)] = []spi.Assignment{{AttemptID: "atm_b", LeaseID: "lse_b", LeaseEnvelope: []byte("lease-for-b"), WorkOrderEnvelope: []byte("order-for-b")}}
+	f.assign.byWorker[string(a.id)] = []spi.Assignment{{AttemptID: "atm_a", LeaseID: "lse_a", LeaseState: spi.LeaseStateCurrent, LeaseEnvelope: []byte("lease-for-a"), WorkOrderEnvelope: []byte("order-for-a")}}
+	f.assign.byWorker[string(b.id)] = []spi.Assignment{{AttemptID: "atm_b", LeaseID: "lse_b", LeaseState: spi.LeaseStateCurrent, LeaseEnvelope: []byte("lease-for-b"), WorkOrderEnvelope: []byte("order-for-b")}}
 
 	resp, body := f.assignments(t, a, nil, testprofile.EncodeAssignmentsRequest())
 	if resp.StatusCode != http.StatusOK {
@@ -88,7 +88,7 @@ func TestMTLSAssignmentsRefuseABodyThatNamesAWorker(t *testing.T) {
 func TestMTLSAssignmentsNeedAUsableCertificate(t *testing.T) {
 	f := newMTLSFixture(t)
 	w := f.enroll(t, nil)
-	f.assign.byWorker[string(w.id)] = []spi.Assignment{{AttemptID: "atm_a", LeaseID: "lse_a", LeaseEnvelope: []byte("l"), WorkOrderEnvelope: []byte("o")}}
+	f.assign.byWorker[string(w.id)] = []spi.Assignment{{AttemptID: "atm_a", LeaseID: "lse_a", LeaseState: spi.LeaseStateCurrent, LeaseEnvelope: []byte("l"), WorkOrderEnvelope: []byte("o")}}
 
 	if resp, _ := f.assignments(t, w, f.client(nil), testprofile.EncodeAssignmentsRequest()); resp.StatusCode != http.StatusUnauthorized {
 		t.Fatalf("without a certificate = %d, want 401", resp.StatusCode)

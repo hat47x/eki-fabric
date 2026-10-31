@@ -47,7 +47,7 @@ func (s *Store) ListEmittedAssignments(ctx context.Context, workerIdentity strin
 		if !ok || wo.Status() != workorderemission.StatusEmitted || wo.WorkerIdentity() != workerIdentity {
 			continue
 		}
-		out = append(out, statestore.EmittedAssignment{LeaseID: attempt.LeaseID, AttemptID: attempt.ID, Lease: le, WorkOrder: wo})
+		out = append(out, statestore.EmittedAssignment{LeaseID: attempt.LeaseID, AttemptID: attempt.ID, Lease: le, WorkOrder: wo, LeaseState: leaseDeliveryState(le, lease.ExpiresAt, now)})
 	}
 	sort.Slice(out, func(i, j int) bool {
 		a, b := s.leases[out[i].LeaseID], s.leases[out[j].LeaseID]

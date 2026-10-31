@@ -30,7 +30,11 @@ func validSpec(now time.Time) executor.Spec {
 		OrderDecisionID: "order-1",
 		ExecutorDigest:  contract.SHA256([]byte("executor")),
 		Limits: decisionpayload.ResourceLimits{
-			CPUMillis:          1,
+			// Generous on purpose: this spec asserts completion. The Windows
+			// CPU-time rejection has its own test and a 1ms ceiling here only
+			// flaked under a loaded machine (a Go helper starts in ~15ms of
+			// CPU).
+			CPUMillis:          5000,
 			WallTimeMillis:     1000,
 			OutputBytesMaximum: 100,
 		},
