@@ -11,6 +11,7 @@ import (
 	"github.com/hat47x/eki-fabric/internal/agent/governor"
 	"github.com/hat47x/eki-fabric/internal/agent/nativerunner"
 	"github.com/hat47x/eki-fabric/internal/core/contract"
+	"github.com/hat47x/eki-fabric/internal/core/ids"
 	"github.com/hat47x/eki-fabric/internal/core/resultclaim"
 	"github.com/hat47x/eki-fabric/internal/spi/workerplane"
 )
@@ -78,7 +79,16 @@ func (h *executionHandler) Start(ctx context.Context, ready assignment.Ready) er
 		return fmt.Errorf("execute assignment %s: %w", ready.AttemptID, err)
 	}
 
-	claim, err := claimFromOutcome(ready, h.principal.WorkerIdentity, outcome)
+	claim, err := claimFromOutcome(claimSource{
+		taskID:          ready.Plan.TaskID(),
+		taskIRDigest:    ready.Admission.TaskIRDigest(),
+		attemptID:       ready.AttemptID,
+		leaseID:         ready.LeaseID,
+		fenceEpoch:      ready.FenceEpoch,
+		orderDecisionID: ready.Plan.OrderDecisionID(),
+		executorDigest:  ready.Plan.ExecutorDigest(),
+		nonce:           ready.Plan.Nonce(),
+	}, h.principal.WorkerIdentity, outcome)
 	if err != nil {
 		return fmt.Errorf("build result claim for %s: %w", ready.AttemptID, err)
 	}
@@ -99,7 +109,18 @@ func (h *executionHandler) Start(ctx context.Context, ready assignment.Ready) er
 	return nil
 }
 
-func claimFromOutcome(ready assignment.Ready, workerIdentity string, outcome executor.Outcome) (resultclaim.Claim, error) {
+type claimSource struct {
+	taskID          ids.TaskID
+	taskIRDigest    contract.Digest
+	attemptID       ids.AttemptID
+	leaseID         ids.LeaseID
+	fenceEpoch      uint64
+	orderDecisionID string
+	executorDigest  contract.Digest
+	nonce           []byte
+}
+
+func claimFromOutcome(src claimSource, workerIdentity string, outcome executor.Outcome) (resultclaim.Claim, error) {
 	status, err := claimStatus(outcome.Status)
 	if err != nil {
 		return resultclaim.Claim{}, err
@@ -109,15 +130,15 @@ func claimFromOutcome(ready assignment.Ready, workerIdentity string, outcome exe
 		outputDigest = contract.Digest{}
 	}
 	return resultclaim.NewClaim(resultclaim.ClaimConfig{
-		TaskID:            ready.Plan.TaskID(),
-		TaskIRDigest:      ready.Admission.TaskIRDigest(),
-		AttemptID:         ready.AttemptID,
+		TaskID:            src.taskID,
+		TaskIRDigest:      src.taskIRDigest,
+		AttemptID:         src.attemptID,
 		WorkerIdentity:    workerIdentity,
-		LeaseID:           ready.LeaseID,
-		FenceEpoch:        ready.FenceEpoch,
-		WorkOrderDecision: ready.Plan.OrderDecisionID(),
-		ExecutorDigest:    ready.Plan.ExecutorDigest(),
-		Nonce:             ready.Plan.Nonce(),
+		LeaseID:           src.leaseID,
+		FenceEpoch:        src.fenceEpoch,
+		WorkOrderDecision: src.orderDecisionID,
+		ExecutorDigest:    src.executorDigest,
+		Nonce:             src.nonce,
 		Status:            status,
 		ExitCode:          outcome.ExitCode,
 		OutputBytes:       outcome.OutputBytes,
