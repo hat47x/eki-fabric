@@ -146,13 +146,12 @@ func (l *eventLog) write(e event) error {
 
 // runAssignments polls until ctx ends. It returns when the loop has stopped.
 func runAssignments(ctx context.Context, c *AssignmentConfig, anchor *trustanchor.Anchor, execs []assignment.ExecutorApproval,
-	source workerplane.AssignmentSource, claims workerplane.ClaimClient, principal workerplane.Principal, interval time.Duration, log *slog.Logger) error {
+	source workerplane.AssignmentSource, claims claimEnqueuer, events *eventLog, principal workerplane.Principal, interval time.Duration, log *slog.Logger) error {
 	guard, err := replaysqlite.Open(ctx, c.ReplayDB, systemClock{}, 4096)
 	if err != nil {
 		return fmt.Errorf("open replay guard: %w", err)
 	}
 	defer guard.Close()
-	events := &eventLog{path: c.EventsFile}
 	var handler assignment.Handler = assignment.HandlerFunc(func(context.Context, assignment.Ready) error { return nil })
 	if c.Execution != nil {
 		execHandler, err := newExecutionHandler(c.Execution, events, log, claims, principal)

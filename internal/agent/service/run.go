@@ -160,7 +160,13 @@ func Run(ctx context.Context, cfg Config, token string, log *slog.Logger) error 
 		return err
 	}
 	defer api.CloseIdleConnections()
-	client, err := claimclient.New(api, principal)
+	var transport workerplane.ClaimClient = api
+	var events *eventLog
+	if cfg.Assignments != nil {
+		events = &eventLog{path: cfg.Assignments.EventsFile}
+		transport = recordingClaims{next: api, events: events, log: log}
+	}
+	client, err := claimclient.New(transport, principal)
 	if err != nil {
 		return err
 	}
@@ -191,7 +197,7 @@ func Run(ctx context.Context, cfg Config, token string, log *slog.Logger) error 
 		assignDone := make(chan struct{})
 		go func() {
 			defer close(assignDone)
-			if err := runAssignments(assignCtx, cfg.Assignments, anchor, execs, api, api, principal, interval, log); err != nil {
+			if err := runAssignments(assignCtx, cfg.Assignments, anchor, execs, api, queue, events, principal, interval, log); err != nil {
 				log.Error("assignment loop stopped", "error", err.Error())
 			}
 		}()

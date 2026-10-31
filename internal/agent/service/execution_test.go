@@ -11,9 +11,7 @@ import (
 
 type fakeClaims struct{}
 
-func (fakeClaims) SubmitClaim(context.Context, workerplane.Principal, resultclaim.Claim) (workerplane.ClaimAck, error) {
-	return workerplane.ClaimAck{}, nil
-}
+func (fakeClaims) Enqueue(context.Context, resultclaim.Claim) (bool, error) { return false, nil }
 
 var testPrincipal = workerplane.Principal{WorkerIdentity: "worker-test", TrustDomain: "td-test"}
 
@@ -26,9 +24,9 @@ func TestExecutionHandlerRequiresCommand(t *testing.T) {
 	}
 }
 
-func TestExecutionHandlerRequiresClaimClient(t *testing.T) {
+func TestExecutionHandlerRequiresClaimQueue(t *testing.T) {
 	if _, err := newExecutionHandler(&ExecutionConfig{Command: "echo"}, &eventLog{}, slog.Default(), nil, testPrincipal); err == nil {
-		t.Fatal("nil claim client was accepted")
+		t.Fatal("nil claim queue was accepted")
 	}
 }
 
@@ -38,6 +36,6 @@ func TestExecutionHandlerBuildsRunner(t *testing.T) {
 		t.Fatal(err)
 	}
 	if handler.runner == nil || handler.supervisor == nil || handler.claims == nil {
-		t.Fatal("runner, supervisor, or claim client is nil")
+		t.Fatal("runner, supervisor, or claim queue is nil")
 	}
 }

@@ -32,6 +32,7 @@ type assignmentEvent struct {
 	CPUMillis       uint64 `json:"cpu_millis"`
 	ExecutionStatus string `json:"execution_status"`
 	ClaimDecision   string `json:"claim_decision"`
+	Failure         string `json:"failure"`
 }
 
 func readEvents(t *testing.T, path string) []assignmentEvent {
