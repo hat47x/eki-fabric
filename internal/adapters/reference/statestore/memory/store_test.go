@@ -112,3 +112,12 @@ func TestAssignmentListingDropsExpiredLeases(t *testing.T) {
 		return New()
 	})
 }
+
+// TestAssignmentRevocationContract pins the Control Plane's reclaim over the
+// memory adapter (ADR-0030 §2.2).
+func TestAssignmentRevocationContract(t *testing.T) {
+	statestoretest.RunAssignmentRevocationContract(t, func(t testing.TB) statestoretest.RevocationTestStore {
+		t.Helper()
+		return New()
+	})
+}

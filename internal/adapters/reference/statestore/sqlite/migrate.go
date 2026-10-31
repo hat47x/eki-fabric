@@ -885,6 +885,28 @@ END`,
 	// content and the admission contract test binds a present content to the
 	// Task's TaskIR digest.
 	`ALTER TABLE admissions ADD COLUMN content BLOB;`,
+	// 17: Assignment revocation (ADR-0030 §2.2). A Lease that the Control
+	// Plane reclaims after EMITTING it must reach the Worker on its next
+	// poll, so the listing shows revoked for it. The lease_emissions and
+	// work_order_emissions rows keep their immutability: revocation is a
+	// separate delivery fact, recorded once, in delivery_revocations. One row
+	// per Lease; the Attempt is closed by the adapter in the same write, so
+	// the row and the close are one fact.
+	`CREATE TABLE delivery_revocations (
+	lease_id        TEXT    NOT NULL PRIMARY KEY REFERENCES lease_emissions (lease_id),
+	reason          TEXT    NOT NULL CHECK (length(reason) BETWEEN 1 AND 512),
+	committed_at_ns INTEGER NOT NULL
+);
+CREATE TRIGGER delivery_revocations_immutable_update
+BEFORE UPDATE ON delivery_revocations
+BEGIN
+	SELECT RAISE(ABORT, 'a delivery revocation is immutable');
+END;
+CREATE TRIGGER delivery_revocations_no_delete
+BEFORE DELETE ON delivery_revocations
+BEGIN
+	SELECT RAISE(ABORT, 'a delivery revocation is not removed');
+END`,
 }
 
 // migrate brings the database to the latest version. It is idempotent, rejects

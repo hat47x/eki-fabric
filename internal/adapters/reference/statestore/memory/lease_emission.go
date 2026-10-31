@@ -110,6 +110,79 @@ func (s *Store) CommitLeaseEmission(ctx context.Context, commit statestore.Lease
 	return statestore.LeaseEmissionResult{Record: record}, nil
 }
 
+// RevokeAssignment implements statestore.AssignmentRevokeStore. It revokes a
+// delivery the Control Plane already EMITTED: the Lease emission record flips
+// to ABORTED with the revocation's close reason, and the backing Attempt
+// closes with the same reason, in one write. A Lease without an EMITTED
+// emission is refused — nothing was delivered, so there is nothing for the
+// Worker to un-learn. Replaying the same revocation is a no-op; replaying it
+// with a different reason is a conflict.
+func (s *Store) RevokeAssignment(ctx context.Context, revoke statestore.AssignmentRevocation) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	if err := revoke.Validate(); err != nil {
+		return err
+	}
+
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	existing, ok := s.leaseEmissions[revoke.LeaseID]
+	if !ok {
+		return fmt.Errorf("%w: Lease emission %s", statestore.ErrNotFound, revoke.LeaseID)
+	}
+	switch existing.Status() {
+	case leaseemission.StatusAborted:
+		if existing.Reason() != revoke.Reason || existing.CloseReason() != string(revoke.CloseReason) {
+			return fmt.Errorf("%w: Lease emission %s is already revoked for another reason", statestore.ErrLeaseEmissionConflict, revoke.LeaseID)
+		}
+		return nil
+	case leaseemission.StatusEmitted:
+	default:
+		return fmt.Errorf("%w: Lease emission %s has status %q", statestore.ErrLeaseEmissionConflict, revoke.LeaseID, existing.Status())
+	}
+
+	lease, ok := s.leases[revoke.LeaseID]
+	if !ok {
+		return fmt.Errorf("%w: lease %s", statestore.ErrNotFound, revoke.LeaseID)
+	}
+	attempt, ok := s.attempts[lease.AttemptID]
+	if !ok {
+		return fmt.Errorf("%w: attempt %s", statestore.ErrNotFound, lease.AttemptID)
+	}
+	if attempt.LeaseID != lease.ID || attempt.WorkerIdentity != lease.WorkerIdentity {
+		return fmt.Errorf("%w: Attempt does not hold Lease %s", statestore.ErrConflict, lease.ID)
+	}
+	switch attempt.Phase {
+	case attemptstate.AttemptPhaseAssigned, attemptstate.AttemptPhaseDispatched:
+	default:
+		return fmt.Errorf("%w: Attempt phase %q cannot revoke a delivery", statestore.ErrConflict, attempt.Phase)
+	}
+
+	closed := attempt
+	closed.Phase = attemptstate.AttemptPhaseClosed
+	closed.CloseReason = revoke.CloseReason
+	closed.Revision++
+	closed.UpdatedAt = laterTime(attempt.UpdatedAt, revoke.CommittedAt)
+	if err := attemptstate.ValidateTransition(attempt, closed); err != nil {
+		return err
+	}
+	record, err := leaseemission.NewAborted(leaseemission.AbortedConfig{
+		LeaseID:     lease.ID,
+		CloseReason: string(revoke.CloseReason),
+		Reason:      revoke.Reason,
+		CommittedAt: revoke.CommittedAt,
+	})
+	if err != nil {
+		return err
+	}
+
+	s.leaseEmissions[lease.ID] = record
+	s.attempts[closed.ID] = closed
+	return nil
+}
+
 func (s *Store) AbortLeaseEmission(ctx context.Context, abort statestore.LeaseEmissionAbort) (statestore.LeaseEmissionResult, error) {
 	if err := ctx.Err(); err != nil {
 		return statestore.LeaseEmissionResult{}, err
@@ -185,3 +258,4 @@ func (s *Store) LoadLeaseEmission(ctx context.Context, id ids.LeaseID) (leaseemi
 }
 
 var _ statestore.LeaseEmissionStore = (*Store)(nil)
+var _ statestore.AssignmentRevokeStore = (*Store)(nil)

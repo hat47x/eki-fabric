@@ -31,8 +31,16 @@ func (s *Store) ListEmittedAssignments(ctx context.Context, workerIdentity strin
 	var out []statestore.EmittedAssignment
 	now := s.now()
 	for _, attempt := range s.attempts {
-		if attempt.WorkerIdentity != workerIdentity || attempt.LeaseID == "" ||
-			(attempt.Phase != attemptstate.AttemptPhaseAssigned && attempt.Phase != attemptstate.AttemptPhaseDispatched) {
+		if attempt.WorkerIdentity != workerIdentity || attempt.LeaseID == "" {
+			continue
+		}
+		revoked := attempt.Phase == attemptstate.AttemptPhaseClosed &&
+			(attempt.CloseReason == attemptstate.CloseReasonReclaimed ||
+				attempt.CloseReason == attemptstate.CloseReasonCancelled ||
+				attempt.CloseReason == attemptstate.CloseReasonSuperseded ||
+				attempt.CloseReason == attemptstate.CloseReasonPolicyRevoked)
+		if attempt.Phase != attemptstate.AttemptPhaseAssigned &&
+			attempt.Phase != attemptstate.AttemptPhaseDispatched && !revoked {
 			continue
 		}
 		lease, ok := s.leases[attempt.LeaseID]
@@ -40,7 +48,7 @@ func (s *Store) ListEmittedAssignments(ctx context.Context, workerIdentity strin
 			continue
 		}
 		le, ok := s.leaseEmissions[attempt.LeaseID]
-		if !ok || le.Status() != leaseemission.StatusEmitted {
+		if !ok || (le.Status() != leaseemission.StatusEmitted && !revoked) {
 			continue
 		}
 		wo, ok := s.workOrders[attempt.LeaseID]

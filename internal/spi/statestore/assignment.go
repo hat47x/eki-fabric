@@ -2,7 +2,10 @@ package statestore
 
 import (
 	"context"
+	"fmt"
+	"time"
 
+	"github.com/hat47x/eki-fabric/internal/core/attemptstate"
 	"github.com/hat47x/eki-fabric/internal/core/ids"
 	"github.com/hat47x/eki-fabric/internal/core/leaseemission"
 	"github.com/hat47x/eki-fabric/internal/core/workorderemission"
@@ -63,4 +66,47 @@ const (
 // Worker's own verification, not by this list.
 type AssignmentStore interface {
 	ListEmittedAssignments(ctx context.Context, workerIdentity string, limit int) ([]EmittedAssignment, error)
+}
+
+// AssignmentRevokeStore is the Control Plane's write side of the same listing:
+// it reclaims one delivered Assignment (ADR-0030 §2.2). The revocation is one
+// durable fact, recorded once; replaying it with the same reason changes
+// nothing, and replaying it with another reason is refused.
+type AssignmentRevokeStore interface {
+	// RevokeAssignment records the revocation of every delivered assignment of
+	// one Lease. It fails closed when the Lease has no EMITTED delivery to
+	// revoke: nothing was delivered, so there is nothing for the Worker to
+	// un-learn.
+	RevokeAssignment(ctx context.Context, revoke AssignmentRevocation) error
+}
+
+// AssignmentRevocation names one revocation and why the Control Plane decided
+// it. CloseReason is the reason the backing Attempt is closed with; the valid
+// reasons are the pre-emission abort reasons.
+type AssignmentRevocation struct {
+	LeaseID     ids.LeaseID
+	CloseReason attemptstate.CloseReason
+	Reason      string
+	CommittedAt time.Time
+}
+
+func (r AssignmentRevocation) Validate() error {
+	if _, err := ids.ParseLeaseID(r.LeaseID.String()); err != nil {
+		return fmt.Errorf("Assignment revocation: Lease ID: %w", err)
+	}
+	switch r.CloseReason {
+	case attemptstate.CloseReasonReclaimed, attemptstate.CloseReasonCancelled,
+		attemptstate.CloseReasonSuperseded, attemptstate.CloseReasonPolicyRevoked:
+	default:
+		return fmt.Errorf("Assignment revocation: close reason %q does not revoke a delivery", r.CloseReason)
+	}
+	if _, err := leaseemission.NewAborted(leaseemission.AbortedConfig{
+		LeaseID:     r.LeaseID,
+		CloseReason: string(r.CloseReason),
+		Reason:      r.Reason,
+		CommittedAt: r.CommittedAt,
+	}); err != nil {
+		return err
+	}
+	return nil
 }
