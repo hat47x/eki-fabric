@@ -13,7 +13,7 @@ M0 executable skeletonのうち、Client API、永続State Store、Worker CA・e
 動かないものは、次の三点です。
 
 - Client APIで受理したTaskが、Placement・Lease発行・WorkOrder発行を経て、上の割当の配送へ流れる配線はありません。`eki-control`の割当の窓口は、State Storeに発行済みとして残るbytesを返すだけで、発行はしません。
-- 実行はsandboxではなく、Workerの信頼済み設定にある固定コマンドです。Task入力からコマンドは組み立てず、CPU・メモリ・network・temp-diskの上限も強制しません。
+- 実行はsandboxではなく、Workerの信頼済み設定にある固定コマンドです。Task入力からコマンドは組み立てません。CPU・メモリ・一時ディスクは実行中に20ms間隔で監視し、上限超過時はプロセスツリーを停止します（Linux/Windows）。networkの上限は強制せず、GPUも未対応です。
 - Workerが送る`ResultClaim`は、受理された結果（AcceptedResult）ではありません。Result Acceptanceの部品（`internal/control/resultacceptance`）はありますが、`eki-control`の起動経路には接続されておらず、Client APIのTaskが実行結果によって`completed`になる経路はありません。
 
 上の作業は、次のIssueで管理しています。
