@@ -25,7 +25,7 @@
 
 - 実行結果は`events_file`へ`execution_status`、`exit_code`、`output_bytes`、`output_digest`、`failure`として追記します。
 - 期限・取消し・出力上限・プロセスツリー停止は`native-runner`が扱います。
-- **sandboxではありません。** CPU・メモリ・network・temp-diskの上限は強制しません。
+- **sandboxではありません。** CPU・メモリ・一時ディスクは実行中に20ms間隔で監視し、上限超過時はプロセスツリーを停止します（Linux/Windows）。networkとGPUの上限は強制しません。一時ディスクは実行ごとの一時ディレクトリ配下のみを対象とします。
 - 実行後、観測した`ResultClaim`は、送る前にAgentの耐久queueへ記録します（`result_claim_queued`）。送信はqueueの配送ループが行い、Control Planeの停止・5xx・切断で失敗してもAgentを再起動しても、届くまで再送します。
 - 送信の各試行は`events_file`へ残します。失敗は`result_claim_delivery_failed`（`failure`に理由）、届いた回は`result_claim_submitted`（ackを`claim_decision`に）です。`result_claim_queued`だけで`result_claim_submitted`がない間は、申告はAgentの手元にあり、Control Planeへまだ届いていません。
 - **失われ得る範囲。** 実行の終了からqueueへの記録（`Enqueue`）までの間にAgentが落ちると、観測した結果は残りません。nonceは開始の関門より前に消費済みなので、同じ割当の再実行はできません。この場合の判定はControl Plane側の`claimreconcile`（Lease期限後）に委ねます。実行の開始前に「実行中」を耐久化するかは未決で、#319に残しています。
