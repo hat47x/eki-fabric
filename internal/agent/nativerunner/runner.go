@@ -109,6 +109,13 @@ func (r Runner) Run(ctx context.Context, spec executor.Spec) (executor.Result, e
 		}
 		return result, err
 	}
+	cpuMillis, maxRSSBytes := processUsage(cmd.ProcessState)
+	if spec.Limits.CPUMillis != 0 && cpuMillis > spec.Limits.CPUMillis {
+		return result, fmt.Errorf("native runner CPU time %dms exceeds %dms", cpuMillis, spec.Limits.CPUMillis)
+	}
+	if spec.Limits.MemoryBytes != 0 && maxRSSBytes > spec.Limits.MemoryBytes {
+		return result, fmt.Errorf("native runner memory %d exceeds %d bytes", maxRSSBytes, spec.Limits.MemoryBytes)
+	}
 	result.OutputDigest = contract.SHA256(output.Bytes())
 	return result, nil
 }
