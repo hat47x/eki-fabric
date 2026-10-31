@@ -8,7 +8,15 @@
 
 この節が、実装の現状（何が動き、何が動かないか）の正本です。他の文書は、ここを参照します。
 
-M0 executable skeletonのうち、Client API、永続State Store、Worker CA・enrollment・mTLS、Worker→Control Planeの申告の配送までが動きます。Control PlaneからWorkerへLease・WorkOrderを配る経路と、Taskを実際に実行する経路は、まだありません。動かないものと、その作業は、次のIssueで管理しています。
+M0 executable skeletonのうち、Client API、永続State Store、Worker CA・enrollment・mTLS、Worker→Control Planeの申告の配送までが動きます。加えて、試験用profileに限り、Workerが署名済みのLeaseとWorkOrderを受け取って検証し、開始の関門を通した固定コマンドを実行し、観測した`ResultClaim`をControl Planeへ送るところまでが、`conformance/process`で別プロセスとして確かめられています（`POST /test-profile/v1/assignments`。通信の本文は#198の決定ではありません）。
+
+動かないものは、次の三点です。
+
+- Client APIで受理したTaskが、Placement・Lease発行・WorkOrder発行を経て、上の割当の配送へ流れる配線はありません。`eki-control`の割当の窓口は、State Storeに発行済みとして残るbytesを返すだけで、発行はしません。
+- 実行はsandboxではなく、Workerの信頼済み設定にある固定コマンドです。Task入力からコマンドは組み立てず、CPU・メモリ・network・temp-diskの上限も強制しません。
+- Workerが送る`ResultClaim`は、受理された結果（AcceptedResult）ではありません。Result Acceptanceの部品（`internal/control/resultacceptance`）はありますが、`eki-control`の起動経路には接続されておらず、Client APIのTaskが実行結果によって`completed`になる経路はありません。
+
+上の作業は、次のIssueで管理しています。
 
 - [#242](https://github.com/hat47x/eki-fabric/issues/242): `eki-control`の起動経路に、Lease発行・WorkOrder発行・結果受理の実行系を配線する
 - [#243](https://github.com/hat47x/eki-fabric/issues/243): Control PlaneからWorkerへLease・WorkOrderを配る経路を、Worker Planeに定める
@@ -25,7 +33,7 @@ Task APIは`--config`で起動できます。Worker listenerは任意で、二�
 現時点で入っているものは、次のとおりです。
 
 - `cmd/eki-control`: Control Planeの実行ファイルの入口
-- `cmd/eki-agent`: Native Worker Agentの実行ファイル。`enroll`でWorkerとして登録し、証明書（mTLS）で耐久queueの申告をControl Planeへ届ける。証明書は自動で更新する（Taskは実行しない）
+- `cmd/eki-agent`: Native Worker Agentの実行ファイル。`enroll`でWorkerとして登録し、証明書（mTLS）で耐久queueの申告をControl Planeへ届ける。証明書は自動で更新する。試験用profileでは、受け取った割当を検証し、設定した固定コマンドを実行して`ResultClaim`を送る（sandboxではない。詳細は[`internal/agent/service/README.md`](../internal/agent/service/README.md)）
 - `internal/core/workercert`、`internal/adapters/reference/workerca`、`internal/agent/enroll`: Worker証明書の名前、Worker専用のCA、Agent側の登録と更新
 - `internal/core/ids`: Task、Attempt、Leaseの型付きID
 - `internal/core/contract`: SHA-256のDigestの値

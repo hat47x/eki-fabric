@@ -2,7 +2,7 @@
 
 `cmd/eki-agent`が呼ぶ、申告の配送ループです。Agent専用のSQLite queue（`claimqueue`の参照Adapter）を開き、`claimqueue.DeliverDue`を一定間隔で回して、`claimclient.HTTPClient`でControl Planeへ送ります。
 
-通信の本文は**試験用のprofile**です。Worker Protocolは未決で（[#198](https://github.com/hat47x/eki-fabric/issues/198)）、本文の形式は決定ではありません。Taskは実行しません。
+通信の本文は**試験用のprofile**です。Worker Protocolは未決で（[#198](https://github.com/hat47x/eki-fabric/issues/198)）、本文の形式は決定ではありません。申告の配送ループ自体はTaskを実行しません。割当の受け取りと、任意の固定コマンドの実行は、下の二つの節にあります。
 
 認証には二つの方式があります。
 
@@ -29,4 +29,4 @@
 - 実行後、観測した`ResultClaim`をControl Planeのtest-profile claim endpointへsubmitし、ackを`claim_decision`として記録します。
 - ResultClaimは受理結果ではありません。Result VerificationとResult Acceptanceは別の段階です。
 
-`execution`を省略した場合、Agentは従来どおり記録のみで、Taskを実行しません。
+`execution`を省略した場合、Agentは割当の検証結果を記録するだけで、何も実行しません。
