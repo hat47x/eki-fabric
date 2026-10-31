@@ -29,7 +29,7 @@ func (s *Store) ListEmittedAssignments(ctx context.Context, workerIdentity strin
 	defer s.mu.RUnlock()
 
 	var out []statestore.EmittedAssignment
-	now := time.Now()
+	now := s.now()
 	for _, attempt := range s.attempts {
 		if attempt.WorkerIdentity != workerIdentity || attempt.LeaseID == "" ||
 			(attempt.Phase != attemptstate.AttemptPhaseAssigned && attempt.Phase != attemptstate.AttemptPhaseDispatched) {
@@ -60,4 +60,14 @@ func (s *Store) ListEmittedAssignments(ctx context.Context, workerIdentity strin
 		out = out[:limit]
 	}
 	return out, nil
+}
+
+// SetListingClock replaces the clock ListEmittedAssignments uses to drop
+// Leases whose validity window has closed. It exists so a contract test can
+// pin the boundary without waiting on the wall clock; production code never
+// calls it, and the default is time.Now.
+func (s *Store) SetListingClock(now func() time.Time) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.now = now
 }

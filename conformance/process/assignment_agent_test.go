@@ -125,24 +125,30 @@ func TestAgentVerifiesAndGateStartsDeliveredAssignments(t *testing.T) {
 		policy, err := s.LoadCurrentPolicy(context.Background())
 		must(t, err)
 		good = auth.Place(t, s, policy, 1, a.worker, now)
-		// A Lease the Control Plane signed ten minutes ago has run out.
+		// A Lease the Control Plane signed ten minutes ago has run out. The
+		// delivery listing drops it, so the Agent never sees it; the Agent's own
+		// refusal of expired material is pinned in internal/agent/assignment.
 		expired = auth.Place(t, s, policy, 2, a.worker, now.Add(-10*time.Minute))
 		others = auth.Place(t, s, policy, 3, b.worker, now)
+
+		listed, err := s.ListEmittedAssignments(context.Background(), a.worker, 0)
+		must(t, err)
+		if len(listed) != 1 || listed[0].AttemptID != good.AttemptID {
+			t.Fatalf("A's delivery listing = %+v, want only the live assignment %s (not the expired %s)", listed, good.AttemptID, expired.AttemptID)
+		}
 	}()
 
 	agentA := a.start(t)
-	waitFor(t, "A decides both of its assignments", func() (bool, string) {
-		ev := readEvents(t, a.events)
-		_, g := eventFor(ev, good.AttemptID.String())
-		_, x := eventFor(ev, expired.AttemptID.String())
-		return g && x, agentA.out.String()
+	waitFor(t, "A decides its live assignment", func() (bool, string) {
+		_, g := eventFor(readEvents(t, a.events), good.AttemptID.String())
+		return g, agentA.out.String()
 	})
 	events := readEvents(t, a.events)
 	if ev, _ := eventFor(events, good.AttemptID.String()); ev.Outcome != "ready" || ev.CPUMillis != signedchain.Limits.CPUMillis {
 		t.Fatalf("the genuine assignment: %+v", ev)
 	}
-	if ev, _ := eventFor(events, expired.AttemptID.String()); ev.Outcome != "rejected" || ev.Reason != "lease_expired" {
-		t.Fatalf("the expired Lease: %+v", ev)
+	if ev, found := eventFor(events, expired.AttemptID.String()); found {
+		t.Fatalf("the expired Lease reached the Agent: %+v", ev)
 	}
 	// B's Attempt was never delivered to A.
 	if _, found := eventFor(events, others.AttemptID.String()); found {

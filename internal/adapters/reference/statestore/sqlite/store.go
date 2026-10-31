@@ -12,6 +12,7 @@ import (
 	"fmt"
 	"net/url"
 	"os"
+	"sync/atomic"
 	"time"
 
 	_ "modernc.org/sqlite"
@@ -34,6 +35,10 @@ var (
 // Store is a durable statestore.TaskStore backed by one local SQLite file.
 type Store struct {
 	db *sql.DB
+
+	// listingNow is the clock the assignment listing reads; time.Now unless a
+	// test replaces it through SetListingClock.
+	listingNow atomic.Pointer[func() time.Time]
 }
 
 // Open opens or creates the database at path and brings its schema up to

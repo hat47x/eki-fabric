@@ -33,7 +33,7 @@ JOIN work_order_emissions w ON w.lease_id = l.lease_id AND w.status = 'emitted' 
 WHERE a.worker_identity = ? AND a.phase IN ('assigned','dispatched')
   AND l.expires_at_ns > ?
 ORDER BY l.issued_at_ns, l.lease_id
-LIMIT ?`, workerIdentity, time.Now().UnixNano(), limit)
+LIMIT ?`, workerIdentity, s.listingTime().UnixNano(), limit)
 	if err != nil {
 		return nil, fmt.Errorf("list assignments: %w", err)
 	}
@@ -75,4 +75,20 @@ LIMIT ?`, workerIdentity, time.Now().UnixNano(), limit)
 		out = append(out, statestore.EmittedAssignment{LeaseID: leaseID, AttemptID: attemptID, Lease: le, WorkOrder: wo})
 	}
 	return out, nil
+}
+
+// listingTime is the instant the listing compares Lease expiry against.
+func (s *Store) listingTime() time.Time {
+	if now := s.listingNow.Load(); now != nil {
+		return (*now)()
+	}
+	return time.Now()
+}
+
+// SetListingClock replaces the clock ListEmittedAssignments uses to drop
+// Leases whose validity window has closed. It exists so a contract test can
+// pin the boundary without waiting on the wall clock; production code never
+// calls it, and the default is time.Now.
+func (s *Store) SetListingClock(now func() time.Time) {
+	s.listingNow.Store(&now)
 }
