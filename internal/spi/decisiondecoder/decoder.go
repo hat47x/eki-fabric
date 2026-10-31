@@ -25,6 +25,14 @@ type LeaseCodec interface {
 	EncodeLease(lease decisionpayload.Lease) ([]byte, error)
 }
 
+// PlacementApprovalCodec adds canonical encoding for the PLC-1 producer.
+// leaseissue only needs PlacementApprovalDecoder. Neither operation proves
+// current Placement authority.
+type PlacementApprovalCodec interface {
+	PlacementApprovalDecoder
+	EncodePlacementApproval(approval decisionpayload.PlacementApproval) ([]byte, error)
+}
+
 // WorkOrderDecoder decodes hostile P2 eki.work-order/v1 payload bytes. Success
 // does not authenticate the signature, prove that the referenced Placement
 // Approval / Lease / Executor Approval are current, or authorize execution.
