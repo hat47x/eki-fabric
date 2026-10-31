@@ -46,6 +46,7 @@ func newExecutionHandler(c *ExecutionConfig, events *eventLog, log *slog.Logger,
 		runner: nativerunner.Runner{
 			Command:          c.Command,
 			Args:             c.Args,
+			Env:              c.Env,
 			AllowedArgs:      c.AllowedArgs,
 			ExecutableSHA256: c.ExecutableSHA256,
 		},
@@ -94,6 +95,7 @@ func (h *executionHandler) Start(ctx context.Context, ready assignment.Ready) er
 	}
 	ack, err := h.claims.SubmitClaim(ctx, h.principal, claim)
 	if err != nil {
+		h.log.Error("result claim not submitted", "attempt", ready.AttemptID, "error", err.Error())
 		return fmt.Errorf("submit result claim for %s: %w", ready.AttemptID, err)
 	}
 	claimEvent := event{
