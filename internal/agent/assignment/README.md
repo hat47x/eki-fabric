@@ -1,6 +1,6 @@
 # Workerが受け取った割当の検証と開始の関門（試験用profile）
 
-Control Planeが配る署名済みのLeaseとWorkOrderを、Workerが自分の信頼の起点と自分の状態に照らして確かめ、開始してよいものだけを実行側（`Handler`）へ渡します。通信は#198のWorker Protocolではなく、試験用profileです（`POST /test-profile/v1/assignments`）。Taskは実行しません。
+Control Planeが配る署名済みのLeaseとWorkOrderを、Workerが自分の信頼の起点と自分の状態に照らして確かめ、開始してよいものだけを実行側（`Handler`）へ渡します。通信は#198のWorker Protocolではなく、試験用profileです（`POST /test-profile/v1/assignments`）。このpackage自体は実行せず、開始してよいと判断した割当を`Handler`へ渡すだけです。固定コマンドの実行は、`Handler`の実装である[`service`](../service/README.md)の`assignments.execution`と、[`nativerunner`](../nativerunner/README.md)が担います。
 
 受け取ったbytesは、確かめるまで信用しません。`Service.Poll`は割当ごとに次を順に確かめます。
 
