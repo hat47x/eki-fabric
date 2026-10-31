@@ -488,9 +488,18 @@ func TestAgentDeliversClaimToControlAcrossControlRestart(t *testing.T) {
 
 	// Clean agent shutdown on interrupt.
 	agent.interrupt(t)
-	if agent.err != nil {
-		t.Fatalf("agent exit after interrupt: %v\n%s", agent.err, agent.out.String())
+	if runtime.GOOS != "windows" {
+		// POSIX: SIGINT/SIGTERM reaches the signal handler and Run returns nil, so
+		// the process exits 0.
+		if agent.err != nil {
+			t.Fatalf("agent exit after interrupt: %v\n%s", agent.err, agent.out.String())
+		}
 	}
+	// Windows: interrupt() falls back to kill(), and TerminateProcess cannot run
+	// the signal handler, so "exit status 1" is the only possible outcome here.
+	// The shutdown itself is still asserted: interrupt() fails the test when the
+	// process ignores the signal. The graceful path is exercised on POSIX and by
+	// the CTRL_BREAK probe recorded in #312.
 }
 
 func TestControlRejectsUnknownTokenAndWrongPrincipalWithoutChange(t *testing.T) {
