@@ -2,6 +2,8 @@ package process
 
 import (
 	"context"
+	"os"
+	"path/filepath"
 	"runtime"
 	"testing"
 	"time"
@@ -10,6 +12,7 @@ import (
 	"github.com/hat47x/eki-fabric/internal/agent/service"
 	"github.com/hat47x/eki-fabric/internal/core/attemptstate"
 	"github.com/hat47x/eki-fabric/internal/core/decisionpayload"
+	"github.com/hat47x/eki-fabric/internal/core/ids"
 )
 
 func TestAgentExecutesAndSubmitsResultClaim(t *testing.T) {
@@ -67,4 +70,104 @@ func TestAgentExecutesAndSubmitsResultClaim(t *testing.T) {
 		}
 		return executed && claimed, agent.out.String() + "\n" + control.out.String()
 	})
+}
+
+// The claim from a finished execution is queued on the Agent before any send.
+// With the Control Plane down at that moment, and the Agent restarted too, the
+// claim still reaches the Control Plane once it is back, and events_file tells
+// the failed tries from the delivery.
+func TestAgentKeepsExecutionClaimWhileControlIsDownAcrossAgentRestart(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("the fixed command is a POSIX shell script")
+	}
+	e := newMTLSEnv(t, 0)
+	e.seedPolicyNow(t)
+	e.writeConfig(t)
+	control := e.startControl(t)
+
+	oldLimits, oldSandbox := signedchain.Limits, signedchain.Sandbox
+	signedchain.Limits = decisionpayload.ResourceLimits{
+		CPUMillis: 1000, MemoryBytes: 1 << 28, WallTimeMillis: 300_000, OutputBytesMaximum: 1 << 20,
+	}
+	signedchain.Sandbox = decisionpayload.SandboxPolicy{Profile: "native-fixed-spike"}
+	defer func() { signedchain.Limits, signedchain.Sandbox = oldLimits, oldSandbox }()
+
+	now := time.Now().UTC()
+	auth := signedchain.New(t, now.Add(-2*time.Hour), 29)
+	started := filepath.Join(t.TempDir(), "started")
+	a := e.assignmentAgent(t, "keep", auth, now, &service.ExecutionConfig{
+		Command: "/bin/sh",
+		Args:    []string{"-c", "echo go > '" + started + "'; sleep 2; echo hello"},
+		Env:     []string{"PATH=/usr/bin:/bin"},
+	})
+
+	var placed signedchain.Placed
+	func() {
+		s := openState(t, e.controlDB)
+		defer s.Close()
+		policy, err := s.LoadCurrentPolicy(context.Background())
+		must(t, err)
+		placed = auth.Place(t, s, policy, 1, a.worker, now)
+		attempt, err := s.LoadAttempt(context.Background(), placed.AttemptID)
+		must(t, err)
+		dispatched := attempt
+		dispatched.Phase, dispatched.UpdatedAt = attemptstate.AttemptPhaseDispatched, now
+		dispatched.Revision++
+		must(t, s.CompareAndSwapAttempt(context.Background(), attempt.ID, attempt.Revision, dispatched))
+	}()
+
+	agent := a.start(t)
+	waitFor(t, "the fixed command to start", func() (bool, string) {
+		_, err := os.Stat(started)
+		return err == nil, agent.out.String()
+	})
+	// The command is still sleeping: the Control Plane goes away before the
+	// claim exists.
+	control.kill()
+
+	type seen struct{ Failure, Decision string }
+	outcomes := func() map[string]seen {
+		got := map[string]seen{}
+		for _, ev := range readEvents(t, a.events) {
+			if ev.AttemptID == placed.AttemptID.String() {
+				got[ev.Outcome] = seen{Failure: ev.Failure, Decision: ev.ClaimDecision}
+			}
+		}
+		return got
+	}
+	waitFor(t, "claim queued and a failed delivery recorded", func() (bool, string) {
+		got := outcomes()
+		_, queued := got["result_claim_queued"]
+		failed, ok := got["result_claim_delivery_failed"]
+		return queued && ok && failed.Failure != "", agent.out.String()
+	})
+	if _, delivered := outcomes()["result_claim_submitted"]; delivered {
+		t.Fatal("a delivery was recorded while the Control Plane was down")
+	}
+	if v := attemptView(t, e.controlDB, placed.AttemptID); v.phase != attemptstate.AttemptPhaseDispatched || v.claimed {
+		t.Fatalf("control changed without a delivery: %+v", v)
+	}
+
+	// The Agent dies with the claim only in its queue; both come back.
+	agent.kill()
+	e.startControl(t)
+	a.start(t)
+	waitFor(t, "the queued claim delivered after both restarts", func() (bool, string) {
+		got := outcomes()
+		return got["result_claim_submitted"].Decision != "", ""
+	})
+	if v := attemptView(t, e.controlDB, placed.AttemptID); v.phase != attemptstate.AttemptPhaseVerifying || !v.claimed {
+		t.Fatalf("control Attempt after delivery = %+v, want verifying with the claim recorded", v)
+	}
+}
+
+func attemptView(t *testing.T, statePath string, id ids.AttemptID) controlView {
+	t.Helper()
+	s := openState(t, statePath)
+	defer s.Close()
+	a, err := s.LoadAttempt(context.Background(), id)
+	must(t, err)
+	_, found, err := s.LoadResultClaim(context.Background(), id)
+	must(t, err)
+	return controlView{a.Phase, a.Revision, found}
 }
