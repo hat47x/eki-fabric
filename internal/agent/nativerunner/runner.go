@@ -2,8 +2,8 @@
 //
 // This is a production adapter with an explicit limit: it is not a sandbox and
 // must not be used with untrusted tasks. The command and arguments are trusted
-// Worker configuration, never Task input. CPU and memory limits are not
-// enforced here.
+// Worker configuration, never Task input. CPU and memory are checked after the
+// process exits; they are not enforced while it runs.
 package nativerunner
 
 import (
@@ -17,6 +17,7 @@ import (
 	"os"
 	"os/exec"
 	"strings"
+	"time"
 
 	"github.com/hat47x/eki-fabric/internal/agent/executor"
 	"github.com/hat47x/eki-fabric/internal/core/contract"
@@ -109,7 +110,8 @@ func (r Runner) Run(ctx context.Context, spec executor.Spec) (executor.Result, e
 		}
 		return result, err
 	}
-	cpuMillis, maxRSSBytes := processUsage(cmd.ProcessState)
+	maxRSSBytes := processUsage(cmd.ProcessState)
+	cpuMillis := uint64(cmd.ProcessState.UserTime()+cmd.ProcessState.SystemTime()) / uint64(time.Millisecond)
 	if spec.Limits.CPUMillis != 0 && cpuMillis > spec.Limits.CPUMillis {
 		return result, fmt.Errorf("native runner CPU time %dms exceeds %dms", cpuMillis, spec.Limits.CPUMillis)
 	}

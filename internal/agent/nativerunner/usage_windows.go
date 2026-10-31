@@ -4,8 +4,8 @@ package nativerunner
 
 import "os"
 
-// processUsage is unavailable on Windows in this reference Runner. Returning
-// zero means the post-hoc CPU and memory checks cannot reject a result here.
-func processUsage(*os.ProcessState) (cpuMillis, maxRSSBytes uint64) {
-	return 0, 0
+// processUsage reports no memory figure on Windows in this reference Runner.
+// CPU time is read from os.ProcessState and is checked on Windows.
+func processUsage(*os.ProcessState) (maxRSSBytes uint64) {
+	return 0
 }
