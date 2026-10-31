@@ -99,6 +99,7 @@ func assertRefusal(t testing.TB, err error, want workerregistry.Reason) {
 func RunWorkerRegistryContract(t *testing.T, newStore WorkerRegistryFactory) {
 	t.Helper()
 	ctx := context.Background()
+	runWorkerListingContract(t, newStore)
 	newFixture := func(t *testing.T) registryFixture {
 		t.Helper()
 		return newRegistryFixture(t, newStore(t))

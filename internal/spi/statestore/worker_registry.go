@@ -60,6 +60,12 @@ type WorkerRegistryStore interface {
 
 	// LoadWorker returns the Worker or ErrNotFound.
 	LoadWorker(ctx context.Context, identity ids.WorkerIdentity) (workerregistry.Worker, error)
+	// ListWorkers returns every registered Worker in identity order. It backs
+	// dispatch, which must see the population it plans over without knowing
+	// identities in advance. Revoked Workers are included so a caller that
+	// must not act on stale knowledge can see them; Usable() is the caller's
+	// filter.
+	ListWorkers(ctx context.Context) ([]workerregistry.Worker, error)
 	// TransitionWorker applies Worker.Transition and returns the result. A
 	// change out of revoked fails with workerregistry.ErrWorkerRevoked.
 	TransitionWorker(ctx context.Context, identity ids.WorkerIdentity, to workerregistry.State, actor string, at time.Time) (workerregistry.Worker, error)
