@@ -6,7 +6,9 @@
 //  1. the signed WorkOrder, verified by workorderverify;
 //  2. the Worker's own durable Lease record for this Attempt;
 //  3. the Placement Approval and Executor Approval the WorkOrder names;
-//  4. a one-time claim of the WorkOrder nonce.
+//  4. the durable claims of the Worker's replay guard: the Task's highest
+//     accepted fence epoch, which refuses an Attempt that a higher fence
+//     already replaced, and the one-time claim of the WorkOrder nonce.
 //
 // Success produces an Admission. An Admission is still not permission to start
 // an Executor: it records that the instruction was current and unused at
@@ -36,6 +38,8 @@ var (
 	ErrLeaseExpired      = errors.New("the local Lease is not active")
 	ErrPlacementMismatch = errors.New("WorkOrder does not match the Placement Approval")
 	ErrExecutorMismatch  = errors.New("WorkOrder does not match the Executor Approval")
+	ErrSuperseded        = errors.New("a newer fence epoch for this Task was already accepted")
+	ErrFenceUnknown      = errors.New("fence claim outcome is unknown")
 	ErrReplay            = errors.New("WorkOrder nonce has already been used")
 	ErrReplayUnknown     = errors.New("WorkOrder nonce claim outcome is unknown")
 )
@@ -148,13 +152,42 @@ func (a Admission) Nonce() []byte                          { return append([]byt
 // IsZero reports whether the Admission was produced by Accept.
 func (a Admission) IsZero() bool { return a.orderDecisionID == "" }
 
-// Accept verifies the WorkOrder, checks it against the Worker's own Lease,
-// Placement Approval, and Executor Approval, and claims the nonce exactly once.
-//
-// Ordering matters: the nonce is claimed only after every other check passes,
-// so a mismatched or expired instruction cannot burn a nonce. A replay guard
-// error is reported as unknown and must be treated as a refusal.
+// Preview runs every local check Accept runs except the durable claims, and
+// returns the Admission the WorkOrder would produce. The caller runs the start
+// gate on it before Accept spends the nonce: a start the machine cannot hold
+// is then refused with the nonce still unspent, so the Control Plane can
+// re-issue the WorkOrder with a fresh nonce instead of the Assignment being
+// lost as a replay. A replayed nonce is reported as ErrReplay, like Accept.
+func (s *Service) Preview(ctx context.Context, req Request) (Admission, error) {
+	admission, err := s.build(WithoutNonceClaim(ctx), req)
+	if err != nil {
+		return Admission{}, err
+	}
+	return admission, nil
+}
+
+// Accept is Preview plus the durable claims. The fence and the nonce are
+// claimed only after every other check passes, so a mismatched or expired
+// instruction claims nothing. The fence is claimed before the nonce: a
+// superseded Attempt is refused with its nonce unspent, and an accepted
+// Attempt leaves its fence behind even if the process dies before the nonce
+// claim, so a lower fence of the same Task can never start later. A replay
+// guard error is reported as unknown and must be treated as a refusal.
 func (s *Service) Accept(ctx context.Context, req Request) (Admission, error) {
+	admission, err := s.build(ctx, req)
+	if err != nil {
+		if errors.Is(err, errNonceReplayed) {
+			return Admission{}, ErrReplay
+		}
+		return Admission{}, err
+	}
+	return admission, nil
+}
+
+// errNonceReplayed is returned by build when the nonce claim is refused.
+var errNonceReplayed = errors.New("nonce already claimed")
+
+func (s *Service) build(ctx context.Context, req Request) (Admission, error) {
 	if s == nil || s.verifier == nil || s.replay == nil || s.clock == nil {
 		return Admission{}, fmt.Errorf("%w: service is not initialized", ErrInvalidConfig)
 	}
@@ -209,14 +242,7 @@ func (s *Service) Accept(ctx context.Context, req Request) (Admission, error) {
 	if req.Lease.ExpiresAt.Before(expiresAt) {
 		expiresAt = req.Lease.ExpiresAt
 	}
-	claimed, err := s.replay.Claim(ctx, order.Nonce(), expiresAt)
-	if err != nil {
-		return Admission{}, fmt.Errorf("%w: %w", ErrReplayUnknown, err)
-	}
-	if !claimed {
-		return Admission{}, ErrReplay
-	}
-	return Admission{
+	admission := Admission{
 		orderDecisionID: order.DecisionID(),
 		workOrderID:     order.WorkOrderID(),
 		taskID:          order.TaskID(),
@@ -233,7 +259,44 @@ func (s *Service) Accept(ctx context.Context, req Request) (Admission, error) {
 		expiresAt:       expiresAt.UTC(),
 		keyID:           verified.KeyID(),
 		trustBundleRev:  verified.TrustBundleRevision(),
-	}, nil
+	}
+	if skipNonceClaim(ctx) {
+		return admission, nil
+	}
+	// The Task's fence is recorded before the nonce is claimed, so an
+	// accepted Attempt leaves its fence behind even if the process dies
+	// before the nonce claim.
+	current, err := s.replay.Fence(ctx, order.TaskID().String(), req.Lease.FenceEpoch, expiresAt)
+	if err != nil {
+		return Admission{}, fmt.Errorf("%w: %w", ErrFenceUnknown, err)
+	}
+	if !current {
+		return Admission{}, ErrSuperseded
+	}
+	claimed, err := s.replay.Claim(ctx, order.Nonce(), expiresAt)
+	if err != nil {
+		return Admission{}, fmt.Errorf("%w: %w", ErrReplayUnknown, err)
+	}
+	if !claimed {
+		return Admission{}, errNonceReplayed
+	}
+	return admission, nil
+}
+
+// skipNonceClaim reports whether ctx carries the no-claim marker Preview uses.
+func skipNonceClaim(ctx context.Context) bool {
+	_, no := ctx.Value(nonceClaimKey{}).(*nonceClaimOff)
+	return no
+}
+
+type nonceClaimKey struct{}
+
+type nonceClaimOff struct{}
+
+// WithoutNonceClaim returns a ctx that makes build skip the durable claims
+// (the Task's fence and the nonce). Preview uses it; Accept never does.
+func WithoutNonceClaim(ctx context.Context) context.Context {
+	return context.WithValue(ctx, nonceClaimKey{}, &nonceClaimOff{})
 }
 
 func validateEvidence(req Request) error {

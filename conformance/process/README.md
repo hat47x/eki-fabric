@@ -51,7 +51,7 @@
 
 | 試験 | 内容 |
 |---|---|
-| `TestAgentVerifiesAndGateStartsDeliveredAssignments` | 本物の署名のAttemptは`ready`（上限は付与とローカルの天井の小さい方）。10分前に署名されたLeaseは`lease_expired`で拒否。別のWorkerのAttemptはこのAgentに届かず、そのWorkerのAgentには届く。Agentを再起動して同じbytesを受けても、`replayed`で、二度は開始しない |
+| `TestAgentVerifiesAndGateStartsDeliveredAssignments` | 本物の署名のAttemptは`ready`（上限は付与とローカルの天井の小さい方）。10分前に署名されたLeaseは配信一覧から外れ、Agentには届かない（Agent側の`lease_expired`拒否は`internal/agent/assignment`の試験で固定）。別のWorkerのAttemptはこのAgentに届かず、そのWorkerのAgentには届く。Agentを再起動して同じbytesを受けても、`replayed`で、二度は開始しない |
 | `TestAgentWithAnotherTrustAnchorRefusesGenuineAssignments` | 別の鍵の信頼の起点を持つAgentは、本物の割当をLeaseの検証で拒否する |
 | `TestRevokedWorkersAgentReceivesNothing` | 失効したWorkerのAgentは、要求が拒否され、何も決定しない |
 | `TestAgentRefusesToStartWithoutATrustAnchor` | 信頼の起点のファイルがないと、Agentは起動せず失敗する |

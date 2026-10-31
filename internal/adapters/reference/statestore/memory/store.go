@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"sync"
+	"time"
 
 	"github.com/hat47x/eki-fabric/internal/core/acceptedresult"
 	"github.com/hat47x/eki-fabric/internal/core/attemptstate"
@@ -38,6 +39,7 @@ type authorityDecisionScope struct {
 
 type Store struct {
 	mu                sync.RWMutex
+	now               func() time.Time // the clock the assignment listing reads; time.Now unless a test replaces it
 	admissions        map[ids.TaskID]statestore.Admission
 	idempotent        map[idempotencyScope]ids.TaskID
 	tasks             map[ids.TaskID]taskstate.TaskRecord
@@ -62,6 +64,7 @@ type Store struct {
 
 func New() *Store {
 	return &Store{
+		now:               time.Now,
 		tasks:             make(map[ids.TaskID]taskstate.TaskRecord),
 		attempts:          make(map[ids.AttemptID]attemptstate.AttemptRecord),
 		admissions:        make(map[ids.TaskID]statestore.Admission),

@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"testing"
+	"time"
 
 	"github.com/hat47x/eki-fabric/internal/core/attemptstate"
 	"github.com/hat47x/eki-fabric/internal/spi/statestore"
@@ -14,9 +15,25 @@ import (
 type AssignmentTestStore interface {
 	WorkOrderSigningTestStore
 	statestore.AssignmentStore
+
+	// SetListingClock replaces the clock the listing compares Lease expiry
+	// against, so the contract runs on the fixture clock instead of the wall
+	// clock.
+	SetListingClock(now func() time.Time)
 }
 
 type AssignmentFactory func(t testing.TB) AssignmentTestStore
+
+// listingClockOffset places the listing clock inside the fixture Leases'
+// validity windows, which open at leaseNow.
+const listingClockOffset = 10 * time.Second
+
+func newListingStore(t testing.TB, newStore AssignmentFactory) AssignmentTestStore {
+	t.Helper()
+	store := newStore(t)
+	store.SetListingClock(func() time.Time { return leaseNow.Add(listingClockOffset) })
+	return store
+}
 
 // RunAssignmentContract checks the read the Worker delivery route relies on:
 // the exact EMITTED bytes for the Worker that holds the Attempt, nothing for
@@ -27,7 +44,7 @@ func RunAssignmentContract(t *testing.T, newStore AssignmentFactory) {
 	ctx := context.Background()
 
 	t.Run("lists-the-exact-emitted-bytes-for-the-holder-only", func(t *testing.T) {
-		store := newStore(t)
+		store := newListingStore(t, newStore)
 		fx := newWorkOrderFixture(t, store)
 		lease, leaseResult := fx.emittedLease("asg-happy")
 		order, err := fx.issuer.Issue(ctx, fx.request(lease))
@@ -57,7 +74,7 @@ func RunAssignmentContract(t *testing.T, newStore AssignmentFactory) {
 	})
 
 	t.Run("a-lease-without-a-workorder-is-not-listed", func(t *testing.T) {
-		store := newStore(t)
+		store := newListingStore(t, newStore)
 		fx := newWorkOrderFixture(t, store)
 		lease, _ := fx.emittedLease("asg-no-order")
 		if got, err := store.ListEmittedAssignments(ctx, lease.WorkerIdentity, 0); err != nil || len(got) != 0 {
@@ -66,7 +83,7 @@ func RunAssignmentContract(t *testing.T, newStore AssignmentFactory) {
 	})
 
 	t.Run("a-reserved-but-unsigned-lease-is-not-listed", func(t *testing.T) {
-		store := newStore(t)
+		store := newListingStore(t, newStore)
 		fx := newWorkOrderFixture(t, store)
 		lease := fx.lse.reserve("asg-reserved")
 		if got, err := store.ListEmittedAssignments(ctx, lease.WorkerIdentity, 0); err != nil || len(got) != 0 {
@@ -74,8 +91,11 @@ func RunAssignmentContract(t *testing.T, newStore AssignmentFactory) {
 		}
 	})
 
+	// The expiry filter is pinned by RunAssignmentExpiryProbe, which moves the
+	// listing clock instead of waiting on the wall clock.
+
 	t.Run("a-dispatched-attempt-is-still-listed-and-a-closed-one-is-not", func(t *testing.T) {
-		store := newStore(t)
+		store := newListingStore(t, newStore)
 		fx := newWorkOrderFixture(t, store)
 		lease, _ := fx.emittedLease("asg-phases")
 		if _, err := fx.issuer.Issue(ctx, fx.request(lease)); err != nil {
@@ -107,4 +127,45 @@ func RunAssignmentContract(t *testing.T, newStore AssignmentFactory) {
 		}
 	})
 
+}
+
+// RunAssignmentExpiryProbe pins the expiry filter both adapters must apply:
+// a Lease whose validity window has closed is not listed, because the Worker
+// refuses expired material anyway and a stale row would crowd out live ones.
+// The probe moves the listing clock across the stored ExpiresAt, so it runs
+// in no wall-clock time and does not depend on how long the other contract
+// subtests take.
+func RunAssignmentExpiryProbe(t *testing.T, newStore AssignmentFactory) {
+	t.Helper()
+	ctx := context.Background()
+
+	t.Run("a-lease-is-listed-until-its-window-closes", func(t *testing.T) {
+		store := newListingStore(t, newStore)
+		fx := newWorkOrderFixture(t, store)
+		lease, _ := fx.emittedLease("asg-expiry")
+		if _, err := fx.issuer.Issue(ctx, fx.request(lease)); err != nil {
+			t.Fatal(err)
+		}
+		stored, err := store.LoadLease(ctx, lease.ID)
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, tc := range []struct {
+			name string
+			at   time.Time
+			want int
+		}{
+			{"while the window is open", leaseNow.Add(listingClockOffset), 1},
+			{"one nanosecond before ExpiresAt", stored.ExpiresAt.Add(-time.Nanosecond), 1},
+			{"at ExpiresAt", stored.ExpiresAt, 0},
+			{"long after ExpiresAt", stored.ExpiresAt.Add(time.Hour), 0},
+		} {
+			at := tc.at
+			store.SetListingClock(func() time.Time { return at })
+			got, err := store.ListEmittedAssignments(ctx, lease.WorkerIdentity, 0)
+			if err != nil || len(got) != tc.want {
+				t.Fatalf("%s: ListEmittedAssignments() = %+v, %v, want %d", tc.name, got, err, tc.want)
+			}
+		}
+	})
 }

@@ -258,3 +258,61 @@ func TestOpenRejectsInvalidConfiguration(t *testing.T) {
 		t.Fatalf("nil guard = %v, %v", ok, err)
 	}
 }
+
+func TestFenceRefusesStaleEpochAndSurvivesReopen(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "fences.db")
+	now := baseTime
+	clock := clockFunc(func() time.Time { return now })
+	g := openGuard(t, path, clock, 2)
+	if ok, err := g.Fence(context.Background(), "tsk_1", 7, now.Add(time.Minute)); err != nil || !ok {
+		t.Fatalf("first fence = %v, %v", ok, err)
+	}
+	// A lower epoch is superseded and writes nothing.
+	if ok, err := g.Fence(context.Background(), "tsk_1", 6, now.Add(time.Minute)); err != nil || ok {
+		t.Fatalf("stale fence = %v, %v", ok, err)
+	}
+	// The same epoch is accepted again: a re-issued WorkOrder passes.
+	if ok, err := g.Fence(context.Background(), "tsk_1", 7, now.Add(2*time.Minute)); err != nil || !ok {
+		t.Fatalf("same fence = %v, %v", ok, err)
+	}
+	if ok, err := g.Fence(context.Background(), "tsk_1", 8, now.Add(2*time.Minute)); err != nil || !ok {
+		t.Fatalf("higher fence = %v, %v", ok, err)
+	}
+	if err := g.Close(); err != nil {
+		t.Fatal(err)
+	}
+	// The record survives the restart and keeps refusing the older epoch.
+	now = baseTime.Add(time.Minute)
+	g = openGuard(t, path, clock, 2)
+	if ok, err := g.Fence(context.Background(), "tsk_1", 7, now.Add(time.Minute)); err != nil || ok {
+		t.Fatalf("stale fence after reopen = %v, %v", ok, err)
+	}
+	// Another Task keeps its own record.
+	if ok, err := g.Fence(context.Background(), "tsk_2", 1, now.Add(time.Minute)); err != nil || !ok {
+		t.Fatalf("other task = %v, %v", ok, err)
+	}
+}
+
+func TestExpiredFenceReleasesCapacityAndInvalidClaimsFail(t *testing.T) {
+	now := baseTime
+	g := openGuard(t, filepath.Join(t.TempDir(), "fence-expiry.db"), clockFunc(func() time.Time { return now }), 1)
+	if ok, err := g.Fence(context.Background(), "tsk_1", 1, now.Add(time.Minute)); err != nil || !ok {
+		t.Fatalf("first fence = %v, %v", ok, err)
+	}
+	if ok, err := g.Fence(context.Background(), "tsk_2", 1, now.Add(time.Minute)); ok || !errors.Is(err, ErrGuardCapacity) {
+		t.Fatalf("capacity = %v, %v", ok, err)
+	}
+	now = now.Add(time.Minute)
+	if ok, err := g.Fence(context.Background(), "tsk_2", 1, now.Add(time.Minute)); err != nil || !ok {
+		t.Fatalf("after expiry = %v, %v", ok, err)
+	}
+	if ok, err := g.Fence(context.Background(), "", 1, now.Add(time.Minute)); ok || !errors.Is(err, ErrInvalidFence) {
+		t.Fatalf("empty task = %v, %v", ok, err)
+	}
+	if ok, err := g.Fence(context.Background(), "tsk_3", 0, now.Add(time.Minute)); ok || !errors.Is(err, ErrInvalidFence) {
+		t.Fatalf("zero epoch = %v, %v", ok, err)
+	}
+	if ok, err := g.Fence(context.Background(), "tsk_3", 1, now); ok || !errors.Is(err, ErrInvalidFence) {
+		t.Fatalf("past expiry = %v, %v", ok, err)
+	}
+}

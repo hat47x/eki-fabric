@@ -10,7 +10,7 @@
 
 成功時だけ、非公開フィールドを持つ`Verified`を返します。結果には署名されたLease、鍵ID、信頼ドメイン、Trust Bundleのrevision、検証時刻を保持します。失敗時はゼロ値と既存の`VerificationFailure`を返します。時計と検証済みTrust Bundleのメタデータは、信頼できる呼出し側が渡します。
 
-この結果は指定した時点で署名を検証できたことを表します。実行許可、EMITTEDの耐久commit、現在のpolicyの有効性、Task入力との一致、FenceEpochの耐久的な受理、Local Governorによる資源利用の許可は証明しません。検証後の失効を検出する仕組みやWorkerへの配送・実行経路も接続していません。policy currentnessの扱いは#78の未決事項として残します。
+この結果は指定した時点で署名を検証できたことを表します。実行許可、EMITTEDの耐久commit、現在のpolicyの有効性、Task入力との一致、FenceEpochの耐久的な受理（#296 項目3のとおり、Workerのreplay guardが担う）、Local Governorによる資源利用の許可は証明しません。検証後の失効を検出する仕組みやWorkerへの配送・実行経路も接続していません。policy currentnessの扱いは#78の未決事項として残します。
 
 `conformance/statestoretest`では、memoryとSQLiteの両方で実Emitterが署名・保存したbytesを検証します。宛先や信頼ドメインの不一致、署名・payloadの改変、鍵の失効・侵害、有効期間外、古いTrust Bundle、時計・Bundleの欠落を負例に含めます。これらは端末上での実行やネットワーク配送の証拠ではありません。
 

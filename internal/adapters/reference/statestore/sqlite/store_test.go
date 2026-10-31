@@ -1138,3 +1138,20 @@ func TestAssignmentContract(t *testing.T) {
 		return store
 	})
 }
+
+// TestAssignmentListingDropsExpiredLeases pins the expiry filter the listing
+// applies: a Lease whose validity window closed on the wall clock is not
+// listed, because the Worker refuses expired material anyway and a stale row
+// would crowd out live ones.
+func TestAssignmentListingDropsExpiredLeases(t *testing.T) {
+	statestoretest.RunAssignmentExpiryProbe(t, func(t testing.TB) statestoretest.AssignmentTestStore {
+		t.Helper()
+		store := openStore(t, filepath.Join(t.TempDir(), "state.db"))
+		t.Cleanup(func() {
+			if err := store.Close(); err != nil {
+				t.Errorf("Close() error = %v", err)
+			}
+		})
+		return store
+	})
+}

@@ -12,7 +12,9 @@
 //  3. workorderverify and workorderaccept: the WorkOrder is for this Worker,
 //     signed by a WOR-1 key, bound to exactly that Lease (decision and payload
 //     digest), names an Executor Approval from the Worker's own approved list,
-//     and its one-time nonce is claimed in the Worker's durable replay guard;
+//     and its Task's fence epoch is not behind a higher fence the Worker
+//     already accepted, and its one-time nonce is claimed in the Worker's
+//     durable replay guard;
 //  4. startgate: the Local Governor and the machine allow a start, and the
 //     effective limits are the smaller of the grant and the local ceiling.
 //
@@ -135,6 +137,10 @@ type Service struct {
 
 	mu   sync.Mutex
 	done map[string]struct{} // Attempts already handed over or already spent
+	// The in-memory done map dedupes per Attempt within one process. Across
+	// restarts, the durable dedupe is the replay guard: the nonce claim for a
+	// redelivery of the same Attempt, and the per-Task fence record for an
+	// Attempt a higher fence already replaced.
 }
 
 func New(cfg Config) (*Service, error) {
@@ -278,6 +284,33 @@ func (s *Service) check(ctx context.Context, a workerplane.Assignment) Result {
 		return r
 	}
 
+	// The start gate runs before the nonce claim: a start the machine cannot
+	// hold is refused with the nonce still unspent, so the Control Plane can
+	// re-issue the WorkOrder with a fresh nonce instead of the Assignment
+	// being lost as a replay.
+	preliminary, err := s.accept.Preview(ctx, workorderaccept.Request{
+		Raw: a.WorkOrderEnvelope, TrustBundle: bundle,
+		Lease: workorderaccept.LeaseEvidence{
+			DecisionID: lease.DecisionID(), PayloadDigest: leaseDigest, TaskID: lease.TaskID(),
+			TaskIRDigest: lease.TaskIRDigest(), AttemptID: lease.AttemptID(),
+			WorkerIdentity: lease.WorkerIdentity(), FenceEpoch: lease.FenceEpoch(), ExpiresAt: lease.ExpiresAt(),
+		},
+		Placement: workorderaccept.PlacementEvidence{
+			DecisionID: order.PlacementRef().DecisionID(), PayloadDigest: order.PlacementRef().PayloadDigest(),
+			TaskID: lease.TaskID(), TaskIRDigest: lease.TaskIRDigest(), AttemptID: lease.AttemptID(),
+			WorkerIdentity: lease.WorkerIdentity(),
+		},
+		Executor: workorderaccept.ExecutorEvidence{
+			DecisionID: executor.DecisionID, PayloadDigest: executor.PayloadDigest, ExecutorDigest: executor.ExecutorDigest,
+		},
+	})
+	if err != nil {
+		return reject(acceptReason(err))
+	}
+	if _, err := s.gate.Check(startgate.Request{Admission: preliminary, Governor: gov, Machine: s.cfg.Machine}); err != nil {
+		return reject("start_gate_" + gateReason(err))
+	}
+
 	admission, err := s.accept.Accept(ctx, workorderaccept.Request{
 		Raw: a.WorkOrderEnvelope, TrustBundle: bundle,
 		Lease: workorderaccept.LeaseEvidence{
@@ -302,7 +335,10 @@ func (s *Service) check(ctx context.Context, a workerplane.Assignment) Result {
 		return reject(acceptReason(err))
 	}
 
-	// 4. The start gate. The nonce is spent from here on.
+	// 4. The start gate on the admitted work. The gate itself ran on the
+	// Preview before the nonce claim; this second Check re-runs it on the
+	// admitted values, which are the same evidence, so a refusal here is a
+	// race with the clock, not a lost Assignment.
 	plan, err := s.gate.Check(startgate.Request{Admission: admission, Governor: gov, Machine: s.cfg.Machine})
 	if err != nil {
 		return reject("start_gate_" + gateReason(err))
@@ -342,6 +378,10 @@ func acceptReason(err error) string {
 		return "work_order_placement_mismatch"
 	case errors.Is(err, workorderaccept.ErrExecutorMismatch):
 		return "work_order_executor_mismatch"
+	case errors.Is(err, workorderaccept.ErrSuperseded):
+		return "work_order_superseded"
+	case errors.Is(err, workorderaccept.ErrFenceUnknown):
+		return "fence_claim_unknown"
 	case errors.Is(err, workorderaccept.ErrReplayUnknown):
 		return "nonce_claim_unknown"
 	}
@@ -368,13 +408,15 @@ func gateReason(err error) string {
 }
 
 // StaticGovernor is a fixed Local Governor decision for the test profile: it
-// accepts new work and allows the same percentage of every resource. The real
-// Local Governor (agent/governor) is not wired into the Agent process yet.
+// accepts new work and allows the same percentage of every resource, GPU
+// included. The real Local Governor (agent/governor) is not wired into the
+// Agent process yet.
 func StaticGovernor(percent int) func() governor.Decision {
 	return func() governor.Decision {
 		return governor.Decision{AcceptNewLeases: true, Ceilings: map[governor.Resource]int{
 			governor.ResourceCPU: percent, governor.ResourceMemory: percent,
 			governor.ResourceDiskIO: percent, governor.ResourceNetwork: percent,
+			governor.ResourceGPU: percent,
 		}}
 	}
 }

@@ -14,6 +14,7 @@ import (
 	"github.com/hat47x/eki-fabric/internal/agent/governor"
 	"github.com/hat47x/eki-fabric/internal/agent/startgate"
 	"github.com/hat47x/eki-fabric/internal/agent/trustanchor"
+	"github.com/hat47x/eki-fabric/internal/core/decisionpayload"
 	"github.com/hat47x/eki-fabric/internal/core/policystate"
 	"github.com/hat47x/eki-fabric/internal/spi/replayguard"
 	"github.com/hat47x/eki-fabric/internal/spi/workerplane"
@@ -57,8 +58,21 @@ func newWorld(t *testing.T) *world {
 	return &world{t: t, now: now, auth: signedchain.New(t, now.Add(-2*time.Hour), 17), state: s, policy: policy}
 }
 
-// place signs an Attempt for worker as the Control Plane clock read at, with the
-// given key set, and returns the assignment the Control Plane would deliver.
+// placeSandboxWith signs an Attempt for worker as the Control Plane clock read
+// at, with the given key set and SandboxPolicy, and returns the assignment the
+// Control Plane would deliver.
+func (w *world) placeSandboxWith(auth *signedchain.Authorities, worker string, at time.Time, sandbox decisionpayload.SandboxPolicy) workerplane.Assignment {
+	w.t.Helper()
+	w.n++
+	p := auth.PlaceSandbox(w.t, w.state, w.policy, w.n, worker, at, sandbox)
+	return workerplane.Assignment{
+		AttemptID: p.AttemptID.String(), LeaseID: p.LeaseID.String(),
+		LeaseEnvelope: p.SignedLease, WorkOrderEnvelope: p.SignedWorkOrder,
+	}
+}
+
+// placeWith signs an Attempt for worker as the Control Plane clock read at,
+// with the given key set and the reference SandboxPolicy.
 func (w *world) placeWith(auth *signedchain.Authorities, worker string, at time.Time) workerplane.Assignment {
 	w.t.Helper()
 	w.n++
@@ -69,6 +83,12 @@ func (w *world) placeWith(auth *signedchain.Authorities, worker string, at time.
 	}
 }
 
+// place signs an Attempt with the reference SandboxPolicy.
+func (w *world) placeSandbox(worker string, at time.Time, sandbox decisionpayload.SandboxPolicy) workerplane.Assignment {
+	return w.placeSandboxWith(w.auth, worker, at, sandbox)
+}
+
+// place signs an Attempt with the reference key set and SandboxPolicy.
 func (w *world) place(worker string, at time.Time) workerplane.Assignment {
 	return w.placeWith(w.auth, worker, at)
 }
@@ -78,6 +98,16 @@ type agent struct {
 	src     *source
 	started []assignment.Ready
 	gov     *governor.Decision
+	machine startgate.MachineProfile
+}
+
+// defaultMachine returns m, or the default profile when zero. A test that
+// never sets machine keeps the old fixed profile.
+func defaultMachine(m startgate.MachineProfile) startgate.MachineProfile {
+	if m == (startgate.MachineProfile{}) {
+		return startgate.MachineProfile{CPUMillis: 8000, MemoryBytes: 8 << 30}
+	}
+	return m
 }
 
 type options struct {
@@ -85,6 +115,7 @@ type options struct {
 	executors []assignment.ExecutorApproval
 	replay    replayguard.Guard
 	clock     *clock
+	machine   startgate.MachineProfile
 }
 
 func (w *world) agent(worker string, opt options) *agent {
@@ -122,7 +153,7 @@ func (w *world) agent(worker string, opt options) *agent {
 		Source: a.src, Principal: workerplane.Principal{WorkerIdentity: worker, TrustDomain: "example.org"},
 		Anchor: anchor, Replay: replay, Clock: clk, Executors: execs,
 		Governor: func() governor.Decision { return *a.gov },
-		Machine:  startgate.MachineProfile{CPUMillis: 8000, MemoryBytes: 8 << 30},
+		Machine:  defaultMachine(opt.machine),
 		Handler: assignment.HandlerFunc(func(_ context.Context, r assignment.Ready) error {
 			a.started = append(a.started, r)
 			return nil
@@ -317,6 +348,56 @@ func TestTheStartGateStopsAStartTheMachineCannotHold(t *testing.T) {
 	}
 }
 
+// A start the machine cannot hold must leave the nonce unspent: the Control
+// Plane then re-issues the WorkOrder with a fresh nonce and the same Attempt
+// starts after the machine frees up, instead of the Assignment being lost as
+// a replay (#296 item 2).
+func TestAStartGateRefusalLeavesTheNonceUnspent(t *testing.T) {
+	w := newWorld(t)
+	a := w.agent("worker-a", options{})
+	zero := assignment.StaticGovernor(0)()
+	a.gov = &zero
+	asg := w.place("worker-a", w.now)
+	want(t, a.poll(t, asg), assignment.OutcomeRejected, "start_gate_no_capacity")
+	open := assignment.StaticGovernor(50)()
+	a.gov = &open
+	// The same bytes poll again: if the first poll had spent the nonce, this
+	// would be a replay and the Attempt would never start.
+	want(t, a.poll(t, asg), assignment.OutcomeReady, "")
+	if len(a.started) != 1 {
+		t.Fatalf("started %d times after the gate reopened", len(a.started))
+	}
+}
+
+// A WorkOrder whose SandboxPolicy requires a GPU used to fail the start gate
+// after Accept had already spent the nonce, so the same bytes could never
+// start (#296 item 2). With the gate running before the nonce claim, the
+// refusal is a rejection with the nonce unspent, and the assignment starts
+// once the machine reports the GPU.
+func TestAWorkOrderRequiringAGPUStartsOnceTheGovernorAllowsIt(t *testing.T) {
+	w := newWorld(t)
+	// The machine reports 2 GPUs from the start; the refusal below comes from
+	// the Governor ceilings only.
+	a := w.agent("worker-a", options{machine: startgate.MachineProfile{CPUMillis: 8000, MemoryBytes: 8 << 30, GPUDevices: 2}})
+	sandbox := decisionpayload.SandboxPolicy{
+		Profile: signedchain.Sandbox.Profile,
+		GPU:     &decisionpayload.GPULimit{DeviceCount: 1, MinimumVRAMBytes: 16 << 30},
+	}
+	asg := w.placeSandbox("worker-a", w.now, sandbox)
+	zero := assignment.StaticGovernor(0)()
+	a.gov = &zero
+	want(t, a.poll(t, asg), assignment.OutcomeRejected, "start_gate_no_capacity")
+	open := assignment.StaticGovernor(50)()
+	a.gov = &open
+	want(t, a.poll(t, asg), assignment.OutcomeReady, "")
+	if len(a.started) != 1 {
+		t.Fatalf("started %d times", len(a.started))
+	}
+	if plan := a.started[0].Plan; plan.Sandbox().GPU == nil || plan.Sandbox().GPU.DeviceCount != 1 {
+		t.Fatalf("the started plan lost the GPU limit: %+v", plan.Sandbox().GPU)
+	}
+}
+
 func TestConfigurationFailsClosed(t *testing.T) {
 	if _, err := trustanchor.Load(""); !errors.Is(err, trustanchor.ErrInvalid) {
 		t.Fatalf("empty path: %v", err)
@@ -332,5 +413,34 @@ func TestConfigurationFailsClosed(t *testing.T) {
 	}
 	if _, err := assignment.New(assignment.Config{}); !errors.Is(err, assignment.ErrInvalidConfig) {
 		t.Fatalf("empty config: %v", err)
+	}
+}
+
+func TestAnAssignmentBehindAnAcceptedFenceIsSuperseded(t *testing.T) {
+	w := newWorld(t)
+	clk := &clock{now: w.now.Add(time.Second)}
+	guard, err := replayguardmemory.New(clk, 1024)
+	if err != nil {
+		t.Fatal(err)
+	}
+	asg := w.place("worker-a", w.now)
+	a := w.agent("worker-a", options{replay: guard, clock: clk})
+	want(t, a.poll(t, asg), assignment.OutcomeReady, "")
+	task := a.started[0].Admission.TaskID().String()
+
+	// The Control Plane re-places the Task and the Worker accepts the newer
+	// Attempt. The fence record is the durable state a restart preserves,
+	// which the in-memory done map cannot keep.
+	if ok, err := guard.Fence(context.Background(), task, 42, clk.now.Add(time.Hour)); err != nil || !ok {
+		t.Fatalf("seed fence = %v, %v", ok, err)
+	}
+	// A restarted Worker refuses the older Attempt as superseded: its fence
+	// is behind the accepted one, and the refusal repeats on every poll
+	// instead of the Attempt being lost or started.
+	restarted := w.agent("worker-a", options{replay: guard, clock: clk})
+	want(t, restarted.poll(t, asg), assignment.OutcomeRejected, "work_order_superseded")
+	want(t, restarted.poll(t, asg), assignment.OutcomeRejected, "work_order_superseded")
+	if len(restarted.started) != 0 {
+		t.Fatal("a superseded Attempt was started")
 	}
 }

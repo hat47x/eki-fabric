@@ -27,8 +27,12 @@ type EmittedAssignment struct {
 // above MaxAssignmentsPerList means MaxAssignmentsPerList), the assignments of
 // Attempts that are bound to the Worker and have not yet produced a claim: the
 // Attempt is ASSIGNED or DISPATCHED, and both the Lease and the WorkOrder are
-// EMITTED for that Worker. It never returns another Worker's records, an
-// ABORTED record, or an Attempt that is closed.
+// EMITTED for that Worker. A Lease whose validity window has closed at the
+// time of the call is not listed: the Worker refuses expired material on its
+// own clock anyway, so listing it would only spend the delivery window on
+// assignments that can no longer start and can crowd out live ones. It never
+// returns another Worker's records, an ABORTED record, or an Attempt that is
+// closed.
 //
 // It marks nothing as delivered, so listing again returns the same bytes
 // (idempotent re-delivery). Whether the Worker still may act is decided by the
