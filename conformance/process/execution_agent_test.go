@@ -3,6 +3,7 @@ package process
 import (
 	"context"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"runtime"
 	"testing"
@@ -85,6 +86,15 @@ func TestAgentExecutesAndSubmitsResultClaim(t *testing.T) {
 		Level: resultaccept.LevelRA2, Threshold: 2,
 		DistinctDimensions: []resultaccept.Dimension{resultaccept.DimensionPrincipal, resultaccept.DimensionOperator},
 	}
+	// Result Verification by re-execution: run the same fixed command again and
+	// compare the produced output with the claim. This is a synthetic verifier
+	// on the same host, not an independent institution.
+	reproduced, err := reexecuteOutputDigest()
+	must(t, err)
+	if reproduced != claim.OutputDigest().Hex() {
+		t.Fatalf("re-execution digest %s does not match claim %s", reproduced, claim.OutputDigest().Hex())
+	}
+	t.Logf("re-execution reproduced the claim digest")
 	producers := fixedProducers{executorDigest: claim.ExecutorDigest().Hex()}
 	service, err := resultacceptance.New(resultacceptance.Config{
 		Attempts: store, Tasks: store, Claims: store, Results: store, Rejections: store,
@@ -95,7 +105,7 @@ func TestAgentExecutesAndSubmitsResultClaim(t *testing.T) {
 	verification := func(id, principal, operator string) resultaccept.Verification {
 		return resultaccept.Verification{
 			VerifierID: id, TaskID: claim.TaskID().String(), AttemptID: claim.AttemptID().String(),
-			Check: resultaccept.CheckReproduced, ObservedDigest: claim.OutputDigest().Hex(),
+			Check: resultaccept.CheckReproduced, ObservedDigest: reproduced,
 			Dimensions: map[resultaccept.Dimension]string{
 				resultaccept.DimensionPrincipal: principal, resultaccept.DimensionOperator: operator,
 				resultaccept.DimensionExecutorDigest: contract.SHA256([]byte("verifier-" + id)).Hex(),
@@ -238,3 +248,18 @@ func (p fixedProducers) ProducerDimensions(context.Context, string) (map[resulta
 type systemClock struct{}
 
 func (systemClock) Now() time.Time { return time.Now().UTC() }
+
+// reexecuteOutputDigest runs the same fixed command outside the Agent and
+// returns the digest of its output. It is a synthetic verification method: it
+// shows reproducibility on one host, not independence.
+func reexecuteOutputDigest() (string, error) {
+	command, args := "/bin/echo", []string{"hello"}
+	if runtime.GOOS == "windows" {
+		command, args = "cmd.exe", []string{"/c", "echo", "hello"}
+	}
+	out, err := exec.Command(command, args...).Output()
+	if err != nil {
+		return "", err
+	}
+	return contract.SHA256(out).Hex(), nil
+}
