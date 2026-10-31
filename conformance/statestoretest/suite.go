@@ -23,6 +23,8 @@ type DurableFactory struct {
 func RunTaskStoreContract(t *testing.T, newStore Factory) {
 	t.Helper()
 
+	runTaskListingContract(t, newStore)
+
 	t.Run("create-load", func(t *testing.T) {
 		store := newStore(t)
 		record := newTask(t, "create-load")

@@ -28,6 +28,8 @@ type DurableAttemptFactory struct {
 func RunAttemptStoreContract(t *testing.T, newStore AttemptFactory) {
 	t.Helper()
 
+	runAttemptListingContract(t, newStore)
+
 	t.Run("create-load", func(t *testing.T) {
 		store := newStore(t)
 		task := attemptParentTask(t, "attempt-create-load")
