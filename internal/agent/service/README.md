@@ -17,4 +17,16 @@
 
 設定の`assignments`を与えると、Agentは申告の配送と並行して`POST /test-profile/v1/assignments`を呼び、署名済みのLeaseとWorkOrderを受け取って検証し、開始の関門を通します（[`assignment`](../assignment/README.md)）。`state_dir`（mTLS）が必須で、無ければ起動しません。信頼の起点のファイル（[`trustanchor`](../trustanchor/README.md)）、nonceの耐久DB（`replay_db`）、承認するExecutor、機械の容量、天井の割合は、すべて必須で、欠けると、何も開く前に失敗します。
 
-結果は`events_file`にJSON Linesで追記します（`ready`、`replayed`、`deferred`、`rejected`と理由）。Agentは、Taskをまだ実行しません。`ready`は、検証・受け入れ・開始の関門を通り、何もしない実行側のインターフェースへ渡した、という意味です。
+結果は`events_file`にJSON Linesで追記します（`ready`、`replayed`、`deferred`、`rejected`と理由）。`ready`は、検証・受け入れ・開始の関門を通り、実行側のインターフェースへ渡した、という意味です。
+
+## 固定コマンドの実行（`assignments.execution`）
+
+`execution`を与えると、`ready`の割当を固定コマンドで実行します。コマンドと引数はWorkerの信頼済み設定であり、Task入力から組み立てません。
+
+- 実行結果は`events_file`へ`execution_status`、`exit_code`、`output_bytes`、`output_digest`、`failure`として追記します。
+- 期限・取消し・出力上限・プロセスツリー停止は`native-runner`が扱います。
+- **sandboxではありません。** CPU・メモリ・network・temp-diskの上限は強制しません。
+- 実行後、観測した`ResultClaim`をControl Planeのtest-profile claim endpointへsubmitし、ackを`claim_decision`として記録します。
+- ResultClaimは受理結果ではありません。Result VerificationとResult Acceptanceは別の段階です。
+
+`execution`を省略した場合、Agentは従来どおり記録のみで、Taskを実行しません。

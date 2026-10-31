@@ -191,7 +191,7 @@ func Run(ctx context.Context, cfg Config, token string, log *slog.Logger) error 
 		assignDone := make(chan struct{})
 		go func() {
 			defer close(assignDone)
-			if err := runAssignments(assignCtx, cfg.Assignments, anchor, execs, api, principal, interval, log); err != nil {
+			if err := runAssignments(assignCtx, cfg.Assignments, anchor, execs, api, api, principal, interval, log); err != nil {
 				log.Error("assignment loop stopped", "error", err.Error())
 			}
 		}()
