@@ -1,0 +1,265 @@
+package dispatch
+
+import (
+	"context"
+	"errors"
+	"testing"
+	"time"
+
+	"github.com/hat47x/eki-fabric/internal/adapters/reference/statestore/memory"
+	"github.com/hat47x/eki-fabric/internal/core/attemptstate"
+	"github.com/hat47x/eki-fabric/internal/core/contract"
+	"github.com/hat47x/eki-fabric/internal/core/ids"
+	"github.com/hat47x/eki-fabric/internal/core/placementissue"
+	"github.com/hat47x/eki-fabric/internal/core/policystate"
+	"github.com/hat47x/eki-fabric/internal/core/taskstate"
+	"github.com/hat47x/eki-fabric/internal/core/workerenrollment"
+)
+
+type fakeClock struct{ now time.Time }
+
+func (c *fakeClock) Now() time.Time { return c.now }
+
+type stubIssue struct {
+	placements int
+	reserved   int
+	emitted    int
+	orders     int
+	failAfter  int
+}
+
+func (s *stubIssue) issuePlacement(ctx context.Context, req placementissue.IssueRequest) ([]byte, error) {
+	s.placements++
+	return []byte("signed-placement"), nil
+}
+
+func (s *stubIssue) reserve(ctx context.Context, signed []byte, lifetime time.Duration) (ReservedLease, error) {
+	s.reserved++
+	if s.failAfter > 0 && s.reserved > s.failAfter {
+		return ReservedLease{}, errors.New("reserve failed")
+	}
+	id, err := ids.NewLeaseID()
+	if err != nil {
+		return ReservedLease{}, err
+	}
+	return ReservedLease{LeaseID: id, FenceEpoch: 1}, nil
+}
+
+func (s *stubIssue) emitLease(ctx context.Context, id ids.LeaseID) ([]byte, error) {
+	s.emitted++
+	return []byte("signed-lease"), nil
+}
+
+func (s *stubIssue) issueWorkOrder(ctx context.Context, id ids.LeaseID, worker string) ([]byte, error) {
+	s.orders++
+	return []byte("signed-order"), nil
+}
+
+func mustPolicy(t *testing.T) policystate.State {
+	t.Helper()
+	policy, err := policystate.NewActive(1, "policy-1", time.Now().UTC())
+	if err != nil {
+		t.Fatal(err)
+	}
+	return policy
+}
+
+func mustNewAttemptID(t *testing.T) string {
+	t.Helper()
+	id, err := ids.NewAttemptID()
+	if err != nil {
+		t.Fatal(err)
+	}
+	return id.String()
+}
+
+func seedTask(t *testing.T, store *memory.Store, n int, phase taskstate.TaskPhase) ids.TaskID {
+	t.Helper()
+	taskID, err := ids.NewTaskID()
+	if err != nil {
+		t.Fatal(err)
+	}
+	task, err := taskstate.NewTask(taskID, contract.SHA256([]byte{byte(n)}), time.Now().UTC().Add(-time.Minute))
+	if err != nil {
+		t.Fatal(err)
+	}
+	task.Phase = phase
+	if err := store.CreateTask(context.Background(), task); err != nil {
+		t.Fatal(err)
+	}
+	return task.ID
+}
+
+func seedWorker(t *testing.T, store *memory.Store, n int) string {
+	t.Helper()
+	svc, err := workerenrollment.New(workerenrollment.Config{Store: store, Clock: &fakeClock{now: time.Now().UTC()}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	admin, err := workerenrollment.NewAdmin("admin:test")
+	if err != nil {
+		t.Fatal(err)
+	}
+	issued, err := svc.IssueEnrollmentCredential(context.Background(), admin, workerenrollment.IssueRequest{TrustDomain: "example.org"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	worker, err := svc.ConsumeEnrollmentCredential(context.Background(), issued.Secret.Reveal(), "example.org")
+	if err != nil {
+		t.Fatal(err)
+	}
+	return worker.Identity.String()
+}
+
+func newLoop(t *testing.T, store *memory.Store, stub *stubIssue, mutate func(*Config)) *Loop {
+	t.Helper()
+	cfg := Config{
+		Tasks: store, Attempts: store, Workers: store, Policies: store,
+		IssuePlacement: stub.issuePlacement, Reserve: stub.reserve,
+		EmitLease: stub.emitLease, IssueWorkOrder: stub.issueWorkOrder,
+		LeaseLifetime: 3 * time.Minute, Clock: &fakeClock{now: time.Now().UTC()},
+	}
+	if mutate != nil {
+		mutate(&cfg)
+	}
+	loop, err := New(cfg)
+	if err != nil {
+		t.Fatalf("New() error = %v", err)
+	}
+	return loop
+}
+
+func TestTickMovesAReadyTaskToAnAssignedAttempt(t *testing.T) {
+	store := memory.New()
+	if err := store.CompareAndSwapPolicy(context.Background(), 0, mustPolicy(t)); err != nil {
+		t.Fatal(err)
+	}
+	worker := seedWorker(t, store, 1)
+	taskID := seedTask(t, store, 1, taskstate.TaskPhaseReady)
+	stub := &stubIssue{}
+	loop := newLoop(t, store, stub, nil)
+
+	result, err := loop.Tick(context.Background())
+	if err != nil {
+		t.Fatalf("Tick() error = %v", err)
+	}
+	if result.Dispatched != 1 || len(result.Deferred) != 0 {
+		t.Fatalf("Tick() = %+v, want one dispatched Task", result)
+	}
+	if stub.placements != 1 || stub.reserved != 1 || stub.emitted != 1 || stub.orders != 1 {
+		t.Fatalf("issuing calls = placement %d reserve %d emit %d order %d, want one each", stub.placements, stub.reserved, stub.emitted, stub.orders)
+	}
+	attempts, err := store.ListAttemptsByTask(context.Background(), taskID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(attempts) != 1 {
+		t.Fatalf("ListAttemptsByTask() = %d attempts, want 1", len(attempts))
+	}
+	got := attempts[0]
+	if got.Phase != attemptstate.AttemptPhaseAssigned || got.WorkerIdentity != worker || got.LeaseID == "" {
+		t.Fatalf("Attempt = phase %q worker %q lease %q, want an ASSIGNED Attempt bound to %s", got.Phase, got.WorkerIdentity, got.LeaseID, worker)
+	}
+}
+
+func TestTickDefersWhenNoWorkerIsUsable(t *testing.T) {
+	store := memory.New()
+	if err := store.CompareAndSwapPolicy(context.Background(), 0, mustPolicy(t)); err != nil {
+		t.Fatal(err)
+	}
+	taskID := seedTask(t, store, 2, taskstate.TaskPhaseReady)
+	stub := &stubIssue{}
+	loop := newLoop(t, store, stub, nil)
+
+	result, err := loop.Tick(context.Background())
+	if err != nil {
+		t.Fatalf("Tick() error = %v", err)
+	}
+	if result.Dispatched != 0 || len(result.Deferred) != 1 {
+		t.Fatalf("Tick() = %+v, want one deferred Task", result)
+	}
+	if result.Deferred[0].TaskID != taskID {
+		t.Fatalf("deferred Task = %s, want %s", result.Deferred[0].TaskID, taskID)
+	}
+	if stub.placements != 0 || stub.reserved != 0 {
+		t.Fatal("a tick without a usable Worker must not reach the issuing chain")
+	}
+	// The Task keeps its phase and gains no Attempt.
+	tasks, err := store.ListTasksByPhase(context.Background(), taskstate.TaskPhaseReady, 8)
+	if err != nil || len(tasks) != 1 {
+		t.Fatalf("ListTasksByPhase() = %d tasks (err %v), want the same READY Task", len(tasks), err)
+	}
+	attempts, err := store.ListAttemptsByTask(context.Background(), taskID)
+	if err != nil || len(attempts) != 0 {
+		t.Fatalf("ListAttemptsByTask() = %d attempts (err %v), want none", len(attempts), err)
+	}
+}
+
+func TestTickDefersWhenPolicyIsNotActive(t *testing.T) {
+	store := memory.New()
+	seedTask(t, store, 3, taskstate.TaskPhaseReady)
+	stub := &stubIssue{}
+	loop := newLoop(t, store, stub, nil)
+
+	result, err := loop.Tick(context.Background())
+	if err != nil {
+		t.Fatalf("Tick() error = %v", err)
+	}
+	if result.Dispatched != 0 || len(result.Deferred) != 1 {
+		t.Fatalf("Tick() = %+v, want one deferred Task", result)
+	}
+	if stub.placements != 0 {
+		t.Fatal("a tick without an active policy must not reach PLC-1")
+	}
+}
+
+func TestTickKeepsTheWorkerOfAnExistingPlacingAttempt(t *testing.T) {
+	store := memory.New()
+	if err := store.CompareAndSwapPolicy(context.Background(), 0, mustPolicy(t)); err != nil {
+		t.Fatal(err)
+	}
+	worker := seedWorker(t, store, 5)
+	taskID := seedTask(t, store, 4, taskstate.TaskPhaseReady)
+	// A previous tick created the Attempt and bound the Worker, then died.
+	attempt, err := attemptstate.New(ids.AttemptID(mustNewAttemptID(t)), taskID, contract.SHA256([]byte{byte(4)}), 1, time.Now().UTC())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := store.CreateAttempt(context.Background(), attempt); err != nil {
+		t.Fatal(err)
+	}
+	placing := attempt
+	placing.Phase, placing.WorkerIdentity = attemptstate.AttemptPhasePlacing, worker
+	placing.Revision, placing.UpdatedAt = attempt.Revision+1, time.Now().UTC()
+	if err := store.CompareAndSwapAttempt(context.Background(), attempt.ID, attempt.Revision, placing); err != nil {
+		t.Fatal(err)
+	}
+
+	stub := &stubIssue{}
+	loop := newLoop(t, store, stub, nil)
+	result, err := loop.Tick(context.Background())
+	if err != nil {
+		t.Fatalf("Tick() error = %v", err)
+	}
+	if result.Dispatched != 1 {
+		t.Fatalf("Tick() = %+v, want one dispatched Task", result)
+	}
+	attempts, err := store.ListAttemptsByTask(context.Background(), taskID)
+	if err != nil || len(attempts) != 1 {
+		t.Fatalf("ListAttemptsByTask() = %d attempts (err %v), want the same Attempt", len(attempts), err)
+	}
+	if attempts[0].WorkerIdentity != worker || attempts[0].Phase != attemptstate.AttemptPhaseAssigned {
+		t.Fatalf("Attempt = phase %q worker %q, want the same Worker after assignment", attempts[0].Phase, attempts[0].WorkerIdentity)
+	}
+}
+
+func TestNewRejectsIncompleteConfig(t *testing.T) {
+	store := memory.New()
+	if _, err := New(Config{}); !errors.Is(err, ErrInvalidConfig) {
+		t.Fatalf("New(zero config) error = %v, want ErrInvalidConfig", err)
+	}
+	loop := newLoop(t, store, &stubIssue{}, nil)
+	if loop == nil {
+		t.Fatal("New() = nil")
+	}
+}

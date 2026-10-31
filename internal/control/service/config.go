@@ -58,6 +58,10 @@ type Config struct {
 	// Worker enables the optional Worker listener of the process-level test
 	// profile. Absent means no Worker listener is opened.
 	Worker *WorkerConfig `json:"worker,omitempty"`
+
+	// Dispatch enables the placement loop. Absent means the process accepts
+	// Tasks but does not move them.
+	Dispatch *DispatchConfig `json:"dispatch,omitempty"`
 }
 
 // Worker authentication modes.

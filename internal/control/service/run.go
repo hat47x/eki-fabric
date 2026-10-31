@@ -36,6 +36,9 @@ type Server struct {
 	workerDone     chan struct{}
 	workerErr      error
 	closing        sync.Once
+
+	// dispatchDone is closed when the placement loop has stopped.
+	dispatchDone chan struct{}
 }
 
 // Start opens the state store, builds the Client API, and begins serving. It
@@ -112,6 +115,14 @@ func Start(ctx context.Context, cfg Config, log *slog.Logger) (*Server, error) {
 
 	if cfg.Worker != nil {
 		if err := s.startWorker(ctx, cfg.Worker, store); err != nil {
+			_ = listener.Close()
+			_ = store.Close()
+			return nil, err
+		}
+	}
+
+	if cfg.Dispatch != nil {
+		if err := s.startDispatch(ctx, cfg.Dispatch, store); err != nil {
 			_ = listener.Close()
 			_ = store.Close()
 			return nil, err
@@ -264,6 +275,9 @@ func (s *Server) Shutdown(ctx context.Context) error {
 				_ = s.workerHTTP.Close()
 			}
 			<-s.workerDone
+		}
+		if s.dispatchDone != nil {
+			<-s.dispatchDone
 		}
 		<-s.done
 		if err := s.store.Close(); err != nil {
