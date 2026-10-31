@@ -51,6 +51,7 @@ type AssignmentConfig struct {
 type ExecutionConfig struct {
 	Command          string   `json:"command"`
 	Args             []string `json:"args,omitempty"`
+	Env              []string `json:"env,omitempty"`
 	AllowedArgs      []string `json:"allowed_args,omitempty"`
 	ExecutableSHA256 string   `json:"executable_sha256,omitempty"`
 	StopGraceSeconds int      `json:"stop_grace_seconds,omitempty"`

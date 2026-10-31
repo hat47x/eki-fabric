@@ -26,10 +26,12 @@ import (
 )
 
 type assignmentEvent struct {
-	AttemptID string `json:"attempt_id"`
-	Outcome   string `json:"outcome"`
-	Reason    string `json:"reason"`
-	CPUMillis uint64 `json:"cpu_millis"`
+	AttemptID       string `json:"attempt_id"`
+	Outcome         string `json:"outcome"`
+	Reason          string `json:"reason"`
+	CPUMillis       uint64 `json:"cpu_millis"`
+	ExecutionStatus string `json:"execution_status"`
+	ClaimDecision   string `json:"claim_decision"`
 }
 
 func readEvents(t *testing.T, path string) []assignmentEvent {
@@ -68,7 +70,7 @@ type agentSide struct {
 	replayDB         string
 }
 
-func (e *mtlsEnv) assignmentAgent(t *testing.T, name string, auth *signedchain.Authorities, validatedAt time.Time) agentSide {
+func (e *mtlsEnv) assignmentAgent(t *testing.T, name string, auth *signedchain.Authorities, validatedAt time.Time, execution ...*service.ExecutionConfig) agentSide {
 	t.Helper()
 	stateDir, worker := e.enrollAgent(t, name)
 	a := agentSide{
@@ -90,6 +92,9 @@ func (e *mtlsEnv) assignmentAgent(t *testing.T, name string, auth *signedchain.A
 			}},
 			Machine: service.MachineConfig{CPUMillis: 8000, MemoryBytes: 8 << 30}, CeilingPercent: 50,
 		},
+	}
+	if len(execution) > 0 {
+		cfg.Assignments.Execution = execution[0]
 	}
 	raw, err := json.Marshal(cfg)
 	must(t, err)
