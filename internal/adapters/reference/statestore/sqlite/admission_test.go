@@ -58,6 +58,31 @@ func TestAdmissionSchemaRejectsInvalidRowsEvenIfAdapterIsBypassed(t *testing.T) 
 	}
 }
 
+func TestAdmissionContentIsCheckedWhenTheRowIsRead(t *testing.T) {
+	store := openStore(t, filepath.Join(t.TempDir(), "state.db"))
+	defer store.Close()
+
+	record := newTaskRecord(t, "content")
+	if err := store.CreateTask(context.Background(), record); err != nil {
+		t.Fatalf("CreateTask() error = %v", err)
+	}
+	fp := contract.SHA256([]byte("fp")).Hex()
+	id := string(record.ID)
+	// The column has no SQL-level size bound (SQLite cannot add one by ALTER
+	// TABLE), so the size limit is enforced when the row is read.
+	oversized := make([]byte, statestore.MaxTaskContentBytes+1)
+	for i := range oversized {
+		oversized[i] = 'x'
+	}
+	if _, err := store.db.Exec(`INSERT INTO admissions (task_id, principal, idempotency_key, request_fingerprint, max_attempts, content)
+VALUES ('`+id+`', 'alice', 'key-00000001', '`+fp+`', 3, ?)`, oversized); err != nil {
+		t.Fatalf("insert oversized content: %v", err)
+	}
+	if _, err := store.LoadAdmission(context.Background(), record.ID); err == nil {
+		t.Fatal("LoadAdmission() accepted oversized content")
+	}
+}
+
 func TestMigrationsUpgradeAnExistingVersionOneDatabase(t *testing.T) {
 	// A database created before admissions existed must be upgraded in place
 	// and keep its tasks.
