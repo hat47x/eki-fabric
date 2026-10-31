@@ -19,4 +19,9 @@ type AttemptStore interface {
 	CreateAttempt(ctx context.Context, record attemptstate.AttemptRecord) error
 	LoadAttempt(ctx context.Context, id ids.AttemptID) (attemptstate.AttemptRecord, error)
 	CompareAndSwapAttempt(ctx context.Context, id ids.AttemptID, expectedRevision uint64, next attemptstate.AttemptRecord) error
+	// ListAttemptsByTask returns every live Attempt of one Task in Attempt
+	// number order, lowest number first. It backs dispatch, which must know
+	// the next free Attempt number and the Attempts a re-placement closes.
+	// Closed Attempts are included: their numbers are never reused.
+	ListAttemptsByTask(ctx context.Context, taskID ids.TaskID) ([]attemptstate.AttemptRecord, error)
 }
