@@ -2,8 +2,10 @@
 //
 // This is a production adapter with an explicit limit: it is not a sandbox and
 // must not be used with untrusted tasks. The command and arguments are trusted
-// Worker configuration, never Task input. CPU and memory are checked after the
-// process exits; they are not enforced while it runs.
+// Worker configuration, never Task input. CPU is checked after the process
+// exits. Memory is polled while the process runs on Linux and Windows; when the
+// limit is exceeded the process tree is stopped. Other platforms keep the
+// post-exit memory check only.
 package nativerunner
 
 import (
@@ -97,8 +99,20 @@ func (r Runner) Run(ctx context.Context, spec executor.Spec) (executor.Result, e
 	cmd.Env = append([]string{}, r.Env...)
 	cmd.Stdout = writer
 	cmd.Stderr = writer
-	err = cmd.Run()
-	result := executor.Result{OutputBytes: uint64(output.Len())}
+	result := executor.Result{}
+	if err = cmd.Start(); err != nil {
+		return result, err
+	}
+	var watch *memoryWatch
+	if spec.Limits.MemoryBytes != 0 {
+		watch = watchMemory(cmd.Process.Pid, spec.Limits.MemoryBytes, func() { _ = cancelProcess(cmd) })
+	}
+	err = cmd.Wait()
+	watch.stop()
+	result.OutputBytes = uint64(output.Len())
+	if watch.wasExceeded() {
+		return result, fmt.Errorf("native runner memory limit %d exceeded while running", spec.Limits.MemoryBytes)
+	}
 	if writer.exceeded {
 		return result, fmt.Errorf("%w: limit=%d", ErrOutputCeiling, limit)
 	}
