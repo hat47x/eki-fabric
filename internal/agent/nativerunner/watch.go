@@ -12,9 +12,10 @@ type resourceWatch struct {
 	done           chan struct{}
 	memoryExceeded atomic.Bool
 	cpuExceeded    atomic.Bool
+	diskExceeded   atomic.Bool
 }
 
-func watchResources(pid int, memoryLimit, cpuLimit uint64, kill func()) *resourceWatch {
+func watchResources(pid int, memoryLimit, cpuLimit, diskLimit uint64, tempDir string, kill func()) *resourceWatch {
 	watch := &resourceWatch{done: make(chan struct{})}
 	go func() {
 		ticker := time.NewTicker(20 * time.Millisecond)
@@ -38,6 +39,13 @@ func watchResources(pid int, memoryLimit, cpuLimit uint64, kill func()) *resourc
 						return
 					}
 				}
+				if diskLimit != 0 && tempDir != "" {
+					if size, ok := dirSize(tempDir); ok && size > diskLimit {
+						watch.diskExceeded.Store(true)
+						kill()
+						return
+					}
+				}
 			}
 		}
 	}()
@@ -56,4 +64,8 @@ func (w *resourceWatch) memoryWasExceeded() bool {
 
 func (w *resourceWatch) cpuWasExceeded() bool {
 	return w != nil && w.cpuExceeded.Load()
+}
+
+func (w *resourceWatch) diskWasExceeded() bool {
+	return w != nil && w.diskExceeded.Load()
 }

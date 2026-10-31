@@ -1,4 +1,4 @@
-﻿//go:build !windows
+//go:build !windows
 
 package nativerunner
 
@@ -24,4 +24,3 @@ func TestRunnerRejectsCPUOverLimit(t *testing.T) {
 		t.Fatalf("CPU over-limit was not rejected: %v", err)
 	}
 }
-
