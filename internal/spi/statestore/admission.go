@@ -30,6 +30,10 @@ const (
 	MinIdempotencyKeyBytes = 8
 	MaxIdempotencyKeyBytes = 128
 	MaxAdmissionAttempts   = 32
+	// MaxTaskContentBytes caps the admitted Task content kept for WorkOrder
+	// issuance and deadline decisions. The Client API caps the request body
+	// before admission; this bound keeps the store honest on its own.
+	MaxTaskContentBytes = 262144
 )
 
 var idempotencyKeyPattern = regexp.MustCompile(`^[A-Za-z0-9._:-]+$`)
@@ -49,6 +53,12 @@ type Admission struct {
 	RequestFingerprint contract.Digest
 	// MaxAttempts is the retry budget fixed at admission.
 	MaxAttempts uint32
+	// Content is the request body the Task was admitted from, kept verbatim.
+	// WorkOrder issuance and deadline decisions read it instead of the digest,
+	// which cannot be reversed. Rows written before the content was kept have
+	// nil here; a present content is bound to the Task's TaskIR digest (the
+	// digest recomputed from it must match) by the admission contract test.
+	Content []byte
 }
 
 func (a Admission) Validate() error {
@@ -66,6 +76,11 @@ func (a Admission) Validate() error {
 	}
 	if a.MaxAttempts < 1 || a.MaxAttempts > MaxAdmissionAttempts {
 		return fmt.Errorf("%w: max attempts must be 1..%d", ErrInvalidAdmission, MaxAdmissionAttempts)
+	}
+	if n := len(a.Content); n > MaxTaskContentBytes {
+		return fmt.Errorf("%w: task content exceeds %d bytes", ErrInvalidAdmission, MaxTaskContentBytes)
+	} else if n > 0 && !utf8.Valid(a.Content) {
+		return fmt.Errorf("%w: task content is not valid UTF-8", ErrInvalidAdmission)
 	}
 	return nil
 }
@@ -90,7 +105,8 @@ type AdmitResult struct {
 // AdmissionStore records Task admissions atomically with their idempotency
 // and quota checks.
 type AdmissionStore interface {
-	// AdmitTask creates the Task and its Admission, or returns the existing
+	// AdmitTask creates the Task and its Admission (with the Task content the
+	// caller carries on it), or returns the existing
 	// result for a repeated (principal, key, fingerprint). It returns
 	// ErrIdempotencyConflict for the same key with a different fingerprint and
 	// ErrQuotaExceeded when limit would be exceeded. A replay is never

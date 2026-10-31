@@ -85,6 +85,9 @@ func (s *Service) Submit(ctx context.Context, p Principal, idempotencyKey string
 	if !ValidIdempotencyKey(idempotencyKey) {
 		return Accepted{}, InvalidIdempotencyKey()
 	}
+	if len(body) > statestore.MaxTaskContentBytes {
+		return Accepted{}, badRequest("TASK_REQUEST_TOO_LARGE", fmt.Sprintf("task request exceeds %d bytes", statestore.MaxTaskContentBytes))
+	}
 
 	req, err := ParseTaskRequest(body)
 	if err != nil {
@@ -118,6 +121,10 @@ func (s *Service) Submit(ctx context.Context, p Principal, idempotencyKey string
 		IdempotencyKey:     idempotencyKey,
 		RequestFingerprint: fingerprint,
 		MaxAttempts:        req.Reliability.MaxAttempts,
+		// The validated request body, kept verbatim: WorkOrder issuance and
+		// deadline decisions must be able to read the parameters and deadline
+		// the Task was admitted with, not only the digest of them.
+		Content: append([]byte(nil), body...),
 	}
 	result, err := s.store.AdmitTask(ctx, admission, statestore.AdmitLimit{MaxOutstandingTasks: s.policy.MaxOutstandingTasks})
 	switch {

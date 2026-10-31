@@ -13,7 +13,7 @@ import (
 
 const selectAdmission = `
 SELECT t.task_id, t.task_ir_digest, t.phase, t.terminal_outcome, t.cancellation_requested, t.revision, t.created_at_ns, t.updated_at_ns,
-       a.principal, a.idempotency_key, a.request_fingerprint, a.max_attempts
+       a.principal, a.idempotency_key, a.request_fingerprint, a.max_attempts, a.content
 FROM admissions a JOIN tasks t ON t.task_id = a.task_id`
 
 func (s *Store) AdmitTask(ctx context.Context, admission statestore.Admission, limit statestore.AdmitLimit) (statestore.AdmitResult, error) {
@@ -73,10 +73,10 @@ ON CONFLICT (task_id) DO NOTHING`,
 		return statestore.AdmitResult{}, fmt.Errorf("%w: task %s", statestore.ErrAlreadyExists, record.ID)
 	}
 	if _, err := tx.ExecContext(ctx, `
-INSERT INTO admissions (task_id, principal, idempotency_key, request_fingerprint, max_attempts)
-VALUES (?, ?, ?, ?, ?)`,
+INSERT INTO admissions (task_id, principal, idempotency_key, request_fingerprint, max_attempts, content)
+VALUES (?, ?, ?, ?, ?, ?)`,
 		string(record.ID), admission.Principal, admission.IdempotencyKey,
-		admission.RequestFingerprint.Hex(), int64(admission.MaxAttempts)); err != nil {
+		admission.RequestFingerprint.Hex(), int64(admission.MaxAttempts), admission.Content); err != nil {
 		return statestore.AdmitResult{}, fmt.Errorf("admit task %s: insert admission: %w", record.ID, err)
 	}
 	if err := tx.Commit(); err != nil {
@@ -106,10 +106,11 @@ func scanAdmission(row rowScanner) (statestore.Admission, error) {
 		taskCols              taskColumns
 		principal, key, fpHex string
 		maxAttempts           int64
+		content               []byte
 	)
 	if err := row.Scan(&taskCols.id, &taskCols.digestHex, &taskCols.phase, &taskCols.outcome,
 		&taskCols.cancel, &taskCols.revision, &taskCols.createdNS, &taskCols.updatedNS,
-		&principal, &key, &fpHex, &maxAttempts); err != nil {
+		&principal, &key, &fpHex, &maxAttempts, &content); err != nil {
 		return statestore.Admission{}, err
 	}
 	record, err := taskCols.record()
@@ -129,6 +130,7 @@ func scanAdmission(row rowScanner) (statestore.Admission, error) {
 		IdempotencyKey:     key,
 		RequestFingerprint: fingerprint,
 		MaxAttempts:        uint32(maxAttempts),
+		Content:            content,
 	}
 	if err := admission.Validate(); err != nil {
 		return statestore.Admission{}, fmt.Errorf("%w: task %s: %v", ErrCorruptRecord, record.ID, err)

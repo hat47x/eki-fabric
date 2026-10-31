@@ -8,6 +8,7 @@ import (
 	"sync"
 	"testing"
 
+	"github.com/hat47x/eki-fabric/internal/core/admission"
 	"github.com/hat47x/eki-fabric/internal/core/contract"
 	"github.com/hat47x/eki-fabric/internal/core/taskstate"
 	"github.com/hat47x/eki-fabric/internal/spi/statestore"
@@ -23,15 +24,47 @@ type DurableStoreFactory struct {
 	Open func(t testing.TB, location string) (store statestore.Store, close func() error)
 }
 
+// taskContent is a valid eki.task-request/v1 body with the seed inside the
+// parameters. Admissions keep it verbatim, so its fingerprints and TaskIR
+// digest are derived from the same bytes the store is asked to keep.
+func taskContent(seed string) []byte {
+	return []byte(fmt.Sprintf(`{
+  "schema": "eki.task-request/v1",
+  "executor": {"id": "dev.example.transform", "version_constraint": "^1"},
+  "inputs": [],
+  "parameters": {"mode": "normalize", "seed": %q},
+  "resources": {"cpu_millis": 1000, "memory_bytes": 268435456, "wall_time_seconds": 300, "output_bytes_max": 16777216, "network_bytes_max": 134217728},
+  "reliability": {"retryable": true, "preemptible": true, "checkpointable": false, "deterministic": true, "max_attempts": 3, "effect_mode": "none"},
+  "priority": "normal"
+}`, seed))
+}
+
 func newAdmission(t testing.TB, principal, key, seed string) statestore.Admission {
 	t.Helper()
-	return statestore.Admission{
-		Task:               newTask(t, seed),
+	content := taskContent(seed)
+	req, err := admission.ParseTaskRequest(content)
+	if err != nil {
+		t.Fatalf("ParseTaskRequest() error = %v", err)
+	}
+	fingerprint, err := req.Fingerprint()
+	if err != nil {
+		t.Fatalf("Fingerprint() error = %v", err)
+	}
+	irDigest, err := req.TaskIRDigest()
+	if err != nil {
+		t.Fatalf("TaskIRDigest() error = %v", err)
+	}
+	task := newTask(t, seed)
+	task.TaskIRDigest = irDigest
+	a := statestore.Admission{
+		Task:               task,
 		Principal:          principal,
 		IdempotencyKey:     key,
-		RequestFingerprint: contract.SHA256([]byte("fingerprint:" + seed)),
+		RequestFingerprint: fingerprint,
 		MaxAttempts:        3,
+		Content:            content,
 	}
+	return a
 }
 
 func assertAdmissionEqual(t testing.TB, got, want statestore.Admission) {
@@ -40,7 +73,8 @@ func assertAdmissionEqual(t testing.TB, got, want statestore.Admission) {
 	if got.Principal != want.Principal ||
 		got.IdempotencyKey != want.IdempotencyKey ||
 		got.RequestFingerprint != want.RequestFingerprint ||
-		got.MaxAttempts != want.MaxAttempts {
+		got.MaxAttempts != want.MaxAttempts ||
+		string(got.Content) != string(want.Content) {
 		t.Fatalf("Admission mismatch:\n got: %#v\nwant: %#v", got, want)
 	}
 }
@@ -75,6 +109,43 @@ func RunAdmissionContract(t *testing.T, newStore StoreFactory) {
 			t.Fatalf("LoadTask() error = %v", err)
 		}
 		assertTaskRecordEqual(t, task, a.Task)
+	})
+
+	t.Run("content-binds-to-the-task-ir-digest", func(t *testing.T) {
+		store := newStore(t)
+		a := newAdmission(t, "alice", "key-00000001", "content-binding")
+
+		if _, err := store.AdmitTask(ctx, a, statestore.AdmitLimit{}); err != nil {
+			t.Fatalf("AdmitTask() error = %v", err)
+		}
+		got, err := store.LoadAdmission(ctx, a.Task.ID)
+		if err != nil {
+			t.Fatalf("LoadAdmission() error = %v", err)
+		}
+		if len(got.Content) == 0 {
+			t.Fatal("LoadAdmission() returned no content for an admitted Task")
+		}
+		// The content is what the request was admitted from: parsing it again
+		// must reproduce the TaskIR digest and the request fingerprint the
+		// Task was admitted with.
+		req, err := admission.ParseTaskRequest(got.Content)
+		if err != nil {
+			t.Fatalf("ParseTaskRequest(stored content) error = %v", err)
+		}
+		irDigest, err := req.TaskIRDigest()
+		if err != nil {
+			t.Fatalf("TaskIRDigest(stored content) error = %v", err)
+		}
+		if irDigest != got.Task.TaskIRDigest {
+			t.Fatalf("TaskIR digest from content = %v, want %v", irDigest, got.Task.TaskIRDigest)
+		}
+		fingerprint, err := req.Fingerprint()
+		if err != nil {
+			t.Fatalf("Fingerprint(stored content) error = %v", err)
+		}
+		if fingerprint != got.RequestFingerprint {
+			t.Fatalf("request fingerprint from content = %v, want %v", fingerprint, got.RequestFingerprint)
+		}
 	})
 
 	t.Run("load-missing", func(t *testing.T) {
