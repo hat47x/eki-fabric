@@ -102,6 +102,68 @@ type placementApprovalWire struct {
 	Body            placementBodyWire `cbor:"8,keyasint"`
 }
 
+// EncodePlacementApproval returns the RFC 8949 Core Deterministic Encoding of
+// the closed `placement-approval-v1` map. The same Approval always yields the
+// same bytes. The payload digest is not a wire field: a producer derives it
+// from the returned bytes.
+func (d *Decoder) EncodePlacementApproval(approval decisionpayload.PlacementApproval) ([]byte, error) {
+	if d == nil || d.encode == nil {
+		return nil, fmt.Errorf("%w: encoder is not initialized", ErrInvalidPlacementApprovalPayload)
+	}
+	if !approval.Encodable() {
+		return nil, fmt.Errorf("%w: Placement Approval is not a constructed value", ErrInvalidPlacementApprovalPayload)
+	}
+	taskIRDigest, err := hex.DecodeString(approval.TaskIRDigest().Hex())
+	if err != nil || len(taskIRDigest) != 32 {
+		return nil, fmt.Errorf("%w: TaskIR digest", ErrInvalidPlacementApprovalPayload)
+	}
+	var evidence *[]evidenceWire
+	if refs := approval.Evidence(); len(refs) > 0 {
+		wireEvidence := make([]evidenceWire, 0, len(refs))
+		for _, ref := range refs {
+			refDigest, err := hex.DecodeString(ref.Digest().Hex())
+			if err != nil || len(refDigest) != 32 {
+				return nil, fmt.Errorf("%w: evidence %q digest", ErrInvalidPlacementApprovalPayload, ref.Identity())
+			}
+			wireEvidence = append(wireEvidence, evidenceWire{
+				Kind:     ref.Kind(),
+				Identity: ref.Identity(),
+				Digest:   digestWire{Algorithm: 1, Value: refDigest},
+			})
+		}
+		evidence = &wireEvidence
+	}
+	wire := placementApprovalWire{
+		SchemaVersion: approval.SchemaVersion(),
+		DecisionKind:  string(approval.DecisionKind()),
+		DecisionID:    approval.DecisionID(),
+		Authority: authorityWire{
+			Role:      string(approval.AuthorityRole()),
+			Principal: approval.AuthorityPrincipal(),
+		},
+		IssuedAtMillis:  uint64(approval.IssuedAt().UnixMilli()),
+		ExpiresAtMillis: uint64(approval.ExpiresAt().UnixMilli()),
+		PolicyRevision:  approval.PolicyRevision(),
+		Body: placementBodyWire{
+			TaskID:         approval.TaskID().String(),
+			TaskIRDigest:   digestWire{Algorithm: 1, Value: taskIRDigest},
+			AttemptID:      approval.AttemptID().String(),
+			WorkerIdentity: approval.WorkerIdentity(),
+			Evidence:       evidence,
+		},
+	}
+	out, err := d.encode.Marshal(wire)
+	if err != nil {
+		return nil, fmt.Errorf("%w: %v", ErrInvalidPlacementApprovalPayload, err)
+	}
+	if len(out) > maxPlacementApprovalPayloadBytes {
+		return nil, fmt.Errorf("%w: payload exceeds %d bytes", ErrInvalidPlacementApprovalPayload, maxPlacementApprovalPayloadBytes)
+	}
+	return out, nil
+}
+
+var _ decisiondecoder.PlacementApprovalCodec = (*Decoder)(nil)
+
 func (d *Decoder) DecodePlacementApproval(payload []byte) (decisionpayload.PlacementApproval, error) {
 	if d == nil || d.decode == nil || d.encode == nil {
 		return decisionpayload.PlacementApproval{}, fmt.Errorf("%w: decoder is not initialized", ErrInvalidPlacementApprovalPayload)

@@ -96,9 +96,11 @@ func NewPlacementApproval(cfg PlacementApprovalConfig) (PlacementApproval, error
 	if err := validateText("worker identity", cfg.WorkerIdentity, 256); err != nil {
 		return PlacementApproval{}, err
 	}
-	if cfg.PayloadDigest.IsZero() {
-		return PlacementApproval{}, fmt.Errorf("%w: payload digest is required", ErrInvalidPlacementApproval)
-	}
+	// PayloadDigest is deliberately not required here: it is not a wire
+	// field. It is derived from the encoded payload bytes, so only the codec
+	// layer can assign it. A producer constructs the value without it, and a
+	// relying party only accepts a value the decoder derived from real bytes
+	// (Valid requires it).
 	if len(cfg.Evidence) > 16 {
 		return PlacementApproval{}, fmt.Errorf("%w: evidence count %d exceeds 16", ErrInvalidPlacementApproval, len(cfg.Evidence))
 	}
@@ -160,7 +162,10 @@ func (p PlacementApproval) Evidence() []EvidenceRef {
 	return append([]EvidenceRef(nil), p.evidence...)
 }
 
-func (p PlacementApproval) Valid() bool {
+// Encodable reports whether every wire field is present, so a codec can
+// produce canonical payload bytes. Unlike Valid, it does not require the
+// payload digest, which only the codec layer can derive from those bytes.
+func (p PlacementApproval) Encodable() bool {
 	return p.decisionID != "" &&
 		p.authorityPrincipal != "" &&
 		!p.issuedAt.IsZero() &&
@@ -169,6 +174,33 @@ func (p PlacementApproval) Valid() bool {
 		p.taskID != "" &&
 		!p.taskIRDigest.IsZero() &&
 		p.attemptID != "" &&
-		p.workerIdentity != "" &&
-		!p.payloadDigest.IsZero()
+		p.workerIdentity != ""
+}
+
+func (p PlacementApproval) Valid() bool {
+	return p.Encodable() && !p.payloadDigest.IsZero()
+}
+
+// Equal reports whether two values bind the same wire fields. The payload
+// digest is not part of the payload bytes, so it takes no part in the
+// comparison; a decoded value and the producer value it round-trips from are
+// equal.
+func (p PlacementApproval) Equal(other PlacementApproval) bool {
+	if len(p.evidence) != len(other.evidence) {
+		return false
+	}
+	for i := range p.evidence {
+		if p.evidence[i] != other.evidence[i] {
+			return false
+		}
+	}
+	return p.decisionID == other.decisionID &&
+		p.authorityPrincipal == other.authorityPrincipal &&
+		p.issuedAt.Equal(other.issuedAt) &&
+		p.expiresAt.Equal(other.expiresAt) &&
+		p.policyRevision == other.policyRevision &&
+		p.taskID == other.taskID &&
+		p.taskIRDigest == other.taskIRDigest &&
+		p.attemptID == other.attemptID &&
+		p.workerIdentity == other.workerIdentity
 }

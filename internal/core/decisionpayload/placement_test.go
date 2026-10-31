@@ -68,7 +68,6 @@ func TestNewPlacementApprovalRejectsWrongSecuritySemantics(t *testing.T) {
 		{name: "taskir", mutate: func(cfg *PlacementApprovalConfig) { cfg.TaskIRDigest = contract.Digest{} }},
 		{name: "attempt", mutate: func(cfg *PlacementApprovalConfig) { cfg.AttemptID = "atm_bad" }},
 		{name: "worker", mutate: func(cfg *PlacementApprovalConfig) { cfg.WorkerIdentity = "" }},
-		{name: "payload-digest", mutate: func(cfg *PlacementApprovalConfig) { cfg.PayloadDigest = contract.Digest{} }},
 		{name: "evidence-kind", mutate: func(cfg *PlacementApprovalConfig) { cfg.Evidence[0].Kind = "" }},
 		{name: "evidence-identity", mutate: func(cfg *PlacementApprovalConfig) { cfg.Evidence[0].Identity = "" }},
 		{name: "evidence-digest", mutate: func(cfg *PlacementApprovalConfig) { cfg.Evidence[0].Digest = contract.Digest{} }},
@@ -135,5 +134,51 @@ func validPlacementConfig(t *testing.T) PlacementApprovalConfig {
 			Digest:   contract.SHA256([]byte("assurance")),
 		}},
 		PayloadDigest: contract.SHA256([]byte("canonical-payload")),
+	}
+}
+
+// A producer builds the value before the payload bytes exist, so the
+// constructor accepts an unassigned digest while Valid keeps requiring one.
+func TestNewPlacementApprovalAllowsUnassignedPayloadDigestForProducer(t *testing.T) {
+	cfg := validPlacementConfig(t)
+	cfg.PayloadDigest = contract.Digest{}
+	got, err := NewPlacementApproval(cfg)
+	if err != nil {
+		t.Fatalf("NewPlacementApproval() error = %v", err)
+	}
+	if got.Encodable() != true {
+		t.Fatal("PlacementApproval.Encodable() = false, want true for complete wire fields")
+	}
+	if got.Valid() {
+		t.Fatal("PlacementApproval.Valid() = true, want false while the payload digest is unassigned")
+	}
+}
+
+func TestPlacementApprovalEqualComparesWireFieldsOnly(t *testing.T) {
+	base, err := NewPlacementApproval(validPlacementConfig(t))
+	if err != nil {
+		t.Fatalf("NewPlacementApproval() error = %v", err)
+	}
+	decoded := base
+	decoded.payloadDigest = contract.SHA256([]byte("derived-from-bytes"))
+	if !base.Equal(decoded) {
+		t.Fatal("Equal() = false for values that bind the same wire fields")
+	}
+	other, err := NewPlacementApproval(validPlacementConfig(t))
+	if err != nil {
+		t.Fatalf("NewPlacementApproval() error = %v", err)
+	}
+	other.policyRevision = "policy-43"
+	if base.Equal(other) {
+		t.Fatal("Equal() = true for different policy revisions")
+	}
+	noEvidence := validPlacementConfig(t)
+	noEvidence.Evidence = nil
+	without, err := NewPlacementApproval(noEvidence)
+	if err != nil {
+		t.Fatalf("NewPlacementApproval() error = %v", err)
+	}
+	if base.Equal(without) {
+		t.Fatal("Equal() = true for different evidence")
 	}
 }
