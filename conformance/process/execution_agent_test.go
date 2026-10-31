@@ -10,9 +10,12 @@ import (
 
 	"github.com/hat47x/eki-fabric/conformance/signedchain"
 	"github.com/hat47x/eki-fabric/internal/agent/service"
+	"github.com/hat47x/eki-fabric/internal/control/resultacceptance"
 	"github.com/hat47x/eki-fabric/internal/core/attemptstate"
+	"github.com/hat47x/eki-fabric/internal/core/contract"
 	"github.com/hat47x/eki-fabric/internal/core/decisionpayload"
 	"github.com/hat47x/eki-fabric/internal/core/ids"
+	"github.com/hat47x/eki-fabric/internal/core/resultaccept"
 )
 
 func TestAgentExecutesAndSubmitsResultClaim(t *testing.T) {
@@ -70,6 +73,46 @@ func TestAgentExecutesAndSubmitsResultClaim(t *testing.T) {
 		}
 		return executed && claimed, agent.out.String() + "\n" + control.out.String()
 	})
+
+	store := openState(t, e.controlDB)
+	defer store.Close()
+	claim, found, err := store.LoadResultClaim(context.Background(), placed.AttemptID)
+	must(t, err)
+	if !found {
+		t.Fatal("claim was not stored")
+	}
+	policy := resultaccept.Policy{
+		Level: resultaccept.LevelRA2, Threshold: 2,
+		DistinctDimensions: []resultaccept.Dimension{resultaccept.DimensionPrincipal, resultaccept.DimensionOperator},
+	}
+	producers := fixedProducers{executorDigest: claim.ExecutorDigest().Hex()}
+	service, err := resultacceptance.New(resultacceptance.Config{
+		Attempts: store, Tasks: store, Claims: store, Results: store, Rejections: store,
+		Policies:  fixedPolicy{policy: resultacceptance.ResultPolicy{Policy: policy, Output: resultaccept.OutputMechanical}},
+		Producers: producers, Clock: systemClock{},
+	})
+	must(t, err)
+	verification := func(id, principal, operator string) resultaccept.Verification {
+		return resultaccept.Verification{
+			VerifierID: id, TaskID: claim.TaskID().String(), AttemptID: claim.AttemptID().String(),
+			Check: resultaccept.CheckReproduced, ObservedDigest: claim.OutputDigest().Hex(),
+			Dimensions: map[resultaccept.Dimension]string{
+				resultaccept.DimensionPrincipal: principal, resultaccept.DimensionOperator: operator,
+				resultaccept.DimensionExecutorDigest: contract.SHA256([]byte("verifier-" + id)).Hex(),
+			},
+		}
+	}
+	result, err := service.Accept(context.Background(), resultacceptance.Request{
+		AttemptID: placed.AttemptID,
+		Verifications: []resultaccept.Verification{
+			verification("verifier-1", "p-1", "o-1"),
+			verification("verifier-2", "p-2", "o-2"),
+		},
+	})
+	must(t, err)
+	if result.Outcome() != resultaccept.OutcomeAccepted {
+		t.Fatalf("result outcome = %s, want accepted: %+v", result.Outcome(), result)
+	}
 }
 
 // The claim from a finished execution is queued on the Agent before any send.
@@ -171,3 +214,27 @@ func attemptView(t *testing.T, statePath string, id ids.AttemptID) controlView {
 	must(t, err)
 	return controlView{a.Phase, a.Revision, found}
 }
+
+type fixedPolicy struct {
+	policy resultacceptance.ResultPolicy
+}
+
+func (p fixedPolicy) ResultPolicy(context.Context, ids.TaskID) (resultacceptance.ResultPolicy, error) {
+	return p.policy, nil
+}
+
+type fixedProducers struct {
+	executorDigest string
+}
+
+func (p fixedProducers) ProducerDimensions(context.Context, string) (map[resultaccept.Dimension]string, error) {
+	return map[resultaccept.Dimension]string{
+		resultaccept.DimensionPrincipal:      "producer-principal",
+		resultaccept.DimensionOperator:       "producer-operator",
+		resultaccept.DimensionExecutorDigest: p.executorDigest,
+	}, nil
+}
+
+type systemClock struct{}
+
+func (systemClock) Now() time.Time { return time.Now().UTC() }
