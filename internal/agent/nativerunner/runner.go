@@ -67,9 +67,6 @@ func (r Runner) Run(ctx context.Context, spec executor.Spec) (executor.Result, e
 	if spec.Limits.NetworkBytesMax != 0 {
 		return executor.Result{}, errors.New("native runner does not enforce network limits")
 	}
-	if spec.Limits.TemporaryDiskBytes != 0 {
-		return executor.Result{}, errors.New("native runner does not enforce temporary-disk limits")
-	}
 	limit := spec.Limits.OutputBytesMaximum
 	if limit == 0 {
 		limit = 1 << 20
@@ -91,11 +88,22 @@ func (r Runner) Run(ctx context.Context, spec executor.Spec) (executor.Result, e
 			return executor.Result{}, fmt.Errorf("executable digest mismatch: got %s", actual)
 		}
 	}
+	tempDir := ""
+	if spec.Limits.TemporaryDiskBytes != 0 {
+		tempDir, err = os.MkdirTemp("", "eki-run-*")
+		if err != nil {
+			return executor.Result{}, fmt.Errorf("native runner temporary directory: %w", err)
+		}
+		defer os.RemoveAll(tempDir)
+	}
 	cmd := exec.CommandContext(runCtx, executable, r.Args...)
 	prepareProcess(cmd)
 	cmd.Cancel = func() error { return cancelProcess(cmd) }
 	// An empty non-nil Env means the child receives no inherited environment.
 	cmd.Env = append([]string{}, r.Env...)
+	if tempDir != "" {
+		cmd.Env = append(cmd.Env, "TMP="+tempDir, "TEMP="+tempDir, "TMPDIR="+tempDir)
+	}
 	cmd.Stdout = writer
 	cmd.Stderr = writer
 	result := executor.Result{}
@@ -103,8 +111,8 @@ func (r Runner) Run(ctx context.Context, spec executor.Spec) (executor.Result, e
 		return result, err
 	}
 	var watch *resourceWatch
-	if spec.Limits.MemoryBytes != 0 || spec.Limits.CPUMillis != 0 {
-		watch = watchResources(cmd.Process.Pid, spec.Limits.MemoryBytes, spec.Limits.CPUMillis, func() { _ = cancelProcess(cmd) })
+	if spec.Limits.MemoryBytes != 0 || spec.Limits.CPUMillis != 0 || spec.Limits.TemporaryDiskBytes != 0 {
+		watch = watchResources(cmd.Process.Pid, spec.Limits.MemoryBytes, spec.Limits.CPUMillis, spec.Limits.TemporaryDiskBytes, tempDir, func() { _ = cancelProcess(cmd) })
 	}
 	err = cmd.Wait()
 	watch.stop()
@@ -114,6 +122,9 @@ func (r Runner) Run(ctx context.Context, spec executor.Spec) (executor.Result, e
 	}
 	if watch.cpuWasExceeded() {
 		return result, fmt.Errorf("native runner CPU limit %dms exceeded while running", spec.Limits.CPUMillis)
+	}
+	if watch.diskWasExceeded() {
+		return result, fmt.Errorf("native runner temporary disk limit %d exceeded while running", spec.Limits.TemporaryDiskBytes)
 	}
 	if writer.exceeded {
 		return result, fmt.Errorf("%w: limit=%d", ErrOutputCeiling, limit)
