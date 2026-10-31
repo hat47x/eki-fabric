@@ -267,6 +267,105 @@ INSERT INTO lease_emissions (
 	return statestore.LeaseEmissionResult{Record: record}, nil
 }
 
+// RevokeAssignment implements statestore.AssignmentRevokeStore (ADR-0030
+// §2.2). The lease_emissions and work_order_emissions rows stay immutable;
+// the revocation is its own delivery fact in delivery_revocations, and the
+// backing Attempt closes with the revocation's reason in the same
+// transaction, so the row and the close are one fact. The listing reads the
+// revocation table and reports revoked for a Lease that still carries an
+// EMITTED emission. A Lease without an EMITTED emission is refused — nothing
+// was delivered, so there is nothing for the Worker to un-learn. Replaying
+// the same revocation is a no-op; replaying it with a different reason is a
+// conflict.
+func (s *Store) RevokeAssignment(ctx context.Context, revoke statestore.AssignmentRevocation) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	if err := revoke.Validate(); err != nil {
+		return err
+	}
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("revoke assignment %s: %w", revoke.LeaseID, err)
+	}
+	defer func() { _ = tx.Rollback() }()
+
+	var status string
+	err = tx.QueryRowContext(ctx, `SELECT status FROM lease_emissions WHERE lease_id = ?`, revoke.LeaseID.String()).Scan(&status)
+	switch {
+	case errors.Is(err, sql.ErrNoRows):
+		return fmt.Errorf("%w: Lease emission %s", statestore.ErrNotFound, revoke.LeaseID)
+	case err != nil:
+		return fmt.Errorf("revoke assignment %s: %w", revoke.LeaseID, err)
+	}
+	switch status {
+	case "aborted":
+		var reason string
+		var closeReason string
+		if err := tx.QueryRowContext(ctx,
+			`SELECT abort_reason, abort_close_reason FROM lease_emissions WHERE lease_id = ?`,
+			revoke.LeaseID.String()).Scan(&reason, &closeReason); err != nil {
+			return fmt.Errorf("revoke assignment %s: %w", revoke.LeaseID, err)
+		}
+		if reason != revoke.Reason || closeReason != string(revoke.CloseReason) {
+			return fmt.Errorf("%w: Lease emission %s is already revoked for another reason",
+				statestore.ErrLeaseEmissionConflict, revoke.LeaseID)
+		}
+		return nil
+	case "emitted":
+	default:
+		return fmt.Errorf("%w: Lease emission %s has status %q", statestore.ErrLeaseEmissionConflict, revoke.LeaseID, status)
+	}
+
+	var attemptID string
+	var phase string
+	var closeReason string
+	err = tx.QueryRowContext(ctx, `
+SELECT a.attempt_id, a.phase, a.close_reason
+FROM leases l JOIN attempts a ON a.attempt_id = l.attempt_id
+WHERE l.lease_id = ? AND a.lease_id = l.lease_id AND a.worker_identity = l.worker_identity`,
+		revoke.LeaseID.String()).Scan(&attemptID, &phase, &closeReason)
+	switch {
+	case errors.Is(err, sql.ErrNoRows):
+		return fmt.Errorf("%w: Lease %s holds no Attempt", statestore.ErrNotFound, revoke.LeaseID)
+	case err != nil:
+		return fmt.Errorf("revoke assignment %s: %w", revoke.LeaseID, err)
+	}
+	switch phase {
+	case "assigned", "dispatched":
+	default:
+		revokedAlready := phase == "closed" && closeReason == string(revoke.CloseReason)
+		if !revokedAlready {
+			return fmt.Errorf("%w: Attempt phase %q cannot revoke a delivery", statestore.ErrConflict, phase)
+		}
+		// The emission row and the Attempt close are one fact recorded in two
+		// tables; a replay that finds both already carrying this reason is the
+		// same revocation, so there is nothing left to write.
+		return nil
+	}
+
+	if _, err := tx.ExecContext(ctx, `
+INSERT INTO delivery_revocations (lease_id, reason, committed_at_ns) VALUES (?, ?, ?)`,
+		revoke.LeaseID.String(), revoke.Reason, revoke.CommittedAt.UnixNano()); err != nil {
+		return fmt.Errorf("record delivery revocation %s: %w", revoke.LeaseID, err)
+	}
+	res, err := tx.ExecContext(ctx, `
+UPDATE attempts SET phase = 'closed', close_reason = ?, revision = revision + 1,
+       updated_at_ns = MAX(updated_at_ns, ?)
+WHERE attempt_id = ? AND phase IN ('assigned','dispatched')`,
+		string(revoke.CloseReason), revoke.CommittedAt.UnixNano(), attemptID)
+	if err != nil {
+		return fmt.Errorf("close revoked Attempt %s: %w", attemptID, err)
+	}
+	if n, _ := res.RowsAffected(); n != 1 {
+		return fmt.Errorf("%w: Attempt %s changed during revocation", statestore.ErrConflict, attemptID)
+	}
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("commit assignment revocation %s: %w", revoke.LeaseID, err)
+	}
+	return nil
+}
+
 func (s *Store) LoadLeaseEmission(ctx context.Context, id ids.LeaseID) (leaseemission.Record, error) {
 	if err := ctx.Err(); err != nil {
 		return leaseemission.Record{}, err
@@ -354,3 +453,4 @@ func scanLeaseEmission(row rowScanner) (leaseemission.Record, error) {
 }
 
 var _ statestore.LeaseEmissionStore = (*Store)(nil)
+var _ statestore.AssignmentRevokeStore = (*Store)(nil)
