@@ -21,6 +21,7 @@ const MaxAssignmentsBytes = 4 << 20
 type wireAssignment struct {
 	AttemptID         string `json:"attempt_id"`
 	LeaseID           string `json:"lease_id"`
+	LeaseState        string `json:"lease_state"`
 	LeaseEnvelope     []byte `json:"lease_envelope"`
 	WorkOrderEnvelope []byte `json:"work_order_envelope"`
 }
@@ -56,7 +57,7 @@ func EncodeAssignments(list []workerplane.Assignment) ([]byte, error) {
 			return nil, fmt.Errorf("%w: assignment without signed bytes", ErrInvalidMessage)
 		}
 		out.Assignments = append(out.Assignments, wireAssignment{
-			AttemptID: a.AttemptID, LeaseID: a.LeaseID,
+			AttemptID: a.AttemptID, LeaseID: a.LeaseID, LeaseState: a.LeaseState,
 			LeaseEnvelope: a.LeaseEnvelope, WorkOrderEnvelope: a.WorkOrderEnvelope,
 		})
 	}
@@ -80,8 +81,13 @@ func DecodeAssignments(raw []byte) ([]workerplane.Assignment, error) {
 		if len(a.LeaseEnvelope) == 0 || len(a.WorkOrderEnvelope) == 0 {
 			return nil, fmt.Errorf("%w: assignment without signed bytes", ErrInvalidMessage)
 		}
+		switch a.LeaseState {
+		case workerplane.LeaseStateCurrent, workerplane.LeaseStateRevoked:
+		default:
+			return nil, fmt.Errorf("%w: lease_state %q", ErrInvalidMessage, a.LeaseState)
+		}
 		out = append(out, workerplane.Assignment{
-			AttemptID: a.AttemptID, LeaseID: a.LeaseID,
+			AttemptID: a.AttemptID, LeaseID: a.LeaseID, LeaseState: a.LeaseState,
 			LeaseEnvelope: a.LeaseEnvelope, WorkOrderEnvelope: a.WorkOrderEnvelope,
 		})
 	}

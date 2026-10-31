@@ -67,6 +67,7 @@ func (w *world) placeSandboxWith(auth *signedchain.Authorities, worker string, a
 	p := auth.PlaceSandbox(w.t, w.state, w.policy, w.n, worker, at, sandbox)
 	return workerplane.Assignment{
 		AttemptID: p.AttemptID.String(), LeaseID: p.LeaseID.String(),
+		LeaseState:    workerplane.LeaseStateCurrent,
 		LeaseEnvelope: p.SignedLease, WorkOrderEnvelope: p.SignedWorkOrder,
 	}
 }
@@ -79,6 +80,7 @@ func (w *world) placeWith(auth *signedchain.Authorities, worker string, at time.
 	p := auth.Place(w.t, w.state, w.policy, w.n, worker, at)
 	return workerplane.Assignment{
 		AttemptID: p.AttemptID.String(), LeaseID: p.LeaseID.String(),
+		LeaseState:    workerplane.LeaseStateCurrent,
 		LeaseEnvelope: p.SignedLease, WorkOrderEnvelope: p.SignedWorkOrder,
 	}
 }
@@ -236,6 +238,21 @@ func TestAnExpiredLeaseIsRefused(t *testing.T) {
 	want(t, r, assignment.OutcomeRejected, "lease_expired")
 	if len(a.started) != 0 {
 		t.Fatal("an expired Lease was started")
+	}
+}
+
+func TestARevokedLeaseIsRefusedWithoutLookingAtTheBytes(t *testing.T) {
+	w := newWorld(t)
+	a := w.agent("worker-a", options{})
+	asg := w.place("worker-a", w.now)
+	// The listing names the Attempt with revoked and nonsense bytes: the
+	// revocation is a fact of the listing, so the bytes are never consulted.
+	asg.LeaseState = workerplane.LeaseStateRevoked
+	asg.LeaseEnvelope, asg.WorkOrderEnvelope = []byte("garbage"), []byte("garbage")
+	r := a.poll(t, asg)
+	want(t, r, assignment.OutcomeRejected, "lease_revoked")
+	if len(a.started) != 0 {
+		t.Fatal("a revoked Lease was started")
 	}
 }
 

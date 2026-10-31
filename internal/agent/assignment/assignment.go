@@ -235,6 +235,14 @@ func (s *Service) check(ctx context.Context, a workerplane.Assignment) Result {
 		r.Outcome, r.Reason = OutcomeRejected, reason
 		return r
 	}
+	// A revoked Lease (ADR-0030 §2.2): the delivery listing still names the
+	// Attempt so the Worker learns the revocation, but the material must not
+	// be started or re-verified into a start. The signed bytes are not
+	// consulted: revocation is a fact of the listing. An Attempt already
+	// decided never reaches here — Poll skips it before the checks.
+	if a.LeaseState == workerplane.LeaseStateRevoked {
+		return reject("lease_revoked")
+	}
 	now := s.cfg.Clock.Now().UTC()
 	bundle := s.cfg.Anchor.TrustBundle()
 

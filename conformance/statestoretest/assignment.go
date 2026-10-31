@@ -169,3 +169,131 @@ func RunAssignmentExpiryProbe(t *testing.T, newStore AssignmentFactory) {
 		}
 	})
 }
+
+// RevocationTestStore is a State Store that can also revoke a delivered
+// assignment (ADR-0030 §2.2).
+type RevocationTestStore interface {
+	AssignmentTestStore
+	statestore.AssignmentRevokeStore
+}
+
+// RevocationFactory builds one RevocationTestStore per subtest.
+type RevocationFactory func(t testing.TB) RevocationTestStore
+
+// newRevocationStore builds a revocation store whose listing clock sits inside
+// the fixture Leases' validity windows.
+func newRevocationStore(t testing.TB, newStore RevocationFactory) RevocationTestStore {
+	t.Helper()
+	store := newStore(t)
+	store.SetListingClock(func() time.Time { return leaseNow.Add(listingClockOffset) })
+	return store
+}
+
+// RunAssignmentRevocationContract pins the Control Plane's reclaim (ADR-0030
+// §2.2): the revocation is one durable fact, the listing turns revoked for it,
+// the revocation closes the backing Attempt, a replay of the same reason is a
+// no-op, a differing reason is a conflict, and a Lease with nothing EMITTED
+// cannot be revoked because there is nothing for the Worker to un-learn.
+func RunAssignmentRevocationContract(t *testing.T, newStore RevocationFactory) {
+	t.Helper()
+	ctx := context.Background()
+
+	t.Run("a-revoked-assignment-is-listed-revoked-and-its-attempt-closes", func(t *testing.T) {
+		store := newRevocationStore(t, newStore)
+		fx := newWorkOrderFixture(t, store)
+		lease, _ := fx.emittedLease("asg-revoke")
+		if _, err := fx.issuer.Issue(ctx, fx.request(lease)); err != nil {
+			t.Fatal(err)
+		}
+		attempt, err := store.LoadAttempt(ctx, lease.AttemptID)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := store.RevokeAssignment(ctx, statestore.AssignmentRevocation{
+			LeaseID: lease.ID, CloseReason: attemptstate.CloseReasonReclaimed,
+			Reason: "reclaim test", CommittedAt: leaseNow.Add(listingClockOffset),
+		}); err != nil {
+			t.Fatalf("RevokeAssignment() error = %v", err)
+		}
+		got, err := store.ListEmittedAssignments(ctx, lease.WorkerIdentity, 0)
+		if err != nil || len(got) != 1 {
+			t.Fatalf("after revoke: ListEmittedAssignments() = %+v, %v, want the revoked row", got, err)
+		}
+		if got[0].LeaseState != statestore.LeaseDeliveryRevoked {
+			t.Fatalf("LeaseState = %q, want revoked", got[0].LeaseState)
+		}
+		closed, err := store.LoadAttempt(ctx, lease.AttemptID)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if closed.Phase != attemptstate.AttemptPhaseClosed ||
+			closed.CloseReason != attemptstate.CloseReasonReclaimed ||
+			closed.Revision != attempt.Revision+1 {
+			t.Fatalf("closed Attempt = phase %q reason %q revision %d, want closed/reclaimed/%d",
+				closed.Phase, closed.CloseReason, closed.Revision, attempt.Revision+1)
+		}
+	})
+
+	t.Run("replaying-the-same-revocation-changes-nothing", func(t *testing.T) {
+		store := newRevocationStore(t, newStore)
+		fx := newWorkOrderFixture(t, store)
+		lease, _ := fx.emittedLease("asg-revoke-replay")
+		if _, err := fx.issuer.Issue(ctx, fx.request(lease)); err != nil {
+			t.Fatal(err)
+		}
+		first := statestore.AssignmentRevocation{
+			LeaseID: lease.ID, CloseReason: attemptstate.CloseReasonReclaimed,
+			Reason: "reclaim replay", CommittedAt: leaseNow.Add(listingClockOffset),
+		}
+		if err := store.RevokeAssignment(ctx, first); err != nil {
+			t.Fatalf("RevokeAssignment() error = %v", err)
+		}
+		attempt, err := store.LoadAttempt(ctx, lease.AttemptID)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := store.RevokeAssignment(ctx, first); err != nil {
+			t.Fatalf("replayed RevokeAssignment() error = %v", err)
+		}
+		after, err := store.LoadAttempt(ctx, lease.AttemptID)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if after.Revision != attempt.Revision {
+			t.Fatalf("replay moved the Attempt revision to %d, want %d", after.Revision, attempt.Revision)
+		}
+	})
+
+	t.Run("a-second-reason-for-the-same-lease-is-a-conflict", func(t *testing.T) {
+		store := newRevocationStore(t, newStore)
+		fx := newWorkOrderFixture(t, store)
+		lease, _ := fx.emittedLease("asg-revoke-conflict")
+		if _, err := fx.issuer.Issue(ctx, fx.request(lease)); err != nil {
+			t.Fatal(err)
+		}
+		if err := store.RevokeAssignment(ctx, statestore.AssignmentRevocation{
+			LeaseID: lease.ID, CloseReason: attemptstate.CloseReasonReclaimed,
+			Reason: "first reason", CommittedAt: leaseNow.Add(listingClockOffset),
+		}); err != nil {
+			t.Fatalf("RevokeAssignment() error = %v", err)
+		}
+		if err := store.RevokeAssignment(ctx, statestore.AssignmentRevocation{
+			LeaseID: lease.ID, CloseReason: attemptstate.CloseReasonCancelled,
+			Reason: "second reason", CommittedAt: leaseNow.Add(listingClockOffset),
+		}); err == nil {
+			t.Fatal("second RevokeAssignment() = nil, want conflict")
+		}
+	})
+
+	t.Run("a-lease-with-nothing-emitted-cannot-be-revoked", func(t *testing.T) {
+		store := newRevocationStore(t, newStore)
+		fx := newWorkOrderFixture(t, store)
+		lease := fx.lse.reserve("asg-revoke-nothing")
+		if err := store.RevokeAssignment(ctx, statestore.AssignmentRevocation{
+			LeaseID: lease.ID, CloseReason: attemptstate.CloseReasonReclaimed,
+			Reason: "nothing delivered", CommittedAt: leaseNow.Add(listingClockOffset),
+		}); err == nil {
+			t.Fatal("RevokeAssignment() on a RESERVED Lease = nil, want not found")
+		}
+	})
+}

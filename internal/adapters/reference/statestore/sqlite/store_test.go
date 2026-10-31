@@ -1155,3 +1155,19 @@ func TestAssignmentListingDropsExpiredLeases(t *testing.T) {
 		return store
 	})
 }
+
+// TestAssignmentRevocationContract pins the Control Plane's reclaim over the
+// sqlite adapter, including the version-17 delivery_revocations table and its
+// immutability triggers (ADR-0030 §2.2).
+func TestAssignmentRevocationContract(t *testing.T) {
+	statestoretest.RunAssignmentRevocationContract(t, func(t testing.TB) statestoretest.RevocationTestStore {
+		t.Helper()
+		store := openStore(t, filepath.Join(t.TempDir(), "state.db"))
+		t.Cleanup(func() {
+			if err := store.Close(); err != nil {
+				t.Errorf("Close() error = %v", err)
+			}
+		})
+		return store
+	})
+}

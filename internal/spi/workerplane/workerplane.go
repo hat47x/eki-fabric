@@ -44,11 +44,25 @@ type ClaimClient interface {
 // it verifies them; the identifiers are hints for logging and carry no
 // authority.
 type Assignment struct {
-	AttemptID         string
-	LeaseID           string
+	AttemptID string
+	LeaseID   string
+	// LeaseState is the delivery-level currency of the Lease at listing time
+	// (ADR-0030 §2.2): current while the validity window is open, revoked once
+	// the emission was aborted. The Worker must stop a revoked Attempt and may
+	// not start one.
+	LeaseState        workerplaneLeaseState
 	LeaseEnvelope     []byte
 	WorkOrderEnvelope []byte
 }
+
+// workerplaneLeaseState mirrors statestore.LeaseDeliveryState without the SPI
+// dependency.
+type workerplaneLeaseState = string
+
+const (
+	LeaseStateCurrent = "current"
+	LeaseStateRevoked = "revoked"
+)
 
 // AssignmentSource lists the assignments of the authenticated Worker. The
 // transport produces the Principal; no request field may name another Worker.
