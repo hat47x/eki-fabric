@@ -64,7 +64,7 @@ func TestAssignmentsReachOnlyTheWorkerThatHoldsTheAttempt(t *testing.T) {
 	}()
 
 	// A receives exactly the bytes stored for A, and nothing of B.
-	status, got, body := e.fetchAssignments(t, a, testprofile.EncodeAssignmentsRequest())
+	status, got, body := e.fetchAssignments(t, a, testprofile.EncodeAssignmentsRequest(nil))
 	if status != http.StatusOK || len(got) != 1 {
 		t.Fatalf("A: %d %d assignments %s", status, len(got), body)
 	}
@@ -78,19 +78,19 @@ func TestAssignmentsReachOnlyTheWorkerThatHoldsTheAttempt(t *testing.T) {
 
 	// Asking again returns the same bytes: nothing was marked delivered, and
 	// nothing was re-signed.
-	status, again, _ := e.fetchAssignments(t, a, testprofile.EncodeAssignmentsRequest())
+	status, again, _ := e.fetchAssignments(t, a, testprofile.EncodeAssignmentsRequest(nil))
 	if status != http.StatusOK || len(again) != 1 || !bytes.Equal(again[0].LeaseEnvelope, placedA.SignedLease) || !bytes.Equal(again[0].WorkOrderEnvelope, placedA.SignedWorkOrder) {
 		t.Fatalf("second fetch = %d %+v", status, again)
 	}
 
 	// B receives B's.
-	status, gotB, _ := e.fetchAssignments(t, b, testprofile.EncodeAssignmentsRequest())
+	status, gotB, _ := e.fetchAssignments(t, b, testprofile.EncodeAssignmentsRequest(nil))
 	if status != http.StatusOK || len(gotB) != 1 || !bytes.Equal(gotB[0].WorkOrderEnvelope, placedB.SignedWorkOrder) || bytes.Equal(gotB[0].WorkOrderEnvelope, placedA.SignedWorkOrder) {
 		t.Fatalf("B = %d %+v", status, gotB)
 	}
 
 	// A Worker that holds no Attempt gets an empty list, not someone else's.
-	status, none, body := e.fetchAssignments(t, idle, testprofile.EncodeAssignmentsRequest())
+	status, none, body := e.fetchAssignments(t, idle, testprofile.EncodeAssignmentsRequest(nil))
 	if status != http.StatusOK || len(none) != 0 {
 		t.Fatalf("idle Worker = %d %s, want an empty list", status, body)
 	}
@@ -102,19 +102,19 @@ func TestAssignmentsReachOnlyTheWorkerThatHoldsTheAttempt(t *testing.T) {
 	}
 
 	// No certificate: nothing.
-	status, _, body = e.fetchAssignments(t, rawWorker{}, testprofile.EncodeAssignmentsRequest())
+	status, _, body = e.fetchAssignments(t, rawWorker{}, testprofile.EncodeAssignmentsRequest(nil))
 	if status != http.StatusUnauthorized || strings.Contains(body, placedA.AttemptID.String()) {
 		t.Fatalf("no certificate = %d %s, want 401", status, body)
 	}
 
 	// A revoked Worker is refused on its next request, with no material.
 	e.workerState(t, a.identity, "revoked")
-	status, _, body = e.fetchAssignments(t, a, testprofile.EncodeAssignmentsRequest())
+	status, _, body = e.fetchAssignments(t, a, testprofile.EncodeAssignmentsRequest(nil))
 	if status != http.StatusUnauthorized || strings.Contains(body, placedA.AttemptID.String()) {
 		t.Fatalf("revoked Worker = %d %s, want 401 and no material", status, body)
 	}
 	// B is unaffected.
-	if status, gotB, _ := e.fetchAssignments(t, b, testprofile.EncodeAssignmentsRequest()); status != http.StatusOK || len(gotB) != 1 {
+	if status, gotB, _ := e.fetchAssignments(t, b, testprofile.EncodeAssignmentsRequest(nil)); status != http.StatusOK || len(gotB) != 1 {
 		t.Fatalf("B after A was revoked = %d %+v", status, gotB)
 	}
 }

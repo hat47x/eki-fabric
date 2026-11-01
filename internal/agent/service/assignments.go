@@ -160,6 +160,16 @@ func runAssignments(ctx context.Context, c *AssignmentConfig, anchor *trustancho
 		}
 		handler = execHandler
 	}
+	// The heartbeat (ADR-0030 §2.2): the Agent reports the Lease it is
+	// executing with every poll. The client carries the report; the Reporter
+	// keeps it current as the Handlers take and finish Attempts. The report
+	// is best-effort liveness: a client that cannot carry it (a token
+	// client's queue is not an AssignmentSource) simply reports nothing.
+	beats := &leaseReporter{}
+	if reporter, ok := source.(workerplane.RunningReporter); ok {
+		beats.client = reporter
+		handler = beats.wrapped(handler)
+	}
 	svc, err := assignment.New(assignment.Config{
 		Source: source, Principal: principal, Anchor: anchor, Replay: guard, Clock: systemClock{},
 		Executors: execs, Governor: assignment.StaticGovernor(c.CeilingPercent),
@@ -196,5 +206,33 @@ func runAssignments(ctx context.Context, c *AssignmentConfig, anchor *trustancho
 			log.Info("assignment", "attempt", r.AttemptID, "outcome", string(r.Outcome), "reason", r.Reason)
 		}
 		timer.Reset(interval)
+	}
+}
+
+// leaseReporter keeps the running-Lease report of the polling Agent current
+// (ADR-0030 §2.2): the Handler takes an Attempt and the report names its
+// Lease; the Handler returns and the report goes empty. Only the newest
+// Attempt is reported — the Agent runs one Handler at a time.
+type leaseReporter struct {
+	mu     sync.Mutex
+	client workerplane.RunningReporter
+	lease  string
+}
+
+func (r *leaseReporter) wrapped(next assignment.Handler) assignment.Handler {
+	return assignment.HandlerFunc(func(ctx context.Context, ready assignment.Ready) error {
+		r.report(ready.LeaseID.String())
+		defer r.report("")
+		next.Start(ctx, ready)
+		return nil
+	})
+}
+
+func (r *leaseReporter) report(leaseID string) {
+	r.mu.Lock()
+	r.lease = leaseID
+	r.mu.Unlock()
+	if r.client != nil {
+		r.client.ReportRunning(leaseID)
 	}
 }

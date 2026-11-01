@@ -80,6 +80,34 @@ type AssignmentRevokeStore interface {
 	RevokeAssignment(ctx context.Context, revoke AssignmentRevocation) error
 }
 
+// Heartbeat is one recorded liveness fact (ADR-0030 §2.2): the Worker named by
+// WorkerIdentity said, at RecordedAt, that it is running the Attempt of
+// LeaseID. The Control Plane wrote the fact; the Worker never writes state
+// through it, and the Attempt of the Lease keeps whatever phase it had.
+type Heartbeat struct {
+	LeaseID        ids.LeaseID
+	AttemptID      ids.AttemptID
+	WorkerIdentity string
+	RecordedAt     time.Time
+	// Revision counts the accepted reports of this Lease from zero. It moves
+	// forward only; a report older than the last accepted one is dropped as a
+	// replay and does not bump it.
+	Revision uint64
+}
+
+// AssignmentHeartbeatStore records the running-Lease reports a polling Worker
+// sends with its assignments request (ADR-0030 §2.2). The report is a
+// liveness fact: the recorder checks each named Lease against its own store
+// and refuses Leases that do not belong to the Worker, instead of trusting
+// the request.
+type AssignmentHeartbeatStore interface {
+	// RecordHeartbeats records one poll's running-Lease report. Every named
+	// Lease must be bound to workerIdentity and EMITTED for it; anything else
+	// fails closed. Reporting the same Lease again at the same or an older
+	// recorded time changes nothing.
+	RecordHeartbeats(ctx context.Context, workerIdentity string, leaseIDs []string, at time.Time) error
+}
+
 // AssignmentRevocation names one revocation and why the Control Plane decided
 // it. CloseReason is the reason the backing Attempt is closed with; the valid
 // reasons are the pre-emission abort reasons.

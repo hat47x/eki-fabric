@@ -7,6 +7,7 @@ import (
 	"io"
 	"net/http"
 	"strings"
+	"time"
 
 	"github.com/hat47x/eki-fabric/internal/spi/statestore"
 	"github.com/hat47x/eki-fabric/internal/spi/workerplane"
@@ -66,7 +67,8 @@ func (s *AssignmentService) ListAssignments(ctx context.Context, principal worke
 }
 
 // serveAssignments handles an authenticated assignments request. The principal
-// comes from the certificate; the body is only checked to be the empty object.
+// comes from the certificate; the body may report the Leases the Worker is
+// running (heartbeat, ADR-0030 §2.2) and is never trusted to name a Worker.
 func (h *mtlsHandler) serveAssignments(w http.ResponseWriter, r *http.Request, principal workerplane.Principal) {
 	if mt, _, _ := strings.Cut(r.Header.Get("Content-Type"), ";"); strings.TrimSpace(mt) != testprofile.ContentType {
 		reply(w, http.StatusUnsupportedMediaType, "unsupported_media_type")
@@ -82,9 +84,29 @@ func (h *mtlsHandler) serveAssignments(w http.ResponseWriter, r *http.Request, p
 		reply(w, http.StatusBadRequest, "bad_request")
 		return
 	}
-	if err := testprofile.DecodeAssignmentsRequest(body); err != nil {
+	running, err := testprofile.DecodeAssignmentsRequest(body)
+	if err != nil {
 		reply(w, http.StatusBadRequest, "invalid_request")
 		return
+	}
+	// The heartbeat is a liveness fact, not a state assertion: the Control
+	// Plane checks each named Lease against its own store before recording
+	// it. A report about a Lease the Worker does not hold is a client error;
+	// a storage failure is the server's. Either way the request fails closed
+	// and the listing is not served with a heartbeat that was not recorded.
+	if h.heartbeats != nil && len(running) > 0 {
+		if err := h.heartbeats.RecordHeartbeats(r.Context(), principal.WorkerIdentity, running, time.Now().UTC()); err != nil {
+			switch {
+			case errors.Is(err, context.Canceled), errors.Is(err, context.DeadlineExceeded):
+				reply(w, http.StatusServiceUnavailable, "unavailable")
+			case errors.Is(err, statestore.ErrNotFound), errors.Is(err, statestore.ErrConflict):
+				reply(w, http.StatusBadRequest, "invalid_heartbeat")
+			default:
+				h.log.Error("worker heartbeat recording failed", "worker", principal.WorkerIdentity, "error", err.Error())
+				reply(w, http.StatusInternalServerError, "internal_error")
+			}
+			return
+		}
 	}
 	list, err := h.assignments.ListAssignments(r.Context(), principal)
 	if err != nil {

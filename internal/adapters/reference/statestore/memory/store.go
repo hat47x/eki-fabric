@@ -60,6 +60,7 @@ type Store struct {
 	credentials       map[ids.EnrollmentCredentialID]workerregistry.Credential
 	credentialByHash  map[string]ids.EnrollmentCredentialID
 	workers           map[ids.WorkerIdentity]workerregistry.Worker
+	heartbeats        map[ids.LeaseID]heartbeatRow
 }
 
 func New() *Store {
@@ -76,6 +77,7 @@ func New() *Store {
 		workOrderDecision: make(map[authorityDecisionScope]ids.LeaseID),
 		placementLeases:   make(map[placementScope]ids.LeaseID),
 		maxFence:          make(map[ids.TaskID]uint64),
+		heartbeats:        make(map[ids.LeaseID]heartbeatRow),
 		policyHistory:     make(map[uint64]policystate.State),
 		claims:            make(map[ids.AttemptID]resultclaim.Claim),
 		accepted:          make(map[ids.TaskID]acceptedresult.Record),

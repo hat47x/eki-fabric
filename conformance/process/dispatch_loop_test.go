@@ -156,7 +156,7 @@ func TestDispatchLoopAssignsAReadyTaskAndTheWorkerFetchesItsLease(t *testing.T) 
 
 	// The Worker the loop chose can fetch the Lease and WorkOrder issued for
 	// its Attempt.
-	status, got, body := e.fetchAssignments(t, w, testprofile.EncodeAssignmentsRequest())
+	status, got, body := e.fetchAssignments(t, w, testprofile.EncodeAssignmentsRequest(nil))
 	if status != http.StatusOK || len(got) != 1 {
 		t.Fatalf("fetch = %d %d assignments %s", status, len(got), body)
 	}
@@ -169,7 +169,7 @@ func TestDispatchLoopAssignsAReadyTaskAndTheWorkerFetchesItsLease(t *testing.T) 
 
 	// A Worker that holds no Attempt still gets nothing.
 	other := e.rawEnroll(t, &x509.CertificateRequest{})
-	status, none, _ := e.fetchAssignments(t, other, testprofile.EncodeAssignmentsRequest())
+	status, none, _ := e.fetchAssignments(t, other, testprofile.EncodeAssignmentsRequest(nil))
 	if status != http.StatusOK || len(none) != 0 {
 		t.Fatalf("a Worker without an Attempt = %d %+v, want an empty list", status, none)
 	}
