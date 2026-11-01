@@ -221,6 +221,8 @@ T-ACTIVEと、内部的に重なり得るため、実装では、substateやderi
 
 重要なのは、ExecutionとVerificationを区別することです。
 
+**この実装では、T-VERIFYINGを保存するphaseとして扱います**（ADR-0032 §2.4、ADR-0033の仮定A3）。完了のResultClaimを受理する経路が、Taskを`active`から`verifying`へCASし（`internal/control/resultacceptance`）、受理のcommitが`verifying`から`terminal/completed`へ進めます。実行中と検証中を、依頼元への説明と監査で区別するためです。`verifying`のTaskは、配置ループが新しいAttemptを作らない対象です。
+
 ## T-RECONCILING
 
 外部への副作用などについて、成功か失敗かを、Fabricだけでは確定できず、External Effect AuthorityやApplication固有のreconciliationを待っている状態。
