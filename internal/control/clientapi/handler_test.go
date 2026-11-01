@@ -50,6 +50,18 @@ func newEnv(t *testing.T, mutate ...func(*Config, *admission.Policy)) *env {
 // unavailable, as in a deployment that has not enabled it.
 func newEnvWith(t *testing.T, results statestore.ResultAcceptanceStore, mutate ...func(*Config, *admission.Policy)) *env {
 	t.Helper()
+	return newEnvBuilder(t, results, false, mutate...)
+}
+
+// newEnvWithDrainingQuota is a deployment whose admitted Tasks finish without
+// the Client, so a quota rejection is retryable there.
+func newEnvWithDrainingQuota(t *testing.T) *env {
+	t.Helper()
+	return newEnvBuilder(t, nil, true)
+}
+
+func newEnvBuilder(t *testing.T, results statestore.ResultAcceptanceStore, quotaDrains bool, mutate ...func(*Config, *admission.Policy)) *env {
+	t.Helper()
 	store := memory.New()
 	policy := admission.Policy{
 		ApprovedExecutors: []string{"dev.example.transform"},
@@ -76,7 +88,10 @@ func newEnvWith(t *testing.T, results statestore.ResultAcceptanceStore, mutate .
 	if results != nil {
 		reader = results
 	}
-	svc, err := admission.New(admission.Config{Store: store, Results: reader, Policy: policy})
+	svc, err := admission.New(admission.Config{
+		Store: store, Results: reader, Policy: policy,
+		QuotaDrainsAutomatically: quotaDrains,
+	})
 	if err != nil {
 		t.Fatalf("admission.New() error = %v", err)
 	}
@@ -460,7 +475,7 @@ func TestIdempotentSubmission(t *testing.T) {
 }
 
 func TestQuotaRejectionIsRetryableWithRetryAfter(t *testing.T) {
-	e := newEnv(t)
+	e := newEnvWithDrainingQuota(t)
 	for i := 0; i < 3; i++ {
 		if res := e.submit(aliceToken, fmt.Sprintf("key-quota-%03d", i), validRequest); res.status != http.StatusAccepted {
 			t.Fatalf("submit %d status = %d", i, res.status)
@@ -469,7 +484,30 @@ func TestQuotaRejectionIsRetryableWithRetryAfter(t *testing.T) {
 	res := e.submit(aliceToken, "key-quota-999", validRequest)
 	p := wantProblem(t, res, http.StatusTooManyRequests, "TASK_QUOTA_EXCEEDED")
 	if p["retryable"] != true || res.header.Get("Retry-After") == "" {
-		t.Errorf("a quota rejection must be retryable with Retry-After: %v %q", p["retryable"], res.header.Get("Retry-After"))
+		t.Errorf("a quota rejection in a deployment that finishes Tasks must be retryable with Retry-After: %v %q", p["retryable"], res.header.Get("Retry-After"))
+	}
+}
+
+// Without a path that finishes admitted Tasks, retrying never clears the quota:
+// the Client has to cancel one, and the response must say so instead of
+// advertising a retry (#282).
+func TestQuotaRejectionIsNotRetryableWithoutAnExecutionPath(t *testing.T) {
+	e := newEnv(t)
+	for i := 0; i < 3; i++ {
+		if res := e.submit(aliceToken, fmt.Sprintf("key-quota-%03d", i), validRequest); res.status != http.StatusAccepted {
+			t.Fatalf("submit %d status = %d", i, res.status)
+		}
+	}
+	res := e.submit(aliceToken, "key-quota-999", validRequest)
+	p := wantProblem(t, res, http.StatusTooManyRequests, "TASK_QUOTA_EXCEEDED")
+	if p["retryable"] != nil && p["retryable"] != false {
+		t.Errorf("retryable = %v, want absent or false", p["retryable"])
+	}
+	if got := res.header.Get("Retry-After"); got != "" {
+		t.Errorf("Retry-After = %q, want none: waiting does not free the quota", got)
+	}
+	if detail, _ := p["detail"].(string); !strings.Contains(detail, "Cancel") {
+		t.Errorf("detail = %q, want a hint to cancel a task", detail)
 	}
 }
 

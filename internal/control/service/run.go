@@ -83,6 +83,10 @@ func Start(ctx context.Context, cfg Config, log *slog.Logger) (*Server, error) {
 		Store:   store,
 		Results: store,
 		Policy:  policy,
+		// A quota rejection is retryable only when this deployment can finish a
+		// Task without the Client: that is what the placement loop starts. A
+		// process without it must tell the Client to cancel instead (#282).
+		QuotaDrainsAutomatically: cfg.Dispatch != nil,
 		OnInternalError: func(operation string, err error) {
 			log.Error("internal error", "operation", operation, "error", err.Error())
 		},
