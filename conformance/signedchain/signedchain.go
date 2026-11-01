@@ -224,8 +224,15 @@ func (a *Authorities) PlaceSandbox(t testing.TB, state State, policy policystate
 
 	task, err := taskstate.NewTask(ids.TaskID(fmt.Sprintf("tsk_%032x", n)), contract.SHA256([]byte(fmt.Sprintf("taskir-%d", n))), at.Add(-time.Minute))
 	must(t, err)
-	task.Phase = taskstate.TaskPhaseReady
+	// A Task is created admitted and moved to ready by a separate write, the
+	// way the state model requires (#365).
 	must(t, state.CreateTask(ctx, task))
+	ready := task
+	ready.Phase = taskstate.TaskPhaseReady
+	ready.Revision++
+	ready.UpdatedAt = task.CreatedAt.Add(time.Second)
+	must(t, state.CompareAndSwapTask(ctx, task.ID, task.Revision, ready))
+	task = ready
 	attempt, err := attemptstate.New(ids.AttemptID(fmt.Sprintf("atm_%032x", n)), task.ID, task.TaskIRDigest, 1, task.CreatedAt)
 	must(t, err)
 	must(t, state.CreateAttempt(ctx, attempt))

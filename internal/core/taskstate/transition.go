@@ -17,17 +17,21 @@ var ErrInvalidTaskTransition = errors.New("invalid task transition")
 // terminal. Same-phase writes are allowed because a Task carries state beside
 // its phase (the cancellation intent, for example) that changes in place.
 //
-// Completion is not special here: the accepted-result commit writes
-// terminal/completed together with the AcceptedResult, the closed Attempt and
-// the Task in one transaction, and this function cannot see the result. The
-// table only says which phases may end a Task. Enforcing "a completed Task
-// always has an AcceptedResult" at the State Store boundary is tracked in #280.
+// Completion is refused here (#280, #365): a Task only ends as completed
+// through the accepted-result commit, which writes the AcceptedResult, the
+// closed Attempt and the Task in one transaction. The generic CAS cannot see
+// the result, so it cannot carry the evidence completion claims. A completed
+// write still reaches this function through CommitAcceptedResult's own
+// validation path, which checks the record directly.
 func ValidateTransition(current, next TaskRecord) error {
 	if err := current.Validate(); err != nil {
 		return fmt.Errorf("%w: current: %v", ErrInvalidTaskTransition, err)
 	}
 	if err := next.Validate(); err != nil {
 		return fmt.Errorf("%w: next: %v", ErrInvalidTaskTransition, err)
+	}
+	if next.Phase == TaskPhaseTerminal && next.TerminalOutcome == TerminalOutcomeCompleted {
+		return fmt.Errorf("%w: completion is written by the accepted-result commit, not a generic write", ErrInvalidTaskTransition)
 	}
 	if current.ID != next.ID || current.TaskIRDigest != next.TaskIRDigest || !current.CreatedAt.Equal(next.CreatedAt) {
 		return fmt.Errorf("%w: immutable Task identity changed", ErrInvalidTaskTransition)

@@ -96,6 +96,13 @@ func (s *Store) CreateTask(ctx context.Context, record taskstate.TaskRecord) err
 	if err := record.Validate(); err != nil {
 		return err
 	}
+	// A Task is born admitted. A record that arrives at a later phase carries
+	// history the store did not see, and a completed arrival has no evidence
+	// behind it (#365). The commit that completes a Task writes through
+	// CommitAcceptedResult, never through creation.
+	if record.Phase != taskstate.TaskPhaseAdmitted {
+		return fmt.Errorf("%w: a Task is created admitted, not %s", taskstate.ErrInvalidTaskTransition, record.Phase)
+	}
 
 	s.mu.Lock()
 	defer s.mu.Unlock()

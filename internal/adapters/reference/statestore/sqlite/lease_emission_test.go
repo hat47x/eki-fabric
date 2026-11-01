@@ -39,10 +39,18 @@ func TestVersion5DatabaseUpgradesToEmissionSchemaWithoutLosingLeaseState(t *test
 	if err != nil {
 		t.Fatal(err)
 	}
-	task.Phase = taskstate.TaskPhaseReady
 	if err := old.CreateTask(context.Background(), task); err != nil {
 		t.Fatal(err)
 	}
+	// A Task is created admitted; ready is a separate write (#365).
+	ready := task
+	ready.Phase = taskstate.TaskPhaseReady
+	ready.Revision++
+	ready.UpdatedAt = task.CreatedAt.Add(time.Second)
+	if err := old.CompareAndSwapTask(context.Background(), task.ID, task.Revision, ready); err != nil {
+		t.Fatal(err)
+	}
+	task = ready
 	attemptID, err := ids.NewAttemptID()
 	if err != nil {
 		t.Fatal(err)
@@ -269,10 +277,18 @@ func seedReservedLeaseForEmission(t *testing.T, store *Store, seed string) (task
 	if err != nil {
 		t.Fatal(err)
 	}
-	task.Phase = taskstate.TaskPhaseReady
 	if err := store.CreateTask(context.Background(), task); err != nil {
 		t.Fatal(err)
 	}
+	// A Task is created admitted; ready is a separate write (#365).
+	ready := task
+	ready.Phase = taskstate.TaskPhaseReady
+	ready.Revision++
+	ready.UpdatedAt = task.CreatedAt.Add(time.Second)
+	if err := store.CompareAndSwapTask(context.Background(), task.ID, task.Revision, ready); err != nil {
+		t.Fatal(err)
+	}
+	task = ready
 
 	attemptID, err := ids.NewAttemptID()
 	if err != nil {

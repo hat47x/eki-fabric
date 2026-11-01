@@ -337,8 +337,14 @@ func seedClaimFor(t *testing.T, s *statesqlite.Store, policy policystate.State, 
 	ctx := context.Background()
 	task, err := taskstate.NewTask(ids.TaskID(fmt.Sprintf("tsk_%032x", n)), contract.SHA256([]byte(fmt.Sprintf("taskir-%d", n))), now.Add(-time.Minute))
 	must(t, err)
-	task.Phase = taskstate.TaskPhaseReady
+	// A Task is created admitted and moved to ready by a separate write (#365).
 	must(t, s.CreateTask(ctx, task))
+	ready := task
+	ready.Phase = taskstate.TaskPhaseReady
+	ready.Revision++
+	ready.UpdatedAt = task.CreatedAt.Add(time.Second)
+	must(t, s.CompareAndSwapTask(ctx, task.ID, task.Revision, ready))
+	task = ready
 	attempt, err := attemptstate.New(ids.AttemptID(fmt.Sprintf("atm_%032x", n)), task.ID, task.TaskIRDigest, 1, task.CreatedAt)
 	must(t, err)
 	must(t, s.CreateAttempt(ctx, attempt))

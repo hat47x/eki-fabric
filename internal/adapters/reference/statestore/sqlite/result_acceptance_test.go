@@ -108,10 +108,18 @@ func TestVersion9DatabaseGainsAcceptedResultsWithoutLosingTasks(t *testing.T) {
 		t.Fatal("the v9 schema already has accepted_results")
 	}
 	task := newTaskRecord(t, "v9-accepted-results")
-	task.Phase = taskstate.TaskPhaseReady
 	if err := old.CreateTask(context.Background(), task); err != nil {
 		t.Fatal(err)
 	}
+	// A Task is created admitted; ready is a separate write (#365).
+	ready := task
+	ready.Phase = taskstate.TaskPhaseReady
+	ready.Revision++
+	ready.UpdatedAt = task.CreatedAt.Add(time.Second)
+	if err := old.CompareAndSwapTask(context.Background(), task.ID, task.Revision, ready); err != nil {
+		t.Fatal(err)
+	}
+	task = ready
 	if err := old.Close(); err != nil {
 		t.Fatal(err)
 	}

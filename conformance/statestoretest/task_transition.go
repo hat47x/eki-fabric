@@ -41,6 +41,54 @@ func RunTaskTransitionContract(t *testing.T, newStore Factory) {
 			}
 		})
 
+		t.Run("completion-only-through-the-accepted-result-commit", func(t *testing.T) {
+			// #365: a generic Task write cannot carry the evidence completion
+			// claims, so terminal/completed must be unreachable through it. The
+			// accepted-result commit writes the same Task shape but through its
+			// own validation path, which the result acceptance contract covers.
+			store := newStore(t)
+			ctx := context.Background()
+			record := newTask(t, "transition-cas-completed")
+			if err := store.CreateTask(ctx, record); err != nil {
+				t.Fatalf("CreateTask() error = %v", err)
+			}
+			for _, phase := range []taskstate.TaskPhase{
+				taskstate.TaskPhaseReady, taskstate.TaskPhaseActive, taskstate.TaskPhaseVerifying,
+			} {
+				next := nextRevision(record, phase)
+				if err := store.CompareAndSwapTask(ctx, record.ID, record.Revision, next); err != nil {
+					t.Fatalf("CompareAndSwapTask(%s) error = %v", phase, err)
+				}
+				record = next
+			}
+			done := nextRevision(record, taskstate.TaskPhaseTerminal)
+			done.TerminalOutcome = taskstate.TerminalOutcomeCompleted
+			err := store.CompareAndSwapTask(ctx, record.ID, record.Revision, done)
+			if !errors.Is(err, taskstate.ErrInvalidTaskTransition) {
+				t.Fatalf("CompareAndSwapTask(completed) error = %v, want ErrInvalidTaskTransition", err)
+			}
+			stored, loadErr := store.LoadTask(ctx, record.ID)
+			if loadErr != nil {
+				t.Fatalf("LoadTask() error = %v", loadErr)
+			}
+			if stored.Phase != taskstate.TaskPhaseVerifying {
+				t.Fatalf("the refused write moved the Task to %s", stored.Phase)
+			}
+		})
+
+		t.Run("creation-cannot-start-completed", func(t *testing.T) {
+			// A Task is born admitted; a record that arrives already completed
+			// has no evidence behind it either (#365).
+			store := newStore(t)
+			ctx := context.Background()
+			record := newTask(t, "transition-create-completed")
+			record.Phase = taskstate.TaskPhaseTerminal
+			record.TerminalOutcome = taskstate.TerminalOutcomeCompleted
+			if err := store.CreateTask(ctx, record); err == nil {
+				t.Fatal("CreateTask() accepted a completed Task")
+			}
+		})
+
 		t.Run("terminal-never-transitions", func(t *testing.T) {
 			store := newStore(t)
 			ctx := context.Background()
