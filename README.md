@@ -1,5 +1,7 @@
 # EKI Fabric（益）
 
+![EKI Fabric — Many Forces. One Living Fabric.](docs/branding/eki-fabric.png)
+
 > 本リポジトリは、生成AIを用いた初期開発中のソースコードを公開するものです。現時点で人的レビューを伴っておらず、仕様や実装は変更される場合があります。
 
 EKI Fabricは、**仕事をほかの計算資源へ、安全に任せるための仕組み**を目指す実験的なOSSプロジェクトです。
