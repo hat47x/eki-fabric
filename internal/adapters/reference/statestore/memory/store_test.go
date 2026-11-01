@@ -121,3 +121,12 @@ func TestAssignmentRevocationContract(t *testing.T) {
 		return New()
 	})
 }
+
+// TestAssignmentHeartbeatContract pins the polling Worker's liveness report
+// over the memory adapter (ADR-0030 §2.2).
+func TestAssignmentHeartbeatContract(t *testing.T) {
+	statestoretest.RunAssignmentHeartbeatContract(t, func(t testing.TB) statestoretest.HeartbeatTestStore {
+		t.Helper()
+		return New()
+	})
+}

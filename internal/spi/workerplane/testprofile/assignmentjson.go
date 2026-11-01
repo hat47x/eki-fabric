@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 
+	"github.com/hat47x/eki-fabric/internal/spi/statestore"
 	"github.com/hat47x/eki-fabric/internal/spi/workerplane"
 )
 
@@ -17,6 +18,11 @@ const AssignmentsPath = "/test-profile/v1/assignments"
 // MaxAssignmentsBytes bounds an assignments response a client will read. A
 // signed Lease and WorkOrder are a few hundred bytes to a few KiB each.
 const MaxAssignmentsBytes = 4 << 20
+
+// maxRunningLeases bounds the running-Lease reports one request may carry. It
+// matches the delivery listing's own bound: a Worker cannot hold more
+// Attempts than the listing can name.
+const maxRunningLeases = statestore.MaxAssignmentsPerList
 
 type wireAssignment struct {
 	AttemptID         string `json:"attempt_id"`
@@ -30,23 +36,64 @@ type wireAssignments struct {
 	Assignments []wireAssignment `json:"assignments"`
 }
 
-// EncodeAssignmentsRequest renders the request body: an empty object. The
-// request carries no identity and no filter.
-func EncodeAssignmentsRequest() []byte { return []byte("{}") }
+// wireHeartbeat names one running Attempt of the polling Worker (ADR-0030
+// §2.2): the Worker reports the Leases it is executing with each poll, and the
+// Control Plane records the report as a liveness fact. Only the Lease ID is
+// named; the Worker does not assert state, and the identifiers are hints the
+// Control Plane checks against its own store.
+type wireHeartbeat struct {
+	LeaseID string `json:"lease_id"`
+}
 
-// DecodeAssignmentsRequest accepts only the empty object, so a field that
-// tries to name a Worker is refused instead of ignored.
-func DecodeAssignmentsRequest(raw []byte) error {
-	var v struct{}
+type wireAssignmentsRequest struct {
+	// Running lists the Leases the Worker is currently executing, oldest
+	// first. Nil means the Worker holds no running Lease.
+	Running []wireHeartbeat `json:"running,omitempty"`
+}
+
+// EncodeAssignmentsRequest renders the request body: the running Leases of the
+// polling Worker. The request carries no identity; the client certificate
+// names the Worker.
+func EncodeAssignmentsRequest(running []string) []byte {
+	req := wireAssignmentsRequest{Running: make([]wireHeartbeat, 0, len(running))}
+	for _, id := range running {
+		req.Running = append(req.Running, wireHeartbeat{LeaseID: id})
+	}
+	raw, err := json.Marshal(req)
+	if err != nil {
+		// IDs are strings the caller already validated; marshal cannot fail.
+		panic(err)
+	}
+	return raw
+}
+
+// DecodeAssignmentsRequest parses the request body. Unknown fields are
+// refused, so a field that tries to name a Worker or smuggle state is an
+// error instead of ignored data.
+func DecodeAssignmentsRequest(raw []byte) ([]string, error) {
+	var v wireAssignmentsRequest
 	dec := json.NewDecoder(bytes.NewReader(raw))
 	dec.DisallowUnknownFields()
 	if err := dec.Decode(&v); err != nil {
-		return fmt.Errorf("%w: assignments request: %v", ErrInvalidMessage, err)
+		return nil, fmt.Errorf("%w: assignments request: %v", ErrInvalidMessage, err)
 	}
 	if _, err := dec.Token(); err != io.EOF {
-		return fmt.Errorf("%w: assignments request has trailing data", ErrInvalidMessage)
+		return nil, fmt.Errorf("%w: assignments request has trailing data", ErrInvalidMessage)
 	}
-	return nil
+	if len(v.Running) > maxRunningLeases {
+		return nil, fmt.Errorf("%w: assignments request names %d running leases, at most %d are accepted",
+			ErrInvalidMessage, len(v.Running), maxRunningLeases)
+	}
+	running := make([]string, 0, len(v.Running))
+	seen := make(map[string]struct{}, len(v.Running))
+	for _, r := range v.Running {
+		if _, dup := seen[r.LeaseID]; dup {
+			return nil, fmt.Errorf("%w: assignments request names Lease %s twice", ErrInvalidMessage, r.LeaseID)
+		}
+		seen[r.LeaseID] = struct{}{}
+		running = append(running, r.LeaseID)
+	}
+	return running, nil
 }
 
 // EncodeAssignments renders the response body.

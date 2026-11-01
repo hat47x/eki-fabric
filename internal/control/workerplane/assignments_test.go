@@ -40,7 +40,7 @@ func TestMTLSAssignmentsAreTheCertificateWorkersOnly(t *testing.T) {
 	f.assign.byWorker[string(a.id)] = []spi.Assignment{{AttemptID: "atm_a", LeaseID: "lse_a", LeaseState: spi.LeaseStateCurrent, LeaseEnvelope: []byte("lease-for-a"), WorkOrderEnvelope: []byte("order-for-a")}}
 	f.assign.byWorker[string(b.id)] = []spi.Assignment{{AttemptID: "atm_b", LeaseID: "lse_b", LeaseState: spi.LeaseStateCurrent, LeaseEnvelope: []byte("lease-for-b"), WorkOrderEnvelope: []byte("order-for-b")}}
 
-	resp, body := f.assignments(t, a, nil, testprofile.EncodeAssignmentsRequest())
+	resp, body := f.assignments(t, a, nil, testprofile.EncodeAssignmentsRequest(nil))
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("assignments = %d %s", resp.StatusCode, body)
 	}
@@ -55,7 +55,7 @@ func TestMTLSAssignmentsAreTheCertificateWorkersOnly(t *testing.T) {
 		t.Fatalf("Cache-Control = %q", resp.Header.Get("Cache-Control"))
 	}
 
-	respB, bodyB := f.assignments(t, b, nil, testprofile.EncodeAssignmentsRequest())
+	respB, bodyB := f.assignments(t, b, nil, testprofile.EncodeAssignmentsRequest(nil))
 	gotB, err := testprofile.DecodeAssignments([]byte(bodyB))
 	if respB.StatusCode != http.StatusOK || err != nil || len(gotB) != 1 || !bytes.Equal(gotB[0].LeaseEnvelope, []byte("lease-for-b")) {
 		t.Fatalf("b received %d %+v, %v", respB.StatusCode, gotB, err)
@@ -90,17 +90,17 @@ func TestMTLSAssignmentsNeedAUsableCertificate(t *testing.T) {
 	w := f.enroll(t, nil)
 	f.assign.byWorker[string(w.id)] = []spi.Assignment{{AttemptID: "atm_a", LeaseID: "lse_a", LeaseState: spi.LeaseStateCurrent, LeaseEnvelope: []byte("l"), WorkOrderEnvelope: []byte("o")}}
 
-	if resp, _ := f.assignments(t, w, f.client(nil), testprofile.EncodeAssignmentsRequest()); resp.StatusCode != http.StatusUnauthorized {
+	if resp, _ := f.assignments(t, w, f.client(nil), testprofile.EncodeAssignmentsRequest(nil)); resp.StatusCode != http.StatusUnauthorized {
 		t.Fatalf("without a certificate = %d, want 401", resp.StatusCode)
 	}
-	if resp, _ := f.post(t, f.client(&w.cert), testprofile.AssignmentsPath, testprofile.ContentType, "Bearer "+strings.Repeat("t", 30), testprofile.EncodeAssignmentsRequest()); resp.StatusCode != http.StatusOK {
+	if resp, _ := f.post(t, f.client(&w.cert), testprofile.AssignmentsPath, testprofile.ContentType, "Bearer "+strings.Repeat("t", 30), testprofile.EncodeAssignmentsRequest(nil)); resp.StatusCode != http.StatusOK {
 		t.Fatalf("a bearer header must not matter next to a valid certificate, got %d", resp.StatusCode)
 	}
 	asked := len(f.assign.asked)
 	if _, err := f.svc.SetWorkerState(context.Background(), f.admin, w.id, workerregistry.StateRevoked); err != nil {
 		t.Fatal(err)
 	}
-	if resp, body := f.assignments(t, w, nil, testprofile.EncodeAssignmentsRequest()); resp.StatusCode != http.StatusUnauthorized || strings.Contains(body, "lse_a") {
+	if resp, body := f.assignments(t, w, nil, testprofile.EncodeAssignmentsRequest(nil)); resp.StatusCode != http.StatusUnauthorized || strings.Contains(body, "lse_a") {
 		t.Fatalf("revoked Worker = %d %s, want 401 and no material", resp.StatusCode, body)
 	}
 	if len(f.assign.asked) != asked {

@@ -47,6 +47,9 @@ type MTLSConfig struct {
 	// Assignments serves the assignment route of the test profile. Nil means
 	// the route does not exist (404).
 	Assignments workerplane.AssignmentSource
+	// Heartbeats records the running-Lease reports the assignments requests
+	// carry (ADR-0030 §2.2). Nil means reports are accepted and dropped.
+	Heartbeats workerplane.HeartbeatRecorder
 	// Registry authorizes every request and runs enrollment and renewal. It
 	// must have a certificate issuer.
 	Registry *workerenrollment.Service
@@ -66,6 +69,11 @@ type MTLSConfig struct {
 type mtlsHandler struct {
 	claimEndpoint
 	assignments workerplane.AssignmentSource
+	// heartbeats records the running-Lease reports the assignments request
+	// carries (ADR-0030 §2.2). Nil means the reports are accepted and
+	// dropped, which keeps the route usable for a Control Plane that does
+	// not track liveness yet.
+	heartbeats  workerplane.HeartbeatRecorder
 	registry    *workerenrollment.Service
 	roots       *x509.CertPool
 	caPEM       string
@@ -94,6 +102,7 @@ func NewMTLSHandler(cfg MTLSConfig) (http.Handler, error) {
 	h := &mtlsHandler{
 		claimEndpoint: claimEndpoint{claims: cfg.Claims, maxBody: cfg.MaxBodyBytes, log: cfg.Logger},
 		assignments:   cfg.Assignments,
+		heartbeats:    cfg.Heartbeats,
 		registry:      cfg.Registry,
 		roots:         x509.NewCertPool(),
 		caPEM:         string(pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: cfg.WorkerCA.Raw})),

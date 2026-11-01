@@ -26,6 +26,9 @@ type HTTPClient struct {
 	endpoint string
 	token    string // empty when the client authenticates by certificate
 	http     *http.Client
+	// beats is the running-Lease report the assignments request carries
+	// (heartbeat, ADR-0030 §2.2). Nil means the client reports nothing.
+	beats *running
 }
 
 var _ workerplane.ClaimClient = (*HTTPClient)(nil)

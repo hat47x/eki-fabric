@@ -907,6 +907,21 @@ BEFORE DELETE ON delivery_revocations
 BEGIN
 	SELECT RAISE(ABORT, 'a delivery revocation is not removed');
 END`,
+	// 18: Assignment heartbeats (ADR-0030 §2.2). The running-Lease report a
+	// polling Worker sends is a liveness fact the Control Plane records: one
+	// row per Lease, overwritten in place by the newest accepted report,
+	// because only the newest report of a Lease can matter to a liveness
+	// decision and the history of a Worker saying "I run X" is not a decision
+	// input. The row names the Worker and the Attempt the report was checked
+	// against; the write side refuses a report about a Lease that is not
+	// EMITTED for the calling Worker, so a row is itself the check's result.
+	`CREATE TABLE assignment_heartbeats (
+	lease_id        TEXT    NOT NULL PRIMARY KEY REFERENCES lease_emissions (lease_id),
+	attempt_id      TEXT    NOT NULL,
+	worker_identity TEXT    NOT NULL CHECK (length(worker_identity) BETWEEN 1 AND 256),
+	recorded_at_ns  INTEGER NOT NULL,
+	revision        INTEGER NOT NULL CHECK (revision >= 1)
+) STRICT`,
 }
 
 // migrate brings the database to the latest version. It is idempotent, rejects

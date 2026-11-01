@@ -1171,3 +1171,19 @@ func TestAssignmentRevocationContract(t *testing.T) {
 		return store
 	})
 }
+
+// TestAssignmentHeartbeatContract pins the polling Worker's liveness report
+// over the sqlite adapter, including the version-18 assignment_heartbeats
+// table (ADR-0030 §2.2).
+func TestAssignmentHeartbeatContract(t *testing.T) {
+	statestoretest.RunAssignmentHeartbeatContract(t, func(t testing.TB) statestoretest.HeartbeatTestStore {
+		t.Helper()
+		store := openStore(t, filepath.Join(t.TempDir(), "state.db"))
+		t.Cleanup(func() {
+			if err := store.Close(); err != nil {
+				t.Errorf("Close() error = %v", err)
+			}
+		})
+		return store
+	})
+}

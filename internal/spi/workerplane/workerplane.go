@@ -12,6 +12,7 @@ package workerplane
 
 import (
 	"context"
+	"time"
 
 	"github.com/hat47x/eki-fabric/internal/core/resultclaim"
 )
@@ -68,4 +69,19 @@ const (
 // transport produces the Principal; no request field may name another Worker.
 type AssignmentSource interface {
 	ListAssignments(ctx context.Context, principal Principal) ([]Assignment, error)
+}
+
+// HeartbeatRecorder records the running-Lease reports a polling Worker sends
+// with its assignments request (ADR-0030 §2.2). The report is a liveness
+// fact: the recorder checks each Lease against its own store and refuses
+// Leases that do not belong to the Worker, instead of trusting the request.
+type HeartbeatRecorder interface {
+	RecordHeartbeats(ctx context.Context, workerIdentity string, leaseIDs []string, at time.Time) error
+}
+
+// RunningReporter is the Agent side of the heartbeat: the transport client
+// holds the running-Lease report the next assignments request carries.
+// ReportRunning("") empties the report.
+type RunningReporter interface {
+	ReportRunning(leaseID string)
 }

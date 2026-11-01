@@ -1036,3 +1036,27 @@ MVPの一続きの流れで、Control Planeが署名して保存したLeaseとWo
 - 受領の確認（ack）とDISPATCHEDへの遷移、Taskの実行、結果の申告との接続。
 - 開始の関門がnonce消費後に拒否した場合の扱い（今は消費済みで、回収に任せる）。
 - #198のWorker Protocolへの写像。
+
+### 2026-11-01 Assignmentの心拍をControl Planeへ記録する（ADR-0030 §2.2）
+
+割当の配送（#292、#294）は、WorkerがLeaseを受け取ったことをControl Planeへ返さない。Control Planeは、Attemptが実行中かどうかを知らないまま、Leaseの期限だけを見ていた。ADR-0030 §2.2の方針に沿って、Workerが割当の問い合わせに「実行中のLease」を添え、Control Planeがそれをliveness factとして記録する経路を加えた。
+
+- **保存**（`statestore.AssignmentHeartbeatStore`）: `RecordHeartbeats(workerIdentity, leaseIDs, at)`。各行はLeaseごとに一つで、新しい報告だけが前へ進む。報告はAttemptの状態を変えない。Leaseが呼出し元のWorkerに結び付き、EMITTEDで、失効していないことを、Control Planeが自分のStoreで確かめる。他のWorkerのLeaseや未知のLeaseはfail closedで拒否する。
+- **Adapter**: memoryとSQLite（migration 18の`assignment_heartbeats`）が実装した。SQLiteは一つの報告を一つのtransactionで書き、`RecordedAt`が進まない報告は既存の行を残したまま捨てる。`LatestHeartbeat`で最新の報告を読める。
+- **Control Plane**: 割当の要求本文が、実行中のLeaseの一覧（`running`）を運べるようにした。未知の項目は拒否し、重複したLease IDと64件超を拒否する。handlerは、記録に失敗したら割当を返さずに失敗する。呼出し元の誤り（他のWorkerのLease、未知のLease）は400、保存の障害は500、取消しは503である。
+- **Agent**: 実行中のLeaseを次のpollへ載せる。HandlerがAttemptを取ると記録し、終えると空にする。
+- **適合性試験**（`RunAssignmentHeartbeatContract`）: 報告の記録、最新のみの保持、古い報告の無視、他のWorker・未知のLease・失効後の報告の拒否、報告がAttemptを変えないこと、記録時刻の欠落の拒否、空の報告。memoryとSQLiteの両方に適用した。
+
+仮決め（承認待ち）:
+
+- 心拍は、割当の一覧を返す要求に相乗りさせた。専用の経路や周期は設けていない。
+- 記録できるLeaseは、列挙の上限（64件）と同じにした。
+- 記録時刻はControl Planeの受信時刻とし、Workerの時計を信じない。
+- 心拍の記録に失敗した要求は、割当を返さずに失敗する。livenessを記録できていないのに、新しい割当を配らないため。
+
+未決:
+
+- 心拍を使ったlivenessの判断（期限の延長、回収の時期、失効したLeaseの即時停止）は、まだどこにも接続していない。
+- 実行中のLeaseが複数ある場合のAgentの報告（今は1件）。
+- 心拍の周期と、Control Planeの時計のずれの上限。
+- #198のWorker Protocolへの写像（`spec/worker/v1/worker.proto`のHeartbeatとの関係）。
