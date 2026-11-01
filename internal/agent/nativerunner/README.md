@@ -7,7 +7,7 @@
 - 信頼済み設定の固定コマンドと引数だけを実行する。
 - 期限・取消し・出力上限・プロセスツリー停止を扱う。
 - CPU・メモリ・一時ディスクを20ms間隔で監視し、上限超過時にプロセスツリーを停止する（Linux/Windows）。
-- Windowsでは`sandbox/native-job-object`を選ぶと、Job Objectでプロセスメモリの上限とプロセスツリーの封じ込めを行う。
+- Windowsでは`sandbox/native-job-object`を選ぶと、Job ObjectでプロセスメモリとCPU時間の上限、プロセスツリーの封じ込めを行う。
 - Linuxでは`sandbox/linux-bwrap`を選ぶと、bubblewrapで読み取り専用root、private `/tmp`、networkなし、別PID名前空間で実行する（`bwrap`が必要）。networkを完全に切るため、数値のnetwork上限はこのprofileでは「通信ゼロ」として満たす。
 - 実行ファイルのSHA-256、引数allowlist、sandbox profile、network/GPU/digestの不一致をfail-closedで拒否する。
 
