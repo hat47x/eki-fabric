@@ -144,17 +144,32 @@ func TestHTTPTaskSubmissionIsExecutedByTheAgent(t *testing.T) {
 	// Admission leaves the Task ADMITTED; the dispatch loop consumes READY.
 	// The test performs the explicit release an operator side would.
 	store := openState(t, e.controlDB)
-	task, err := store.LoadTask(context.Background(), taskID)
-	must(t, err)
-	switch task.Phase {
-	case taskstate.TaskPhaseAdmitted:
-		task.Phase, task.UpdatedAt = taskstate.TaskPhaseReady, time.Now().UTC()
-		task.Revision++
-		must(t, store.CompareAndSwapTask(context.Background(), taskID, task.Revision-1, task))
-	case taskstate.TaskPhaseReady, taskstate.TaskPhaseActive:
-		// The dispatch loop promoted the Task before this read.
-	default:
-		t.Fatalf("task phase = %s", task.Phase)
+	// The dispatch loop promotes an ADMITTED Task to READY, and to ACTIVE once
+	// it creates the first Attempt, so the phase can change between the read
+	// and the write. Retry: a revision conflict means the loop got there first.
+	released := false
+	for attempt := 0; attempt < 10 && !released; attempt++ {
+		task, err := store.LoadTask(context.Background(), taskID)
+		must(t, err)
+		switch task.Phase {
+		case taskstate.TaskPhaseAdmitted:
+			next := task
+			next.Phase, next.UpdatedAt = taskstate.TaskPhaseReady, time.Now().UTC()
+			next.Revision = task.Revision + 1
+			if err := store.CompareAndSwapTask(context.Background(), taskID, task.Revision, next); err == nil {
+				released = true
+			} else {
+				time.Sleep(10 * time.Millisecond)
+			}
+		case taskstate.TaskPhaseReady, taskstate.TaskPhaseActive:
+			// The dispatch loop promoted the Task before this read.
+			released = true
+		default:
+			t.Fatalf("task phase = %s", task.Phase)
+		}
+	}
+	if !released {
+		t.Fatal("the Task was not released to the dispatch loop")
 	}
 	store.Close()
 
