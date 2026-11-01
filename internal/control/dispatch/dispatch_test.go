@@ -201,6 +201,34 @@ func TestTickDoesNotPromoteATaskWhoseCancellationWasRequested(t *testing.T) {
 	}
 }
 
+// One tick promotes at most the configured number of Tasks, so a large backlog
+// is worked through over several ticks instead of in one unbounded pass.
+func TestTickPromotesAtMostTheConfiguredLimit(t *testing.T) {
+	store := memory.New()
+	if err := store.CompareAndSwapPolicy(context.Background(), 0, mustPolicy(t)); err != nil {
+		t.Fatal(err)
+	}
+	for i := 0; i < 3; i++ {
+		seedTask(t, store, i, taskstate.TaskPhaseAdmitted)
+	}
+	loop := newLoop(t, store, &stubIssue{}, func(c *Config) { c.Limit = 2 })
+
+	result, err := loop.Tick(context.Background())
+	if err != nil {
+		t.Fatalf("Tick() error = %v", err)
+	}
+	if result.Promoted != 2 {
+		t.Fatalf("Promoted = %d, want 2 (the configured limit)", result.Promoted)
+	}
+	admitted, err := store.ListTasksByPhase(context.Background(), taskstate.TaskPhaseAdmitted, 8)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(admitted) != 1 {
+		t.Fatalf("admitted = %d, want 1 left for the next tick", len(admitted))
+	}
+}
+
 // The Task becomes active with its first Attempt (ADR-0032 §2.3), not later.
 func TestTickMarksTheTaskActiveWhenTheAttemptIsCreated(t *testing.T) {
 	store := memory.New()
