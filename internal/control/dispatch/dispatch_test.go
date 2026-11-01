@@ -434,3 +434,59 @@ func TestTickMarksDispatchedAfterIssuingTheWorkOrder(t *testing.T) {
 		}
 	}
 }
+
+// Only READY Tasks are dispatched. An ACTIVE Task already has an Attempt and a
+// VERIFYING Task is being judged, so neither may get another Attempt (#381).
+func TestTickLeavesActiveAndVerifyingTasksAlone(t *testing.T) {
+	store := memory.New()
+	if err := store.CompareAndSwapPolicy(context.Background(), 0, mustPolicy(t)); err != nil {
+		t.Fatal(err)
+	}
+	ctx := context.Background()
+	// move walks a Task along the allowed path to the phase under test.
+	move := func(id ids.TaskID, phase taskstate.TaskPhase) {
+		t.Helper()
+		current, err := store.LoadTask(ctx, id)
+		if err != nil {
+			t.Fatal(err)
+		}
+		next := current
+		next.Phase = phase
+		next.Revision++
+		next.UpdatedAt = current.UpdatedAt.Add(time.Second)
+		if err := store.CompareAndSwapTask(ctx, id, current.Revision, next); err != nil {
+			t.Fatalf("move Task to %s: %v", phase, err)
+		}
+	}
+	active := seedTask(t, store, 0, taskstate.TaskPhaseReady)
+	move(active, taskstate.TaskPhaseActive)
+	verifying := seedTask(t, store, 1, taskstate.TaskPhaseReady)
+	move(verifying, taskstate.TaskPhaseActive)
+	move(verifying, taskstate.TaskPhaseVerifying)
+
+	before := map[ids.TaskID]uint64{}
+	for _, id := range []ids.TaskID{active, verifying} {
+		task, err := store.LoadTask(ctx, id)
+		if err != nil {
+			t.Fatal(err)
+		}
+		before[id] = task.Revision
+	}
+	loop := newLoop(t, store, &stubIssue{}, nil)
+	result, err := loop.Tick(ctx)
+	if err != nil {
+		t.Fatalf("Tick() error = %v", err)
+	}
+	if result.Dispatched != 0 {
+		t.Fatalf("Dispatched = %d, want 0", result.Dispatched)
+	}
+	for _, id := range []ids.TaskID{active, verifying} {
+		task, err := store.LoadTask(ctx, id)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if task.Revision != before[id] {
+			t.Fatalf("task %s revision = %d, want %d (untouched)", id, task.Revision, before[id])
+		}
+	}
+}
