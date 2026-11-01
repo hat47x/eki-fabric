@@ -1210,3 +1210,25 @@ TaskにはAttemptのような遷移の検証が無く、`CompareAndSwapTask`はr
 - 認証方式が未選定の間の`securitySchemes`の書き方（認証方式を決めるIssue）。
 - `415`をP0で宣言するか、`400`のまま残すか。
 - `Problem.code`の値の一覧を契約に持つか（いまは正規表現だけ）。
+
+### 2026-11-01 Taskのphase遷移を起こす主体と条件を決める（ADR-0032、#267）
+
+Taskは受理のときに`admitted`で作られるが、phaseを次へ進める部品が実装にも設計にも無かった。Attemptの作成・Leaseの予約・結果の受理は`ready`・`active`・`verifying`を要求するため、`admitted`のTaskは実装のどの経路を通っても`ready`になれず、受理したTaskが`queued`のまま動かない。
+
+ADR-0032で、遷移ごとに主体を1つ決めた（状態は提案中）。
+
+- `admitted`→`ready`は配置ループのtickが行い、受理の直後には自動で進めない。受理（要求を受け付けるか）と配置（いま始めてよいか）の判断を混ぜないため。条件は、`admitted`であること、取消の意図が無いこと、policyが現在であること、開始時刻の指定を過ぎていること。書き込みはCASで、競合したら次のtickで読み直す。
+- `ready`→`active`は、最初のAttemptの作成と同じtickで行う。分けると「AttemptはあるがTaskは`ready`」という、§5の意味と合わない中間状態が外から見える。
+- `active`→`verifying`は、完了のResultClaimの受理で行う。`verifying`は保存するphaseとして扱う（検証中と実行中を外から区別するため）。
+- `active`→`ready`は、closeされていないAttemptが無くなり、再試行の余地があるときに、結果の受理または回復の経路で行う。
+- phaseを書けるのは表の主体だけとし、書き込みは`taskstate.ValidateTransition`と`ErrConflict`で守る。部分的な書き込みをしない。
+
+未決:
+
+- 配置ループを持たない構成で、`admitted`→`ready`を受理直後に自動で行うことを許すか。
+- `verifying`を保存するか、`active`の導出状態にするか。
+- 取消の収束（#263）を同じ部品に置くか。
+- 並行Attemptを持つTaskでの`active`→`ready`の判断の置き場所。
+- `held`・`reconciling`への遷移の主体（#242、ADR-0015）。
+
+実装は、配置ループへの`admitted`→`ready`・`ready`→`active`のCAS追加として#267で続ける。
