@@ -55,10 +55,18 @@ func TestAttemptCheckConstraintsRejectRowsOutsideTheLifecycle(t *testing.T) {
 	defer store.Close()
 
 	task := newTaskRecord(t, "attempt-check-constraints")
-	task.Phase = taskstate.TaskPhaseReady
 	if err := store.CreateTask(context.Background(), task); err != nil {
 		t.Fatalf("CreateTask() error = %v", err)
 	}
+	// A Task is created admitted; ready is a separate write (#365).
+	ready := task
+	ready.Phase = taskstate.TaskPhaseReady
+	ready.Revision++
+	ready.UpdatedAt = task.CreatedAt.Add(time.Second)
+	if err := store.CompareAndSwapTask(context.Background(), task.ID, task.Revision, ready); err != nil {
+		t.Fatalf("CreateTask() error = %v", err)
+	}
+	task = ready
 	dropAttemptGuardTriggers(t, store)
 
 	leaseID, err := ids.NewLeaseID()
@@ -134,10 +142,18 @@ func TestTaskIRDigestGuardRejectsDirectRebind(t *testing.T) {
 	defer store.Close()
 
 	task := newTaskRecord(t, "digest-guard")
-	task.Phase = taskstate.TaskPhaseReady
 	if err := store.CreateTask(context.Background(), task); err != nil {
 		t.Fatalf("CreateTask() error = %v", err)
 	}
+	// A Task is created admitted; ready is a separate write (#365).
+	ready := task
+	ready.Phase = taskstate.TaskPhaseReady
+	ready.Revision++
+	ready.UpdatedAt = task.CreatedAt.Add(time.Second)
+	if err := store.CompareAndSwapTask(context.Background(), task.ID, task.Revision, ready); err != nil {
+		t.Fatalf("CreateTask() error = %v", err)
+	}
+	task = ready
 
 	// Writing the digest the row already has does not rebind the Task.
 	if _, err := store.db.Exec(`UPDATE tasks SET task_ir_digest = ? WHERE task_id = ?`, task.TaskIRDigest.Hex(), task.ID.String()); err != nil {
@@ -233,10 +249,18 @@ func TestVersion4DatabaseUpgradesToTheTaskDigestGuard(t *testing.T) {
 		t.Fatalf("open v4 store: %v", err)
 	}
 	task := newTaskRecord(t, "v4-digest-guard")
-	task.Phase = taskstate.TaskPhaseReady
 	if err := old.CreateTask(context.Background(), task); err != nil {
 		t.Fatalf("CreateTask() on v4 error = %v", err)
 	}
+	// A Task is created admitted; ready is a separate write (#365).
+	ready := task
+	ready.Phase = taskstate.TaskPhaseReady
+	ready.Revision++
+	ready.UpdatedAt = task.CreatedAt.Add(time.Second)
+	if err := old.CompareAndSwapTask(context.Background(), task.ID, task.Revision, ready); err != nil {
+		t.Fatalf("CreateTask() on v4 error = %v", err)
+	}
+	task = ready
 	if err := old.Close(); err != nil {
 		t.Fatalf("close v4 store: %v", err)
 	}
@@ -266,10 +290,18 @@ func TestVersion5DatabaseUpgradesToTheTaskDigestGuard(t *testing.T) {
 		t.Fatalf("version 5 fixture has %d %s trigger(s), want 0: it must be the shipped schema", n, taskDigestGuard)
 	}
 	task := newTaskRecord(t, "v5-digest-guard")
-	task.Phase = taskstate.TaskPhaseReady
 	if err := old.CreateTask(context.Background(), task); err != nil {
 		t.Fatalf("CreateTask() on v5 error = %v", err)
 	}
+	// A Task is created admitted; ready is a separate write (#365).
+	ready := task
+	ready.Phase = taskstate.TaskPhaseReady
+	ready.Revision++
+	ready.UpdatedAt = task.CreatedAt.Add(time.Second)
+	if err := old.CompareAndSwapTask(context.Background(), task.ID, task.Revision, ready); err != nil {
+		t.Fatalf("CreateTask() on v5 error = %v", err)
+	}
+	task = ready
 	if err := old.Close(); err != nil {
 		t.Fatalf("close v5 store: %v", err)
 	}
@@ -308,10 +340,18 @@ func TestVersion6DatabaseThatAlreadyHasTheDigestGuardUpgrades(t *testing.T) {
 		t.Fatalf("fixture %s trigger count = %d, want 1", taskDigestGuard, n)
 	}
 	task := newTaskRecord(t, "v6-digest-guard")
-	task.Phase = taskstate.TaskPhaseReady
 	if err := old.CreateTask(context.Background(), task); err != nil {
 		t.Fatalf("CreateTask() on v6 error = %v", err)
 	}
+	// A Task is created admitted; ready is a separate write (#365).
+	ready := task
+	ready.Phase = taskstate.TaskPhaseReady
+	ready.Revision++
+	ready.UpdatedAt = task.CreatedAt.Add(time.Second)
+	if err := old.CompareAndSwapTask(context.Background(), task.ID, task.Revision, ready); err != nil {
+		t.Fatalf("CreateTask() on v6 error = %v", err)
+	}
+	task = ready
 	if err := old.Close(); err != nil {
 		t.Fatalf("close v6 store: %v", err)
 	}
@@ -398,10 +438,18 @@ func TestRevisionAndTimeChecksRejectDirectAttemptRows(t *testing.T) {
 	defer store.Close()
 
 	task := newTaskRecord(t, "attempt-revision-time")
-	task.Phase = taskstate.TaskPhaseReady
 	if err := store.CreateTask(context.Background(), task); err != nil {
 		t.Fatalf("CreateTask() error = %v", err)
 	}
+	// A Task is created admitted; ready is a separate write (#365).
+	ready := task
+	ready.Phase = taskstate.TaskPhaseReady
+	ready.Revision++
+	ready.UpdatedAt = task.CreatedAt.Add(time.Second)
+	if err := store.CompareAndSwapTask(context.Background(), task.ID, task.Revision, ready); err != nil {
+		t.Fatalf("CreateTask() error = %v", err)
+	}
+	task = ready
 	dropAttemptGuardTriggers(t, store)
 
 	created := task.CreatedAt.UnixNano()

@@ -271,10 +271,18 @@ func TestVersion2DatabaseUpgradesToLeaseSchemaWithoutLosingTask(t *testing.T) {
 		t.Fatalf("open v2 store: %v", err)
 	}
 	record := newTaskRecord(t, "v2-upgrade")
-	record.Phase = taskstate.TaskPhaseReady
 	if err := old.CreateTask(context.Background(), record); err != nil {
 		t.Fatalf("CreateTask() on v2 error = %v", err)
 	}
+	// A Task is created admitted; ready is a separate write (#365).
+	ready := record
+	ready.Phase = taskstate.TaskPhaseReady
+	ready.Revision++
+	ready.UpdatedAt = record.CreatedAt.Add(time.Second)
+	if err := old.CompareAndSwapTask(context.Background(), record.ID, record.Revision, ready); err != nil {
+		t.Fatalf("CreateTask() on v2 error = %v", err)
+	}
+	record = ready
 	if err := old.Close(); err != nil {
 		t.Fatalf("close v2 store: %v", err)
 	}
@@ -298,10 +306,18 @@ func TestVersion3DatabaseUpgradesWithoutLosingLease(t *testing.T) {
 	}
 
 	task := newTaskRecord(t, "v3-upgrade")
-	task.Phase = taskstate.TaskPhaseReady
 	if err := old.CreateTask(context.Background(), task); err != nil {
 		t.Fatal(err)
 	}
+	// A Task is created admitted; ready is a separate write (#365).
+	ready := task
+	ready.Phase = taskstate.TaskPhaseReady
+	ready.Revision++
+	ready.UpdatedAt = task.CreatedAt.Add(time.Second)
+	if err := old.CompareAndSwapTask(context.Background(), task.ID, task.Revision, ready); err != nil {
+		t.Fatal(err)
+	}
+	task = ready
 	attemptID, err := ids.NewAttemptID()
 	if err != nil {
 		t.Fatal(err)
@@ -382,10 +398,18 @@ func TestAttemptSchemaRejectsBypassedInvalidTransitions(t *testing.T) {
 	defer store.Close()
 
 	task := newTaskRecord(t, "attempt-schema-guard")
-	task.Phase = taskstate.TaskPhaseReady
 	if err := store.CreateTask(context.Background(), task); err != nil {
 		t.Fatal(err)
 	}
+	// A Task is created admitted; ready is a separate write (#365).
+	ready := task
+	ready.Phase = taskstate.TaskPhaseReady
+	ready.Revision++
+	ready.UpdatedAt = task.CreatedAt.Add(time.Second)
+	if err := store.CompareAndSwapTask(context.Background(), task.ID, task.Revision, ready); err != nil {
+		t.Fatal(err)
+	}
+	task = ready
 	attempt, err := attemptstate.New(mustAttemptIDForSQLite(t), task.ID, task.TaskIRDigest, 1, task.CreatedAt.Add(time.Second))
 	if err != nil {
 		t.Fatal(err)
@@ -449,10 +473,18 @@ func TestLeaseSchemaAssignsAttemptAndRejectsWrongBinding(t *testing.T) {
 	ensureSQLitePolicy(t, store, "policy-42")
 
 	task := newTaskRecord(t, "lease-attempt-trigger")
-	task.Phase = taskstate.TaskPhaseReady
 	if err := store.CreateTask(context.Background(), task); err != nil {
 		t.Fatal(err)
 	}
+	// A Task is created admitted; ready is a separate write (#365).
+	ready := task
+	ready.Phase = taskstate.TaskPhaseReady
+	ready.Revision++
+	ready.UpdatedAt = task.CreatedAt.Add(time.Second)
+	if err := store.CompareAndSwapTask(context.Background(), task.ID, task.Revision, ready); err != nil {
+		t.Fatal(err)
+	}
+	task = ready
 	placing := createPlacingAttemptForSQLite(t, store, task, 1, "worker-a")
 	leaseID, err := ids.NewLeaseID()
 	if err != nil {
@@ -616,10 +648,18 @@ func TestLeaseSchemaRejectsStalePolicyIfAdapterIsBypassed(t *testing.T) {
 
 	p1 := ensureSQLitePolicy(t, store, "policy-42")
 	task := newTaskRecord(t, "lease-policy-trigger")
-	task.Phase = taskstate.TaskPhaseReady
 	if err := store.CreateTask(context.Background(), task); err != nil {
 		t.Fatal(err)
 	}
+	// A Task is created admitted; ready is a separate write (#365).
+	ready := task
+	ready.Phase = taskstate.TaskPhaseReady
+	ready.Revision++
+	ready.UpdatedAt = task.CreatedAt.Add(time.Second)
+	if err := store.CompareAndSwapTask(context.Background(), task.ID, task.Revision, ready); err != nil {
+		t.Fatal(err)
+	}
+	task = ready
 	placing := createPlacingAttemptForSQLite(t, store, task, 1, "worker-a")
 
 	p2, err := policystate.NewActive(p1.Epoch+1, "policy-43", p1.ActivatedAt.Add(time.Minute))
@@ -734,10 +774,18 @@ func TestFenceEpochSurvivesLeaseHistoryGarbageCollection(t *testing.T) {
 	ensureSQLitePolicy(t, store, "policy-42")
 
 	task := newTaskRecord(t, "lease-history-gc")
-	task.Phase = taskstate.TaskPhaseReady
 	if err := store.CreateTask(context.Background(), task); err != nil {
 		t.Fatalf("CreateTask() error = %v", err)
 	}
+	// A Task is created admitted; ready is a separate write (#365).
+	ready := task
+	ready.Phase = taskstate.TaskPhaseReady
+	ready.Revision++
+	ready.UpdatedAt = task.CreatedAt.Add(time.Second)
+	if err := store.CompareAndSwapTask(context.Background(), task.ID, task.Revision, ready); err != nil {
+		t.Fatalf("CreateTask() error = %v", err)
+	}
+	task = ready
 	attempt1 := createPlacingAttemptForSQLite(t, store, task, 1, "worker-a")
 	lease1, err := ids.NewLeaseID()
 	if err != nil {
@@ -989,14 +1037,23 @@ func TestConcurrentReadersAndWriterSmoke(t *testing.T) {
 func TestCreateTaskIsAtomicAcrossRestart(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "state.db")
 	record := newTaskRecord(t, "terminal")
-	record.Phase = taskstate.TaskPhaseTerminal
-	record.TerminalOutcome = taskstate.TerminalOutcomeCompleted
 	record.CancellationRequested = true
 
 	store := openStore(t, path)
 	if err := store.CreateTask(context.Background(), record); err != nil {
 		t.Fatalf("CreateTask() error = %v", err)
 	}
+	// The completed phase is only written by the accepted result (#365), so
+	// restart continuity is shown with the cancelled outcome instead.
+	terminal := record
+	terminal.Phase = taskstate.TaskPhaseTerminal
+	terminal.TerminalOutcome = taskstate.TerminalOutcomeCancelled
+	terminal.Revision++
+	terminal.UpdatedAt = record.CreatedAt.Add(time.Second)
+	if err := store.CompareAndSwapTask(context.Background(), record.ID, record.Revision, terminal); err != nil {
+		t.Fatalf("CompareAndSwapTask() error = %v", err)
+	}
+	record = terminal
 	if err := store.Close(); err != nil {
 		t.Fatalf("Close() error = %v", err)
 	}
@@ -1008,7 +1065,7 @@ func TestCreateTaskIsAtomicAcrossRestart(t *testing.T) {
 		t.Fatalf("LoadTask() error = %v", err)
 	}
 	if got.Phase != taskstate.TaskPhaseTerminal ||
-		got.TerminalOutcome != taskstate.TerminalOutcomeCompleted ||
+		got.TerminalOutcome != taskstate.TerminalOutcomeCancelled ||
 		!got.CancellationRequested ||
 		got.TaskIRDigest != record.TaskIRDigest ||
 		!got.CreatedAt.Equal(record.CreatedAt) {

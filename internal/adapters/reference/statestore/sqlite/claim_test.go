@@ -21,10 +21,18 @@ func sqliteClaimFixture(t *testing.T, store *Store) (attemptstate.AttemptRecord,
 	ctx := context.Background()
 	now := time.Date(2026, 10, 21, 0, 0, 0, 0, time.UTC)
 	task := newTaskRecord(t, "result-claim")
-	task.Phase = taskstate.TaskPhaseReady
 	if err := store.CreateTask(ctx, task); err != nil {
 		t.Fatal(err)
 	}
+	// A Task is created admitted; ready is a separate write (#365).
+	ready := task
+	ready.Phase = taskstate.TaskPhaseReady
+	ready.Revision++
+	ready.UpdatedAt = task.CreatedAt.Add(time.Second)
+	if err := store.CompareAndSwapTask(ctx, task.ID, task.Revision, ready); err != nil {
+		t.Fatal(err)
+	}
+	task = ready
 	attempt, err := attemptstate.New(mustAttemptIDForSQLite(t), task.ID, task.TaskIRDigest, 1, now)
 	if err != nil {
 		t.Fatal(err)

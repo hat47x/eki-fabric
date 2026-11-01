@@ -90,9 +90,20 @@ func seedTask(t *testing.T, store *memory.Store, n int, phase taskstate.TaskPhas
 	if err != nil {
 		t.Fatal(err)
 	}
-	task.Phase = phase
 	if err := store.CreateTask(context.Background(), task); err != nil {
 		t.Fatal(err)
+	}
+	// Creation is admitted-only (#365); the phase under test is a separate
+	// write, the way dispatch preparation would move the Task.
+	if phase != taskstate.TaskPhaseAdmitted {
+		next := task
+		next.Phase = phase
+		next.Revision++
+		next.UpdatedAt = task.CreatedAt.Add(time.Second)
+		if err := store.CompareAndSwapTask(context.Background(), task.ID, task.Revision, next); err != nil {
+			t.Fatalf("move Task to %s: %v", phase, err)
+		}
+		task = next
 	}
 	return task.ID
 }

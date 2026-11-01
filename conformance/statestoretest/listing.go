@@ -106,10 +106,7 @@ func runAttemptListingContract(t *testing.T, newStore AttemptFactory) {
 
 	t.Run("list-by-task-in-number-order", func(t *testing.T) {
 		store := newStore(t)
-		task := attemptParentTask(t, "attempt-listing")
-		if err := store.CreateTask(context.Background(), task); err != nil {
-			t.Fatal(err)
-		}
+		task := readyParentTask(t, store, "attempt-listing")
 		second := newAttempt(t, task, 2)
 		first := newAttempt(t, task, 1)
 		for _, attempt := range []attemptstate.AttemptRecord{second, first} {
@@ -129,13 +126,8 @@ func runAttemptListingContract(t *testing.T, newStore AttemptFactory) {
 
 	t.Run("list-by-task-empty-and-other-tasks", func(t *testing.T) {
 		store := newStore(t)
-		task := attemptParentTask(t, "attempt-listing-empty")
-		other := attemptParentTask(t, "attempt-listing-other")
-		for _, record := range []taskstate.TaskRecord{task, other} {
-			if err := store.CreateTask(context.Background(), record); err != nil {
-				t.Fatal(err)
-			}
-		}
+		task := readyParentTask(t, store, "attempt-listing-empty")
+		other := readyParentTask(t, store, "attempt-listing-other")
 		if err := store.CreateAttempt(context.Background(), newAttempt(t, other, 1)); err != nil {
 			t.Fatalf("CreateAttempt() error = %v", err)
 		}

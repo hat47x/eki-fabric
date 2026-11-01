@@ -8,9 +8,12 @@ import (
 	"time"
 
 	"github.com/hat47x/eki-fabric/internal/core/acceptedresult"
+	"github.com/hat47x/eki-fabric/internal/core/attemptstate"
 	"github.com/hat47x/eki-fabric/internal/core/contract"
 	"github.com/hat47x/eki-fabric/internal/core/ids"
 	"github.com/hat47x/eki-fabric/internal/core/resultaccept"
+	"github.com/hat47x/eki-fabric/internal/core/policystate"
+	"github.com/hat47x/eki-fabric/internal/core/resultclaim"
 	"github.com/hat47x/eki-fabric/internal/core/taskstate"
 	"github.com/hat47x/eki-fabric/internal/spi/statestore"
 )
@@ -46,21 +49,136 @@ func (e *env) result(token, id string) response {
 }
 
 // finish moves the stored Task to a terminal outcome the way the owning
-// component would.
+// component would. Completion goes through the accepted-result commit — the
+// generic CAS refuses a completed write since #365, because only the commit
+// carries the evidence. The other outcomes have no evidence behind them and
+// still move by CAS.
 func (e *env) finish(id string, outcome taskstate.TerminalOutcome) {
 	e.t.Helper()
 	tid, err := ids.ParseTaskID(id)
 	if err != nil {
 		e.t.Fatal(err)
 	}
-	a, err := e.store.LoadAdmission(context.Background(), tid)
+	if outcome != taskstate.TerminalOutcomeCompleted {
+		a, err := e.store.LoadAdmission(context.Background(), tid)
+		if err != nil {
+			e.t.Fatal(err)
+		}
+		next := a.Task
+		next.Phase, next.TerminalOutcome = taskstate.TaskPhaseTerminal, outcome
+		next.Revision++
+		if err := e.store.CompareAndSwapTask(context.Background(), tid, a.Task.Revision, next); err != nil {
+			e.t.Fatal(err)
+		}
+		return
+	}
+	// The completion chain: reserve a lease, walk its Attempt to verifying,
+	// record the Worker's claim, then commit the accepted result. The same
+	// chain the acceptance fixture builds, against the env's own store.
+	ctx := context.Background()
+	// Load the Task directly: the admission snapshot would be behind the
+	// store if a test moved the Task before finishing it.
+	fresh, err := e.store.LoadTask(ctx, tid)
 	if err != nil {
 		e.t.Fatal(err)
 	}
-	next := a.Task
-	next.Phase, next.TerminalOutcome = taskstate.TaskPhaseTerminal, outcome
-	next.Revision++
-	if err := e.store.CompareAndSwapTask(context.Background(), tid, a.Task.Revision, next); err != nil {
+	// A submitted Task sits in admitted; the completion chain starts from a
+	// placement, so walk it to ready first (the way dispatch preparation
+	// would).
+	ready := fresh
+	ready.Phase = taskstate.TaskPhaseReady
+	ready.Revision++
+	ready.UpdatedAt = fresh.UpdatedAt.Add(time.Second)
+	if err := e.store.CompareAndSwapTask(ctx, tid, fresh.Revision, ready); err != nil {
+		e.t.Fatal(err)
+	}
+	task := ready
+	ensureResultPolicy(e.t, e.store)
+	// The Attempt is created first and walked to placing, the way placement
+	// does; the reservation then binds the lease to it.
+	attemptID, err := ids.NewAttemptID()
+	if err != nil {
+		e.t.Fatal(err)
+	}
+	attempt, err := attemptstate.New(attemptID, task.ID, task.TaskIRDigest, 1, task.UpdatedAt.Add(time.Second))
+	if err != nil {
+		e.t.Fatal(err)
+	}
+	if err := e.store.CreateAttempt(ctx, attempt); err != nil {
+		e.t.Fatal(err)
+	}
+	placing := attempt
+	placing.Phase = attemptstate.AttemptPhasePlacing
+	placing.WorkerIdentity = "worker-a"
+	placing.Revision++
+	placing.UpdatedAt = attempt.UpdatedAt.Add(time.Nanosecond)
+	if err := e.store.CompareAndSwapAttempt(ctx, attempt.ID, attempt.Revision, placing); err != nil {
+		e.t.Fatal(err)
+	}
+	attempt = placing
+	reserved, err := e.store.ReserveLease(ctx, resultLeaseReservation(e.t, task, "placement-"+id, attemptID, attempt.Revision))
+	if err != nil {
+		e.t.Fatal(err)
+	}
+	if err != nil {
+		e.t.Fatal(err)
+	}
+	// The reservation moves the Attempt to assigned and stamps the lease on
+	// it; reload to carry on from the store's own record.
+	attempt, err = e.store.LoadAttempt(ctx, attemptID)
+	if err != nil {
+		e.t.Fatal(err)
+	}
+	for _, phase := range []attemptstate.AttemptPhase{
+		attemptstate.AttemptPhaseDispatched, attemptstate.AttemptPhaseClaimed, attemptstate.AttemptPhaseVerifying,
+	} {
+		next := attempt
+		next.Phase = phase
+		next.Revision++
+		next.UpdatedAt = attempt.UpdatedAt.Add(time.Second)
+		if err := e.store.CompareAndSwapAttempt(ctx, attempt.ID, attempt.Revision, next); err != nil {
+			e.t.Fatalf("move Attempt to %s: %v", phase, err)
+		}
+		attempt = next
+	}
+	claim, err := resultclaim.NewClaim(resultclaim.ClaimConfig{
+		TaskID: task.ID, TaskIRDigest: task.TaskIRDigest, AttemptID: attempt.ID,
+		WorkerIdentity: attempt.WorkerIdentity, LeaseID: reserved.Lease.ID, FenceEpoch: reserved.Lease.FenceEpoch,
+		WorkOrderDecision: "workorder-" + id, ExecutorDigest: contract.SHA256([]byte("executor")),
+		Nonce: []byte("0123456789abcdef"), Status: resultclaim.StatusCompleted, ExitCode: 0,
+		OutputBytes: 5, OutputDigest: contract.SHA256([]byte("hello")),
+		StartedAt: time.Now().UTC(), EndedAt: time.Now().UTC().Add(time.Second),
+	})
+	if err != nil {
+		e.t.Fatal(err)
+	}
+	if err := e.store.ApplyResultClaim(ctx, statestore.ResultClaimAcceptance{Claim: claim, Record: true}); err != nil {
+		e.t.Fatal(err)
+	}
+	closed := attempt
+	closed.Phase = attemptstate.AttemptPhaseClosed
+	closed.CloseReason = attemptstate.CloseReasonResultAccepted
+	closed.Revision++
+	closed.UpdatedAt = attempt.UpdatedAt.Add(time.Second)
+	completed := task
+	completed.Phase = taskstate.TaskPhaseTerminal
+	completed.TerminalOutcome = taskstate.TerminalOutcomeCompleted
+	completed.Revision++
+	completed.UpdatedAt = task.UpdatedAt.Add(time.Second)
+	result, err := acceptedresult.New(acceptedresult.Config{
+		TaskID: task.ID, AttemptID: attempt.ID,
+		ClaimDigest: claim.Digest(), OutputDigest: claim.OutputDigest(),
+		Level: resultaccept.LevelRA1, PolicyDigest: contract.SHA256([]byte("result policy")),
+		Verifiers: []string{"verifier-b", "verifier-a"},
+		AcceptedAt: attempt.UpdatedAt.Add(time.Second),
+	})
+	if err != nil {
+		e.t.Fatal(err)
+	}
+	if err := e.store.CommitAcceptedResult(ctx, statestore.ResultAcceptanceCommit{
+		Result: result, ExpectedAttemptRevision: attempt.Revision, NextAttempt: closed,
+		ExpectedTaskRevision: task.Revision, NextTask: completed,
+	}); err != nil {
 		e.t.Fatal(err)
 	}
 }
@@ -294,5 +412,49 @@ func TestOutputDigestIsOnlyInTheSuccessfulResult(t *testing.T) {
 		if strings.Contains(string(r.body), hex) || strings.Contains(string(r.body), "output_digest") {
 			t.Errorf("%s: the response carries the digest: %s", name, r.body)
 		}
+	}
+}
+
+// ensureResultPolicy records the policy the acceptance chain checks.
+func ensureResultPolicy(t testing.TB, store statestore.PolicyStore) {
+	t.Helper()
+	if _, err := store.LoadCurrentPolicy(context.Background()); err == nil {
+		return
+	}
+	initial, err := policystate.NewActive(1, "policy-42", time.Now().UTC().Add(-time.Minute))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := store.CompareAndSwapPolicy(context.Background(), 0, initial); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// resultLeaseReservation is the lease reservation the completion chain needs,
+// built here so these handler tests do not depend on the conformance package.
+func resultLeaseReservation(t testing.TB, task taskstate.TaskRecord, decisionID string, attemptID ids.AttemptID, attemptRevision uint64) statestore.LeaseReservation {
+	t.Helper()
+	now := time.Now().UTC()
+	leaseID, err := ids.NewLeaseID()
+	if err != nil {
+		t.Fatal(err)
+	}
+	return statestore.LeaseReservation{
+		LeaseID:                     leaseID,
+		TaskID:                      task.ID,
+		TaskIRDigest:                task.TaskIRDigest,
+		ExpectedTaskRevision:        task.Revision,
+		AttemptID:                   attemptID,
+		ExpectedAttemptRevision:     attemptRevision,
+		WorkerIdentity:              "worker-a",
+		PlacementTrustDomain:        "local.example",
+		PlacementAuthorityPrincipal: "control-plane/plc-1",
+		PlacementDecisionID:         decisionID,
+		PlacementPayloadDigest:      contract.SHA256([]byte("payload:" + decisionID)),
+		PlacementExpiresAt:          now.Add(2 * time.Minute),
+		PolicyRevision:              "policy-42",
+		ExpectedPolicyEpoch:         1,
+		IssuedAt:                    now,
+		ExpiresAt:                   now.Add(time.Minute),
 	}
 }

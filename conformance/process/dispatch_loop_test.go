@@ -105,8 +105,13 @@ func (e *mtlsEnv) seedReadyTask(t *testing.T) ids.TaskID {
 	must(t, err)
 	task, err := taskstate.NewTask(id, contract.SHA256([]byte("task-ir")), time.Now().UTC().Add(-time.Minute))
 	must(t, err)
-	task.Phase = taskstate.TaskPhaseReady
+	// A Task is created admitted and moved to ready by a separate write (#365).
 	must(t, s.CreateTask(context.Background(), task))
+	ready := task
+	ready.Phase = taskstate.TaskPhaseReady
+	ready.Revision++
+	ready.UpdatedAt = task.CreatedAt.Add(time.Second)
+	must(t, s.CompareAndSwapTask(context.Background(), task.ID, task.Revision, ready))
 	return id
 }
 
