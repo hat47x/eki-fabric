@@ -566,3 +566,103 @@ func TestMTLSHandlerConfigIsChecked(t *testing.T) {
 		}
 	}
 }
+
+// TestARefusedAuthenticationLogsItsReason pins the one-line refusal log
+// (#300): under load the 401s were indistinguishable, and the reason is the
+// difference between a test-flake report and a product bug. The log names the
+// failed check and carries no certificate bytes.
+func TestARefusedAuthenticationLogsItsReason(t *testing.T) {
+	f := newMTLSFixture(t)
+	w := f.enroll(t, nil)
+
+	t.Run("a-revoked-worker-is-refused-as-worker-not-usable", func(t *testing.T) {
+		f.logs.Reset()
+		if _, err := f.svc.SetWorkerState(context.Background(), f.admin, w.id, workerregistry.StateRevoked); err != nil {
+			t.Fatal(err)
+		}
+		if resp, _ := f.claim(t, w, f.client(&w.cert)); resp.StatusCode != http.StatusUnauthorized {
+			t.Fatalf("revoked Worker's request = %d, want 401", resp.StatusCode)
+		}
+		assertRefusal(t, f.logs.String(), "worker_not_usable")
+	})
+
+	t.Run("a-certificate-of-another-ca-is-refused-as-not-verified", func(t *testing.T) {
+		f.logs.Reset()
+		// A leaf signed by a CA the Control Plane does not hold: the verify
+		// step is what must refuse it, and the log must say so.
+		caKey, _ := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+		caTmpl := &x509.Certificate{
+			SerialNumber: big.NewInt(1), NotBefore: time.Now().Add(-time.Hour), NotAfter: time.Now().Add(time.Hour),
+			KeyUsage:              x509.KeyUsageCertSign,
+			BasicConstraintsValid: true, IsCA: true,
+			Subject: pkix.Name{CommonName: "other-ca"},
+		}
+		caDER, err := x509.CreateCertificate(rand.Reader, caTmpl, caTmpl, &caKey.PublicKey, caKey)
+		if err != nil {
+			t.Fatal(err)
+		}
+		caCert, err := x509.ParseCertificate(caDER)
+		if err != nil {
+			t.Fatal(err)
+		}
+		key, _ := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+		leafTmpl := &x509.Certificate{
+			SerialNumber: big.NewInt(2), NotBefore: time.Now().Add(-time.Hour), NotAfter: time.Now().Add(time.Hour),
+			KeyUsage: x509.KeyUsageDigitalSignature, ExtKeyUsage: []x509.ExtKeyUsage{x509.ExtKeyUsageClientAuth},
+			Subject: pkix.Name{CommonName: "worker/outsider"},
+			URIs:    []*url.URL{workerURI(t, "other.example.org", "worker/outsider")},
+		}
+		leafDER, err := x509.CreateCertificate(rand.Reader, leafTmpl, caCert, &key.PublicKey, caKey)
+		if err != nil {
+			t.Fatal(err)
+		}
+		leaf, err := x509.ParseCertificate(leafDER)
+		if err != nil {
+			t.Fatal(err)
+		}
+		outsider := enrolledWorker{cert: tls.Certificate{Certificate: [][]byte{leaf.Raw}, PrivateKey: key}}
+		if resp, _ := f.claim(t, w, f.client(&outsider.cert)); resp.StatusCode != http.StatusUnauthorized {
+			t.Fatalf("another CA's certificate = %d, want 401", resp.StatusCode)
+		}
+		assertRefusal(t, f.logs.String(), "certificate_not_verified")
+	})
+
+	t.Run("a-request-without-a-certificate-is-refused-as-missing", func(t *testing.T) {
+		f.logs.Reset()
+		resp, _ := f.claim(t, w, f.client(nil))
+		if resp.StatusCode != http.StatusUnauthorized {
+			t.Fatalf("request without a certificate = %d, want 401", resp.StatusCode)
+		}
+		assertRefusal(t, f.logs.String(), "no_client_certificate")
+	})
+}
+
+// workerURI builds the identity URI a Worker certificate carries.
+func workerURI(t *testing.T, trustDomain, identity string) *url.URL {
+	t.Helper()
+	u, err := url.Parse("spiffe://" + trustDomain + "/worker/" + identity)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return u
+}
+
+// assertRefusal requires exactly one refusal line carrying the reason kind.
+func assertRefusal(t *testing.T, logs, reason string) {
+	t.Helper()
+	marked := 0
+	for _, line := range strings.Split(logs, "\n") {
+		if strings.Contains(line, "worker authentication refused") {
+			marked++
+			if !strings.Contains(line, "reason="+reason) {
+				t.Fatalf("refusal log = %q, want reason=%s", line, reason)
+			}
+			if strings.Contains(line, "BEGIN") || strings.Contains(line, "PRIVATE") {
+				t.Fatalf("refusal log carries certificate bytes: %q", line)
+			}
+		}
+	}
+	if marked != 1 {
+		t.Fatalf("%d refusal lines in the log, want 1 for reason=%s\nlog:\n%s", marked, reason, logs)
+	}
+}
