@@ -139,3 +139,21 @@ func scanAdmission(row rowScanner) (statestore.Admission, error) {
 }
 
 var _ statestore.Store = (*Store)(nil)
+
+// LoadAdmissionByIdempotencyKey implements statestore.ReplayLookup: it reads
+// the admission a (principal, key) scope converges on, without creating
+// anything (#264).
+func (s *Store) LoadAdmissionByIdempotencyKey(ctx context.Context, principal, key string) (statestore.Admission, error) {
+	if err := ctx.Err(); err != nil {
+		return statestore.Admission{}, err
+	}
+	admission, err := scanAdmission(s.db.QueryRowContext(ctx,
+		selectAdmission+` WHERE a.principal = ? AND a.idempotency_key = ?`, principal, key))
+	if errors.Is(err, sql.ErrNoRows) {
+		return statestore.Admission{}, fmt.Errorf("%w: key %q for principal %q", statestore.ErrNotFound, key, principal)
+	}
+	if err != nil {
+		return statestore.Admission{}, err
+	}
+	return admission, nil
+}

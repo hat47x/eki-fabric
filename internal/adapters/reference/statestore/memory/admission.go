@@ -72,3 +72,21 @@ func (s *Store) outstandingLocked(principal string) uint32 {
 }
 
 var _ statestore.Store = (*Store)(nil)
+
+// LoadAdmissionByIdempotencyKey implements statestore.ReplayLookup: it reads
+// the admission a (principal, key) scope converges on, without creating
+// anything (#264).
+func (s *Store) LoadAdmissionByIdempotencyKey(ctx context.Context, principal, key string) (statestore.Admission, error) {
+	if err := ctx.Err(); err != nil {
+		return statestore.Admission{}, err
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	id, ok := s.idempotent[idempotencyScope{principal: principal, key: key}]
+	if !ok {
+		return statestore.Admission{}, fmt.Errorf("%w: key %q for principal %q", statestore.ErrNotFound, key, principal)
+	}
+	admission := s.admissions[id]
+	admission.Task = s.tasks[id]
+	return admission, nil
+}

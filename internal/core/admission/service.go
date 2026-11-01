@@ -103,14 +103,48 @@ func (s *Service) Submit(ctx context.Context, p Principal, idempotencyKey string
 		return Accepted{}, err
 	}
 	now := s.now().UTC()
-	if perr := s.policy.check(req, now); perr != nil {
-		return Accepted{}, perr
-	}
 
+	// A replay converges before policy runs (#264): the retry of an admitted
+	// request must return the first Task even when the deadline has since
+	// passed or the policy no longer lists the executor. Fingerprinting needs
+	// only the syntactically valid request this parse already produced, and
+	// the scope is (principal, key), so nothing about the request leaks to
+	// other principals. A recorded key with a different fingerprint is still
+	// a conflict, and an unknown key falls through to the full policy check.
 	fingerprint, err := req.Fingerprint()
 	if err != nil {
 		return Accepted{}, s.internal("fingerprint", err)
 	}
+	if lookup, ok := s.store.(statestore.ReplayLookup); ok {
+		record, rerr := lookup.LoadAdmissionByIdempotencyKey(ctx, p.ID, idempotencyKey)
+		switch {
+		case rerr == nil:
+			if record.RequestFingerprint != fingerprint {
+				return Accepted{}, &Error{
+					Kind:   KindConflict,
+					Code:   "IDEMPOTENCY_KEY_CONFLICT",
+					Title:  "The idempotency key was already used for a different request",
+					Detail: "Use a new Idempotency-Key for a different request.",
+				}
+			}
+			return Accepted{
+				TaskID:      record.Task.ID,
+				SubmittedAt: record.Task.CreatedAt,
+				Replayed:    true,
+			}, nil
+		case errors.Is(rerr, statestore.ErrNotFound):
+			// A fresh key: run the admission path below.
+		case errors.Is(rerr, context.Canceled), errors.Is(rerr, context.DeadlineExceeded):
+			return Accepted{}, rerr
+		default:
+			return Accepted{}, s.internal("replay lookup", rerr)
+		}
+	}
+
+	if perr := s.policy.check(req, now); perr != nil {
+		return Accepted{}, perr
+	}
+
 	irDigest, err := req.TaskIRDigest()
 	if err != nil {
 		return Accepted{}, s.internal("task ir digest", err)

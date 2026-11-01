@@ -121,6 +121,10 @@ type AdmissionStore interface {
 type Store interface {
 	TaskStore
 	AdmissionStore
+	// ReplayLookup lets admission answer a replay before policy runs. Both
+	// reference stores implement it; a store that does not keeps the old
+	// order (policy first, replay at the admission write).
+	ReplayLookup
 }
 
 // ValidIdempotencyKey reports whether key satisfies the P0 Idempotency-Key
@@ -130,4 +134,15 @@ func ValidIdempotencyKey(key string) bool {
 	return len(key) >= MinIdempotencyKeyBytes &&
 		len(key) <= MaxIdempotencyKeyBytes &&
 		idempotencyKeyPattern.MatchString(key)
+}
+
+// ReplayLookup finds a stored admission by its idempotency scope, without
+// creating anything. It returns ErrNotFound when the key was never admitted,
+// so Submit can answer a replay before policy runs (#264): a retry of an
+// admitted request converges on the first Task even when the deadline has
+// since passed or the policy no longer lists the executor.
+type ReplayLookup interface {
+	// LoadAdmissionByIdempotencyKey returns the admission recorded for
+	// (principal, key), with the Task's current state, or ErrNotFound.
+	LoadAdmissionByIdempotencyKey(ctx context.Context, principal, idempotencyKey string) (Admission, error)
 }
