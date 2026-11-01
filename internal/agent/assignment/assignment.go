@@ -315,7 +315,14 @@ func (s *Service) check(ctx context.Context, a workerplane.Assignment) Result {
 	if err != nil {
 		return reject(acceptReason(err))
 	}
+	// Capacity and slot shortages describe this endpoint right now, not the
+	// Assignment: defer it so a later poll can start it, and leave the nonce
+	// unspent (ADR-0031 §2.4). Everything else the gate refuses is a rejection.
 	if _, err := s.gate.Check(startgate.Request{Admission: preliminary, Governor: gov, Machine: s.cfg.Machine}); err != nil {
+		if errors.Is(err, startgate.ErrNoCapacity) || errors.Is(err, startgate.ErrNoSlot) {
+			r.Outcome, r.Reason = OutcomeDeferred, "start_gate_"+gateReason(err)
+			return r
+		}
 		return reject("start_gate_" + gateReason(err))
 	}
 
@@ -407,6 +414,8 @@ func gateReason(err error) string {
 		return "not_accepting"
 	case errors.Is(err, startgate.ErrNoCapacity):
 		return "no_capacity"
+	case errors.Is(err, startgate.ErrNoSlot):
+		return "no_slot"
 	case errors.Is(err, startgate.ErrMachineUnknown):
 		return "machine_unknown"
 	case errors.Is(err, startgate.ErrAdmissionExpired):

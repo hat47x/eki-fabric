@@ -1116,3 +1116,18 @@ ADR-0031として、実行slotと資源の予約を決めた（状態は提案�
 - 実行中にGovernorの割合が下がったとき、実行中を止めるか、新しい割当だけを止めるか。
 - Control Planeへの容量の申告の経路と形（#316と合わせる）。申告が無い間は、Control Planeが容量を知らないまま配置することを明記した。
 - slot数が2以上のときのheartbeatの形。
+
+### 2026-11-01 開始の関門を、実行中の予約と実行slotで判定する（ADR-0031 §2.2、#354）
+
+ADR-0031の決定を、開始の関門（`startgate`）に実装した。関門はこれまで、端末の全容量とGovernorの割合だけで実効上限を決めていた。同時実行を入れると、2件の割当がそれぞれ全容量を上限に通る。
+
+- `startgate.Usage`（実行中の件数、CPU、Memory、GPUの予約の合計）を足し、`Request.InUse`で渡す形にした。予約が0なら、従来と同じ結果になる。
+- CPUとMemoryは`機械の容量 × 割合 - 予約`の残りと、WorkOrderの上限の小さい方にした。残りが0なら`ErrNoCapacity`。GPUも同じく、残りが0台なら`ErrNoCapacity`、残りが要求より少なければ残りに切り下げる。
+- `Config.MaxConcurrent`（0は1）を足し、`InUse.Running`が上限に達していたら`ErrNoSlot`で開始しない。参照実装の既定は1のまま。
+- Agentの割当検証（`assignment`）で、`ErrNoCapacity`と`ErrNoSlot`を`rejected`ではなく`deferred`にした（ADR-0031 §2.4）。容量とslotの不足は割当の性質ではなく、端末の今の状態だからである。nonceもfenceも消費しない。
+- 試験: 予約の合計でCPU・Memory・GPUの実効上限が縮むこと、予約が天井を使い切ると`ErrNoCapacity`、slotが埋まると`ErrNoSlot`、`MaxConcurrent: 2`なら1件実行中でも開始できること（startgate）。関門の容量不足が`deferred`になり、容量が戻ると同じbytesで始まること（assignment）。
+
+未決（#354で追う）:
+
+- Agentが実行slotと予約の合計を数える配線。いまは`InUse`に0を渡しているため、合計の判定は実装だけで、Agentの動作は変わっていない。
+- 予約の耐久性、CPUの予約の粒度、Control Planeへの容量の申告の形。

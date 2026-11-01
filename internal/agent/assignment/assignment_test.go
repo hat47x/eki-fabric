@@ -353,29 +353,32 @@ func TestTheLocalGovernorCanDeferWithoutSpendingTheNonce(t *testing.T) {
 	want(t, a.poll(t, asg), assignment.OutcomeReady, "")
 }
 
-func TestTheStartGateStopsAStartTheMachineCannotHold(t *testing.T) {
+// A start the endpoint cannot hold now is deferred, not rejected: the shortage
+// is a property of the machine at this moment, and the same Assignment can
+// start once capacity returns (ADR-0031 §2.4).
+func TestTheStartGateDefersAStartTheMachineCannotHold(t *testing.T) {
 	w := newWorld(t)
 	a := w.agent("worker-a", options{})
 	zero := assignment.StaticGovernor(0)()
 	a.gov = &zero
 	r := a.poll(t, w.place("worker-a", w.now))
-	want(t, r, assignment.OutcomeRejected, "start_gate_no_capacity")
+	want(t, r, assignment.OutcomeDeferred, "start_gate_no_capacity")
 	if len(a.started) != 0 {
 		t.Fatal("started without capacity")
 	}
 }
 
-// A start the machine cannot hold must leave the nonce unspent: the Control
-// Plane then re-issues the WorkOrder with a fresh nonce and the same Attempt
-// starts after the machine frees up, instead of the Assignment being lost as
-// a replay (#296 item 2).
-func TestAStartGateRefusalLeavesTheNonceUnspent(t *testing.T) {
+// A deferred start must leave the nonce unspent: the Control Plane then
+// re-issues the WorkOrder with a fresh nonce, or the same bytes start when the
+// machine frees up, instead of the Assignment being lost as a replay (#296 item 2,
+// ADR-0031 §2.4).
+func TestADeferredStartLeavesTheNonceUnspent(t *testing.T) {
 	w := newWorld(t)
 	a := w.agent("worker-a", options{})
 	zero := assignment.StaticGovernor(0)()
 	a.gov = &zero
 	asg := w.place("worker-a", w.now)
-	want(t, a.poll(t, asg), assignment.OutcomeRejected, "start_gate_no_capacity")
+	want(t, a.poll(t, asg), assignment.OutcomeDeferred, "start_gate_no_capacity")
 	open := assignment.StaticGovernor(50)()
 	a.gov = &open
 	// The same bytes poll again: if the first poll had spent the nonce, this
@@ -389,8 +392,8 @@ func TestAStartGateRefusalLeavesTheNonceUnspent(t *testing.T) {
 // A WorkOrder whose SandboxPolicy requires a GPU used to fail the start gate
 // after Accept had already spent the nonce, so the same bytes could never
 // start (#296 item 2). With the gate running before the nonce claim, the
-// refusal is a rejection with the nonce unspent, and the assignment starts
-// once the machine reports the GPU.
+// refusal defers the Assignment with the nonce unspent (ADR-0031 §2.4), and it
+// starts once the Governor allows the GPU.
 func TestAWorkOrderRequiringAGPUStartsOnceTheGovernorAllowsIt(t *testing.T) {
 	w := newWorld(t)
 	// The machine reports 2 GPUs from the start; the refusal below comes from
@@ -403,7 +406,7 @@ func TestAWorkOrderRequiringAGPUStartsOnceTheGovernorAllowsIt(t *testing.T) {
 	asg := w.placeSandbox("worker-a", w.now, sandbox)
 	zero := assignment.StaticGovernor(0)()
 	a.gov = &zero
-	want(t, a.poll(t, asg), assignment.OutcomeRejected, "start_gate_no_capacity")
+	want(t, a.poll(t, asg), assignment.OutcomeDeferred, "start_gate_no_capacity")
 	open := assignment.StaticGovernor(50)()
 	a.gov = &open
 	want(t, a.poll(t, asg), assignment.OutcomeReady, "")
