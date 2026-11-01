@@ -21,6 +21,7 @@ import (
 	"github.com/hat47x/eki-fabric/internal/core/ids"
 	"github.com/hat47x/eki-fabric/internal/core/leasestate"
 	"github.com/hat47x/eki-fabric/internal/core/resultclaim"
+	"github.com/hat47x/eki-fabric/internal/core/taskstate"
 	"github.com/hat47x/eki-fabric/internal/spi/statestore"
 )
 
@@ -47,6 +48,11 @@ type Config struct {
 	Leases   LeaseStore
 	Claims   statestore.ResultClaimStore
 	Clock    Clock
+	// Tasks advances the Task phase beside the Attempt (ADR-0032 §2.4): a
+	// completed claim moves the Task to verifying in the same acceptance, so
+	// "running" and "verifying" stay distinguishable from the outside. Nil
+	// keeps the Task untouched (the old behaviour).
+	Tasks statestore.TaskStore
 }
 
 type Service struct {
@@ -54,6 +60,7 @@ type Service struct {
 	leases   LeaseStore
 	claims   statestore.ResultClaimStore
 	clock    Clock
+	tasks    statestore.TaskStore
 }
 
 func New(cfg Config) (*Service, error) {
@@ -67,7 +74,7 @@ func New(cfg Config) (*Service, error) {
 	case cfg.Clock == nil:
 		return nil, fmt.Errorf("%w: clock is required", ErrInvalidConfig)
 	}
-	return &Service{attempts: cfg.Attempts, leases: cfg.Leases, claims: cfg.Claims, clock: cfg.Clock}, nil
+	return &Service{attempts: cfg.Attempts, leases: cfg.Leases, claims: cfg.Claims, clock: cfg.Clock, tasks: cfg.Tasks}, nil
 }
 
 // Result reports what happened to one claim. VerificationRequired is true only
@@ -184,6 +191,16 @@ func (s *Service) Accept(ctx context.Context, claim resultclaim.Claim) (Result, 
 		if err := s.claims.ApplyResultClaim(ctx, acceptance); err != nil {
 			return Result{}, fmt.Errorf("%w: %v", ErrClaimStore, err)
 		}
+		// The Task follows its Attempt into verification (ADR-0032 §2.4), so
+		// "running" and "verifying" stay distinguishable from the outside. A
+		// conflict means another writer moved the Task first; the Attempt, the
+		// claim and the verification decision are already durable, so the
+		// acceptance is not undone.
+		if s.tasks != nil && needsTransition && next.Phase == attemptstate.AttemptPhaseVerifying {
+			if err := s.markTaskVerifying(ctx, attempt.TaskID); err != nil {
+				return Result{}, fmt.Errorf("%w: %v", ErrClaimStore, err)
+			}
+		}
 	}
 	resultAttempt := attempt
 	if needsTransition {
@@ -194,6 +211,24 @@ func (s *Service) Accept(ctx context.Context, claim resultclaim.Claim) (Result, 
 		Attempt:              resultAttempt,
 		VerificationRequired: resultAttempt.Phase == attemptstate.AttemptPhaseVerifying,
 	}, nil
+}
+
+// markTaskVerifying moves the Task to verifying once its Attempt has. It is a
+// compare-and-swap, so a cancellation that raced the acceptance still wins:
+// the next read sees the cancellation intent before the phase.
+func (s *Service) markTaskVerifying(ctx context.Context, taskID ids.TaskID) error {
+	task, err := s.tasks.LoadTask(ctx, taskID)
+	if err != nil {
+		return err
+	}
+	if task.Phase != taskstate.TaskPhaseActive {
+		return nil
+	}
+	next := task
+	next.Phase = taskstate.TaskPhaseVerifying
+	next.Revision = task.Revision + 1
+	next.UpdatedAt = s.clock.Now().UTC()
+	return s.tasks.CompareAndSwapTask(ctx, task.ID, task.Revision, next)
 }
 
 func checkBinding(attempt attemptstate.AttemptRecord, claim resultclaim.Claim) error {

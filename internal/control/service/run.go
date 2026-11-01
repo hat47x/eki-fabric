@@ -183,7 +183,7 @@ func (s *Server) refreshReady() {
 // the process serves anything: a half-configured Worker listener is not a
 // reason to run without it.
 func (s *Server) startWorker(ctx context.Context, w *WorkerConfig, store *sqlite.Store) error {
-	accept, err := claimaccept.New(claimaccept.Config{Attempts: store, Leases: store, Claims: store, Clock: systemClock{}})
+	accept, err := claimaccept.New(claimaccept.Config{Attempts: store, Leases: store, Claims: store, Clock: systemClock{}, Tasks: store})
 	if err != nil {
 		return err
 	}
