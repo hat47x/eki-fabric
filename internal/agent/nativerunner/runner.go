@@ -71,7 +71,20 @@ func (r Runner) Run(ctx context.Context, spec executor.Spec) (executor.Result, e
 	if limit == 0 {
 		limit = 1 << 20
 	}
-	runCtx, cancel := context.WithCancel(ctx)
+	deadline := spec.Deadline
+	if wall := time.Duration(spec.Limits.WallTimeMillis) * time.Millisecond; wall > 0 {
+		wallDeadline := time.Now().Add(wall)
+		if deadline.IsZero() || wallDeadline.Before(deadline) {
+			deadline = wallDeadline
+		}
+	}
+	var runCtx context.Context
+	var cancel context.CancelFunc
+	if deadline.IsZero() {
+		runCtx, cancel = context.WithCancel(ctx)
+	} else {
+		runCtx, cancel = context.WithDeadline(ctx, deadline)
+	}
 	defer cancel()
 	var output bytes.Buffer
 	writer := &limitWriter{writer: &output, limit: limit, onExceed: cancel}

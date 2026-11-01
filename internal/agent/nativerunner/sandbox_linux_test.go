@@ -5,6 +5,7 @@ package nativerunner
 import (
 	"context"
 	"os/exec"
+	"strings"
 	"testing"
 	"time"
 
@@ -64,6 +65,23 @@ func TestRunWithBwrapSandboxHasNoNetworkInterface(t *testing.T) {
 	}
 	if result.ExitCode != 0 {
 		t.Fatalf("network interface leaked into the sandbox: exit=%d", result.ExitCode)
+	}
+}
+
+func TestRunWithBwrapSandboxStopsBusyProcessAtCPULimit(t *testing.T) {
+	spec := bwrapSpec(t)
+	spec.Limits.CPUMillis = 100
+	spec.Limits.WallTimeMillis = 10000
+	spec.Deadline = time.Now().UTC().Add(10 * time.Second)
+	runner := Runner{Command: "/bin/sh", Args: []string{"-c", "while :; do :; done"}}
+	started := time.Now()
+	_, err := runner.Run(context.Background(), spec)
+	elapsed := time.Since(started)
+	if err == nil || !strings.Contains(err.Error(), "CPU") {
+		t.Fatalf("CPU limit was not enforced: err=%v elapsed=%s", err, elapsed)
+	}
+	if elapsed > 5*time.Second {
+		t.Fatalf("busy process was not stopped promptly: %s", elapsed)
 	}
 }
 
