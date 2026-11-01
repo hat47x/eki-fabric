@@ -301,7 +301,13 @@ func (l *Loop) dispatchOne(ctx context.Context, task taskstate.TaskRecord) error
 	if _, err := l.cfg.IssueWorkOrder(ctx, reserved.LeaseID, worker); err != nil {
 		return fmt.Errorf("issue work order: %w", err)
 	}
-	if err := l.assignAttempt(ctx, *attempt, worker, reserved.LeaseID); err != nil {
+	// Placement and emission each advance the Attempt revision, so the copy
+	// read before them is stale. Re-read before assigning.
+	current, err := l.reloadAttempt(ctx, task.ID, attempt.ID)
+	if err != nil {
+		return err
+	}
+	if err := l.assignAttempt(ctx, current, worker, reserved.LeaseID); err != nil {
 		return err
 	}
 	return nil
@@ -322,6 +328,22 @@ func (l *Loop) markActive(ctx context.Context, task taskstate.TaskRecord) error 
 		return fmt.Errorf("mark task active: %w", err)
 	}
 	return nil
+}
+
+// reloadAttempt reads the current Attempt after the issuing chain advanced its
+// revision. The in-memory copy from before placement is stale because the
+// placement and the Agent's fetch both update the same record.
+func (l *Loop) reloadAttempt(ctx context.Context, taskID ids.TaskID, id ids.AttemptID) (attemptstate.AttemptRecord, error) {
+	attempts, err := l.attempts.ListAttemptsByTask(ctx, taskID)
+	if err != nil {
+		return attemptstate.AttemptRecord{}, fmt.Errorf("reload attempt: %w", err)
+	}
+	for _, attempt := range attempts {
+		if attempt.ID == id {
+			return attempt, nil
+		}
+	}
+	return attemptstate.AttemptRecord{}, fmt.Errorf("reload attempt: %s not found", id)
 }
 
 // pickWorker returns the first usable Worker, or an error naming the gap. The
