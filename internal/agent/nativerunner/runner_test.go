@@ -65,6 +65,18 @@ func TestHelperProcess(t *testing.T) {
 		_ = os.WriteFile(extra[0], []byte("survived"), 0o644)
 	case "sleep":
 		time.Sleep(5 * time.Second)
+	case "burn":
+		// Spend CPU in this process so a resource watch sampling its own PID
+		// can observe the usage. The bound only keeps a broken watch from
+		// running forever; a working watch stops the process much sooner.
+		until := time.Now().Add(10 * time.Second)
+		var sink int
+		for time.Now().Before(until) {
+			for i := 0; i < 10000; i++ {
+				sink += i * i
+			}
+		}
+		fmt.Fprint(os.Stdout, sink%10)
 	}
 	os.Exit(0)
 }
