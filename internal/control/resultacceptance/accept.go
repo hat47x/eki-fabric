@@ -55,6 +55,9 @@ type AttemptStore interface {
 
 type TaskStore interface {
 	LoadTask(ctx context.Context, id ids.TaskID) (taskstate.TaskRecord, error)
+	// CompareAndSwapTask moves the Task to verifying while its result is being
+	// accepted (ADR-0032 §2.4, ADR-0033 A3).
+	CompareAndSwapTask(ctx context.Context, id ids.TaskID, expectedRevision uint64, next taskstate.TaskRecord) error
 }
 
 // ResultPolicy is what the trusted boundary requires for one Task's result.
@@ -264,6 +267,19 @@ func (s *Service) Accept(ctx context.Context, req Request) (Result, error) {
 
 func (s *Service) accept(ctx context.Context, attempt attemptstate.AttemptRecord, task taskstate.TaskRecord,
 	claim resultclaim.Claim, decision resultaccept.Decision, now time.Time) (Result, error) {
+	// The Task becomes verifying while its result is accepted, so the phase says
+	// what is happening instead of jumping from active to terminal
+	// (ADR-0032 §2.4, ADR-0033 A3). The commit below then moves it to terminal.
+	if task.Phase == taskstate.TaskPhaseActive {
+		verifying := task
+		verifying.Phase = taskstate.TaskPhaseVerifying
+		verifying.Revision = task.Revision + 1
+		verifying.UpdatedAt = laterOf(now, task.UpdatedAt)
+		if err := s.tasks.CompareAndSwapTask(ctx, task.ID, task.Revision, verifying); err != nil {
+			return Result{}, fmt.Errorf("%w: %v", ErrStateChanged, err)
+		}
+		task = verifying
+	}
 	record, err := acceptedresult.New(acceptedresult.Config{
 		TaskID: attempt.TaskID, AttemptID: attempt.ID,
 		ClaimDigest: claim.Digest(), OutputDigest: claim.OutputDigest(),
