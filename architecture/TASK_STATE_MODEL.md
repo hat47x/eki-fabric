@@ -1578,6 +1578,12 @@ Attemptの失敗と、Taskの失敗を、分けます。
 - Artifactのfetchのerror
 - outputのlimit
 
+## 出力の本体の保持
+
+出力の本体は、Worker側のAttemptごとの作業盤のファイルに置きます。保持期間は、ResultClaimが受理されるまで（またはLeaseの期限が切れるまで）です。受理の後はWorker側で捨てて構いません。Workerの再起動で本体を失うことは、このモデルが受け入れる仕様です。失われた出力を「同じLeaseでの再実行」で取り直すことはしません。再実行は新しいAttemptであり、前のAttemptの再開ではないからです（[ADR-0034](../plan/adr/0034-artifact-body-transfer-and-digest-binding.md)）。
+
+出力の上限は、WorkOrderの`OutputBytesMaximum`です（無指定なら1MiB）。上限を超えた出力は切り詰めず、**拒否します**。実行を止め、Attemptを`output_exceeded`の失敗にします。切り詰められた出力は、ダイジェストの束縛（Claim ⇔ 受信時の再計算 ⇔ 取得後の検算）を壊すからです。
+
 ## Taskのsemanticな失敗
 
 Application Validatorが、
