@@ -26,6 +26,7 @@ type stubIssue struct {
 	emitted    int
 	orders     int
 	failAfter  int
+	events     *[]string
 }
 
 func (s *stubIssue) issuePlacement(ctx context.Context, req placementissue.IssueRequest) ([]byte, error) {
@@ -47,11 +48,17 @@ func (s *stubIssue) reserve(ctx context.Context, signed []byte, lifetime time.Du
 
 func (s *stubIssue) emitLease(ctx context.Context, id ids.LeaseID) ([]byte, error) {
 	s.emitted++
+	if s.events != nil {
+		*s.events = append(*s.events, "emit")
+	}
 	return []byte("signed-lease"), nil
 }
 
 func (s *stubIssue) issueWorkOrder(ctx context.Context, id ids.LeaseID, worker string) ([]byte, error) {
 	s.orders++
+	if s.events != nil {
+		*s.events = append(*s.events, "order")
+	}
 	return []byte("signed-order"), nil
 }
 
@@ -348,5 +355,43 @@ func TestNewRejectsIncompleteConfig(t *testing.T) {
 	loop := newLoop(t, store, &stubIssue{}, nil)
 	if loop == nil {
 		t.Fatal("New() = nil")
+	}
+}
+
+type orderedAttempts struct {
+	*memory.Store
+	events *[]string
+}
+
+func (o orderedAttempts) CompareAndSwapAttempt(ctx context.Context, id ids.AttemptID, expectedRevision uint64, next attemptstate.AttemptRecord) error {
+	if next.Phase == attemptstate.AttemptPhaseAssigned {
+		*o.events = append(*o.events, "assign")
+	}
+	return o.Store.CompareAndSwapAttempt(ctx, id, expectedRevision, next)
+}
+
+func TestTickAssignsFromTheRevisionLeftByEmission(t *testing.T) {
+	store := memory.New()
+	if err := store.CompareAndSwapPolicy(context.Background(), 0, mustPolicy(t)); err != nil {
+		t.Fatal(err)
+	}
+	seedWorker(t, store, 1)
+	seedTask(t, store, 1, taskstate.TaskPhaseReady)
+	events := []string{}
+	stub := &stubIssue{events: &events}
+	loop := newLoop(t, store, stub, func(c *Config) {
+		c.Attempts = orderedAttempts{Store: store, events: &events}
+	})
+	if _, err := loop.Tick(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	want := []string{"emit", "order", "assign"}
+	if len(events) != len(want) {
+		t.Fatalf("issuing order = %v, want %v", events, want)
+	}
+	for i := range want {
+		if events[i] != want[i] {
+			t.Fatalf("issuing order = %v, want %v", events, want)
+		}
 	}
 }
