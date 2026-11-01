@@ -13,7 +13,9 @@ import (
 const (
 	jobObjectExtendedLimitInformation = 9
 	jobObjectLimitProcessTime         = 0x00000002
+	jobObjectLimitJobTime             = 0x00000004
 	jobObjectLimitProcessMemory       = 0x00000100
+	jobObjectLimitJobMemory           = 0x00000200
 	jobObjectLimitKillOnJobClose      = 0x00002000
 	processSetQuota                   = 0x0100
 	processTerminate                  = 0x0001
@@ -73,13 +75,16 @@ func applySandbox(cmd *exec.Cmd, spec executor.Spec) (func(), error) {
 	var info jobObjectExtendedLimitInformationStruct
 	info.BasicLimitInformation.LimitFlags = jobObjectLimitKillOnJobClose
 	if spec.Limits.CPUMillis != 0 {
-		info.BasicLimitInformation.LimitFlags |= jobObjectLimitProcessTime
-		// The Job Object expresses per-process CPU time in 100ns units.
+		info.BasicLimitInformation.LimitFlags |= jobObjectLimitProcessTime | jobObjectLimitJobTime
+		// The Job Object expresses CPU time in 100ns units. The job limit also
+		// bounds the total CPU of the process tree.
 		info.BasicLimitInformation.PerProcessUserTimeLimit = int64(spec.Limits.CPUMillis) * 10000
+		info.BasicLimitInformation.PerJobUserTimeLimit = int64(spec.Limits.CPUMillis) * 10000
 	}
 	if spec.Limits.MemoryBytes != 0 {
-		info.BasicLimitInformation.LimitFlags |= jobObjectLimitProcessMemory
+		info.BasicLimitInformation.LimitFlags |= jobObjectLimitProcessMemory | jobObjectLimitJobMemory
 		info.ProcessMemoryLimit = uintptr(spec.Limits.MemoryBytes)
+		info.JobMemoryLimit = uintptr(spec.Limits.MemoryBytes)
 	}
 	ok, _, err := procSetInformationJobObject.Call(
 		job,

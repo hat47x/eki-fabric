@@ -11,7 +11,7 @@
 - Windowsのポーリングは起動したプロセスの値を見る。子プロセスのメモリはJob Objectの上限で封じ込める。
 - `spec.Deadline`と`WallTimeMillis`は実行開始時にcontextの期限として設定し、超過時にプロセスグループを停止する。
 - この監視は**実行中の実測**であり、開始前の資源の予約（[ADR-0031](../../../plan/adr/0031-local-execution-slots-and-resource-reservation.md)）とは別の境界である。予約は「始める前に、合計が上限を超えないこと」を扱い、監視は「始めた後に、実測が上限を超えたら止めること」を扱う。片方で他方を代用しない。
-- Windowsでは`sandbox/native-job-object`を選ぶと、Job ObjectでプロセスメモリとCPU時間の上限、プロセスツリーの封じ込めを行う。
+- Windowsでは`sandbox/native-job-object`を選ぶと、Job Objectでプロセス単位とジョブ合計のメモリ・CPU時間の上限、プロセスツリーの封じ込めを行う。
 - Linuxでは`sandbox/linux-bwrap`を選ぶと、bubblewrapで読み取り専用root、private `/tmp`、networkなし、別PID名前空間で実行する（`bwrap`が必要）。networkを完全に切るため、数値のnetwork上限はこのprofileでは「通信ゼロ」として満たす。
 - 実行ファイルのSHA-256、引数allowlist、sandbox profile、network/GPU/digestの不一致をfail-closedで拒否する。
 

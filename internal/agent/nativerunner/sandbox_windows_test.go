@@ -71,3 +71,21 @@ func TestJobObjectCPULimitStopsBusyProcess(t *testing.T) {
 		t.Fatalf("process was not stopped promptly: %s", elapsed)
 	}
 }
+
+func TestRunWithJobObjectAggregateLimits(t *testing.T) {
+	now := time.Now().UTC()
+	spec := validSpec(now)
+	spec.Sandbox.Profile = SandboxProfileJobObject
+	spec.Limits.MemoryBytes = 256 << 20
+	spec.Limits.CPUMillis = 5000
+	spec.Limits.WallTimeMillis = 5000
+	spec.Deadline = now.Add(5 * time.Second)
+	runner := Runner{
+		Command: "cmd.exe",
+		Args:    []string{"/c", "echo hello"},
+		Env:     []string{"SystemRoot=" + os.Getenv("SystemRoot"), "PATH=" + os.Getenv("PATH")},
+	}
+	if _, err := runner.Run(context.Background(), spec); err != nil {
+		t.Fatalf("job-object aggregate limits run: %v", err)
+	}
+}
