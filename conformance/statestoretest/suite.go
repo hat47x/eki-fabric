@@ -25,6 +25,8 @@ func RunTaskStoreContract(t *testing.T, newStore Factory) {
 
 	runTaskListingContract(t, newStore)
 
+	RunTaskTransitionContract(t, newStore)
+
 	t.Run("create-load", func(t *testing.T) {
 		store := newStore(t)
 		record := newTask(t, "create-load")

@@ -150,6 +150,27 @@ func (s *Store) CompareAndSwapTask(ctx context.Context, id ids.TaskID, expectedR
 	}
 	defer func() { _ = tx.Rollback() }()
 
+	// Read the current record inside the transaction so the transition is
+	// judged against the same revision the update is based on.
+	current, err := scanTask(tx.QueryRowContext(ctx, `
+SELECT task_id, task_ir_digest, phase, terminal_outcome, cancellation_requested, revision, created_at_ns, updated_at_ns
+FROM tasks WHERE task_id = ?`, string(id)))
+	if errors.Is(err, sql.ErrNoRows) {
+		return fmt.Errorf("%w: task %s", statestore.ErrNotFound, id)
+	}
+	if err != nil {
+		return err
+	}
+	if current.Revision != expectedRevision {
+		return fmt.Errorf("%w: task %s is at revision %d, expected %d", statestore.ErrConflict, id, current.Revision, expectedRevision)
+	}
+	if current.TaskIRDigest != next.TaskIRDigest {
+		return fmt.Errorf("%w: task %s TaskIR digest is immutable", statestore.ErrConflict, id)
+	}
+	if err := taskstate.ValidateTransition(current, next); err != nil {
+		return err
+	}
+
 	// The creation time is immutable and the digest is the Task identity's
 	// content binding, so neither is rewritten by a state transition. The
 	// digest is part of the WHERE clause so that a rebinding attempt matches

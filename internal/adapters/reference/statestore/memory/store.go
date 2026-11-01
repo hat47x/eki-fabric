@@ -149,6 +149,13 @@ func (s *Store) CompareAndSwapTask(ctx context.Context, id ids.TaskID, expectedR
 	if current.TaskIRDigest != next.TaskIRDigest {
 		return fmt.Errorf("%w: task %s TaskIR digest is immutable", statestore.ErrConflict, id)
 	}
+	// The revision matched, so the stored record is the one this write is
+	// based on: a transition the state model does not allow is refused here,
+	// apart from a revision conflict, so the caller cannot retry its way into
+	// it.
+	if err := taskstate.ValidateTransition(current, next); err != nil {
+		return err
+	}
 
 	s.tasks[id] = next
 	return nil

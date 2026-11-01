@@ -691,8 +691,10 @@ func TestCancelIsRefusedForFinishedAndForeignTasks(t *testing.T) {
 		t.Fatal("a foreign principal cancelled someone else's task")
 	}
 
+	// Completion needs an AcceptedResult, so a test that only needs a finished
+	// Task ends it as failed.
 	done := record
-	done.Phase, done.TerminalOutcome = taskstate.TaskPhaseTerminal, taskstate.TerminalOutcomeCompleted
+	done.Phase, done.TerminalOutcome = taskstate.TaskPhaseTerminal, taskstate.TerminalOutcomeFailed
 	done.Revision++
 	if err := store.CompareAndSwapTask(ctx, got.TaskID, record.Revision, done); err != nil {
 		t.Fatalf("CompareAndSwapTask() error = %v", err)

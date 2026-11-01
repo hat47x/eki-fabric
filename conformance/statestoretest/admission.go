@@ -292,8 +292,11 @@ func RunAdmissionContract(t *testing.T, newStore StoreFactory) {
 			t.Fatalf("AdmitTask() error = %v, want ErrQuotaExceeded", err)
 		}
 
+		// Completion goes through the accepted-result commit; a direct
+		// transition may end the Task any other way. Quota only cares that the
+		// Task is terminal.
 		done := nextRevision(first.Task, taskstate.TaskPhaseTerminal)
-		done.TerminalOutcome = taskstate.TerminalOutcomeCompleted
+		done.TerminalOutcome = taskstate.TerminalOutcomeCancelled
 		if err := store.CompareAndSwapTask(ctx, first.Task.ID, first.Task.Revision, done); err != nil {
 			t.Fatalf("CompareAndSwapTask() error = %v", err)
 		}
