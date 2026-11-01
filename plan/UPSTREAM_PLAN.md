@@ -1161,3 +1161,18 @@ TaskにはAttemptのような遷移の検証が無く、`CompareAndSwapTask`はr
 - 現在の未完了Task数と上限を、依頼元が読める形で応答に足すか。`policy_reason_category: QUOTA`は既にある。
 - 依頼元が自分の未完了Taskを列挙する手段（#250）。
 - 実行系が無い構成で、受理したTaskを期限なしに`queued`のまま置くことの扱い（#111、#249）。
+
+### 2026-11-01 `terminal_code`の公開する値を契約に定め、内部のenumを写像で隠す（#281）
+
+公開状態の`terminal_code`は、内部の`TerminalOutcome`を大文字にした文字列だった。内部のenumの綴りがそのまま外部契約になり、値を増やすと依頼元の分岐が黙って変わる。また`openapi.json`には形式の正規表現しかなく、依頼元が再投入してよいかを値から決められなかった。
+
+- 公開する値は`COMPLETED`・`CANCELLED`・`FAILED`・`EXHAUSTED`・`ABANDONED`の5つとし、意味と再投入の可否を`TaskStatus.terminal_code`（`spec/external/openapi.json`）に列挙した。`COMPLETED`は再投入しない、`CANCELLED`は再投入してよい、`FAILED`は副作用の有無を確かめてから、`EXHAUSTED`は新しい予算の判断、`ABANDONED`は同じ要求をそのまま再投入しない。
+- 内部から公開への写像を`admission.publicTerminalCode`の1か所にした。内部のenumの綴りではなく、名前ごとの`switch`で対応する。内部の値が増えて写像が無い場合は`FAILED`（完了も取消も主張しない安全側）に寄せ、内部エラーとして報告する。写像の網羅は試験で固定する。
+- `terminal_code`は、`completed`・`cancelled`を含むすべての終端Taskに付ける。契約の記述もそう書いた。
+- 期限切れの2値（`DEADLINE_EXPIRED_NOT_STARTED`・`DEADLINE_EXPIRED_AFTER_DISPATCH`）は、実装が無いため値の一覧には入れず、互換な追加として後から足すことを契約とADR-0020に書いた。
+
+未決:
+
+- 期限切れの値の実装（#111）と、そのときの`status`（`failed`か`exhausted`か）の扱い。
+- 配置待ちで終える場合の値（#249）。
+- 値の追加を「互換な追加」とみなす条件の確認（ADR-0001の互換性のルール）。

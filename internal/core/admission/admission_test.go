@@ -578,6 +578,7 @@ func TestStatusIsVisibleOnlyToTheSubmitter(t *testing.T) {
 }
 
 func TestProjectNeverExposesInternalState(t *testing.T) {
+	svc, _ := newService(t)
 	now := testNow
 	base, err := taskstate.NewTask("tsk_00000000000000000000000000000001", mustDigest(t), now)
 	if err != nil {
@@ -615,7 +616,7 @@ func TestProjectNeverExposesInternalState(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			record := base
 			tc.mutate(&record)
-			got := project(record)
+			got := svc.project(record)
 			if got.Status != tc.status || got.TerminalCode != tc.code {
 				t.Fatalf("project() = %#v, want status %s code %s", got, tc.status, tc.code)
 			}
@@ -625,8 +626,57 @@ func TestProjectNeverExposesInternalState(t *testing.T) {
 	record := base
 	record.Phase = taskstate.TaskPhaseActive
 	record.CancellationRequested = true
-	if got := project(record); got.PublicMessage == "" {
+	if got := svc.project(record); got.PublicMessage == "" {
 		t.Error("a pending cancellation is not visible to the Client")
+	}
+}
+
+// Every internal TerminalOutcome has a public code. A new internal value must
+// be added to the mapping on purpose: the public contract does not follow the
+// internal enum's spelling (#281).
+func TestEveryTerminalOutcomeHasAPublicCode(t *testing.T) {
+	cases := map[taskstate.TerminalOutcome]string{
+		taskstate.TerminalOutcomeCompleted: TerminalCompleted,
+		taskstate.TerminalOutcomeCancelled: TerminalCancelled,
+		taskstate.TerminalOutcomeFailed:    TerminalFailed,
+		taskstate.TerminalOutcomeExhausted: TerminalExhausted,
+		taskstate.TerminalOutcomeAbandoned: TerminalAbandoned,
+	}
+	for outcome, want := range cases {
+		got, ok := publicTerminalCode(outcome)
+		if !ok || got != want {
+			t.Errorf("publicTerminalCode(%q) = %q, %v, want %q", outcome, got, ok, want)
+		}
+	}
+	// The empty outcome is not terminal and has no public code.
+	if _, ok := publicTerminalCode(taskstate.TerminalOutcomeNone); ok {
+		t.Error("the empty outcome was given a public code")
+	}
+}
+
+// An outcome this version cannot name must not leak its spelling, and it must
+// not claim completion or cancellation: the Client sees FAILED, and the
+// internal error is reported.
+func TestUnknownTerminalOutcomeFallsBackToFailed(t *testing.T) {
+	var operations []string
+	svc, _ := newService(t, func(c *Config) {
+		c.OnInternalError = func(operation string, err error) {
+			operations = append(operations, operation)
+		}
+	})
+	record, err := taskstate.NewTask("tsk_00000000000000000000000000000001", mustDigest(t), testNow)
+	if err != nil {
+		t.Fatalf("NewTask() error = %v", err)
+	}
+	record.Phase = taskstate.TaskPhaseTerminal
+	record.TerminalOutcome = taskstate.TerminalOutcome("SOMETHING_NEW")
+
+	got := svc.project(record)
+	if got.Status != "failed" || got.TerminalCode != TerminalFailed {
+		t.Fatalf("project() = %#v, want failed/%s", got, TerminalFailed)
+	}
+	if len(operations) != 1 {
+		t.Fatalf("internal errors = %v, want one report of the unmapped outcome", operations)
 	}
 }
 
