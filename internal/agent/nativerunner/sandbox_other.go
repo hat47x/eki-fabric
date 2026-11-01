@@ -18,3 +18,7 @@ func supportedSandboxProfile(profile string) bool {
 func applySandbox(*exec.Cmd, executor.Spec) (func(), error) {
 	return func() {}, nil
 }
+
+func wrapSandboxCommand(_ executor.Spec, executable string, args []string, _ string) (string, []string, error) {
+	return executable, args, nil
+}
