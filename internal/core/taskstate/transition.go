@@ -45,6 +45,13 @@ func ValidateTransition(current, next TaskRecord) error {
 	if current.Phase == TaskPhaseTerminal {
 		return fmt.Errorf("%w: terminal Task cannot transition", ErrInvalidTaskTransition)
 	}
+	// Completion is written only by the acceptance commit, which writes the
+	// AcceptedResult, the closed Attempt and the completed Task in one
+	// transaction. A direct transition may not claim completion: nothing beside
+	// it would carry the result the claim is about (#365, ADR-0033 A2).
+	if next.Phase == TaskPhaseTerminal && next.TerminalOutcome == TerminalOutcomeCompleted {
+		return fmt.Errorf("%w: completed is written only by the accepted-result commit", ErrInvalidTaskTransition)
+	}
 	if !allowsPhase(current.Phase, next.Phase) {
 		return fmt.Errorf("%w: phase %q -> %q", ErrInvalidTaskTransition, current.Phase, next.Phase)
 	}

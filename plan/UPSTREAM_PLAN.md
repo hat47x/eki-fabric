@@ -1300,3 +1300,9 @@ ADR-0033の未決のうち、一次資料の確認とCRUD対応表の作り方�
 - 現状との差: T1は公開状態（#249）と完了の境界（#365）、T2は`active`→`verifying`の配線（#381）、T3は依頼元の照合（#315）、T4は素材あり（RQ-019/021/044）、T5は受益の分布を測る観点が無い、T6は停止・取消の効果を測る観点が無い。
 - 下流Issueの順序: 業務の前提（#365・#381・#315・#249）→ 機能を実プロセスで通す（`conformance/process`の拡張）→ データを増やす（T4〜T6、業務の判断を先に決める）。
 - 約束しないこと: TAIとの通し試験を実施した記録ではない。`queued`は実行開始を意味しない。受益の分布と停止の効果はEKI単体では測れず、EKI側に新しい中央集計を作らない。
+### 2026-11-01 汎用のTask書き込みからterminal/completedを閉じる（#365）
+
+「completedのTaskには必ず受理済みの結果がある」を、汎用のTask書き込みの境界でも守れるようにした。`taskstate.ValidateTransition`が、`terminal/completed`への直接の遷移を`ErrInvalidTaskTransition`で拒否する。完了を書けるのは受理のcommit（`CommitAcceptedResult`）だけで、そちらはこの関数を通らない（結果・閉じたAttempt・Taskを同じtransactionで書く）。
+
+- 共通の適合試験`RunTaskTransitionContract`に「completion-is-not-a-direct-transition」を足し、memoryとSQLiteの両方で拒否を固定した。
+- 既存のClient APIのhandler試験は、別セッションの変更で受理のcommitを通るfixtureに変わっていたため、そのまま通る。

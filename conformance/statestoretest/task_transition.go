@@ -89,6 +89,20 @@ func RunTaskTransitionContract(t *testing.T, newStore Factory) {
 			}
 		})
 
+		t.Run("completion-is-not-a-direct-transition", func(t *testing.T) {
+			store := newStore(t)
+			ctx := context.Background()
+			record := newTask(t, "transition-completed")
+			if err := store.CreateTask(ctx, record); err != nil {
+				t.Fatalf("CreateTask() error = %v", err)
+			}
+			done := nextRevision(record, taskstate.TaskPhaseTerminal)
+			done.TerminalOutcome = taskstate.TerminalOutcomeCompleted
+			err := store.CompareAndSwapTask(ctx, record.ID, record.Revision, done)
+			if !errors.Is(err, taskstate.ErrInvalidTaskTransition) {
+				t.Fatalf("direct completion error = %v, want %v", err, taskstate.ErrInvalidTaskTransition)
+			}
+		})
 		t.Run("terminal-never-transitions", func(t *testing.T) {
 			store := newStore(t)
 			ctx := context.Background()
