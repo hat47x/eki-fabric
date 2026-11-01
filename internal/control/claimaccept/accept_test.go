@@ -12,6 +12,7 @@ import (
 	"github.com/hat47x/eki-fabric/internal/core/ids"
 	"github.com/hat47x/eki-fabric/internal/core/leasestate"
 	"github.com/hat47x/eki-fabric/internal/core/resultclaim"
+	"github.com/hat47x/eki-fabric/internal/core/taskstate"
 	"github.com/hat47x/eki-fabric/internal/spi/statestore"
 )
 
@@ -356,4 +357,60 @@ func leaseWithFence(t *testing.T, fence uint64) leasestate.LeaseRecord {
 	record := lease(t)
 	record.FenceEpoch = fence
 	return record
+}
+
+type fakeTasks struct {
+	record  taskstate.TaskRecord
+	updates []taskstate.TaskRecord
+}
+
+func (f *fakeTasks) CreateTask(context.Context, taskstate.TaskRecord) error { return nil }
+
+func (f *fakeTasks) LoadTask(_ context.Context, id ids.TaskID) (taskstate.TaskRecord, error) {
+	return f.record, nil
+}
+
+func (f *fakeTasks) CompareAndSwapTask(_ context.Context, _ ids.TaskID, expected uint64, next taskstate.TaskRecord) error {
+	if expected != f.record.Revision {
+		return errors.New("revision conflict")
+	}
+	f.record = next
+	f.updates = append(f.updates, next)
+	return nil
+}
+
+func (f *fakeTasks) ListTasksByPhase(context.Context, taskstate.TaskPhase, int) ([]taskstate.TaskRecord, error) {
+	return nil, nil
+}
+
+// A completed claim moves the Task into verification beside its Attempt, so
+// "running" and "verifying" stay distinguishable from the outside (ADR-0032
+// §2.4, #267).
+func TestCompletedClaimMovesTheTaskToVerifying(t *testing.T) {
+	attempts := &fakeAttempts{record: attempt(t, attemptstate.AttemptPhaseClaimed)}
+	tasks := &fakeTasks{record: taskstate.TaskRecord{
+		ID: testTask, TaskIRDigest: contract.SHA256([]byte("taskir")),
+		Phase: taskstate.TaskPhaseActive, Revision: 4, CreatedAt: baseTime.Add(-time.Hour), UpdatedAt: baseTime.Add(-time.Minute),
+	}}
+	claims := &fakeClaims{attempts: attempts}
+	service, err := New(Config{
+		Attempts: attempts, Leases: fakeLeases{record: lease(t)}, Claims: claims,
+		Clock: &fakeClock{now: baseTime}, Tasks: tasks,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	result, err := service.Accept(context.Background(), claim(t, resultclaim.StatusCompleted, 0))
+	if err != nil {
+		t.Fatalf("Accept() error = %v", err)
+	}
+	if result.Attempt.Phase != attemptstate.AttemptPhaseVerifying {
+		t.Fatalf("attempt = %+v, want verifying", result.Attempt)
+	}
+	if len(tasks.updates) != 1 || tasks.record.Phase != taskstate.TaskPhaseVerifying {
+		t.Fatalf("task updates = %d, phase = %s, want one write to verifying", len(tasks.updates), tasks.record.Phase)
+	}
+	if tasks.updates[0].Revision != 5 {
+		t.Fatalf("task revision = %d, want 5", tasks.updates[0].Revision)
+	}
 }
