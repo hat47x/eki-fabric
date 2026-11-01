@@ -124,6 +124,20 @@ External Clientへ返す候補:
 - attention-required
 - completed
 - cancelled
+
+### 内部のphaseとの対応（案）
+
+| 内部のphase | 公開状態 |
+| --- | --- |
+| `admitted`・`ready` | `queued` |
+| `active` | `running` |
+| `verifying` | `verifying` |
+| `held`・`reconciling` | `reconciling`（または`attention-required`） |
+| `terminal`（`completed`） | `completed` |
+| `terminal`（`cancelled`） | `cancelled` |
+| `terminal`（`failed`・`abandoned`） | `attention-required`（`terminal_code`で区別する） |
+
+`queued`は「受理した」ことを表し、**実行が始まったことを意味しません**。TAI Pleromaの要求（受付は実行の完了ではない）に対応します。`admitted`と`ready`を公開状態で分けるかどうかは#249で決めます。この表は案であり、契約（`openapi.json`の`status`）の値そのものは変えていません。
 - failed
 
 内部のAttempt、Lease、Worker identity、Policy Revision等は返しません。
