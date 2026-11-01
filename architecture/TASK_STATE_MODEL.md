@@ -243,6 +243,10 @@ Task lifecycleが終了しています。
 
 Terminal Outcomeを、別のFieldで持ちます。
 
+## 遷移を起こす主体
+
+phaseを次へ進める部品と条件は、[ADR-0032](../plan/adr/0032-task-phase-transition-subjects.md)で定めます。`admitted`から`ready`へは配置ループが進め、受理の直後には自動で進めません。`ready`から`active`へは、最初のAttemptの作成と同じtickで進めます。`active`から`verifying`へは、完了のResultClaimの受理で進めます。
+
 ---
 
 # 6. Terminal Outcome
