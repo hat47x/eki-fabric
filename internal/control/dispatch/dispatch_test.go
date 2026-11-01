@@ -223,7 +223,7 @@ func TestTickMarksTheTaskActiveWhenTheAttemptIsCreated(t *testing.T) {
 	}
 }
 
-func TestTickMovesAReadyTaskToAnAssignedAttempt(t *testing.T) {
+func TestTickMovesAReadyTaskToADispatchedAttempt(t *testing.T) {
 	store := memory.New()
 	if err := store.CompareAndSwapPolicy(context.Background(), 0, mustPolicy(t)); err != nil {
 		t.Fatal(err)
@@ -251,8 +251,8 @@ func TestTickMovesAReadyTaskToAnAssignedAttempt(t *testing.T) {
 		t.Fatalf("ListAttemptsByTask() = %d attempts, want 1", len(attempts))
 	}
 	got := attempts[0]
-	if got.Phase != attemptstate.AttemptPhaseAssigned || got.WorkerIdentity != worker || got.LeaseID == "" {
-		t.Fatalf("Attempt = phase %q worker %q lease %q, want an ASSIGNED Attempt bound to %s", got.Phase, got.WorkerIdentity, got.LeaseID, worker)
+	if got.Phase != attemptstate.AttemptPhaseDispatched || got.WorkerIdentity != worker || got.LeaseID == "" {
+		t.Fatalf("Attempt = phase %q worker %q lease %q, want a DISPATCHED Attempt bound to %s", got.Phase, got.WorkerIdentity, got.LeaseID, worker)
 	}
 }
 
@@ -342,7 +342,7 @@ func TestTickKeepsTheWorkerOfAnExistingPlacingAttempt(t *testing.T) {
 	if err != nil || len(attempts) != 1 {
 		t.Fatalf("ListAttemptsByTask() = %d attempts (err %v), want the same Attempt", len(attempts), err)
 	}
-	if attempts[0].WorkerIdentity != worker || attempts[0].Phase != attemptstate.AttemptPhaseAssigned {
+	if attempts[0].WorkerIdentity != worker || attempts[0].Phase != attemptstate.AttemptPhaseDispatched {
 		t.Fatalf("Attempt = phase %q worker %q, want the same Worker after assignment", attempts[0].Phase, attempts[0].WorkerIdentity)
 	}
 }
@@ -364,13 +364,13 @@ type orderedAttempts struct {
 }
 
 func (o orderedAttempts) CompareAndSwapAttempt(ctx context.Context, id ids.AttemptID, expectedRevision uint64, next attemptstate.AttemptRecord) error {
-	if next.Phase == attemptstate.AttemptPhaseAssigned {
-		*o.events = append(*o.events, "assign")
+	if next.Phase == attemptstate.AttemptPhaseDispatched {
+		*o.events = append(*o.events, "dispatched")
 	}
 	return o.Store.CompareAndSwapAttempt(ctx, id, expectedRevision, next)
 }
 
-func TestTickAssignsFromTheRevisionLeftByEmission(t *testing.T) {
+func TestTickMarksDispatchedAfterIssuingTheWorkOrder(t *testing.T) {
 	store := memory.New()
 	if err := store.CompareAndSwapPolicy(context.Background(), 0, mustPolicy(t)); err != nil {
 		t.Fatal(err)
@@ -385,7 +385,7 @@ func TestTickAssignsFromTheRevisionLeftByEmission(t *testing.T) {
 	if _, err := loop.Tick(context.Background()); err != nil {
 		t.Fatal(err)
 	}
-	want := []string{"emit", "order", "assign"}
+	want := []string{"emit", "order", "dispatched"}
 	if len(events) != len(want) {
 		t.Fatalf("issuing order = %v, want %v", events, want)
 	}
