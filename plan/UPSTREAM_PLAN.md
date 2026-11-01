@@ -1131,3 +1131,18 @@ ADR-0031の決定を、開始の関門（`startgate`）に実装した。関門�
 
 - Agentが実行slotと予約の合計を数える配線。いまは`InUse`に0を渡しているため、合計の判定は実装だけで、Agentの動作は変わっていない。
 - 予約の耐久性、CPUの予約の粒度、Control Planeへの容量の申告の形。
+
+### 2026-11-01 Taskの状態書き込みに遷移の検証を設ける（#280）
+
+TaskにはAttemptのような遷移の検証が無く、`CompareAndSwapTask`はrevisionとdigestと記録の整合だけを見ていた。そのため、terminalのTaskをactiveへ戻す、`failed`を`completed`へ書き換える、といった書き込みが受理され得た。
+
+- `taskstate.ValidateTransition`を足した。表は`architecture/TASK_STATE_MODEL.md` §5のphaseから導いた。admitted→ready/active、ready→active、active→verifying/ready/reconciling、verifying→active/reconciling、reconciling→active、held→ready/active。どの非terminal phaseからもheldとterminalへ進める。terminalからは進めない。同じphaseへの書き込みは、取消の意図のようにphase以外の欄を変えるため許す。
+- memoryとSQLiteの`CompareAndSwapTask`が、保存値と次の記録を照合して表に無い遷移を拒否する。エラーは`taskstate.ErrInvalidTaskTransition`で、revisionの競合（`ErrConflict`）と区別できる。SQLiteはtransactionの中で現在の記録を読んでから判定する。
+- 共通の適合試験`RunTaskTransitionContract`を足した。前に進む経路、terminalから戻せないこと、phaseが戻らないこと、飛ばせないこと、同じphaseで取消の意図を書けること。
+- 既存の試験のうち、`completed`を作るためにCASを使っていた2件は、quotaと取消の試験なので`cancelled`・`failed`に変えた。
+
+未決（#280に残す）:
+
+- 「`completed`のTaskには必ず受理済みの結果がある」を、汎用CASの境界で拒否する形。受理の入口（`CommitAcceptedResult`）は結果・Attempt・Taskを同じtransactionで書いており、いまの不変条件はそこでのみ守られている。汎用CASを一律に拒否すると、Client APIのhandler試験が使っている「fakeの結果と、CASで作ったcompletedのTask」という前提が崩れるため、試験のfixtureを受理のcommitへ寄せる作業と合わせて行う。
+- `CreateTask`でterminalのTaskを最初から作れること。作成は遷移ではないため、いまは制限していない。回復や移行の用途があるかを決めたうえで扱う。
+- `cancellation_requested`の立て下ろしと、heldからの復帰の表し方（#263、#267と合わせる）。
