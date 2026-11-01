@@ -137,7 +137,11 @@ External Clientへ返す候補:
 | `terminal`（`cancelled`） | `cancelled` |
 | `terminal`（`failed`・`abandoned`） | `attention-required`（`terminal_code`で区別する） |
 
-`queued`は「受理した」ことを表し、**実行が始まったことを意味しません**。TAI Pleromaの要求（受付は実行の完了ではない）に対応します。`admitted`と`ready`を公開状態で分けるかどうかは#249で決めます。この表は案であり、契約（`openapi.json`の`status`）の値そのものは変えていません。
+`queued`は「受理した」ことを表し、**実行が始まったことを意味しません**。TAI Pleromaの要求（受付は実行の完了ではない）に対応します。
+
+**`admitted`と`ready`は公開状態で分けません**（#249の判断）。どちらも「まだ実行が始まっていない」であり、依頼元にとって次にできることは同じ（待つ・取り消す）だからです。分けると、依頼元が内部の配置の都合（Workerが居ない、policyが止まっている）に依存した振る舞いをする誘因になります。内部では区別を保ち、運用者向けの状態と`Deferred`の理由で見せます。
+
+この表は案であり、契約（`openapi.json`の`status`）の値そのものは変えていません。
 - failed
 
 内部のAttempt、Lease、Worker identity、Policy Revision等は返しません。
