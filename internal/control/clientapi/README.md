@@ -11,6 +11,21 @@ Client向けのHTTPS・JSONの境界です。契約の正本は[`spec/external/o
 | 取消の要求 | `POST /v1/tasks/{task_id}/cancel` | `Idempotency-Key`必須 |
 | 結果の取得 | `GET /v1/tasks/{task_id}/result` | 下記。`admission.Config.Results`を渡したときだけ有効 |
 
+
+## 起動確認の窓口（`/healthz`・`/readyz`、#289）
+
+待ち合わせる側（統合試験、運用の起動順）が、確かな信号で待てるようにする窓口です。認証の前に答えますが、状態は何も返しません。
+
+| 経路 | 意味 | 応答 |
+| --- | --- | --- |
+| `GET /healthz` | プロセスが生きてlistenerに乗っている | 常に`200`、本文は固定の`ok` |
+| `GET /readyz` | 設定されたlistenerがすべて処理中 |準備ができたら`200 ok`、できていなければ`503` |
+
+- 認証なしで答えるのは、起動を待つ側がBearer tokenを持たないためです。答えは固定の短い本文だけで、識別子・版・設定の値・数を返しません。
+- `Ready`が渡されていない構成では、`/readyz`は常に`503`（fail closed）。`GET`と`HEAD`以外は`405`。
+- Control Planeの実装では、Worker listenerを設定したときは、それが処理を始めた後に`/readyz`が`200`になります。
+- この窓口は`spec/external/openapi.json`の契約には含めず、運用向けの面としています（openapiはClientの操作のみ）。
+
 成果物の経路（`/v1/artifacts/...`）は未実装で、`501 NOT_IMPLEMENTED`を返します。結果の取得も、State Storeの読み出し口が渡されていない構成では`501`のままです。
 
 ## 結果の取得
