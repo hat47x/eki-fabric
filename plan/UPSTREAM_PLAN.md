@@ -1306,3 +1306,10 @@ ADR-0033の未決のうち、一次資料の確認とCRUD対応表の作り方�
 
 - 共通の適合試験`RunTaskTransitionContract`に「completion-is-not-a-direct-transition」を足し、memoryとSQLiteの両方で拒否を固定した。
 - 既存のClient APIのhandler試験は、別セッションの変更で受理のcommitを通るfixtureに変わっていたため、そのまま通る。
+### 2026-11-02 active→verifyingの遷移の主体を2つに整理し、優先順位を決める（#381）
+
+ResultClaimを受理する経路が2つ（`claimaccept`と`resultacceptance`）あり、どちらもTaskを`verifying`へ進められる状態になっていた。ADR-0032に追記し、優先順位を決めた。
+
+- `claimaccept`（Claimの受理とAttemptの`verifying`を同じ流れで書く経路）を**第一の主体**とする。Claimが届いた時点でTaskを`verifying`にする。
+- `resultacceptance`（受理のcommitの直前）の遷移を**代替の主体**とする。Taskがまだ`active`のときだけ発火するため、前者を通ったClaimでは二重遷移にならない。`claimaccept`を通らない構成のための保険。
+- 実装の試験（`TestAnActiveTaskBecomesVerifyingBeforeItCompletes`、#400）は、代替の主体が発火する経路を固定している。
