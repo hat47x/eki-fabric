@@ -252,6 +252,16 @@ func newGate(t *testing.T, now time.Time) *Gate {
 	return gate
 }
 
+// newGateWith builds a gate that lets maxConcurrent Attempts run at once.
+func newGateWith(t *testing.T, now time.Time, maxConcurrent int) *Gate {
+	t.Helper()
+	gate, err := New(Config{Clock: &fakeClock{now: now}, MaxConcurrent: maxConcurrent})
+	if err != nil {
+		t.Fatalf("New() error = %v", err)
+	}
+	return gate
+}
+
 func TestCheckScalesTheGrantByTheGovernorCeiling(t *testing.T) {
 	admitted := admission(t, testNow, nil)
 	gate := newGate(t, testNow)
@@ -397,5 +407,112 @@ func TestCheckCapsTheDeadlineByTheWallTimeGrant(t *testing.T) {
 func TestNewRejectsMissingClock(t *testing.T) {
 	if _, err := New(Config{}); !errors.Is(err, ErrInvalidConfig) {
 		t.Fatalf("New() error = %v, want %v", err, ErrInvalidConfig)
+	}
+}
+
+func TestNewRejectsNegativeMaxConcurrent(t *testing.T) {
+	if _, err := New(Config{Clock: &fakeClock{now: testNow}, MaxConcurrent: -1}); !errors.Is(err, ErrInvalidConfig) {
+		t.Fatalf("New() error = %v, want %v", err, ErrInvalidConfig)
+	}
+}
+
+// The Governor's ceiling covers everything running on the endpoint together; a
+// new Attempt may take only what the running reservations leave (ADR-0031 §2.2).
+func TestCheckScalesTheGrantByWhatTheRunningAttemptsLeave(t *testing.T) {
+	admitted := admission(t, testNow, nil)
+	gate := newGateWith(t, testNow, 2)
+	// 8000 millis at 50% leaves 4000 for everything; 3000 is already reserved.
+	plan, err := gate.Check(Request{
+		Admission: admitted,
+		Governor:  governorDecision(healthyCeilings()),
+		Machine:   MachineProfile{CPUMillis: 8000, MemoryBytes: 8 << 30},
+		InUse:     Usage{Running: 1, CPUMillis: 3000, MemoryBytes: 3 << 30},
+	})
+	if err != nil {
+		t.Fatalf("Check() error = %v", err)
+	}
+	if got, want := plan.Limits().CPUMillis, uint64(1000); got != want {
+		t.Fatalf("CPU = %d, want %d (4000 ceiling - 3000 reserved)", got, want)
+	}
+	if got, want := plan.Limits().MemoryBytes, uint64(1<<30); got != want {
+		t.Fatalf("memory = %d, want %d", got, want)
+	}
+}
+
+// The same bytes that start on an idle endpoint are refused once the running
+// Attempts have taken the whole ceiling; the nonce is not spent because the
+// gate runs before the claim.
+func TestCheckRefusesAStartWhenTheRunningAttemptsFillTheCeiling(t *testing.T) {
+	admitted := admission(t, testNow, nil)
+	gate := newGateWith(t, testNow, 2)
+	_, err := gate.Check(Request{
+		Admission: admitted,
+		Governor:  governorDecision(healthyCeilings()),
+		Machine:   MachineProfile{CPUMillis: 8000, MemoryBytes: 8 << 30},
+		InUse:     Usage{Running: 1, CPUMillis: 5000, MemoryBytes: 5 << 30},
+	})
+	if !errors.Is(err, ErrNoCapacity) {
+		t.Fatalf("error = %v, want %v", err, ErrNoCapacity)
+	}
+}
+
+func TestCheckRefusesAStartWhenEverySlotIsInUse(t *testing.T) {
+	admitted := admission(t, testNow, nil)
+	gate := newGate(t, testNow)
+	if got, want := gate.MaxConcurrent(), uint32(1); got != want {
+		t.Fatalf("MaxConcurrent() = %d, want the reference default %d", got, want)
+	}
+	_, err := gate.Check(Request{
+		Admission: admitted,
+		Governor:  governorDecision(healthyCeilings()),
+		Machine:   MachineProfile{CPUMillis: 8000, MemoryBytes: 8 << 30},
+		InUse:     Usage{Running: 1},
+	})
+	if !errors.Is(err, ErrNoSlot) {
+		t.Fatalf("error = %v, want %v", err, ErrNoSlot)
+	}
+}
+
+func TestCheckAllowsTheConcurrencyTheConfigPermits(t *testing.T) {
+	admitted := admission(t, testNow, nil)
+	gate, err := New(Config{Clock: &fakeClock{now: testNow}, MaxConcurrent: 2})
+	if err != nil {
+		t.Fatalf("New() error = %v", err)
+	}
+	plan, err := gate.Check(Request{
+		Admission: admitted,
+		Governor:  governorDecision(healthyCeilings()),
+		Machine:   MachineProfile{CPUMillis: 8000, MemoryBytes: 8 << 30},
+		InUse:     Usage{Running: 1, CPUMillis: 1000, MemoryBytes: 1 << 30},
+	})
+	if err != nil {
+		t.Fatalf("Check() error = %v", err)
+	}
+	if got, want := plan.Limits().CPUMillis, uint64(3000); got != want {
+		t.Fatalf("CPU = %d, want %d (4000 ceiling - 1000 reserved)", got, want)
+	}
+}
+
+func TestCheckCapsGPUDevicesByWhatTheRunningAttemptsLeave(t *testing.T) {
+	admitted := admission(t, testNow, func(cfg *decisionpayload.WorkOrderConfig) {
+		cfg.Sandbox.GPU = &decisionpayload.GPULimit{DeviceCount: 2, MinimumVRAMBytes: 16 << 30}
+	})
+	gate := newGateWith(t, testNow, 2)
+	ceilings := healthyCeilings()
+	ceilings[governor.ResourceGPU] = 100
+	machine := MachineProfile{CPUMillis: 8000, MemoryBytes: 8 << 30, GPUDevices: 2}
+
+	plan, err := gate.Check(Request{Admission: admitted, Governor: governorDecision(ceilings), Machine: machine,
+		InUse: Usage{Running: 1, GPUDevices: 1}})
+	if err != nil {
+		t.Fatalf("Check() error = %v", err)
+	}
+	if plan.Sandbox().GPU == nil || plan.Sandbox().GPU.DeviceCount != 1 {
+		t.Fatalf("GPU = %+v, want 1 device (2 allowed - 1 in use)", plan.Sandbox().GPU)
+	}
+
+	if _, err := gate.Check(Request{Admission: admitted, Governor: governorDecision(ceilings), Machine: machine,
+		InUse: Usage{Running: 1, GPUDevices: 2}}); !errors.Is(err, ErrNoCapacity) {
+		t.Fatalf("error = %v, want %v when every GPU is reserved", err, ErrNoCapacity)
 	}
 }

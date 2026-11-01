@@ -29,12 +29,30 @@ var (
 	ErrNotAdmitted      = errors.New("the WorkOrder was not admitted")
 	ErrGovernorStopped  = errors.New("the Local Governor stops running work")
 	ErrNotAccepting     = errors.New("the Local Governor is not accepting new work")
-	ErrNoCapacity       = errors.New("the Local Governor allows no capacity for a required resource")
+	ErrNoCapacity       = errors.New("no capacity is left for a required resource")
+	ErrNoSlot           = errors.New("every execution slot is in use")
 	ErrMachineUnknown   = errors.New("the machine profile is missing a required capacity")
 	ErrAdmissionExpired = errors.New("the Admission has expired")
 )
 
 type Clock interface{ Now() time.Time }
+
+// Usage is what the Attempts already running on this endpoint occupy. The gate
+// judges the next start against what is left, so two Attempts cannot each take
+// the whole machine (ADR-0031 §2.2).
+//
+// Temporary disk and network are not sized here: this version of the gate only
+// asks whether the Governor allows them at all.
+type Usage struct {
+	// Running is how many Attempts are executing on this endpoint.
+	Running uint32
+	// CPUMillis, MemoryBytes, and GPUDevices are the limits the running Plans
+	// reserved, summed. A Plan's limit is the ceiling the Attempt may use, not
+	// the amount it has used so far (ADR-0031 §2.3).
+	CPUMillis   uint64
+	MemoryBytes uint64
+	GPUDevices  uint32
+}
 
 // MachineProfile is the local, measurable capacity of this endpoint. It is
 // detected by the agent, not received from the Control Plane.
@@ -46,23 +64,41 @@ type MachineProfile struct {
 
 type Config struct {
 	Clock Clock
+	// MaxConcurrent is how many Attempts may run at once. Zero means 1: the
+	// reference Agent runs one Attempt at a time, so running two is a choice an
+	// operator makes, not a default (ADR-0031 §2.1).
+	MaxConcurrent int
 }
 
 type Gate struct {
-	clock Clock
+	clock         Clock
+	maxConcurrent uint32
 }
 
 func New(cfg Config) (*Gate, error) {
 	if cfg.Clock == nil {
 		return nil, fmt.Errorf("%w: clock is required", ErrInvalidConfig)
 	}
-	return &Gate{clock: cfg.Clock}, nil
+	if cfg.MaxConcurrent < 0 {
+		return nil, fmt.Errorf("%w: MaxConcurrent must not be negative", ErrInvalidConfig)
+	}
+	maxConcurrent := uint32(cfg.MaxConcurrent)
+	if maxConcurrent == 0 {
+		maxConcurrent = 1
+	}
+	return &Gate{clock: cfg.Clock, maxConcurrent: maxConcurrent}, nil
 }
+
+// MaxConcurrent is how many Attempts this gate lets run at once.
+func (g *Gate) MaxConcurrent() uint32 { return g.maxConcurrent }
 
 type Request struct {
 	Admission workorderaccept.Admission
 	Governor  governor.Decision
 	Machine   MachineProfile
+	// InUse is what the Attempts already running here occupy. A caller that
+	// runs one Attempt at a time passes the zero value.
+	InUse Usage
 }
 
 // Plan is the result of one start check. The effective limits are already the
@@ -127,28 +163,36 @@ func (g *Gate) Check(req Request) (Plan, error) {
 	if err := requireCapacity(req.Governor, order, req.Admission.Sandbox()); err != nil {
 		return Plan{}, err
 	}
+	// The slot limit is checked before any resource arithmetic: a full endpoint
+	// refuses the start whatever the numbers say (ADR-0031 §2.2).
+	if req.InUse.Running >= g.maxConcurrent {
+		return Plan{}, ErrNoSlot
+	}
 
 	limits := order
-	cpu, err := scale(req.Machine.CPUMillis, req.Governor.Ceilings[governor.ResourceCPU], order.CPUMillis)
+	cpu, err := free(req.Machine.CPUMillis, req.Governor.Ceilings[governor.ResourceCPU], req.InUse.CPUMillis, order.CPUMillis, "cpu")
 	if err != nil {
-		return Plan{}, fmt.Errorf("%w: %v", ErrMachineUnknown, err)
+		return Plan{}, err
 	}
 	limits.CPUMillis = cpu
-	memory, err := scale(req.Machine.MemoryBytes, req.Governor.Ceilings[governor.ResourceMemory], order.MemoryBytes)
+	memory, err := free(req.Machine.MemoryBytes, req.Governor.Ceilings[governor.ResourceMemory], req.InUse.MemoryBytes, order.MemoryBytes, "memory")
 	if err != nil {
-		return Plan{}, fmt.Errorf("%w: %v", ErrMachineUnknown, err)
+		return Plan{}, err
 	}
 	limits.MemoryBytes = memory
 
 	sandbox := req.Admission.Sandbox()
 	if sandbox.GPU != nil {
 		allowed := uint32(uint64(req.Machine.GPUDevices) * uint64(req.Governor.Ceilings[governor.ResourceGPU]) / 100)
-		if allowed == 0 {
+		// The running Attempts already hold some of the allowed devices; the
+		// new one may take only what is left (ADR-0031 §2.2).
+		if req.InUse.GPUDevices >= allowed {
 			return Plan{}, fmt.Errorf("%w: gpu", ErrNoCapacity)
 		}
-		if allowed < sandbox.GPU.DeviceCount {
+		available := allowed - req.InUse.GPUDevices
+		if available < sandbox.GPU.DeviceCount {
 			sandbox.GPU = &decisionpayload.GPULimit{
-				DeviceCount:      allowed,
+				DeviceCount:      available,
 				MinimumVRAMBytes: sandbox.GPU.MinimumVRAMBytes,
 			}
 		}
@@ -194,21 +238,25 @@ func requireCapacity(decision governor.Decision, limits decisionpayload.Resource
 	return nil
 }
 
-// scale returns min(granted, capacity*percent/100). A required capacity that the
-// machine cannot report fails closed instead of being treated as zero or
-// unlimited.
-func scale(capacity uint64, percent int, granted uint64) (uint64, error) {
+// free returns min(granted, capacity*percent/100 - inUse). The Governor's
+// ceiling applies to everything running on the endpoint together, so what a new
+// Attempt may take is what is left after the running reservations
+// (ADR-0031 §2.2). A required capacity that the machine cannot report fails
+// closed instead of being treated as zero or unlimited.
+func free(capacity uint64, percent int, inUse, granted uint64, resource string) (uint64, error) {
 	if capacity == 0 {
-		return 0, errors.New("capacity is not reported")
+		return 0, fmt.Errorf("%w: capacity is not reported", ErrMachineUnknown)
 	}
 	if percent < 0 || percent > 100 {
-		return 0, fmt.Errorf("ceiling %d is outside 0..100", percent)
+		return 0, fmt.Errorf("%w: ceiling %d is outside 0..100", ErrMachineUnknown, percent)
 	}
-	allowed := capacity / 100 * uint64(percent)
-	remainder := capacity % 100 * uint64(percent) / 100
-	allowed += remainder
-	if allowed > granted {
+	total := capacity/100*uint64(percent) + capacity%100*uint64(percent)/100
+	if inUse >= total {
+		return 0, fmt.Errorf("%w: %s", ErrNoCapacity, resource)
+	}
+	available := total - inUse
+	if available > granted {
 		return granted, nil
 	}
-	return allowed, nil
+	return available, nil
 }

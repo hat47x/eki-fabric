@@ -9,11 +9,11 @@ Control Planeが配る署名済みのLeaseとWorkOrderを、Workerが自分の�
 3. `workorderverify`と`workorderaccept`: このWorker宛てで、WOR-1の鍵の署名があり、そのLease（Decision IDとpayload digest）に結び付き、Workerが自分で承認したExecutor Approvalを名指し、Taskのfenceが受理済みの最大より古くなく、一回限りのnonceをWorker自身の耐久的な重複検査に登録できること（#296 項目3）。
 4. `startgate`: Local Governorと機械の容量が開始を許し、実効の上限が、付与された上限とローカルの天井の小さい方になること。
 
-この版は、割当を1件ずつ順に処理します（`Handler.Start`は同期）。実行slotと、実行中の予約を合計して判定する形は[ADR-0031](../../../plan/adr/0031-local-execution-slots-and-resource-reservation.md)で決めており（#354）、実装はこれからです。それまでは、同時に2件の割当が来ても、それぞれが機械の全容量を上限に判定されます。
+この版は、割当を1件ずつ順に処理します（`Handler.Start`は同期）。開始の関門（`startgate`）は、実行中の予約の合計と実行slotで判定する形に対応しましたが、Agentはまだ予約とslotを数えていません（[ADR-0031](../../../plan/adr/0031-local-execution-slots-and-resource-reservation.md)、#354）。それまでは、同時に2件の割当が来ても、それぞれが機械の全容量を上限に判定されます。
 
 荷札のIDは参考情報です。署名済みのLeaseと食い違えば拒否します。
 
-結果は`Outcome`で返ります。`ready`（`Handler`へ渡した）、`replayed`（nonceは使用済み。同じbytesが再配送されたときの通常の答え）、`deferred`（Local Governorが新規を受け付けない、または開始の関門が容量や期限で拒否した。nonceは消費していないので、Control Planeは同じTaskに新しいnonceで再発行できる）、`rejected`（理由付き）です。nonceとfenceは、署名・結び付き・承認・開始関門の確認がすべて通ってから記録します。改ざんや食い違いのbytesはどちらも記録しません。開始関門の拒否も記録しません（#296 項目2の修正）。
+結果は`Outcome`で返ります。`ready`（`Handler`へ渡した）、`replayed`（nonceは使用済み。同じbytesが再配送されたときの通常の答え）、`deferred`（Local Governorが新規を受け付けない、開始の関門が容量・実行slot・期限で開始を許さない。nonceは消費していないので、Control Planeは同じTaskに新しいnonceで再発行でき、容量が戻れば同じbytesでも始まる）、`rejected`（理由付き）です。容量とslotの不足は、割当の性質ではなく端末の今の状態なので`deferred`にします（ADR-0031 §2.4）。nonceとfenceは、署名・結び付き・承認・開始関門の確認がすべて通ってから記録します。改ざんや食い違いのbytesはどちらも記録しません。開始関門の拒否も記録しません（#296 項目2の修正）。
 
 再起動をまたぐ重複排除は二層です。同じAttemptの再配送はnonceの記録が`replayed`に落とし、同じTaskの古いAttempt（fenceが古い）はfenceの記録が`work_order_superseded`で拒否します。メモリ上の処理済み記録はAttempt単位で再起動で消えますが、この二つの記録は`replayguard`に残ります。拒否された割当は処理済みにしないので、期限が切れるまで毎回、再判定します。
 
