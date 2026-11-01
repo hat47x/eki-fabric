@@ -8,7 +8,7 @@ EKI Fabricは初期開発中です。変更は小さく、Requirement・Architec
 2. 変更の目的、境界、未検証事項をIssueまたはPR本文へ書く。
 3. 最新の`main`から短命ブランチを作る。
 4. 変更に対応するtestを追加・更新する。
-5. CIを確認してからPRを統合する。
+5. `scripts/verify.sh`（Windowsは`scripts/verify.ps1`）を実行し、`VERIFY: PASS`の出力をPR本文へ貼ってから、PRを統合する。このリポジトリにはCI workflowが無い（#244）。
 
 ## 配置
 

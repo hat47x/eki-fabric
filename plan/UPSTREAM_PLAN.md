@@ -1248,3 +1248,18 @@ ADR-0032の決定のうち、`admitted`→`ready`と`ready`→`active`を実装�
 - `active`→`verifying`・`active`→`ready`の配線（結果受理・回復の経路）。
 - 配置ループを持たない構成での`admitted`→`ready`の扱い（ADR-0032 §5）。
 - 複数tickでの公平性（`admitted`の一覧が上限で切られる場合、古い順に進めるか）。
+
+### 2026-11-01 CIを持たないことを決め、文書を実際の運用に合わせる（#244）
+
+`CONTRIBUTING.md`は「CIを確認してからPRを統合する」と書き、`docs/development.md`はGitHub Actionsの失敗に触れていたが、このリポジトリにworkflowは一度も入っていない。検証は`scripts/verify.sh`・`verify.ps1`のローカル実行で、出力をPR本文へ貼る運用だった。
+
+- CIのworkflowは置かないと決めた。プロジェクト側のGitHub Actionsの利用残量の制約があり、常時走らせると検証そのものが不安定になる。代わりに、ローカルの`verify`の出力をEvidenceとする運用を、文書の正本にした。
+- `CONTRIBUTING.md`の手順5を「`scripts/verify.sh`（Windowsは`verify.ps1`）を実行し、`VERIFY: PASS`の出力をPR本文へ貼ってから統合する」に直し、workflowが無いことを明記した。
+- `docs/development.md`の「ローカルでの検証とCI」を「ローカルでの検証（CIは未導入）」に改め、機械的な検証が統合の前後に走らないこと、CIの採否は#244で扱うことを書いた。
+- `-race`の運用（#290）と、Spikeをゲートに含める件（#285）は、CIの有無と独立に、ローカルのスクリプトで扱う。
+
+未決:
+
+- 利用残量の制約下で常時走らせるjobを選ぶか（`--quick`相当に限るなど）。CIを置く判断をする場合に決める。
+- merge後の自動検査が無いことのリスク（rebase-mergeでの内容欠落の事故）を、レビューの手順でどう下げるか。
+- Go 1.27.0の入手方法（`setup-go`の対応状況）。
