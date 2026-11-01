@@ -158,6 +158,30 @@ External Client Planeは、`spec/external/openapi.json`を基準にします。
 - State Storeのアダプタに、retryやTaskの失敗についての意味の判断を持たせる
 - `pkg/`にCoreの型を公開して、互換性を保つべき境界を増やす
 
+## Windowsのファイアウォールの警告
+
+`conformance/process` などは `eki-control.exe` と `eki-agent.exe` を起動し、`127.0.0.1` で待ち受けます。Windowsで初めての実行ファイルが待ち受けると、Windowsファイアウォールの警告が出ます。**プログラムのパスを指定した許可**はできますが、`go test` は実行ファイルを毎回 `%TEMP%\go-build...` に作るため、パスが変わるたびに許可が外れ、警告が繰り返し出ます。
+
+対処の順に:
+
+1. **WSLで実行する（推奨）**。Windowsファイアウォールを経由しません。`scripts/verify.sh` をWSLで実行します。
+2. **固定のパスへbuildしてから許可する**。管理者のPowerShellで、buildした実行ファイルのパスに対して受信を許可します（送信は既定で許可されています）。
+
+   ~~~powershell
+   New-NetFirewallRule -DisplayName "EKI control (dev)" -Direction Inbound `
+     -Program "D:\GIT\hat47x\eki-fabric\bin\eki-control.exe" -Action Allow
+   ~~~
+
+   許可の確認と削除:
+
+   ~~~powershell
+   Get-NetFirewallRule -DisplayName "EKI control*" | Get-NetFirewallApplicationFilter | Select-Object Program
+   Remove-NetFirewallRule -DisplayName "EKI control (dev)"
+   ~~~
+
+3. **一時ディレクトリ全体を許可しない**。buildのたびに別のパスになるため、許可の範囲が広がり、意図しない実行ファイルまで通します。
+
+`127.0.0.1` だけにbindしていれば通常は警告が出ません。繰り返し出る場合は、待ち受けが全interfaceになっていないか、実行ファイルのパスが毎回変わっていないかを確認します。
 ## ローカルでの検証（CIは未導入）
 
 このリポジトリには、CIのworkflowがありません。統合の前後に機械的な検証は走らないため、**検証はローカルで実行し、その出力をEvidenceにする**運用です。CIを置くかどうかは#244で扱います。
