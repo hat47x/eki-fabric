@@ -48,6 +48,9 @@ const (
 // TaskSource is the read side of the loop over Tasks.
 type TaskSource interface {
 	ListTasksByPhase(ctx context.Context, phase taskstate.TaskPhase, limit int) ([]taskstate.TaskRecord, error)
+	// CompareAndSwapTask promotes a Task to the next phase. The store checks
+	// the write against taskstate.ValidateTransition (ADR-0032).
+	CompareAndSwapTask(ctx context.Context, id ids.TaskID, expectedRevision uint64, next taskstate.TaskRecord) error
 }
 
 // AttemptSource lists the Attempts of one Task and moves them forward.
@@ -133,6 +136,8 @@ func New(cfg Config) (*Loop, error) {
 
 // TickResult reports what one tick did.
 type TickResult struct {
+	// Promoted is how many admitted Tasks the tick moved to ready (ADR-0032).
+	Promoted int
 	// Considered is how many Ready Tasks the tick looked at.
 	Considered int
 	// Dispatched is how many Tasks reached an EMITTED WorkOrder.
@@ -157,6 +162,11 @@ func (l *Loop) Tick(ctx context.Context) (TickResult, error) {
 	if err := ctx.Err(); err != nil {
 		return result, err
 	}
+	// Admitted Tasks are promoted first, so a Task admitted since the last tick
+	// can be dispatched by this one (ADR-0032 §2.2).
+	if err := l.promoteAdmitted(ctx, &result); err != nil {
+		return result, err
+	}
 	tasks, err := l.cfg.Tasks.ListTasksByPhase(ctx, taskstate.TaskPhaseReady, l.limit)
 	if err != nil {
 		return result, fmt.Errorf("list ready tasks: %w", err)
@@ -173,6 +183,60 @@ func (l *Loop) Tick(ctx context.Context) (TickResult, error) {
 		result.Dispatched++
 	}
 	return result, nil
+}
+
+// promoteAdmitted moves admitted Tasks to ready, so the placement loop has
+// work to dispatch (ADR-0032 §2.2). Admission accepts a Task but does not
+// decide that it may start now: policy currentness, budget and capacity are
+// judged here, and a cancellation that arrived after admission is respected.
+func (l *Loop) promoteAdmitted(ctx context.Context, result *TickResult) error {
+	tasks, err := l.cfg.Tasks.ListTasksByPhase(ctx, taskstate.TaskPhaseAdmitted, l.limit)
+	if err != nil {
+		return fmt.Errorf("list admitted tasks: %w", err)
+	}
+	if len(tasks) == 0 {
+		return nil
+	}
+	policy, err := l.cfg.Policies.LoadCurrentPolicy(ctx)
+	if err != nil {
+		// No policy means no Task may be placed: leave them admitted rather
+		// than failing the tick, so the loop keeps serving the other steps.
+		for _, task := range tasks {
+			result.Deferred = append(result.Deferred, DeferredTask{TaskID: task.ID, Reason: "policy is not available"})
+		}
+		return nil
+	}
+	if policy.Status != policystate.StatusActive {
+		for _, task := range tasks {
+			result.Deferred = append(result.Deferred, DeferredTask{
+				TaskID: task.ID,
+				Reason: fmt.Sprintf("policy %s is %s, not active", policy.Revision, policy.Status),
+			})
+		}
+		return nil
+	}
+	for _, task := range tasks {
+		if err := ctx.Err(); err != nil {
+			return err
+		}
+		if task.CancellationRequested {
+			// A Task whose principal asked to cancel it must not start.
+			result.Deferred = append(result.Deferred, DeferredTask{TaskID: task.ID, Reason: "cancellation was requested"})
+			continue
+		}
+		next := task
+		next.Phase = taskstate.TaskPhaseReady
+		next.Revision = task.Revision + 1
+		next.UpdatedAt = l.now().UTC()
+		if err := l.cfg.Tasks.CompareAndSwapTask(ctx, task.ID, task.Revision, next); err != nil {
+			// A revision conflict means another writer got there first; the
+			// next tick reads the Task again and decides from there.
+			result.Deferred = append(result.Deferred, DeferredTask{TaskID: task.ID, Reason: err.Error()})
+			continue
+		}
+		result.Promoted++
+	}
+	return nil
 }
 
 func (l *Loop) dispatchOne(ctx context.Context, task taskstate.TaskRecord) error {
@@ -212,6 +276,12 @@ func (l *Loop) dispatchOne(ctx context.Context, task taskstate.TaskRecord) error
 			return err
 		}
 		attempt = &created
+		// The Task has an Attempt now, which is what active means (ADR-0032
+		// §2.3). If this write fails the Attempt exists and the Task is still
+		// ready; the next tick finds the placing Attempt and continues.
+		if err := l.markActive(ctx, task); err != nil {
+			return err
+		}
 	} else if attempt.WorkerIdentity != "" && attempt.WorkerIdentity != worker {
 		// Re-planning keeps the Worker an Attempt is bound to.
 		worker = attempt.WorkerIdentity
@@ -233,6 +303,23 @@ func (l *Loop) dispatchOne(ctx context.Context, task taskstate.TaskRecord) error
 	}
 	if err := l.assignAttempt(ctx, *attempt, worker, reserved.LeaseID); err != nil {
 		return err
+	}
+	return nil
+}
+
+// markActive records that the Task now has an Attempt, which is what the
+// active phase means (ADR-0032 §2.3). The write is a compare-and-swap so a
+// Task another writer moved (a cancellation, for example) is not overwritten.
+func (l *Loop) markActive(ctx context.Context, task taskstate.TaskRecord) error {
+	if task.Phase != taskstate.TaskPhaseReady {
+		return nil
+	}
+	next := task
+	next.Phase = taskstate.TaskPhaseActive
+	next.Revision = task.Revision + 1
+	next.UpdatedAt = l.now().UTC()
+	if err := l.cfg.Tasks.CompareAndSwapTask(ctx, task.ID, task.Revision, next); err != nil {
+		return fmt.Errorf("mark task active: %w", err)
 	}
 	return nil
 }
