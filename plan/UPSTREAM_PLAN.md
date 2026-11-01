@@ -1232,3 +1232,19 @@ ADR-0032で、遷移ごとに主体を1つ決めた（状態は提案中）。
 - `held`・`reconciling`への遷移の主体（#242、ADR-0015）。
 
 実装は、配置ループへの`admitted`→`ready`・`ready`→`active`のCAS追加として#267で続ける。
+
+### 2026-11-01 配置ループが`admitted`のTaskを`ready`へ進め、最初のAttemptで`active`にする（#267）
+
+ADR-0032の決定のうち、`admitted`→`ready`と`ready`→`active`を実装した。これまでは、受理したTaskを`ready`にする経路がどこにも無く、Attemptの作成もLeaseの予約も`ready`以上を要求するため、実装のどの経路を通ってもTaskは`queued`のまま動かなかった。
+
+- 配置ループのtickは、まず`admitted`のTaskを`ready`へ進める。条件は、取消の意図が無いこと、policyが読めて`active`であること。policyが読めない・`active`でない場合は、進めずに理由付きでdeferする。書き込みはCASで、競合したら次のtickで読み直す。
+- 取消の意図があるTaskは`ready`にしない（開始すると取消を無効にするため）。
+- 最初のAttemptを作った直後に、Taskを`active`にする（ADR-0032 §2.3）。CASなので、取消などで先に動いたTaskを上書きしない。この書き込みに失敗してもAttemptは残るので、次のtickが`PLACING`のAttemptを見つけて続きを進める。
+- `TaskSource`に`CompareAndSwapTask`を足し、`TickResult.Promoted`で進めた件数を返す。
+- 試験: `admitted`のTaskがtickで`ready`になること、取消の意図があるTaskは`admitted`のままであること、最初のAttemptで`active`になること（`internal/control/dispatch`）。
+
+未決:
+
+- `active`→`verifying`・`active`→`ready`の配線（結果受理・回復の経路）。
+- 配置ループを持たない構成での`admitted`→`ready`の扱い（ADR-0032 §5）。
+- 複数tickでの公平性（`admitted`の一覧が上限で切られる場合、古い順に進めるか）。

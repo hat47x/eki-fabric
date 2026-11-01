@@ -129,6 +129,93 @@ func newLoop(t *testing.T, store *memory.Store, stub *stubIssue, mutate func(*Co
 	return loop
 }
 
+// An admitted Task has been accepted but not yet found placeable; the tick is
+// what makes it ready (ADR-0032 §2.2). Without a usable Worker the Task is
+// promoted and then deferred for placement, which is exactly the intended
+// split between admission and placement.
+func TestTickPromotesAnAdmittedTaskToReady(t *testing.T) {
+	store := memory.New()
+	if err := store.CompareAndSwapPolicy(context.Background(), 0, mustPolicy(t)); err != nil {
+		t.Fatal(err)
+	}
+	taskID := seedTask(t, store, 1, taskstate.TaskPhaseAdmitted)
+	loop := newLoop(t, store, &stubIssue{}, nil)
+
+	result, err := loop.Tick(context.Background())
+	if err != nil {
+		t.Fatalf("Tick() error = %v", err)
+	}
+	if result.Promoted != 1 {
+		t.Fatalf("Promoted = %d, want 1", result.Promoted)
+	}
+	task, err := store.LoadTask(context.Background(), taskID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if task.Phase != taskstate.TaskPhaseReady {
+		t.Fatalf("phase = %s, want ready", task.Phase)
+	}
+}
+
+// A Task whose principal asked to cancel it must not be promoted: starting it
+// would defeat the cancellation.
+func TestTickDoesNotPromoteATaskWhoseCancellationWasRequested(t *testing.T) {
+	store := memory.New()
+	if err := store.CompareAndSwapPolicy(context.Background(), 0, mustPolicy(t)); err != nil {
+		t.Fatal(err)
+	}
+	taskID := seedTask(t, store, 1, taskstate.TaskPhaseAdmitted)
+	task, err := store.LoadTask(context.Background(), taskID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	requested := task
+	requested.CancellationRequested = true
+	requested.Revision++
+	requested.UpdatedAt = task.UpdatedAt.Add(time.Second)
+	if err := store.CompareAndSwapTask(context.Background(), taskID, task.Revision, requested); err != nil {
+		t.Fatal(err)
+	}
+	loop := newLoop(t, store, &stubIssue{}, nil)
+
+	result, err := loop.Tick(context.Background())
+	if err != nil {
+		t.Fatalf("Tick() error = %v", err)
+	}
+	if result.Promoted != 0 {
+		t.Fatalf("Promoted = %d, want 0", result.Promoted)
+	}
+	after, err := store.LoadTask(context.Background(), taskID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if after.Phase != taskstate.TaskPhaseAdmitted {
+		t.Fatalf("phase = %s, want it to stay admitted", after.Phase)
+	}
+}
+
+// The Task becomes active with its first Attempt (ADR-0032 §2.3), not later.
+func TestTickMarksTheTaskActiveWhenTheAttemptIsCreated(t *testing.T) {
+	store := memory.New()
+	if err := store.CompareAndSwapPolicy(context.Background(), 0, mustPolicy(t)); err != nil {
+		t.Fatal(err)
+	}
+	seedWorker(t, store, 1)
+	taskID := seedTask(t, store, 1, taskstate.TaskPhaseReady)
+	loop := newLoop(t, store, &stubIssue{}, nil)
+
+	if _, err := loop.Tick(context.Background()); err != nil {
+		t.Fatalf("Tick() error = %v", err)
+	}
+	task, err := store.LoadTask(context.Background(), taskID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if task.Phase != taskstate.TaskPhaseActive {
+		t.Fatalf("phase = %s, want active", task.Phase)
+	}
+}
+
 func TestTickMovesAReadyTaskToAnAssignedAttempt(t *testing.T) {
 	store := memory.New()
 	if err := store.CompareAndSwapPolicy(context.Background(), 0, mustPolicy(t)); err != nil {
