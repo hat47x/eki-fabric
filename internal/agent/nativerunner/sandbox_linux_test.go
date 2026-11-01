@@ -66,3 +66,19 @@ func TestRunWithBwrapSandboxHasNoNetworkInterface(t *testing.T) {
 		t.Fatalf("network interface leaked into the sandbox: exit=%d", result.ExitCode)
 	}
 }
+
+func TestRunWithBwrapSandboxUsesPerRunWorkingDirectory(t *testing.T) {
+	spec := bwrapSpec(t)
+	spec.Limits.TemporaryDiskBytes = 1 << 20
+	runner := Runner{Command: "/bin/sh", Args: []string{"-c", "echo data > out.txt && cat out.txt"}}
+	result, err := runner.Run(context.Background(), spec)
+	if err != nil {
+		t.Fatalf("bwrap run: %v", err)
+	}
+	if result.ExitCode != 0 {
+		t.Fatalf("write inside the bound working directory failed: exit=%d", result.ExitCode)
+	}
+	if result.OutputDigest.IsZero() {
+		t.Fatal("bwrap run produced no output digest")
+	}
+}
