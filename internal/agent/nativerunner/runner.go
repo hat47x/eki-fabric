@@ -55,7 +55,7 @@ func (r Runner) Run(ctx context.Context, spec executor.Spec) (executor.Result, e
 			}
 		}
 	}
-	if spec.Sandbox.Profile != SandboxProfile {
+	if !supportedSandboxProfile(spec.Sandbox.Profile) {
 		return executor.Result{}, fmt.Errorf("native runner does not implement sandbox profile %q", spec.Sandbox.Profile)
 	}
 	if spec.Sandbox.NetworkProfile != "" && spec.Sandbox.NetworkProfile != "none" {
@@ -112,6 +112,15 @@ func (r Runner) Run(ctx context.Context, spec executor.Spec) (executor.Result, e
 	result := executor.Result{}
 	if err = cmd.Start(); err != nil {
 		return result, err
+	}
+	cleanupSandbox, err := applySandbox(cmd, spec)
+	if err != nil {
+		_ = cancelProcess(cmd)
+		_ = cmd.Wait()
+		return result, err
+	}
+	if cleanupSandbox != nil {
+		defer cleanupSandbox()
 	}
 	var watch *resourceWatch
 	if spec.Limits.MemoryBytes != 0 || spec.Limits.CPUMillis != 0 || spec.Limits.TemporaryDiskBytes != 0 {
