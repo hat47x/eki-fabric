@@ -103,3 +103,7 @@ func applySandbox(cmd *exec.Cmd, spec executor.Spec) (func(), error) {
 	}
 	return closeJob, nil
 }
+
+func wrapSandboxCommand(_ executor.Spec, executable string, args []string, _ string) (string, []string, error) {
+	return executable, args, nil
+}

@@ -96,7 +96,11 @@ func (r Runner) Run(ctx context.Context, spec executor.Spec) (executor.Result, e
 		}
 		defer os.RemoveAll(tempDir)
 	}
-	cmd := exec.CommandContext(runCtx, executable, r.Args...)
+	executable, execArgs, err := wrapSandboxCommand(spec, executable, r.Args, tempDir)
+	if err != nil {
+		return executor.Result{}, err
+	}
+	cmd := exec.CommandContext(runCtx, executable, execArgs...)
 	prepareProcess(cmd)
 	cmd.Cancel = func() error { return cancelProcess(cmd) }
 	// An empty non-nil Env means the child receives no inherited environment.
