@@ -61,6 +61,12 @@ var binDir string
 func TestMain(m *testing.M) { os.Exit(testMain(m)) }
 
 func testMain(m *testing.M) int {
+	if dir := os.Getenv("EKI_PROCESS_BIN_DIR"); dir != "" {
+		// Cross-compiled binaries let the suite run where Go is unavailable,
+		// for example a Linux test binary executed in WSL.
+		binDir = dir
+		return m.Run()
+	}
 	dir, err := os.MkdirTemp("", "eki-process-bin-")
 	if err != nil {
 		fmt.Fprintln(os.Stderr, err)
