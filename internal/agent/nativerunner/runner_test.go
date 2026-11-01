@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"os/exec"
 	"testing"
@@ -77,6 +78,22 @@ func TestHelperProcess(t *testing.T) {
 			}
 		}
 		fmt.Fprint(os.Stdout, sink%10)
+	case "childburn":
+		// Spawn a child that burns CPU while this process idles (#351). A
+		// watch that only samples the root never sees the usage; a watch
+		// that sums the tree does. The bound keeps a broken watch from
+		// running forever.
+		cmd := exec.Command(os.Args[0], "-test.run=TestHelperProcess", "--", "burn")
+		cmd.Stdout = io.Discard
+		cmd.Stderr = io.Discard
+		if err := cmd.Start(); err != nil {
+			os.Exit(2)
+		}
+		until := time.Now().Add(10 * time.Second)
+		for time.Now().Before(until) {
+			time.Sleep(50 * time.Millisecond)
+		}
+		_ = cmd.Process.Kill()
 	}
 	os.Exit(0)
 }

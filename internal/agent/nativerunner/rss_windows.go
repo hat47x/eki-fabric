@@ -1,5 +1,3 @@
-//go:build windows
-
 package nativerunner
 
 import (
@@ -7,75 +5,111 @@ import (
 	"unsafe"
 )
 
-var (
-	modKernel32              = syscall.NewLazyDLL("kernel32.dll")
-	procOpenProcess          = modKernel32.NewProc("OpenProcess")
-	procCloseHandle          = modKernel32.NewProc("CloseHandle")
-	procGetProcessTimes      = modKernel32.NewProc("GetProcessTimes")
-	modPsapi                 = syscall.NewLazyDLL("psapi.dll")
-	procGetProcessMemoryInfo = modPsapi.NewProc("GetProcessMemoryInfo")
-	processQueryLimitedInfo  = uint32(0x1000)
-)
+// descendantPIDs walks the process tree from the root PID using the Windows
+// tool help snapshot (#351). The runner's root process (cmd, a shell, a build
+// tool) spends most of its resources in children, so summing the tree is what
+// makes the watch's numbers match what the machine actually spends.
+//
+// A grandchild spawned after a snapshot is missed until the next snapshot;
+// the 20ms loop resnapshots every tick, and a short-lived grandchild's usage
+// is bounded by the same limits being enforced on its parents.
+func descendantPIDs(root int) []int {
+	snapshot, _, _ := procCreateToolhelp32Snapshot.Call(uintptr(toolhelpSnapshotProcess), 0)
+	if snapshot == 0 || snapshot == uintptr(syscall.InvalidHandle) {
+		return nil
+	}
+	defer procCloseHandle.Call(snapshot)
 
-type filetime struct {
-	LowDateTime  uint32
-	HighDateTime uint32
+	type processEntry struct {
+		Size            uint32
+		Usage           uint32
+		ProcessID       uint32
+		DefaultHeapID   uintptr
+		ModuleID        uint32
+		Threads         uint32
+		ParentProcessID uint32
+		PriClassBase    int32
+		Flags           uint32
+		ExeFile         [260]uint16
+	}
+	entry := processEntry{Size: uint32(unsafe.Sizeof(processEntry{}))}
+	parent := map[uint32]uint32{}
+	ok, _, _ := procProcess32First.Call(snapshot, uintptr(unsafe.Pointer(&entry)))
+	for ok != 0 {
+		parent[entry.ProcessID] = entry.ParentProcessID
+		entry = processEntry{Size: uint32(unsafe.Sizeof(processEntry{}))}
+		ok, _, _ = procProcess32Next.Call(snapshot, uintptr(unsafe.Pointer(&entry)))
+	}
+	children := map[uint32][]uint32{}
+	for pid, pp := range parent {
+		children[pp] = append(children[pp], pid)
+	}
+	out := make([]int, 0, 4)
+	frontier := append([]uint32(nil), children[uint32(root)]...)
+	seen := map[uint32]bool{uint32(root): true}
+	for len(frontier) > 0 {
+		pid := frontier[0]
+		frontier = frontier[1:]
+		if seen[pid] {
+			continue
+		}
+		seen[pid] = true
+		out = append(out, int(pid))
+		frontier = append(frontier, children[pid]...)
+	}
+	return out
 }
 
-func (f filetime) ticks100ns() uint64 {
-	return uint64(f.HighDateTime)<<32 | uint64(f.LowDateTime)
-}
-
-type processMemoryCounters struct {
-	CB                      uint32
-	PageFaultCount          uint32
-	PeakWorkingSetSize      uintptr
-	WorkingSetSize          uintptr
-	QuotaPeakPagedPoolUsage uintptr
-	QuotaPagedPoolUsage     uintptr
-	QuotaPeakNonPagedPool   uintptr
-	QuotaNonPagedPoolUsage  uintptr
-	PagefileUsage           uintptr
-	PeakPagefileUsage       uintptr
-}
-
-func openProcess(pid int) (uintptr, bool) {
-	handle, _, _ := procOpenProcess.Call(uintptr(processQueryLimitedInfo), 0, uintptr(uint32(pid)))
-	return handle, handle != 0
-}
-
-// sampleRSS asks Windows for the current working set of the process.
+// sampleRSS sums the working set of the root process and every descendant in
+// the snapshot (#351). A child that exits between enumeration and query is
+// skipped (its usage is gone); a child that spawns after the snapshot waits
+// for the next tick.
 func sampleRSS(pid int) (uint64, bool) {
-	handle, ok := openProcess(pid)
-	if !ok {
-		return 0, false
+	pids := append([]int{pid}, descendantPIDs(pid)...)
+	var total uint64
+	found := false
+	for _, p := range pids {
+		handle, ok := openProcess(p)
+		if !ok {
+			continue
+		}
+		counters := processMemoryCounters{CB: uint32(unsafe.Sizeof(processMemoryCounters{}))}
+		okProc, _, _ := procGetProcessMemoryInfo.Call(handle, uintptr(unsafe.Pointer(&counters)), uintptr(counters.CB))
+		procCloseHandle.Call(handle)
+		if okProc == 0 {
+			continue
+		}
+		total += uint64(counters.WorkingSetSize)
+		found = true
 	}
-	defer procCloseHandle.Call(handle)
-	counters := processMemoryCounters{CB: uint32(unsafe.Sizeof(processMemoryCounters{}))}
-	okProc, _, _ := procGetProcessMemoryInfo.Call(handle, uintptr(unsafe.Pointer(&counters)), uintptr(counters.CB))
-	if okProc == 0 {
-		return 0, false
-	}
-	return uint64(counters.WorkingSetSize), true
+	return total, found
 }
 
-// sampleCPUMillis reports the cumulative user and kernel CPU time of the process.
+// sampleCPUMillis sums the cumulative user and kernel CPU time of the root
+// process and every descendant (#351).
 func sampleCPUMillis(pid int) (uint64, bool) {
-	handle, ok := openProcess(pid)
-	if !ok {
-		return 0, false
+	pids := append([]int{pid}, descendantPIDs(pid)...)
+	var total uint64
+	found := false
+	for _, p := range pids {
+		handle, ok := openProcess(p)
+		if !ok {
+			continue
+		}
+		var creation, exit, kernel, user filetime
+		okProc, _, _ := procGetProcessTimes.Call(
+			handle,
+			uintptr(unsafe.Pointer(&creation)),
+			uintptr(unsafe.Pointer(&exit)),
+			uintptr(unsafe.Pointer(&kernel)),
+			uintptr(unsafe.Pointer(&user)),
+		)
+		procCloseHandle.Call(handle)
+		if okProc == 0 {
+			continue
+		}
+		total += (kernel.ticks100ns() + user.ticks100ns()) / 10000
+		found = true
 	}
-	defer procCloseHandle.Call(handle)
-	var creation, exit, kernel, user filetime
-	okProc, _, _ := procGetProcessTimes.Call(
-		handle,
-		uintptr(unsafe.Pointer(&creation)),
-		uintptr(unsafe.Pointer(&exit)),
-		uintptr(unsafe.Pointer(&kernel)),
-		uintptr(unsafe.Pointer(&user)),
-	)
-	if okProc == 0 {
-		return 0, false
-	}
-	return (kernel.ticks100ns() + user.ticks100ns()) / 10000, true
+	return total, found
 }
