@@ -9,6 +9,7 @@ import (
 	"net"
 	"net/http"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/hat47x/eki-fabric/internal/adapters/reference/statestore/sqlite"
@@ -35,7 +36,15 @@ type Server struct {
 	workerListener net.Listener
 	workerDone     chan struct{}
 	workerErr      error
-	closing        sync.Once
+
+	// workerConfigured records that a Worker listener was requested. The
+	// readiness probe requires it to be up before it answers ok (#289).
+	workerConfigured bool
+	workerUp         bool
+
+	// readyFlag is the shared readiness switch the /readyz probe reads.
+	readyFlag *atomic.Bool
+	closing   sync.Once
 
 	// dispatchDone is closed when the placement loop has stopped.
 	dispatchDone chan struct{}
@@ -82,11 +91,17 @@ func Start(ctx context.Context, cfg Config, log *slog.Logger) (*Server, error) {
 		_ = store.Close()
 		return nil, err
 	}
+	// The /readyz probe reads the readiness state through this variable,
+	// because the Server itself does not exist until the listener is bound
+	// (#289). Until then the probe refuses: the process is not serving for
+	// real yet.
+	var readyState atomic.Bool
 	handler, err := clientapi.NewHandler(clientapi.Config{
 		Service:       svc,
 		Authenticator: auth,
 		MaxBodyBytes:  cfg.MaxBodyBytes,
 		Logger:        log,
+		Ready:         readyState.Load,
 	})
 	if err != nil {
 		_ = store.Close()
@@ -117,8 +132,11 @@ func Start(ctx context.Context, cfg Config, log *slog.Logger) (*Server, error) {
 	}
 
 	s := &Server{http: httpServer, store: store, listener: listener, log: log, done: make(chan struct{})}
+	s.readyFlag = &readyState
+	s.refreshReady()
 
 	if cfg.Worker != nil {
+		s.workerConfigured = true
 		if err := s.startWorker(ctx, cfg.Worker, store); err != nil {
 			_ = listener.Close()
 			_ = store.Close()
@@ -143,6 +161,17 @@ func Start(ctx context.Context, cfg Config, log *slog.Logger) (*Server, error) {
 	}()
 	log.Info("control plane listening", "addr", listener.Addr().String(), "tls", cfg.TLS != nil)
 	return s, nil
+}
+
+// refreshReady recomputes the /readyz answer from the listener state: the
+// process is ready when every configured listener is serving (#289). The
+// state store is open and the migrations ran before Start binds anything, so
+// they are not part of the answer at run time.
+func (s *Server) refreshReady() {
+	if s.readyFlag == nil {
+		return
+	}
+	s.readyFlag.Store(s.workerConfigured == false || s.workerUp)
 }
 
 // startWorker opens the optional Worker listener (process-level test profile)
@@ -201,6 +230,8 @@ func (s *Server) startWorker(ctx context.Context, w *WorkerConfig, store *sqlite
 	srv := clientapi.NewServer(w.Listen, handler)
 	srv.ErrorLog = slog.NewLogLogger(s.log.Handler(), slog.LevelWarn)
 	s.workerHTTP, s.workerListener, s.workerDone = srv, listener, make(chan struct{})
+	s.workerUp = true
+	s.refreshReady()
 	go func() {
 		defer close(s.workerDone)
 		if err := srv.Serve(listener); err != nil && !errors.Is(err, http.ErrServerClosed) {

@@ -11,6 +11,7 @@ import (
 	"path/filepath"
 	"regexp"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -612,4 +613,78 @@ func TestServerTimeoutsAreSet(t *testing.T) {
 	if s.ReadHeaderTimeout == 0 || s.ReadTimeout == 0 || s.WriteTimeout == 0 || s.IdleTimeout == 0 || s.MaxHeaderBytes == 0 {
 		t.Fatalf("an unbounded server setting remains: %+v", s)
 	}
+}
+
+// TestAReadinessProbeIsAnsweredWithoutAuthentication pins the health and
+// readiness windows of #289: the process that waits for the Control Plane to
+// come up holds no Bearer token, so the probes must answer without one, and
+// they must carry no state — a fixed body, no identifiers, no versions.
+func TestAReadinessProbeIsAnsweredWithoutAuthentication(t *testing.T) {
+	t.Run("healthz-always-answers-ok", func(t *testing.T) {
+		e := newEnv(t, func(c *Config, _ *admission.Policy) { c.Ready = nil })
+		res := e.do(http.MethodGet, "/healthz", "", nil, "")
+		if res.status != http.StatusOK {
+			t.Fatalf("/healthz = %d, want 200", res.status)
+		}
+		if string(res.body) != "ok\n" {
+			t.Fatalf("/healthz body = %q, want a fixed ok", res.body)
+		}
+		if string(res.body) != "ok\n" && len(res.body) > 8 {
+			t.Fatal("/healthz carried more than the fixed body")
+		}
+	})
+
+	t.Run("readyz-refuses-when-no-readiness-is-wired", func(t *testing.T) {
+		e := newEnv(t, func(c *Config, _ *admission.Policy) { c.Ready = nil })
+		res := e.do(http.MethodGet, "/readyz", "", nil, "")
+		if res.status != http.StatusServiceUnavailable {
+			t.Fatalf("/readyz without a Ready = %d, want 503 (fail closed)", res.status)
+		}
+	})
+
+	t.Run("readyz-follows-the-wired-readiness", func(t *testing.T) {
+		var flag atomic.Bool
+		e := newEnv(t, func(c *Config, _ *admission.Policy) { c.Ready = flag.Load })
+		res := e.do(http.MethodGet, "/readyz", "", nil, "")
+		if res.status != http.StatusServiceUnavailable {
+			t.Fatalf("/readyz while not ready = %d, want 503", res.status)
+		}
+		flag.Store(true)
+		if res := e.do(http.MethodGet, "/readyz", "", nil, ""); res.status != http.StatusOK {
+			t.Fatalf("/readyz once ready = %d, want 200", res.status)
+		}
+		flag.Store(false)
+		if res := e.do(http.MethodGet, "/readyz", "", nil, ""); res.status != http.StatusServiceUnavailable {
+			t.Fatalf("/readyz after readiness dropped = %d, want 503", res.status)
+		}
+	})
+
+	t.Run("probes-work-without-a-token-and-leak-nothing", func(t *testing.T) {
+		flag := true
+		e := newEnv(t, func(c *Config, _ *admission.Policy) {
+			c.Ready = func() bool { return flag }
+		})
+		for _, path := range []string{"/healthz", "/readyz"} {
+			res := e.do(http.MethodGet, path, "", nil, "")
+			if res.status != http.StatusOK {
+				t.Fatalf("%s without a token = %d, want 200", path, res.status)
+			}
+			if len(res.body) > 8 {
+				t.Fatalf("%s body = %q, want a fixed short answer", path, res.body)
+			}
+			// A task identifier, a version, or a configuration value must
+			// not appear: the endpoint answers the same for every caller.
+			if strings.Contains(string(res.body), "v1") || strings.Contains(string(res.body), "{") {
+				t.Fatalf("%s body carries structure: %q", path, res.body)
+			}
+		}
+	})
+
+	t.Run("only-get-is-answered", func(t *testing.T) {
+		e := newEnv(t)
+		res := e.do(http.MethodPost, "/healthz", "", nil, "")
+		if res.status != http.StatusMethodNotAllowed {
+			t.Fatalf("POST /healthz = %d, want 405 (a probe is a read of the process)", res.status)
+		}
+	})
 }

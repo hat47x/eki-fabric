@@ -40,6 +40,10 @@ type Config struct {
 	// Logger receives one line per request. It never receives tokens or bodies.
 	// Nil discards.
 	Logger *slog.Logger
+	// Ready is asked by /readyz. Nil means /readyz answers 503 (fail closed).
+	// The probe is answered without authentication; the function must not
+	// put state into the answer — the endpoint reduces it to ok/503 itself.
+	Ready func() bool
 }
 
 type Handler struct {
@@ -47,6 +51,12 @@ type Handler struct {
 	auth    Authenticator
 	maxBody int64
 	log     *slog.Logger
+
+	// ready reports whether the process is serving for real: the state store
+	// is open, the migrations ran, and the configured listeners are up. nil
+	// means the process carries no readiness information and /readyz refuses
+	// (fail closed).
+	ready func() bool
 }
 
 var ErrInvalidConfig = errors.New("invalid client API configuration")
@@ -61,7 +71,7 @@ func NewHandler(cfg Config) (*Handler, error) {
 	if cfg.MaxBodyBytes < 0 {
 		return nil, fmt.Errorf("%w: negative body limit", ErrInvalidConfig)
 	}
-	h := &Handler{svc: cfg.Service, auth: cfg.Authenticator, maxBody: cfg.MaxBodyBytes, log: cfg.Logger}
+	h := &Handler{svc: cfg.Service, auth: cfg.Authenticator, maxBody: cfg.MaxBodyBytes, log: cfg.Logger, ready: cfg.Ready}
 	if h.maxBody == 0 {
 		h.maxBody = DefaultMaxBodyBytes
 	}
@@ -127,6 +137,37 @@ func (s *statusRecorder) WriteHeader(code int) {
 }
 
 func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	// The readiness probes are answered before authentication on purpose
+	// (#289): the process that waits for the Control Plane to come up (an
+	// integration harness, an operator's start script) holds no Bearer token,
+	// and the answers carry no state — a fixed body per probe, no identifiers,
+	// no versions, no counts.
+	switch r.URL.Path {
+	case "/healthz":
+		setSecurityHeaders(w)
+		w.Header().Set("Content-Type", "text/plain; charset=utf-8")
+		if r.Method != http.MethodGet && r.Method != http.MethodHead {
+			w.Header().Set("Allow", "GET, HEAD")
+			http.Error(w, "method not allowed\n", http.StatusMethodNotAllowed)
+			return
+		}
+		_, _ = w.Write([]byte("ok\n"))
+		return
+	case "/readyz":
+		setSecurityHeaders(w)
+		w.Header().Set("Content-Type", "text/plain; charset=utf-8")
+		if r.Method != http.MethodGet && r.Method != http.MethodHead {
+			w.Header().Set("Allow", "GET, HEAD")
+			http.Error(w, "method not allowed\n", http.StatusMethodNotAllowed)
+			return
+		}
+		if h.ready == nil || !h.ready() {
+			http.Error(w, "not ready\n", http.StatusServiceUnavailable)
+			return
+		}
+		_, _ = w.Write([]byte("ok\n"))
+		return
+	}
 	start := time.Now()
 	rec := &statusRecorder{ResponseWriter: w, status: http.StatusOK}
 	principal := "-"
