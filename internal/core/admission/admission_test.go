@@ -426,6 +426,45 @@ func TestSubmitRejectsBadKeysAndPrincipals(t *testing.T) {
 	}
 }
 
+// An Idempotency-Key is remembered for as long as the admission record exists,
+// and admission records are not deleted in this version (#283). A retry with
+// the same key and the same request therefore converges on the same Task even
+// after that Task has ended, and the key cannot be reused for anything else.
+func TestIdempotencyKeyOutlivesTheTask(t *testing.T) {
+	svc, _ := newService(t)
+	alice := Principal{ID: "alice"}
+	ctx := context.Background()
+
+	first, err := svc.Submit(ctx, alice, "key-lifetime-001", []byte(requestWithoutInputs()))
+	if err != nil {
+		t.Fatalf("Submit() error = %v", err)
+	}
+	if _, err := svc.Cancel(ctx, alice, first.TaskID.String()); err != nil {
+		t.Fatalf("Cancel() error = %v", err)
+	}
+	status, err := svc.Status(ctx, alice, first.TaskID.String())
+	if err != nil {
+		t.Fatalf("Status() error = %v", err)
+	}
+	if status.Status != "cancelled" {
+		t.Fatalf("status = %s, want the Task to be finished", status.Status)
+	}
+
+	// The retry still lands on the finished Task instead of admitting new work.
+	replay, err := svc.Submit(ctx, alice, "key-lifetime-001", []byte(requestWithoutInputs()))
+	if err != nil {
+		t.Fatalf("replay after the Task ended error = %v", err)
+	}
+	if replay.TaskID != first.TaskID || !replay.Replayed {
+		t.Fatalf("replay after the Task ended = %#v, want %s", replay, first.TaskID)
+	}
+
+	// The key still belongs to that request: another body is a conflict.
+	other := strings.Replace(requestWithoutInputs(), `"normalize"`, `"different"`, 1)
+	_, err = svc.Submit(ctx, alice, "key-lifetime-001", []byte(other))
+	wantError(t, err, KindConflict, "IDEMPOTENCY_KEY_CONFLICT")
+}
+
 func TestSubmitEnforcesTheOutstandingTaskQuota(t *testing.T) {
 	svc, _ := newService(t)
 	alice := Principal{ID: "alice"}

@@ -33,7 +33,7 @@
             "name": "Idempotency-Key",
             "in": "header",
             "required": true,
-            "description": "Principal-scoped request identity. Reuse with a different normalized request fingerprint is rejected.",
+            "description": "Principal-scoped request identity. A key is remembered for as long as the admission record exists (records are not deleted in this version), so a retry with the same key and the same normalized request converges on the same task even after that task has ended, and reusing the key for a different normalized request is always rejected. Use a fresh key for each logical operation.",
             "schema": {
               "type": "string",
               "minLength": 8,
@@ -201,7 +201,7 @@
             "name": "Idempotency-Key",
             "in": "header",
             "required": true,
-            "description": "Principal-scoped request identity. Reuse with a different normalized request fingerprint is rejected.",
+            "description": "Principal-scoped request identity. A key is remembered for as long as the admission record exists (records are not deleted in this version), so a retry with the same key and the same normalized request converges on the same task even after that task has ended, and reusing the key for a different normalized request is always rejected. Use a fresh key for each logical operation.",
             "schema": {
               "type": "string",
               "minLength": 8,
@@ -330,7 +330,7 @@
             "name": "Idempotency-Key",
             "in": "header",
             "required": true,
-            "description": "Principal-scoped request identity. Reuse with a different normalized request fingerprint is rejected.",
+            "description": "Principal-scoped request identity. A key is remembered for as long as the admission record exists (records are not deleted in this version), so a retry with the same key and the same normalized request converges on the same task even after that task has ended, and reusing the key for a different normalized request is always rejected. Use a fresh key for each logical operation.",
             "schema": {
               "type": "string",
               "minLength": 8,
