@@ -84,8 +84,8 @@ func (e *mtlsEnv) enableDispatch(t *testing.T, keyFile string) {
 		PlacementValidity:  10 * time.Minute,
 		ExecutorApproval: &service.ExecutorApprovalConfig{
 			DecisionID:     "executor-approval-1",
-			PayloadDigest:  contract.SHA256([]byte("executor approval payload")).String(),
-			ExecutorDigest: contract.SHA256([]byte("registered executor")).String(),
+			PayloadDigest:  contract.SHA256([]byte("executor approval payload")).Hex(),
+			ExecutorDigest: contract.SHA256([]byte("registered executor")).Hex(),
 		},
 		Limits:  &signedchain.Limits,
 		Sandbox: &signedchain.Sandbox,
