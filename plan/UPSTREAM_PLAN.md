@@ -1191,3 +1191,22 @@ TaskにはAttemptのような遷移の検証が無く、`CompareAndSwapTask`はr
 - 保持期間を設定で変えられるようにするか、契約で固定するか。
 - 取消のキー（#240）と受理のキーで期間を揃えるか。
 - 受理の記録が無期限に増えることの扱い（保存量と監査の要求の両方から）。
+
+### 2026-11-01 実装が返す応答をOpenAPIに反映し、宣言とのずれを試験で検出する（#239）
+
+参照実装は`401`・`405`・`501`・`400`（本文がJSONでない場合）・`getTaskResult`の2種類の`409`を返していたが、`openapi.json`はこれらを宣言していなかった。契約から生成したClientや契約の試験が、実装の応答を扱えない。
+
+- 全operationに`401`（`AUTHENTICATION_REQUIRED`、`WWW-Authenticate`）と`405`（`METHOD_NOT_ALLOWED`、`Allow`）を足した。Artifactの3 operationに`501`（`NOT_IMPLEMENTED`）を足した。
+- `submitTask`の`400`に、本文が`application/json`でない場合（`UNSUPPORTED_MEDIA_TYPE`、P0では`415`を使わない）を書いた。
+- `getTaskResult`の`409`の説明を、`RESULT_NOT_READY`（待てば得られる）と`RESULT_NOT_AVAILABLE`（再試行しても得られない）の2種類に分けた。
+- `components.securitySchemes`に`bearerAuth`（`http: bearer`）を足し、認証方式が未選定である間の暫定であることを説明に書いた。文書全体の`security`は`bearerAuth`とした。
+- `internal/control/clientapi/spec_declared_test.go`を足した。`401`・`405`・`501`・`RESULT_NOT_READY`・`RESULT_NOT_AVAILABLE`・`UNSUPPORTED_MEDIA_TYPE`を実際に返させ、そのstatusが当該operationに宣言されていることと、`Problem.code`が一致することを確かめる。`getTaskResult`の`409`の説明が2種類に触れていることも確かめる。
+- `spec/external/README.md`の「P0が宣言していない応答」の節を、宣言済みの応答の一覧に書き換えた。
+
+互換性（ADR-0001）: 宣言していない応答の追加は、既存のフィールドの意味を変えない。schemaの版（`eki.task-status/v1`など）は上げない。認証方式を決めるときに`securitySchemes`の内容を変える場合は、その変更で扱う。
+
+未決:
+
+- 認証方式が未選定の間の`securitySchemes`の書き方（認証方式を決めるIssue）。
+- `415`をP0で宣言するか、`400`のまま残すか。
+- `Problem.code`の値の一覧を契約に持つか（いまは正規表現だけ）。

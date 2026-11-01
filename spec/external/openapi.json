@@ -64,7 +64,17 @@
             }
           },
           "400": {
-            "description": "Malformed or semantically invalid request.",
+            "description": "Malformed or semantically invalid request, or a request body that is not application/json (the code is then UNSUPPORTED_MEDIA_TYPE; P0 answers 400 rather than 415).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication is required. The request carried no usable credentials. Send an Authorization: Bearer <token> header; the code is AUTHENTICATION_REQUIRED and the response carries WWW-Authenticate.",
             "content": {
               "application/problem+json": {
                 "schema": {
@@ -75,6 +85,16 @@
           },
           "403": {
             "description": "Authenticated principal is not authorized for the requested operation.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "405": {
+            "description": "The method is not allowed for this resource. The code is METHOD_NOT_ALLOWED and the Allow header names the allowed method.",
             "content": {
               "application/problem+json": {
                 "schema": {
@@ -156,6 +176,16 @@
               }
             }
           },
+          "401": {
+            "description": "Authentication is required. The request carried no usable credentials. Send an Authorization: Bearer <token> header; the code is AUTHENTICATION_REQUIRED and the response carries WWW-Authenticate.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
           "403": {
             "description": "The principal cannot observe this task.",
             "content": {
@@ -168,6 +198,16 @@
           },
           "404": {
             "description": "Task not found or not disclosed.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "405": {
+            "description": "The method is not allowed for this resource. The code is METHOD_NOT_ALLOWED and the Allow header names the allowed method.",
             "content": {
               "application/problem+json": {
                 "schema": {
@@ -221,6 +261,16 @@
               }
             }
           },
+          "401": {
+            "description": "Authentication is required. The request carried no usable credentials. Send an Authorization: Bearer <token> header; the code is AUTHENTICATION_REQUIRED and the response carries WWW-Authenticate.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
           "403": {
             "description": "The principal cannot cancel this task.",
             "content": {
@@ -233,6 +283,16 @@
           },
           "404": {
             "description": "Task not found or not disclosed.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "405": {
+            "description": "The method is not allowed for this resource. The code is METHOD_NOT_ALLOWED and the Allow header names the allowed method.",
             "content": {
               "application/problem+json": {
                 "schema": {
@@ -284,6 +344,16 @@
               }
             }
           },
+          "401": {
+            "description": "Authentication is required. The request carried no usable credentials. Send an Authorization: Bearer <token> header; the code is AUTHENTICATION_REQUIRED and the response carries WWW-Authenticate.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
           "403": {
             "description": "The principal cannot retrieve this result.",
             "content": {
@@ -304,8 +374,18 @@
               }
             }
           },
+          "405": {
+            "description": "The method is not allowed for this resource. The code is METHOD_NOT_ALLOWED and the Allow header names the allowed method.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
           "409": {
-            "description": "No AcceptedResult exists yet.",
+            "description": "No result is available for this Task yet. The problem code says which case it is. RESULT_NOT_READY (retryable: true): the Task has not finished, so a later request may succeed. RESULT_NOT_AVAILABLE (not retryable): the Task finished without an accepted result (cancelled or failed), so no result will ever be produced.",
             "content": {
               "application/problem+json": {
                 "schema": {
@@ -370,8 +450,28 @@
               }
             }
           },
+          "401": {
+            "description": "Authentication is required. The request carried no usable credentials. Send an Authorization: Bearer <token> header; the code is AUTHENTICATION_REQUIRED and the response carries WWW-Authenticate.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
           "403": {
             "description": "The principal is not authorized to ingest this artifact class.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "405": {
+            "description": "The method is not allowed for this resource. The code is METHOD_NOT_ALLOWED and the Allow header names the allowed method.",
             "content": {
               "application/problem+json": {
                 "schema": {
@@ -402,6 +502,16 @@
           },
           "429": {
             "description": "Storage/network/quota budget is exhausted.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "501": {
+            "description": "This operation exists in the contract but is not available in this deployment. The code is NOT_IMPLEMENTED.",
             "content": {
               "application/problem+json": {
                 "schema": {
@@ -454,6 +564,16 @@
               }
             }
           },
+          "401": {
+            "description": "Authentication is required. The request carried no usable credentials. Send an Authorization: Bearer <token> header; the code is AUTHENTICATION_REQUIRED and the response carries WWW-Authenticate.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
           "403": {
             "description": "Upload session is not authorized for this principal/session.",
             "content": {
@@ -466,6 +586,16 @@
           },
           "404": {
             "description": "Upload session not found or not disclosed.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "405": {
+            "description": "The method is not allowed for this resource. The code is METHOD_NOT_ALLOWED and the Allow header names the allowed method.",
             "content": {
               "application/problem+json": {
                 "schema": {
@@ -496,6 +626,16 @@
           },
           "422": {
             "description": "Expected digest/size or ingest policy validation failed.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "501": {
+            "description": "This operation exists in the contract but is not available in this deployment. The code is NOT_IMPLEMENTED.",
             "content": {
               "application/problem+json": {
                 "schema": {
@@ -538,6 +678,16 @@
               }
             }
           },
+          "401": {
+            "description": "Authentication is required. The request carried no usable credentials. Send an Authorization: Bearer <token> header; the code is AUTHENTICATION_REQUIRED and the response carries WWW-Authenticate.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
           "403": {
             "description": "The principal cannot observe this artifact.",
             "content": {
@@ -550,6 +700,26 @@
           },
           "404": {
             "description": "Artifact not found or not disclosed.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "405": {
+            "description": "The method is not allowed for this resource. The code is METHOD_NOT_ALLOWED and the Allow header names the allowed method.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "501": {
+            "description": "This operation exists in the contract but is not available in this deployment. The code is NOT_IMPLEMENTED.",
             "content": {
               "application/problem+json": {
                 "schema": {
@@ -1280,6 +1450,18 @@
         },
         "description": "RFC 9457 Problem Details with stable EKI extensions. Clients must branch on code/status, not detail text."
       }
+    },
+    "securitySchemes": {
+      "bearerAuth": {
+        "type": "http",
+        "scheme": "bearer",
+        "description": "Provisional authentication for P0. The authentication mechanism is not chosen yet, so this declares only that a Bearer credential is required; the token format, lifetime and revocation belong to that later decision."
+      }
     }
-  }
+  },
+  "security": [
+    {
+      "bearerAuth": []
+    }
+  ]
 }
