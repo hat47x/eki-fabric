@@ -793,7 +793,8 @@
           "version_constraint": {
             "type": "string",
             "minLength": 1,
-            "maxLength": 64
+            "maxLength": 64,
+            "description": "Constraint on the executor version. This version records it into the request fingerprint but does not evaluate it: a constraint the executor fleet cannot satisfy is admitted here and fails later, at execution."
           }
         }
       },
@@ -961,7 +962,7 @@
             "type": "object",
             "maxProperties": 256,
             "additionalProperties": true,
-            "description": "Executor-specific parameters. Admission validates them against the approved executor schema before they can reach a worker."
+            "description": "Executor-specific parameters. This version's admission checks structure only (property count, JSON depth and duplicate names); it does not evaluate them against an executor schema, and parameters are not passed to workers (the WorkOrder payload has no parameters field). Schema validation is a future tightening of admission, not a widening."
           },
           "resources": {
             "$ref": "#/components/schemas/ResourceRequest"
