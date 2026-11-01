@@ -11,8 +11,8 @@ import (
 	"github.com/hat47x/eki-fabric/internal/core/attemptstate"
 	"github.com/hat47x/eki-fabric/internal/core/contract"
 	"github.com/hat47x/eki-fabric/internal/core/ids"
-	"github.com/hat47x/eki-fabric/internal/core/resultaccept"
 	"github.com/hat47x/eki-fabric/internal/core/policystate"
+	"github.com/hat47x/eki-fabric/internal/core/resultaccept"
 	"github.com/hat47x/eki-fabric/internal/core/resultclaim"
 	"github.com/hat47x/eki-fabric/internal/core/taskstate"
 	"github.com/hat47x/eki-fabric/internal/spi/statestore"
@@ -169,7 +169,7 @@ func (e *env) finish(id string, outcome taskstate.TerminalOutcome) {
 		TaskID: task.ID, AttemptID: attempt.ID,
 		ClaimDigest: claim.Digest(), OutputDigest: claim.OutputDigest(),
 		Level: resultaccept.LevelRA1, PolicyDigest: contract.SHA256([]byte("result policy")),
-		Verifiers: []string{"verifier-b", "verifier-a"},
+		Verifiers:  []string{"verifier-b", "verifier-a"},
 		AcceptedAt: attempt.UpdatedAt.Add(time.Second),
 	})
 	if err != nil {
