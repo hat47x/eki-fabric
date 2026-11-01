@@ -78,6 +78,9 @@ type fixture struct {
 type fixtureOptions struct {
 	stopAt      attemptstate.AttemptPhase
 	claimStatus resultclaim.Status
+	// taskPhase is the phase the Task is in when the claim arrives. Empty means
+	// ready; active exercises the active -> verifying transition (#381).
+	taskPhase taskstate.TaskPhase
 }
 
 // newFixture takes a Task and an Attempt through the real store to the point
@@ -195,6 +198,19 @@ func newFixture(t *testing.T, opts fixtureOptions) *fixture {
 		step(attemptstate.AttemptPhaseVerifying, nil)
 	}
 
+	if opts.taskPhase == taskstate.TaskPhaseActive {
+		current, err := store.LoadTask(ctx, task.ID)
+		if err != nil {
+			t.Fatal(err)
+		}
+		active := current
+		active.Phase = taskstate.TaskPhaseActive
+		active.Revision++
+		active.UpdatedAt = current.UpdatedAt.Add(time.Second)
+		if err := store.CompareAndSwapTask(ctx, current.ID, current.Revision, active); err != nil {
+			t.Fatal(err)
+		}
+	}
 	stored, err := store.LoadTask(ctx, task.ID)
 	if err != nil {
 		t.Fatal(err)
@@ -662,5 +678,27 @@ func TestRejectionReturnsAVerifyingTaskToActive(t *testing.T) {
 	}
 	if task.TerminalOutcome != taskstate.TerminalOutcomeNone {
 		t.Fatalf("Task outcome = %s, want none", task.TerminalOutcome)
+	}
+}
+
+// An active Task becomes verifying while its result is accepted, so the phase
+// says what is happening rather than jumping from active to terminal
+// (ADR-0032 §2.4, ADR-0033 A3). The revision therefore advances by two:
+// verifying, then terminal.
+func TestAnActiveTaskBecomesVerifyingBeforeItCompletes(t *testing.T) {
+	f := newFixture(t, fixtureOptions{taskPhase: taskstate.TaskPhaseActive})
+	before := f.task.Revision
+	if _, err := f.service.Accept(context.Background(), f.request(f.twoIndependentVerifiers()...)); err != nil {
+		t.Fatalf("Accept() error = %v", err)
+	}
+	after, err := f.store.LoadTask(context.Background(), f.task.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if after.Phase != taskstate.TaskPhaseTerminal || after.TerminalOutcome != taskstate.TerminalOutcomeCompleted {
+		t.Fatalf("task = %s/%s, want terminal/completed", after.Phase, after.TerminalOutcome)
+	}
+	if after.Revision != before+2 {
+		t.Fatalf("revision = %d, want %d (verifying then terminal)", after.Revision, before+2)
 	}
 }
