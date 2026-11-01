@@ -10,11 +10,6 @@ import (
 	"github.com/hat47x/eki-fabric/internal/agent/executor"
 )
 
-// SandboxProfileJobObject confines the child process in a Windows Job Object.
-// The Job Object gives the OS a hard process-memory ceiling and kills the tree
-// when the job is closed. It does not isolate the filesystem or network.
-const SandboxProfileJobObject = "native-job-object"
-
 const (
 	jobObjectExtendedLimitInformation = 9
 	jobObjectLimitProcessMemory       = 0x00000100

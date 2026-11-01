@@ -1,4 +1,4 @@
-//go:build !windows
+//go:build !linux && !windows
 
 package nativerunner
 
@@ -7,9 +7,6 @@ import (
 
 	"github.com/hat47x/eki-fabric/internal/agent/executor"
 )
-
-// SandboxProfileJobObject is Windows-only; other platforms reject it.
-const SandboxProfileJobObject = "native-job-object"
 
 func supportedSandboxProfile(profile string) bool {
 	return profile == SandboxProfile

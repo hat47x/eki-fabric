@@ -9,10 +9,6 @@ import (
 	"github.com/hat47x/eki-fabric/internal/agent/executor"
 )
 
-// SandboxProfileLinuxBwrap runs the fixed command through bubblewrap with a
-// read-only root, a private /tmp, no network, and a separate PID namespace.
-const SandboxProfileLinuxBwrap = "linux-bwrap"
-
 func supportedSandboxProfile(profile string) bool {
 	return profile == SandboxProfile || profile == SandboxProfileLinuxBwrap
 }
