@@ -65,23 +65,31 @@ type ExecutorApprovalConfig struct {
 	ExecutorDigest string `json:"executor_digest"`
 }
 
-func (c *ExecutorApprovalConfig) digest(raw string) contract.Digest {
+func (c *ExecutorApprovalConfig) digest(raw string) (contract.Digest, error) {
 	d, err := contract.ParseSHA256(raw)
 	if err != nil {
-		return contract.SHA256([]byte(raw))
+		return contract.Digest{}, fmt.Errorf("executor_approval digest %q is not 64 hexadecimal characters: %w", raw, err)
 	}
-	return d
+	return d, nil
 }
 
-func (c *DispatchConfig) executorApproval() workorderissue.ExecutorApproval {
+func (c *DispatchConfig) executorApproval() (workorderissue.ExecutorApproval, error) {
 	if c.ExecutorApproval == nil {
-		return workorderissue.ExecutorApproval{}
+		return workorderissue.ExecutorApproval{}, nil
+	}
+	payload, err := c.ExecutorApproval.digest(c.ExecutorApproval.PayloadDigest)
+	if err != nil {
+		return workorderissue.ExecutorApproval{}, err
+	}
+	executor, err := c.ExecutorApproval.digest(c.ExecutorApproval.ExecutorDigest)
+	if err != nil {
+		return workorderissue.ExecutorApproval{}, err
 	}
 	return workorderissue.ExecutorApproval{
 		DecisionID:     c.ExecutorApproval.DecisionID,
-		PayloadDigest:  c.ExecutorApproval.digest(c.ExecutorApproval.PayloadDigest),
-		ExecutorDigest: c.ExecutorApproval.digest(c.ExecutorApproval.ExecutorDigest),
-	}
+		PayloadDigest:  payload,
+		ExecutorDigest: executor,
+	}, nil
 }
 
 func (c *DispatchConfig) limits() decisionpayload.ResourceLimits {
@@ -136,6 +144,10 @@ func (c *DispatchConfig) validate() error {
 func (s *Server) startDispatch(ctx context.Context, cfg *DispatchConfig, store *sqlite.Store) error {
 	cfg.defaults()
 	if err := cfg.validate(); err != nil {
+		return fmt.Errorf("%w: %v", ErrInvalidConfig, err)
+	}
+	approval, err := cfg.executorApproval()
+	if err != nil {
 		return fmt.Errorf("%w: %v", ErrInvalidConfig, err)
 	}
 	keys, err := signingkeys.Load(cfg.SigningKeysFile)
@@ -231,7 +243,7 @@ func (s *Server) startDispatch(ctx context.Context, cfg *DispatchConfig, store *
 		IssueWorkOrder: func(ctx context.Context, leaseID ids.LeaseID, worker string) ([]byte, error) {
 			order, err := orders.Issue(ctx, workorderissue.IssueRequest{
 				LeaseID: leaseID, WorkerIdentity: worker,
-				ExecutorApproval: cfg.executorApproval(), Limits: cfg.limits(), Sandbox: cfg.sandbox(),
+				ExecutorApproval: approval, Limits: cfg.limits(), Sandbox: cfg.sandbox(),
 			})
 			if err != nil {
 				return nil, err
