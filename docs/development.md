@@ -182,6 +182,21 @@ External Client Planeは、`spec/external/openapi.json`を基準にします。
 3. **一時ディレクトリ全体を許可しない**。buildのたびに別のパスになるため、許可の範囲が広がり、意図しない実行ファイルまで通します。
 
 `127.0.0.1` だけにbindしていれば通常は警告が出ません。繰り返し出る場合は、待ち受けが全interfaceになっていないか、実行ファイルのパスが毎回変わっていないかを確認します。
+## 検証はWSLで実行する（基本）
+
+EKI Fabricの検証は、**WSL（Ubuntu）で実行することを基本**とします。Windows側で実行すると、`conformance/process` が起動する `eki-control.exe` / `eki-agent.exe` の待ち受けでWindowsファイアウォールの警告が出て、許可しても実行ファイルのパスが毎回変わるため繰り返します（下の「Windowsのファイアウォールの警告」）。
+
+WSLでの手順:
+
+~~~bash
+cd /mnt/d/GIT/hat47x/eki-fabric
+export PATH=/usr/local/go/bin:$PATH   # WSLのGo（/usr/local/go/bin/go）を使う
+./scripts/verify.sh
+~~~
+
+- `export PATH=...` を省くと、WSLがWindows側の `go.exe` を拾うことがあります。`go version` が `linux/amd64` を返すことを確かめてください。
+- 検証の出力（`VERIFY: PASS` と、失敗した場合の差分）をPRへ貼る運用は変わりません。
+- Windows側の `scripts\verify.ps1` は、WSLを使えない場合の代替です。
 ## ローカルでの検証（CIは未導入）
 
 このリポジトリには、CIのworkflowがありません。統合の前後に機械的な検証は走らないため、**検証はローカルで実行し、その出力をEvidenceにする**運用です。CIを置くかどうかは#244で扱います。
