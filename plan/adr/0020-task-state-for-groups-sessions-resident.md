@@ -37,6 +37,6 @@ Task State Model（Baseline 0.1）は、TaskとAttemptだけを状態として�
 
 ## 5. 未決事項
 
-- 期限切れの`terminal_code`を、外部契約（openapi.json）へどう出すか。
+- 期限切れの`terminal_code`を、外部契約（openapi.json）へどう出すか。公開する値の集合と、依頼元が再投入してよいかの区別は`TaskStatus.terminal_code`に定めた。期限切れの2値（`DEADLINE_EXPIRED_NOT_STARTED`・`DEADLINE_EXPIRED_AFTER_DISPATCH`）は、その一覧への互換な追加として後から足す（#281、#111）。
 - Session内の依頼の識別子と、監査の粒度（#106）。
 - 常駐の期間の長さの既定値と、業務端末で常駐に回してよい上限の既定値（#130）。

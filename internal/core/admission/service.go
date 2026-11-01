@@ -10,7 +10,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"strings"
 	"time"
 
 	"github.com/hat47x/eki-fabric/internal/core/ids"
@@ -192,7 +191,7 @@ func (s *Service) Status(ctx context.Context, p Principal, taskID string) (Publi
 	if err != nil {
 		return PublicStatus{}, err
 	}
-	return project(admission.Task), nil
+	return s.project(admission.Task), nil
 }
 
 // CancelAccepted is the result of a successful Cancel.
@@ -308,7 +307,7 @@ func (s *Service) internal(operation string, err error) *Error {
 	return internalError()
 }
 
-func project(t taskstate.TaskRecord) PublicStatus {
+func (s *Service) project(t taskstate.TaskRecord) PublicStatus {
 	status := PublicStatus{
 		TaskID:      t.ID,
 		SubmittedAt: t.CreatedAt,
@@ -334,7 +333,15 @@ func project(t taskstate.TaskRecord) PublicStatus {
 		default:
 			status.Status = "failed"
 		}
-		status.TerminalCode = strings.ToUpper(string(t.TerminalOutcome))
+		code, known := publicTerminalCode(t.TerminalOutcome)
+		if !known {
+			// An outcome this version cannot name is a programming error, not a
+			// Client error. The safe answer claims neither completion nor
+			// cancellation, and the internal error is reported (#281).
+			code = TerminalFailed
+			s.onError("project terminal code", fmt.Errorf("no public terminal code for outcome %q", t.TerminalOutcome))
+		}
+		status.TerminalCode = code
 	}
 	if t.CancellationRequested && t.Phase != taskstate.TaskPhaseTerminal {
 		status.PublicMessage = "Cancellation has been requested."

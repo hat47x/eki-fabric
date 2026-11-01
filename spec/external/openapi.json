@@ -953,10 +953,14 @@
           },
           "terminal_code": {
             "type": "string",
-            "minLength": 1,
-            "maxLength": 128,
-            "pattern": "^[A-Z][A-Z0-9_]{0,127}$",
-            "description": "Machine-readable reason a Task reached a terminal state. When the Task ended because its deadline passed, the value distinguishes two cases. DEADLINE_EXPIRED_NOT_STARTED: no Attempt had a dispatch record, so the Task is known not to have run. DEADLINE_EXPIRED_AFTER_DISPATCH: a dispatched Attempt remained, so it is unknown whether the work ran; this code is used only for side-effect-free work. A Task whose side effects are unknown stays reconciling and carries neither code. A Task ended by its deadline no longer counts toward the outstanding-Task limit. See architecture/TASK_STATE_MODEL.md section 7.3."
+            "enum": [
+              "COMPLETED",
+              "CANCELLED",
+              "FAILED",
+              "EXHAUSTED",
+              "ABANDONED"
+            ],
+            "description": "Stable, machine-readable reason a Task reached a terminal state. These are contract values, not the internal state enum: a value is added on purpose, never derived from an internal name. COMPLETED: a verified result was accepted. Do not resubmit the work. CANCELLED: the Task was cancelled on request; cancellation stops work rather than finishing it, so resubmitting is safe. FAILED: execution failed without a recoverable outcome; resubmit only after checking whether the failed execution left a side effect, because this code does not claim that it did not. EXHAUSTED: the retry or recovery budget was spent; resubmitting starts a new Task with a new budget, which is a decision for the caller. ABANDONED: the Task cannot be completed on its current path (a permanent refusal, or a policy change with no migration); do not resubmit the same request unchanged. A code is present on every terminal Task, including completed and cancelled. Deadline specialisation (DEADLINE_EXPIRED_NOT_STARTED and DEADLINE_EXPIRED_AFTER_DISPATCH, which distinguish known-not-run from unknown) is planned and will be added as a compatible extension of this enum; see architecture/TASK_STATE_MODEL.md section 7.3."
           },
           "public_message": {
             "type": "string",
