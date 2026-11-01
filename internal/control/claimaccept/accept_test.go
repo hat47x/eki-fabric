@@ -49,6 +49,10 @@ func (f *fakeAttempts) CompareAndSwapAttempt(_ context.Context, _ ids.AttemptID,
 	return nil
 }
 
+func (f *fakeAttempts) ListAttemptsByTask(_ context.Context, _ ids.TaskID) ([]attemptstate.AttemptRecord, error) {
+	return []attemptstate.AttemptRecord{f.record}, nil
+}
+
 type fakeLeases struct{ record leasestate.LeaseRecord }
 
 func (f fakeLeases) LoadLease(context.Context, ids.LeaseID) (leasestate.LeaseRecord, error) {
@@ -412,5 +416,56 @@ func TestCompletedClaimMovesTheTaskToVerifying(t *testing.T) {
 	}
 	if tasks.updates[0].Revision != 5 {
 		t.Fatalf("task revision = %d, want 5", tasks.updates[0].Revision)
+	}
+}
+
+// A retryable close (a Worker-reported failure, a deadline, a budget stop)
+// returns the Task to ready when no open Attempt remains, so the dispatch
+// loop can create the next Attempt (ADR-0032 §2.5, #381).
+func TestAFailedClaimReturnsTheTaskToReady(t *testing.T) {
+	attempts := &fakeAttempts{record: attempt(t, attemptstate.AttemptPhaseClaimed)}
+	tasks := &fakeTasks{record: taskstate.TaskRecord{
+		ID: testTask, TaskIRDigest: contract.SHA256([]byte("taskir")),
+		Phase: taskstate.TaskPhaseActive, Revision: 4, CreatedAt: baseTime.Add(-time.Hour), UpdatedAt: baseTime.Add(-time.Minute),
+	}}
+	service, err := New(Config{
+		Attempts: attempts, Leases: fakeLeases{record: lease(t)}, Claims: &fakeClaims{attempts: attempts},
+		Clock: &fakeClock{now: baseTime}, Tasks: tasks,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	result, err := service.Accept(context.Background(), claim(t, resultclaim.StatusFailed, 1))
+	if err != nil {
+		t.Fatalf("Accept() error = %v", err)
+	}
+	if result.Attempt.Phase != attemptstate.AttemptPhaseClosed {
+		t.Fatalf("attempt = %+v, want closed", result.Attempt)
+	}
+	if len(tasks.updates) != 1 || tasks.record.Phase != taskstate.TaskPhaseReady {
+		t.Fatalf("task updates = %d, phase = %s, want one write to ready", len(tasks.updates), tasks.record.Phase)
+	}
+}
+
+// A cancellation reported by the Worker converges through the Task's own
+// cancellation path (#263), not through a restart here.
+func TestACancelledClaimDoesNotRestartTheTask(t *testing.T) {
+	attempts := &fakeAttempts{record: attempt(t, attemptstate.AttemptPhaseClaimed)}
+	tasks := &fakeTasks{record: taskstate.TaskRecord{
+		ID: testTask, TaskIRDigest: contract.SHA256([]byte("taskir")),
+		Phase: taskstate.TaskPhaseActive, Revision: 4, CreatedAt: baseTime.Add(-time.Hour), UpdatedAt: baseTime.Add(-time.Minute),
+	}}
+	service, err := New(Config{
+		Attempts: attempts, Leases: fakeLeases{record: lease(t)}, Claims: &fakeClaims{attempts: attempts},
+		Clock: &fakeClock{now: baseTime}, Tasks: tasks,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := service.Accept(context.Background(), claim(t, resultclaim.StatusCancelled, 0)); err != nil {
+		t.Fatalf("Accept() error = %v", err)
+	}
+	if len(tasks.updates) != 0 {
+		t.Fatalf("task updates = %d, want none", len(tasks.updates))
 	}
 }

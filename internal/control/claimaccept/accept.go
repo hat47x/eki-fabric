@@ -201,6 +201,14 @@ func (s *Service) Accept(ctx context.Context, claim resultclaim.Claim) (Result, 
 				return Result{}, fmt.Errorf("%w: %v", ErrClaimStore, err)
 			}
 		}
+		// A retryable close returns the Task to ready (ADR-0032 §2.5), so the
+		// dispatch loop can create the next Attempt. A conflict leaves the
+		// Task where the other writer put it; the close stays durable.
+		if s.tasks != nil && needsTransition && next.Phase == attemptstate.AttemptPhaseClosed {
+			if err := s.markTaskReadyAfterClose(ctx, attempt.TaskID, next.CloseReason); err != nil {
+				return Result{}, fmt.Errorf("%w: %v", ErrClaimStore, err)
+			}
+		}
 	}
 	resultAttempt := attempt
 	if needsTransition {
@@ -226,6 +234,55 @@ func (s *Service) markTaskVerifying(ctx context.Context, taskID ids.TaskID) erro
 	}
 	next := task
 	next.Phase = taskstate.TaskPhaseVerifying
+	next.Revision = task.Revision + 1
+	next.UpdatedAt = s.clock.Now().UTC()
+	return s.tasks.CompareAndSwapTask(ctx, task.ID, task.Revision, next)
+}
+
+// retryableCloseReasons are Attempt closes that leave the Task's goal
+// unachieved and re-attemptable: the Worker reported a failure, a deadline or
+// a budget stop. Cancellation and reclamation converge on the Task elsewhere
+// (admission.Cancel, the revocation), so they must not restart the Task here.
+var retryableCloseReasons = map[attemptstate.CloseReason]bool{
+	attemptstate.CloseReasonExecutionFailureConfirmed: true,
+	attemptstate.CloseReasonDeadline:                  true,
+	attemptstate.CloseReasonBudgetExhausted:           true,
+	attemptstate.CloseReasonResultRejected:            true,
+}
+
+// markTaskReadyAfterClose returns a closed Attempt's Task to ready when the
+// close was retryable and no open Attempt remains (ADR-0032 §2.5), so the
+// dispatch loop picks the Task up on its next tick and creates the next
+// Attempt. A conflict means another writer moved the Task first; the close is
+// already durable, so the acceptance is not undone.
+func (s *Service) markTaskReadyAfterClose(ctx context.Context, taskID ids.TaskID, reason attemptstate.CloseReason) error {
+	if !retryableCloseReasons[reason] {
+		return nil
+	}
+	lister, ok := s.attempts.(interface {
+		ListAttemptsByTask(ctx context.Context, taskID ids.TaskID) ([]attemptstate.AttemptRecord, error)
+	})
+	if !ok {
+		return nil
+	}
+	attempts, err := lister.ListAttemptsByTask(ctx, taskID)
+	if err != nil {
+		return err
+	}
+	for _, a := range attempts {
+		if a.Phase != attemptstate.AttemptPhaseClosed {
+			return nil
+		}
+	}
+	task, err := s.tasks.LoadTask(ctx, taskID)
+	if err != nil {
+		return err
+	}
+	if task.Phase != taskstate.TaskPhaseActive {
+		return nil
+	}
+	next := task
+	next.Phase = taskstate.TaskPhaseReady
 	next.Revision = task.Revision + 1
 	next.UpdatedAt = s.clock.Now().UTC()
 	return s.tasks.CompareAndSwapTask(ctx, task.ID, task.Revision, next)

@@ -259,7 +259,7 @@ func (s *Service) Accept(ctx context.Context, req Request) (Result, error) {
 	case resultaccept.OutcomeAccepted:
 		return s.accept(ctx, attempt, task, claim, decision, now)
 	case resultaccept.OutcomeRejected:
-		return s.reject(ctx, attempt, claim, decision, now)
+		return s.reject(ctx, attempt, task, claim, decision, now)
 	default:
 		return Result{Decision: decision}, nil
 	}
@@ -330,6 +330,35 @@ func (s *Service) accept(ctx context.Context, attempt attemptstate.AttemptRecord
 	return Result{}, err
 }
 
+// returnVerifyingTaskToActive moves a Task that verification sent to
+// verifying back to active after a rejected result, so the dispatch loop can
+// create the next Attempt (ADR-0032 §2.5). One reload-and-retry absorbs a
+// racing revision; a Task another writer moved out of verifying is left where
+// it is.
+func (s *Service) returnVerifyingTaskToActive(ctx context.Context, task taskstate.TaskRecord, now time.Time) error {
+	if task.Phase != taskstate.TaskPhaseVerifying {
+		return nil
+	}
+	for try := 0; try < 2; try++ {
+		next := task
+		next.Phase = taskstate.TaskPhaseActive
+		next.Revision = task.Revision + 1
+		next.UpdatedAt = laterOf(now, task.UpdatedAt)
+		err := s.tasks.CompareAndSwapTask(ctx, task.ID, task.Revision, next)
+		if err == nil || !errors.Is(err, statestore.ErrConflict) {
+			return err
+		}
+		task, err = s.tasks.LoadTask(ctx, task.ID)
+		if err != nil {
+			return err
+		}
+		if task.Phase != taskstate.TaskPhaseVerifying {
+			return nil
+		}
+	}
+	return fmt.Errorf("%w: Task %s stayed verifying across a retry", ErrStateChanged, task.ID)
+}
+
 // closeStale closes an Attempt whose Lease fence was superseded, so it does not
 // stay in A-VERIFYING forever, and reports ErrSuperseded. The store checks the
 // staleness again in the transaction that closes the Attempt. The close reason
@@ -367,8 +396,8 @@ func (s *Service) closeStale(ctx context.Context, attempt attemptstate.AttemptRe
 // rejected, in one commit, so the evidence chain of #57 keeps the dissent, the
 // eligible and excluded verifiers, and the policy digest. The Task is not
 // touched: whether the work is retried is a recovery decision.
-func (s *Service) reject(ctx context.Context, attempt attemptstate.AttemptRecord, claim resultclaim.Claim,
-	decision resultaccept.Decision, now time.Time) (Result, error) {
+func (s *Service) reject(ctx context.Context, attempt attemptstate.AttemptRecord, task taskstate.TaskRecord,
+	claim resultclaim.Claim, decision resultaccept.Decision, now time.Time) (Result, error) {
 	record, err := rejectedresult.FromDecision(attempt.TaskID, attempt.ID, claim.Digest(), claim.OutputDigest(), decision, now)
 	if err != nil {
 		return Result{}, err
@@ -385,6 +414,14 @@ func (s *Service) reject(ctx context.Context, attempt attemptstate.AttemptRecord
 	})
 	switch {
 	case err == nil:
+		// A rejected result can leave room for another Attempt (ADR-0032
+		// §2.5): verifying falls back to active, so the dispatch loop can
+		// plan again. A conflict means another writer moved the Task (a
+		// cancellation, for example); the rejection is already durable, so it
+		// is not undone.
+		if err := s.returnVerifyingTaskToActive(ctx, task, now); err != nil {
+			return Result{}, err
+		}
 		return Result{Decision: decision, Rejected: record}, nil
 	case errors.Is(err, statestore.ErrAlreadyExists):
 		stored, ok, loadErr := s.rejections.LoadRejectedResult(ctx, attempt.ID)

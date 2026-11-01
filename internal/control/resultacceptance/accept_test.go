@@ -630,3 +630,37 @@ func TestARejectionThatCrashesBeforeItsCommitCanBeDecidedAgain(t *testing.T) {
 		t.Fatalf("Accept() after the crash = %+v, %v", result, err)
 	}
 }
+
+// A rejected result returns a verifying Task to active, so the dispatch loop
+// can create the next Attempt (ADR-0032 §2.5, #381). A Task that never
+// entered verifying — the fixture's ready Task, for one — is left as it was.
+func TestRejectionReturnsAVerifyingTaskToActive(t *testing.T) {
+	f := newFixture(t, fixtureOptions{})
+	ctx := context.Background()
+	active := f.task
+	active.Phase = taskstate.TaskPhaseActive
+	active.Revision = f.task.Revision + 1
+	active.UpdatedAt = f.task.UpdatedAt.Add(time.Second)
+	if err := f.store.CompareAndSwapTask(ctx, f.task.ID, f.task.Revision, active); err != nil {
+		t.Fatal(err)
+	}
+	verifying := active
+	verifying.Phase = taskstate.TaskPhaseVerifying
+	verifying.Revision = active.Revision + 1
+	verifying.UpdatedAt = active.UpdatedAt.Add(time.Second)
+	if err := f.store.CompareAndSwapTask(ctx, f.task.ID, active.Revision, verifying); err != nil {
+		t.Fatal(err)
+	}
+	rejected := f.verification("authority-1", "principal-P3", "operator-O3", resultaccept.CheckValidatorRejected, outputDigest.Hex())
+
+	if _, err := f.service.Accept(ctx, f.request(f.reproduced("verifier-1", "principal-P1", "operator-O1"), rejected)); err != nil {
+		t.Fatalf("Accept() error = %v", err)
+	}
+	task, _ := f.store.LoadTask(ctx, f.task.ID)
+	if task.Phase != taskstate.TaskPhaseActive {
+		t.Fatalf("Task = %s, want active", task.Phase)
+	}
+	if task.TerminalOutcome != taskstate.TerminalOutcomeNone {
+		t.Fatalf("Task outcome = %s, want none", task.TerminalOutcome)
+	}
+}
