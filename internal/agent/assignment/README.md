@@ -9,6 +9,8 @@ Control Planeが配る署名済みのLeaseとWorkOrderを、Workerが自分の�
 3. `workorderverify`と`workorderaccept`: このWorker宛てで、WOR-1の鍵の署名があり、そのLease（Decision IDとpayload digest）に結び付き、Workerが自分で承認したExecutor Approvalを名指し、Taskのfenceが受理済みの最大より古くなく、一回限りのnonceをWorker自身の耐久的な重複検査に登録できること（#296 項目3）。
 4. `startgate`: Local Governorと機械の容量が開始を許し、実効の上限が、付与された上限とローカルの天井の小さい方になること。
 
+この版は、割当を1件ずつ順に処理します（`Handler.Start`は同期）。実行slotと、実行中の予約を合計して判定する形は[ADR-0031](../../../plan/adr/0031-local-execution-slots-and-resource-reservation.md)で決めており（#354）、実装はこれからです。それまでは、同時に2件の割当が来ても、それぞれが機械の全容量を上限に判定されます。
+
 荷札のIDは参考情報です。署名済みのLeaseと食い違えば拒否します。
 
 結果は`Outcome`で返ります。`ready`（`Handler`へ渡した）、`replayed`（nonceは使用済み。同じbytesが再配送されたときの通常の答え）、`deferred`（Local Governorが新規を受け付けない、または開始の関門が容量や期限で拒否した。nonceは消費していないので、Control Planeは同じTaskに新しいnonceで再発行できる）、`rejected`（理由付き）です。nonceとfenceは、署名・結び付き・承認・開始関門の確認がすべて通ってから記録します。改ざんや食い違いのbytesはどちらも記録しません。開始関門の拒否も記録しません（#296 項目2の修正）。
