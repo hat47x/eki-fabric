@@ -939,3 +939,34 @@ func TestAReplayConvergesBeforePolicyAndTheClock(t *testing.T) {
 		t.Fatalf("conflicting replay error = %v, want IDEMPOTENCY_KEY_CONFLICT", err)
 	}
 }
+
+// The key outlives the Task: a retry after the Task reached a terminal phase
+// still converges on the first Task, because the admission record is not
+// deleted in this version (#283).
+func TestAReplayConvergesAfterTheTaskEnded(t *testing.T) {
+	svc, store := newService(t)
+	ctx := context.Background()
+	alice := Principal{ID: "alice"}
+	first, err := svc.Submit(ctx, alice, "key-00000009", []byte(requestWithoutInputs()))
+	if err != nil {
+		t.Fatalf("Submit() error = %v", err)
+	}
+	record, _ := store.LoadTask(ctx, first.TaskID)
+	done := record
+	done.Phase, done.TerminalOutcome = taskstate.TaskPhaseTerminal, taskstate.TerminalOutcomeFailed
+	done.Revision++
+	if err := store.CompareAndSwapTask(ctx, first.TaskID, record.Revision, done); err != nil {
+		t.Fatalf("CompareAndSwapTask() error = %v", err)
+	}
+
+	again, err := svc.Submit(ctx, alice, "key-00000009", []byte(requestWithoutInputs()))
+	if err != nil {
+		t.Fatalf("replay after terminal error = %v", err)
+	}
+	if again.TaskID != first.TaskID || !again.Replayed {
+		t.Fatalf("replay = %#v, want the first Task replayed", again)
+	}
+	if !again.SubmittedAt.Equal(first.SubmittedAt) {
+		t.Fatalf("replay submitted_at = %v, want the first %v", again.SubmittedAt, first.SubmittedAt)
+	}
+}
