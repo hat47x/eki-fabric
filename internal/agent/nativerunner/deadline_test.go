@@ -8,9 +8,16 @@ import (
 	"github.com/hat47x/eki-fabric/internal/agent/executor"
 )
 
+// stopGraceForTest is generous on purpose. These tests assert which status the
+// Supervisor reports, not how fast the platform stops a process. On Windows the
+// stop path spawns taskkill to kill the process tree, and a loaded machine can
+// take longer than a second to finish that, which flaked these tests as
+// runner_stuck. The Agent's default grace is 5 seconds for the same reason.
+const stopGraceForTest = 10 * time.Second
+
 func TestSupervisorReportsDeadline(t *testing.T) {
 	now := time.Now().UTC()
-	supervisor, err := executor.New(executor.Config{Clock: fixedClock{now: now}, StopGrace: time.Second})
+	supervisor, err := executor.New(executor.Config{Clock: fixedClock{now: now}, StopGrace: stopGraceForTest})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -27,7 +34,7 @@ func TestSupervisorReportsDeadline(t *testing.T) {
 
 func TestSupervisorReportsCancellation(t *testing.T) {
 	now := time.Now().UTC()
-	supervisor, err := executor.New(executor.Config{Clock: fixedClock{now: now}, StopGrace: time.Second})
+	supervisor, err := executor.New(executor.Config{Clock: fixedClock{now: now}, StopGrace: stopGraceForTest})
 	if err != nil {
 		t.Fatal(err)
 	}

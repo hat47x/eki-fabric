@@ -17,11 +17,11 @@ func TestRunnerStopsProcessWhenCPULimitIsExceeded(t *testing.T) {
 	spec.Limits.CPUMillis = 1
 	spec.Limits.WallTimeMillis = 10000
 	spec.Deadline = now.Add(10 * time.Second)
-	runner := Runner{
-		Command: "cmd.exe",
-		Args:    []string{"/c", "ping -n 10 127.0.0.1 >nul"},
-		Env:     []string{"SystemRoot=" + os.Getenv("SystemRoot"), "PATH=" + os.Getenv("PATH")},
-	}
+	// The watch samples the CPU time of the process it started. A command that
+	// only waits (cmd /c ping) spends its CPU in the child, so the root process
+	// never crosses a 1ms ceiling and the test depended on when a sample
+	// happened to land. The helper burns CPU in the process the watch samples.
+	runner := helper("burn")
 	started := time.Now()
 	_, err := runner.Run(context.Background(), spec)
 	if err == nil || !strings.Contains(err.Error(), "CPU limit") {
