@@ -120,7 +120,7 @@ func (e *mtlsEnv) assignedAttempt(t *testing.T, taskID ids.TaskID) attemptstate.
 		attempts, err := s.ListAttemptsByTask(context.Background(), taskID)
 		if err == nil {
 			for _, a := range attempts {
-				if a.Phase == attemptstate.AttemptPhaseAssigned {
+				if a.Phase == attemptstate.AttemptPhaseDispatched {
 					s.Close()
 					return a
 				}

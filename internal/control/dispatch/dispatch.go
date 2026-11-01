@@ -301,14 +301,32 @@ func (l *Loop) dispatchOne(ctx context.Context, task taskstate.TaskRecord) error
 	if _, err := l.cfg.IssueWorkOrder(ctx, reserved.LeaseID, worker); err != nil {
 		return fmt.Errorf("issue work order: %w", err)
 	}
-	// Placement and emission each advance the Attempt revision, so the copy
-	// read before them is stale. Re-read before assigning.
+	// Placement, Lease reservation and emission each advance the Attempt, so
+	// the copy read before them is stale. Re-read before the final transition.
 	current, err := l.reloadAttempt(ctx, task.ID, attempt.ID)
 	if err != nil {
 		return err
 	}
-	if err := l.assignAttempt(ctx, current, worker, reserved.LeaseID); err != nil {
-		return err
+	if current.Phase == attemptstate.AttemptPhasePlacing {
+		assigned, err := l.assignAttempt(ctx, current, worker, reserved.LeaseID)
+		if err != nil {
+			return err
+		}
+		current = assigned
+	}
+	if current.Phase != attemptstate.AttemptPhaseAssigned {
+		return fmt.Errorf("attempt %s is %s after the WorkOrder, not ASSIGNED", current.ID, current.Phase)
+	}
+	// The WorkOrder is now visible to the Worker, so the Attempt is
+	// DISPATCHED. Claim acceptance only accepts DISPATCHED or later phases;
+	// leaving the Attempt ASSIGNED would reject every ResultClaim.
+	dispatched := current
+	dispatched.Phase = attemptstate.AttemptPhaseDispatched
+	dispatched.WorkerIdentity, dispatched.LeaseID = worker, reserved.LeaseID
+	dispatched.Revision++
+	dispatched.UpdatedAt = l.now()
+	if err := l.cfg.Attempts.CompareAndSwapAttempt(ctx, current.ID, current.Revision, dispatched); err != nil {
+		return fmt.Errorf("mark attempt dispatched: %w", err)
 	}
 	return nil
 }
@@ -486,12 +504,12 @@ func (l *Loop) evidence(worker string, task taskstate.TaskRecord) placementauth.
 	}
 }
 
-func (l *Loop) assignAttempt(ctx context.Context, attempt attemptstate.AttemptRecord, worker string, leaseID ids.LeaseID) error {
+func (l *Loop) assignAttempt(ctx context.Context, attempt attemptstate.AttemptRecord, worker string, leaseID ids.LeaseID) (attemptstate.AttemptRecord, error) {
 	assigned := attempt
 	assigned.Phase, assigned.LeaseID = attemptstate.AttemptPhaseAssigned, leaseID
 	assigned.Revision, assigned.UpdatedAt = attempt.Revision+1, l.now()
 	if err := l.cfg.Attempts.CompareAndSwapAttempt(ctx, attempt.ID, attempt.Revision, assigned); err != nil {
-		return fmt.Errorf("assign attempt: %w", err)
+		return attemptstate.AttemptRecord{}, fmt.Errorf("assign attempt: %w", err)
 	}
-	return nil
+	return assigned, nil
 }
