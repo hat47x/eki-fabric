@@ -114,7 +114,7 @@
             }
           },
           "429": {
-            "description": "Admission, quota or rate budget is exhausted.",
+            "description": "Admission, quota or rate budget is exhausted. For TASK_QUOTA_EXCEEDED, the problem's retryable flag says whether waiting can clear the limit. It is true only when this deployment finishes admitted Tasks on its own, in which case Retry-After is present; otherwise the Client must cancel a Task it no longer needs to free capacity.",
             "content": {
               "application/problem+json": {
                 "schema": {

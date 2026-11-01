@@ -38,15 +38,21 @@ type Config struct {
 	// OnInternalError receives failures that are our fault. The Client only
 	// ever sees a generic error. Nil discards them.
 	OnInternalError func(operation string, err error)
+	// QuotaDrainsAutomatically says whether admitted Tasks can finish without
+	// the Client doing anything. A quota rejection is retryable only when they
+	// can: otherwise waiting changes nothing and the Client must cancel a Task
+	// to free capacity (#282).
+	QuotaDrainsAutomatically bool
 }
 
 type Service struct {
-	store     statestore.Store
-	results   statestore.ResultAcceptanceStore
-	policy    Policy
-	now       func() time.Time
-	newTaskID func() (ids.TaskID, error)
-	onError   func(string, error)
+	store       statestore.Store
+	results     statestore.ResultAcceptanceStore
+	policy      Policy
+	now         func() time.Time
+	newTaskID   func() (ids.TaskID, error)
+	onError     func(string, error)
+	quotaDrains bool
 }
 
 func New(cfg Config) (*Service, error) {
@@ -56,7 +62,11 @@ func New(cfg Config) (*Service, error) {
 	if err := cfg.Policy.validate(); err != nil {
 		return nil, err
 	}
-	s := &Service{store: cfg.Store, results: cfg.Results, policy: cfg.Policy, now: cfg.Now, newTaskID: cfg.NewTaskID, onError: cfg.OnInternalError}
+	s := &Service{
+		store: cfg.Store, results: cfg.Results, policy: cfg.Policy,
+		now: cfg.Now, newTaskID: cfg.NewTaskID, onError: cfg.OnInternalError,
+		quotaDrains: cfg.QuotaDrainsAutomatically,
+	}
 	if s.now == nil {
 		s.now = time.Now
 	}
@@ -142,13 +152,21 @@ func (s *Service) Submit(ctx context.Context, p Principal, idempotencyKey string
 			Detail: "Use a new Idempotency-Key for a different request.",
 		}
 	case errors.Is(err, statestore.ErrQuotaExceeded):
-		return Accepted{}, &Error{
+		// Waiting frees capacity only when admitted Tasks can finish on their
+		// own. Without that, the Client has to cancel a Task, and announcing a
+		// retry would send it into a loop that never clears (#282).
+		quotaError := &Error{
 			Kind:                 KindTooManyRequests,
 			Code:                 "TASK_QUOTA_EXCEEDED",
 			Title:                "The outstanding task limit has been reached",
-			Retryable:            true,
+			Retryable:            s.quotaDrains,
 			PolicyReasonCategory: "QUOTA",
+			Detail:               "Cancel a task you no longer need to free capacity.",
 		}
+		if s.quotaDrains {
+			quotaError.Detail = "Wait for a running task to finish, or cancel one to free capacity."
+		}
+		return Accepted{}, quotaError
 	case errors.Is(err, context.Canceled), errors.Is(err, context.DeadlineExceeded):
 		return Accepted{}, err
 	default:

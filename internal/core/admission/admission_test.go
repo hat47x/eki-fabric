@@ -444,8 +444,11 @@ func TestSubmitEnforcesTheOutstandingTaskQuota(t *testing.T) {
 	}
 	_, err := svc.Submit(ctx, alice, "key-quota-999", []byte(requestWithoutInputs()))
 	ae := wantError(t, err, KindTooManyRequests, "TASK_QUOTA_EXCEEDED")
-	if !ae.Retryable {
-		t.Error("a quota rejection must be retryable")
+	if ae.Retryable {
+		t.Error("a quota rejection must not be retryable when nothing frees the quota on its own (#282)")
+	}
+	if ae.Detail == "" {
+		t.Error("a quota rejection must say how to free capacity")
 	}
 
 	// A replay of an admitted task still succeeds at the limit.
@@ -464,6 +467,24 @@ func TestSubmitEnforcesTheOutstandingTaskQuota(t *testing.T) {
 	}
 	if _, err := svc.Submit(ctx, alice, "key-quota-999", []byte(requestWithoutInputs())); err != nil {
 		t.Fatalf("Submit() after a task finished error = %v", err)
+	}
+}
+
+// A deployment whose admitted Tasks finish without the Client may tell it to
+// retry: waiting does clear the quota there (#282).
+func TestQuotaRejectionIsRetryableWhenTasksFinishOnTheirOwn(t *testing.T) {
+	svc, _ := newService(t, func(c *Config) { c.QuotaDrainsAutomatically = true })
+	alice := Principal{ID: "alice"}
+	ctx := context.Background()
+	for i := 0; i < 3; i++ {
+		if _, err := svc.Submit(ctx, alice, fmt.Sprintf("key-quota-%03d", i), []byte(requestWithoutInputs())); err != nil {
+			t.Fatalf("Submit(%d) error = %v", i, err)
+		}
+	}
+	_, err := svc.Submit(ctx, alice, "key-quota-999", []byte(requestWithoutInputs()))
+	ae := wantError(t, err, KindTooManyRequests, "TASK_QUOTA_EXCEEDED")
+	if !ae.Retryable {
+		t.Error("a quota rejection must be retryable when admitted Tasks finish on their own")
 	}
 }
 

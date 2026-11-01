@@ -1146,3 +1146,18 @@ TaskにはAttemptのような遷移の検証が無く、`CompareAndSwapTask`はr
 - 「`completed`のTaskには必ず受理済みの結果がある」を、汎用CASの境界で拒否する形。受理の入口（`CommitAcceptedResult`）は結果・Attempt・Taskを同じtransactionで書いており、いまの不変条件はそこでのみ守られている。汎用CASを一律に拒否すると、Client APIのhandler試験が使っている「fakeの結果と、CASで作ったcompletedのTask」という前提が崩れるため、試験のfixtureを受理のcommitへ寄せる作業と合わせて行う。
 - `CreateTask`でterminalのTaskを最初から作れること。作成は遷移ではないため、いまは制限していない。回復や移行の用途があるかを決めたうえで扱う。
 - `cancellation_requested`の立て下ろしと、heldからの復帰の表し方（#263、#267と合わせる）。
+
+### 2026-11-01 上限に達した受理の応答を、待って解消する場合と操作が要る場合で分ける（#282）
+
+未完了Task数の上限に達したときの`429 TASK_QUOTA_EXCEEDED`は、常に`retryable: true`と`Retry-After: 5`を返していた。実行系が配線されていない構成では、待ってもTaskは終わらないため、依頼元は同じ`429`を受け続ける。解消する手段は自分のTaskの取消だけで、応答はそれを促していなかった。
+
+- `admission.Config`に`QuotaDrainsAutomatically`を足した。Control Planeの起動経路は、配置ループ（`cfg.Dispatch`）がある場合だけtrueにする。配置ループがTaskを先へ進める構成では、待てば容量が空くためである。
+- 上限の応答は、この値で`Retryable`を決める。trueなら「実行中のTaskが終わるのを待つか、Taskを取り消す」、falseなら「不要なTaskを取り消して容量を空ける」と`detail`で示す。`Retry-After`はretryableのときだけ付く（`handler.fail`の既存の条件のまま）。
+- `spec/external/openapi.json`の`429`に、`retryable`が何を意味するかと、`Retry-After`が付く条件を書いた。
+- 試験: 既定（実行系なし）ではretryableでなく`Retry-After`も付かないこと、配置ループのある構成ではretryableで`Retry-After`が付くこと（clientapi）。同じ2通りをadmissionで確かめた。
+
+未決（#282に残す）:
+
+- 現在の未完了Task数と上限を、依頼元が読める形で応答に足すか。`policy_reason_category: QUOTA`は既にある。
+- 依頼元が自分の未完了Taskを列挙する手段（#250）。
+- 実行系が無い構成で、受理したTaskを期限なしに`queued`のまま置くことの扱い（#111、#249）。
