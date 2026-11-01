@@ -1060,3 +1060,16 @@ MVPの一続きの流れで、Control Planeが署名して保存したLeaseとWo
 - 実行中のLeaseが複数ある場合のAgentの報告（今は1件）。
 - 心拍の周期と、Control Planeの時計のずれの上限。
 - #198のWorker Protocolへの写像（`spec/worker/v1/worker.proto`のHeartbeatとの関係）。
+
+### 2026-11-01 更新前のWorker証明書を受け付けない（#284）
+
+更新のたびに鍵を新しくする（ADR-0027 §2.4）のに、Control Planeは提示された証明書の通し番号を登録簿と照合していなかった。そのため、盗まれた古い鍵は、Workerが更新した後もClaimの送信と更新を続けられ、更新のたびに有効期間が延びていた。
+
+- `mtlsHandler.authenticate`で、`Authorize`が返すWorkerの`Certificate.Serial`と、提示された証明書の`SerialNumber`（16進）を照合する。一致しなければ401。登録簿に通し番号がないWorkerも401とした（比較できる現在の証明書がない）。
+- 更新（`Renew`）も同じauthenticateを通るため、更新前の証明書では更新できない。新しい証明書は、`Renew`が登録簿へ記録した後にだけ使える。
+- 試験では、更新前の証明書でClaimが401、更新前の証明書での再更新が401、更新後の証明書でClaimが200になることを固定した。
+
+未決:
+
+- 更新の応答が失われたWorkerは、新しい証明書を受け取れないまま、古い証明書も使えなくなる。再enrollmentの運用（資格の発行）で回復する。更新の再送で同じ証明書を返す仕組みは未定。
+- 失効の伝播の上限（#304）、複数のControl Planeで登録簿を共有する場合の整合。

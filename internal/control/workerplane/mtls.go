@@ -189,13 +189,22 @@ func (h *mtlsHandler) authenticate(r *http.Request) (workerenrollment.WorkerPrin
 		return workerenrollment.WorkerPrincipal{}, nil, http.StatusUnauthorized
 	}
 	principal := workerenrollment.WorkerPrincipal{Identity: identity, TrustDomain: trustDomain}
-	if _, err := h.registry.Authorize(r.Context(), principal); err != nil {
+	worker, err := h.registry.Authorize(r.Context(), principal)
+	if err != nil {
 		if errors.Is(err, workerenrollment.ErrWorkerNotUsable) {
 			return workerenrollment.WorkerPrincipal{}, nil, http.StatusUnauthorized
 		}
 		// The registry could not be read. Fail closed.
 		h.log.Error("worker registry lookup failed", "error", err.Error())
 		return workerenrollment.WorkerPrincipal{}, nil, http.StatusServiceUnavailable
+	}
+	// Only the certificate the registry currently records for this Worker is
+	// accepted (ADR-0027 section 2.4 item 15, #284). Otherwise a stolen key
+	// keeps working, and keeps renewing itself, after the Worker has renewed
+	// to a new key. A Worker without a recorded serial cannot authenticate:
+	// there is no current certificate to compare against.
+	if worker.Certificate.Serial == "" || worker.Certificate.Serial != leaf.SerialNumber.Text(16) {
+		return workerenrollment.WorkerPrincipal{}, nil, http.StatusUnauthorized
 	}
 	return principal, leaf, 0
 }

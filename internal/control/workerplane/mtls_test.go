@@ -516,6 +516,16 @@ func TestMTLSRenewal(t *testing.T) {
 	if resp, body := f.claim(t, renewed, nil); resp.StatusCode != http.StatusOK {
 		t.Fatalf("claim with the renewed certificate = %d %s", resp.StatusCode, body)
 	}
+	// #284: the certificate that was current before the renewal stops working,
+	// both for claims and for another renewal. A stolen old key must not keep
+	// acting, or keep renewing itself, after the Worker renewed.
+	if resp, body := f.claim(t, w, nil); resp.StatusCode != http.StatusUnauthorized {
+		t.Fatalf("claim with the pre-renewal certificate = %d %s, want 401", resp.StatusCode, body)
+	}
+	if resp, _ := f.post(t, f.client(&w.cert), enrollwire.RenewPath, enrollwire.CSRContentType, "",
+		csrDER(t, mustKey(t), &x509.CertificateRequest{})); resp.StatusCode != http.StatusUnauthorized {
+		t.Fatalf("pre-renewal certificate renewed: %d, want 401", resp.StatusCode)
+	}
 
 	// An expired certificate cannot renew.
 	f.clock.add(workerenrollmentDefaultValidity() + time.Hour)
