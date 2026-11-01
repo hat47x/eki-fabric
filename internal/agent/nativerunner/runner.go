@@ -103,6 +103,9 @@ func (r Runner) Run(ctx context.Context, spec executor.Spec) (executor.Result, e
 	cmd.Env = append([]string{}, r.Env...)
 	if tempDir != "" {
 		cmd.Env = append(cmd.Env, "TMP="+tempDir, "TEMP="+tempDir, "TMPDIR="+tempDir)
+		// Relative writes land in the per-run directory. This is not a
+		// filesystem sandbox: absolute paths are still reachable.
+		cmd.Dir = tempDir
 	}
 	cmd.Stdout = writer
 	cmd.Stderr = writer
