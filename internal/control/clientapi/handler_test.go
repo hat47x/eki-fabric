@@ -509,6 +509,16 @@ func TestQuotaRejectionIsNotRetryableWithoutAnExecutionPath(t *testing.T) {
 	if detail, _ := p["detail"].(string); !strings.Contains(detail, "Cancel") {
 		t.Errorf("detail = %q, want a hint to cancel a task", detail)
 	}
+	// Nothing frees the quota on its own, so a later attempt gets the same
+	// answer: the Client has to act, not wait (#282).
+	again := e.submit(aliceToken, "key-quota-1000", validRequest)
+	p2 := wantProblem(t, again, http.StatusTooManyRequests, "TASK_QUOTA_EXCEEDED")
+	if p2["retryable"] != nil && p2["retryable"] != false {
+		t.Errorf("second retryable = %v, want absent or false", p2["retryable"])
+	}
+	if got := again.header.Get("Retry-After"); got != "" {
+		t.Errorf("second Retry-After = %q, want none", got)
+	}
 }
 
 func TestTasksAreVisibleOnlyToTheirOwner(t *testing.T) {
