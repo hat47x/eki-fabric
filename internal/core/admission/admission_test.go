@@ -970,3 +970,37 @@ func TestAReplayConvergesAfterTheTaskEnded(t *testing.T) {
 		t.Fatalf("replay submitted_at = %v, want the first %v", again.SubmittedAt, first.SubmittedAt)
 	}
 }
+
+// Admission checks the parameters' structure only. This version has no
+// executor schema to evaluate them against, and version_constraint is
+// recorded into the fingerprint but never evaluated (#266, option 2):
+// a request no executor schema could accept, and a constraint no executor
+// version satisfies, are both admitted.
+func TestParametersAndVersionConstraintAreNotEvaluated(t *testing.T) {
+	svc, _ := newService(t)
+	ctx := context.Background()
+	alice := Principal{ID: "alice"}
+
+	// Parameters of a shape no executor schema would accept, and a version
+	// constraint the fleet cannot satisfy, pass admission unchanged.
+	raw := []byte(strings.Replace(requestWithoutInputs(),
+		`"parameters": {"mode": "normalize"}`,
+		`"parameters": {"mode": {"deeply": [true, null, {"nested": 1.5}]}, "extra": {"unknown": "shape"}}`,
+		1,
+	))
+	raw = []byte(strings.Replace(string(raw), `"version_constraint": "^1"`, `"version_constraint": ">=99.0"`, 1))
+	req, err := ParseTaskRequest(raw)
+	if err != nil {
+		t.Fatalf("ParseTaskRequest() error = %v", err)
+	}
+	if err := svc.policy.check(req, testNow); err != nil {
+		t.Fatalf("policy.check() error = %v", err)
+	}
+	got, err := svc.Submit(ctx, alice, "key-00000011", raw)
+	if err != nil {
+		t.Fatalf("Submit() error = %v", err)
+	}
+	if got.Replayed {
+		t.Fatal("a fresh request reported replay")
+	}
+}
