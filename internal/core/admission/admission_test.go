@@ -53,6 +53,14 @@ func testPolicy() Policy {
 	}
 }
 
+// requestWithDeadline returns requestWithoutInputs with a deadline attached.
+func requestWithDeadline(t *testing.T, at time.Time) []byte {
+	t.Helper()
+	return []byte(strings.Replace(requestWithoutInputs(),
+		`"priority": "normal"`,
+		`"priority": "normal", "deadline": "`+at.Format(time.RFC3339)+`"`, 1))
+}
+
 func newService(t testing.TB, mutate ...func(*Config)) (*Service, *memory.Store) {
 	t.Helper()
 	store := memory.New()
@@ -65,6 +73,27 @@ func newService(t testing.TB, mutate ...func(*Config)) (*Service, *memory.Store)
 		t.Fatalf("New() error = %v", err)
 	}
 	return svc, store
+}
+
+// newServiceWithClock builds a Service whose clock and policy differ from the
+// defaults, for tests that need a lapsed deadline or an edited policy.
+func newServiceWithClock(t testing.TB, now time.Time, mutatePolicy func(*Policy)) *Service {
+	t.Helper()
+	cfg := Config{Store: memory.New(), Policy: testPolicy(), Now: func() time.Time { return now }}
+	if mutatePolicy != nil {
+		mutatePolicy(&cfg.Policy)
+	}
+	svc, err := New(cfg)
+	if err != nil {
+		t.Fatalf("New() error = %v", err)
+	}
+	return svc
+}
+
+// wantErrorCode reports whether err is an *Error carrying code.
+func wantErrorCode(err error, code string) bool {
+	var ae *Error
+	return errors.As(err, &ae) && ae.Code == code
 }
 
 func wantError(t testing.TB, err error, kind Kind, code string) *Error {
@@ -376,7 +405,6 @@ func TestSubmitIsIdempotent(t *testing.T) {
 	svc, _ := newService(t)
 	alice := Principal{ID: "alice"}
 	ctx := context.Background()
-
 	first, err := svc.Submit(ctx, alice, "key-00000001", []byte(requestWithoutInputs()))
 	if err != nil {
 		t.Fatalf("first Submit() error = %v", err)
@@ -389,6 +417,10 @@ func TestSubmitIsIdempotent(t *testing.T) {
 	if again.TaskID != first.TaskID || !again.Replayed {
 		t.Fatalf("replay created %s (replayed=%v), want %s", again.TaskID, again.Replayed, first.TaskID)
 	}
+
+	// The same request with a NEW key admits a second Task; the deadline on
+	// the first stays where it was. A retry must converge even after its
+	// deadline passed and the policy changed (#264).
 
 	// A different request under the same key is a conflict, and creates nothing.
 	other := strings.Replace(requestWithoutInputs(), `"normalize"`, `"different"`, 1)
@@ -854,5 +886,56 @@ func TestCancelSurvivesTheClockSteppingBackwards(t *testing.T) {
 	}
 	if record.UpdatedAt.Before(record.CreatedAt) {
 		t.Fatalf("updated %v precedes created %v", record.UpdatedAt, record.CreatedAt)
+	}
+}
+
+func TestAReplayConvergesBeforePolicyAndTheClock(t *testing.T) {
+	alice := Principal{ID: "alice"}
+	ctx := context.Background()
+
+	deadline := testNow.Add(2 * time.Hour)
+	store := memory.New()
+	cfg := Config{Store: store, Policy: testPolicy(), Now: func() time.Time { return testNow }}
+	svc, err := New(cfg)
+	if err != nil {
+		t.Fatalf("New() error = %v", err)
+	}
+	first, err := svc.Submit(ctx, alice, "replay-00000001", requestWithDeadline(t, deadline))
+	if err != nil {
+		t.Fatalf("first Submit() error = %v", err)
+	}
+
+	// The deadline has passed and the executor left the approved list; the
+	// replay still returns the first Task, not a policy refusal. Both clocks
+	// read the same store: the convergence is a property of the record, not
+	// of the clock.
+	later := testNow.Add(3 * time.Hour)
+	cfg2 := Config{Store: store, Policy: testPolicy(), Now: func() time.Time { return later }}
+	cfg2.Policy.ApprovedExecutors = []string{"dev.example.gone"}
+	svc2, err := New(cfg2)
+	if err != nil {
+		t.Fatalf("New() error = %v", err)
+	}
+	again, err := svc2.Submit(ctx, alice, "replay-00000001", requestWithDeadline(t, deadline))
+	if err != nil {
+		t.Fatalf("replayed Submit() error = %v", err)
+	}
+	if again.TaskID != first.TaskID || !again.Replayed {
+		t.Fatalf("stale replay = %#v, want %s", again, first.TaskID)
+	}
+	if !again.SubmittedAt.Equal(first.SubmittedAt) {
+		t.Fatalf("replay submitted_at = %v, want the first admission's %v", again.SubmittedAt, first.SubmittedAt)
+	}
+
+	// A fresh key under the lapsed policy is refused by policy, as before.
+	fresh := newServiceWithClock(t, later, func(p *Policy) { p.ApprovedExecutors = []string{"dev.example.gone"} })
+	if _, err := fresh.Submit(ctx, alice, "replay-00000002", requestWithDeadline(t, deadline)); err == nil {
+		t.Fatal("fresh submit under the lapsed policy error = nil, want DEADLINE_IN_PAST")
+	}
+
+	// The same key with a different body is still a conflict, before policy.
+	other := strings.Replace(string(requestWithDeadline(t, deadline)), `"normalize"`, `"different"`, 1)
+	if _, err := svc2.Submit(ctx, alice, "replay-00000001", []byte(other)); !wantErrorCode(err, "IDEMPOTENCY_KEY_CONFLICT") {
+		t.Fatalf("conflicting replay error = %v, want IDEMPOTENCY_KEY_CONFLICT", err)
 	}
 }
