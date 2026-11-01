@@ -164,10 +164,13 @@ func (h *mtlsHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 // authenticate verifies the client certificate of the request and asks the
 // registry whether the Worker may act now. The identity comes from the
 // certificate's name only; the registry is consulted on every request. The
-// returned status is 0 on success.
+// returned status is 0 on success. Every refusal is one line in the log with
+// a reason that names the failed check and no secret (#300): under load the
+// 401s were indistinguishable, and the reason is the difference between a
+// test-flake report and a product bug.
 func (h *mtlsHandler) authenticate(r *http.Request) (workerenrollment.WorkerPrincipal, *x509.Certificate, int) {
 	if r.TLS == nil || len(r.TLS.PeerCertificates) == 0 {
-		return workerenrollment.WorkerPrincipal{}, nil, http.StatusUnauthorized
+		return h.refuseAuth(r, "no_client_certificate", http.StatusUnauthorized)
 	}
 	leaf := r.TLS.PeerCertificates[0]
 	// The leaf must be signed directly by the Worker CA. Certificates the peer
@@ -177,22 +180,22 @@ func (h *mtlsHandler) authenticate(r *http.Request) (workerenrollment.WorkerPrin
 		KeyUsages:   []x509.ExtKeyUsage{x509.ExtKeyUsageClientAuth},
 		CurrentTime: h.now(),
 	}); err != nil {
-		return workerenrollment.WorkerPrincipal{}, nil, http.StatusUnauthorized
+		return h.refuseAuth(r, "certificate_not_verified", http.StatusUnauthorized, "verify_error", err.Error())
 	}
 	if leaf.IsCA || len(leaf.URIs) != 1 || len(leaf.DNSNames)+len(leaf.IPAddresses)+len(leaf.EmailAddresses) != 0 {
-		return workerenrollment.WorkerPrincipal{}, nil, http.StatusUnauthorized
+		return h.refuseAuth(r, "certificate_shape", http.StatusUnauthorized, "is_ca", leaf.IsCA, "uris", len(leaf.URIs))
 	}
 	trustDomain, identity, err := workercert.ParseURI(leaf.URIs[0])
 	// The CA's name constraint also admits sub-domains of the trust domain, so
 	// the domain is compared exactly.
 	if err != nil || trustDomain != h.trustDomain {
-		return workerenrollment.WorkerPrincipal{}, nil, http.StatusUnauthorized
+		return h.refuseAuth(r, "identity_uri", http.StatusUnauthorized, "parse_error", err != nil, "trust_domain_match", err == nil && trustDomain == h.trustDomain)
 	}
 	principal := workerenrollment.WorkerPrincipal{Identity: identity, TrustDomain: trustDomain}
 	worker, err := h.registry.Authorize(r.Context(), principal)
 	if err != nil {
 		if errors.Is(err, workerenrollment.ErrWorkerNotUsable) {
-			return workerenrollment.WorkerPrincipal{}, nil, http.StatusUnauthorized
+			return h.refuseAuth(r, "worker_not_usable", http.StatusUnauthorized, "worker", identity)
 		}
 		// The registry could not be read. Fail closed.
 		h.log.Error("worker registry lookup failed", "error", err.Error())
@@ -204,9 +207,20 @@ func (h *mtlsHandler) authenticate(r *http.Request) (workerenrollment.WorkerPrin
 	// to a new key. A Worker without a recorded serial cannot authenticate:
 	// there is no current certificate to compare against.
 	if worker.Certificate.Serial == "" || worker.Certificate.Serial != leaf.SerialNumber.Text(16) {
-		return workerenrollment.WorkerPrincipal{}, nil, http.StatusUnauthorized
+		return h.refuseAuth(r, "stale_certificate", http.StatusUnauthorized, "worker", identity)
 	}
 	return principal, leaf, 0
+}
+
+// refuseAuth logs one refused authentication with the reason that names the
+// failed check, then returns the caller's refusal values. The reason kinds
+// are a closed set (no request bytes, no certificate fields beyond counts and
+// flags, no secrets); a log line must never become the way a certificate is
+// quoted back to its sender.
+func (h *mtlsHandler) refuseAuth(r *http.Request, reason string, status int, logKeysAndValues ...any) (workerenrollment.WorkerPrincipal, *x509.Certificate, int) {
+	values := append([]any{"reason", reason, "remote", r.RemoteAddr}, logKeysAndValues...)
+	h.log.Warn("worker authentication refused", values...)
+	return workerenrollment.WorkerPrincipal{}, nil, status
 }
 
 // refuse answers a request that failed authentication and closes the
