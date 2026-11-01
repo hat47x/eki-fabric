@@ -68,7 +68,12 @@ func RenewLoop(ctx context.Context, holder *Holder, controlURL, stateDir string,
 			log.Error("worker certificate expired and cannot renew; enroll again with a new enrollment credential", "worker", id.WorkerIdentity)
 			return
 		}
-		log.Warn("worker certificate renewal failed; will retry", "worker", id.WorkerIdentity, "error", err.Error(), "expires", id.Leaf.NotAfter.Format(time.RFC3339))
+		// A server-side failure can be an expired Worker CA (#304): every
+		// renewal fails the same way, and enrolling again fails too. The Agent
+		// cannot tell that apart from a network failure, so the message names
+		// the possibility instead of promising that enrolling again helps.
+		log.Warn("worker certificate renewal failed; will retry (if it persists, the Control Plane's Worker CA may be expired)",
+			"worker", id.WorkerIdentity, "error", err.Error(), "expires", id.Leaf.NotAfter.Format(time.RFC3339))
 		t := clock.NewTimer(retry)
 		select {
 		case <-ctx.Done():

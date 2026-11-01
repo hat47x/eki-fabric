@@ -1,12 +1,17 @@
 package service
 
 import (
+	"bytes"
 	"context"
 	"errors"
+	"log/slog"
+	"os"
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
+	"github.com/hat47x/eki-fabric/internal/adapters/reference/workerca"
 	"github.com/hat47x/eki-fabric/internal/control/clientapi"
 )
 
@@ -202,5 +207,71 @@ func TestWorkerMTLSStartFailsClosedWithoutTheCAFiles(t *testing.T) {
 	cfg := mtlsWorkerConfig(t, func(c *Config) { c.Worker.Listen = "127.0.0.1:0" })
 	if _, err := Start(context.Background(), cfg, quietLogger()); err == nil {
 		t.Fatal("Start succeeded without a Worker CA")
+	}
+}
+
+// writeWorkerCA writes a Worker CA generated at at, valid for validity.
+func writeWorkerCA(t *testing.T, dir string, validity time.Duration, at time.Time) (certPath, keyPath string) {
+	t.Helper()
+	certPEM, keyPEM, err := workerca.GenerateCA("example.org", validity, at)
+	if err != nil {
+		t.Fatalf("GenerateCA() error = %v", err)
+	}
+	certPath = filepath.Join(dir, "worker-ca.pem")
+	keyPath = filepath.Join(dir, "worker-ca.key")
+	if err := os.WriteFile(certPath, certPEM, 0o600); err != nil {
+		t.Fatalf("WriteFile() error = %v", err)
+	}
+	if err := os.WriteFile(keyPath, keyPEM, 0o600); err != nil {
+		t.Fatalf("WriteFile() error = %v", err)
+	}
+	return certPath, keyPath
+}
+
+// mtlsConfigWithCA builds an mTLS Worker listener on loopback with a real
+// server certificate and the given Worker CA files.
+func mtlsConfigWithCA(t *testing.T, dir, caCert, caKey string) Config {
+	t.Helper()
+	certFile, keyFile, _ := selfSignedCert(t, dir)
+	cfg := mtlsWorkerConfig(t, func(c *Config) {
+		c.Database = filepath.Join(dir, "state.db")
+		c.Worker.Listen = "127.0.0.1:0"
+		c.Worker.TLS = &TLSConfig{CertFile: certFile, KeyFile: keyFile}
+		c.Worker.MTLS.CACertFile = caCert
+		c.Worker.MTLS.CAKeyFile = caKey
+	})
+	return cfg
+}
+
+// TestWorkerMTLSRefusesAnExpiredCA pins #304: an expired CA stops every
+// enrollment and renewal, so it must be a startup failure rather than the first
+// 401 a Worker sees.
+func TestWorkerMTLSRefusesAnExpiredCA(t *testing.T) {
+	dir := t.TempDir()
+	caCert, caKey := writeWorkerCA(t, dir, time.Hour, time.Now().Add(-2*time.Hour))
+	cfg := mtlsConfigWithCA(t, dir, caCert, caKey)
+	_, err := Start(context.Background(), cfg, quietLogger())
+	if !errors.Is(err, ErrInvalidConfig) {
+		t.Fatalf("Start() error = %v, want %v", err, ErrInvalidConfig)
+	}
+	if !strings.Contains(err.Error(), "expired") {
+		t.Fatalf("Start() error = %v, want an expiry reason", err)
+	}
+}
+
+// TestWorkerMTLSWarnsWhenTheCAExpiresSoon checks the startup warning of #304.
+func TestWorkerMTLSWarnsWhenTheCAExpiresSoon(t *testing.T) {
+	dir := t.TempDir()
+	caCert, caKey := writeWorkerCA(t, dir, 2*time.Hour, time.Now())
+	cfg := mtlsConfigWithCA(t, dir, caCert, caKey)
+	var logs bytes.Buffer
+	logger := slog.New(slog.NewTextHandler(&logs, nil))
+	s, err := Start(context.Background(), cfg, logger)
+	if err != nil {
+		t.Fatalf("Start() error = %v", err)
+	}
+	defer stop(t, s)
+	if !strings.Contains(logs.String(), "expires soon") {
+		t.Fatalf("startup did not warn about the CA expiry:\n%s", logs.String())
 	}
 }

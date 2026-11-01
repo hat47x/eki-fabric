@@ -259,6 +259,11 @@ func (h *mtlsHandler) enroll(w http.ResponseWriter, r *http.Request) {
 	}
 	h.log.Info("worker enrolled", "worker", enrolled.Worker.Identity, "trust_domain", enrolled.Worker.TrustDomain,
 		"credential", enrolled.Worker.CredentialID, "serial", enrolled.Certificate.Serial)
+	if enrolled.Certificate.Truncated {
+		h.log.Warn("worker certificate validity was shortened by the CA expiry",
+			"worker", enrolled.Worker.Identity, "serial", enrolled.Certificate.Serial,
+			"not_after", enrolled.Certificate.NotAfter.UTC().Format(time.RFC3339))
+	}
 	h.writeCertificate(w, enrolled.Worker.Identity, enrolled.Worker.TrustDomain, enrolled.Certificate)
 }
 
@@ -292,6 +297,11 @@ func (h *mtlsHandler) renew(w http.ResponseWriter, r *http.Request, principal wo
 		return
 	}
 	h.log.Info("worker certificate renewed", "worker", principal.Identity, "serial", cert.Serial)
+	if cert.Truncated {
+		h.log.Warn("worker certificate validity was shortened by the CA expiry",
+			"worker", principal.Identity, "serial", cert.Serial,
+			"not_after", cert.NotAfter.UTC().Format(time.RFC3339))
+	}
 	h.writeCertificate(w, principal.Identity, principal.TrustDomain, cert)
 }
 

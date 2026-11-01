@@ -39,6 +39,11 @@ type Server struct {
 
 	// dispatchDone is closed when the placement loop has stopped.
 	dispatchDone chan struct{}
+
+	// ca is the Worker CA when the Worker listener uses mTLS. caExpiry stops
+	// the expiry monitor.
+	ca       *workerca.CA
+	caExpiry chan struct{}
 }
 
 // Start opens the state store, builds the Client API, and begins serving. It
@@ -128,6 +133,7 @@ func Start(ctx context.Context, cfg Config, log *slog.Logger) (*Server, error) {
 			return nil, err
 		}
 	}
+	s.startCAExpiryMonitor()
 
 	go func() {
 		defer close(s.done)
@@ -218,6 +224,18 @@ func (s *Server) mtlsHandler(w *WorkerConfig, store *sqlite.Store, plane *claimp
 	if err != nil {
 		return nil, fmt.Errorf("%w: %v", ErrInvalidConfig, err)
 	}
+	// An expired CA stops every enrollment and renewal at once, and the error a
+	// Worker sees (401) names none of that. Refuse to start instead (#304).
+	now := time.Now().UTC()
+	if err := ca.ValidateCurrent(now); err != nil {
+		return nil, fmt.Errorf("%w: worker CA is not usable: %v", ErrInvalidConfig, err)
+	}
+	if remaining, soon := ca.ExpiresWithin(now, workerca.ExpiryWarningWindow); soon {
+		s.log.Warn("worker CA certificate expires soon",
+			"not_after", ca.NotAfter().Format(time.RFC3339),
+			"remaining", remaining.Truncate(time.Minute).String())
+	}
+	s.ca = ca
 	registry, err := workerenrollment.New(workerenrollment.Config{Store: store, Clock: systemClock{}, Issuer: ca})
 	if err != nil {
 		return nil, err
@@ -279,12 +297,46 @@ func (s *Server) Shutdown(ctx context.Context) error {
 		if s.dispatchDone != nil {
 			<-s.dispatchDone
 		}
+		if s.caExpiry != nil {
+			close(s.caExpiry)
+		}
 		<-s.done
 		if err := s.store.Close(); err != nil {
 			result = errors.Join(result, fmt.Errorf("close state store: %w", err))
 		}
 	})
 	return result
+}
+
+// caExpiryCheckInterval is how often a running Control Plane re-checks the
+// Worker CA certificate. The value is a compromise: often enough to warn well
+// before a 30-day window closes, rarely enough to keep the log quiet.
+const caExpiryCheckInterval = 6 * time.Hour
+
+// startCAExpiryMonitor warns periodically while the Worker CA certificate is
+// close to expiry (#304). A missing CA (no mTLS Worker listener) starts nothing.
+func (s *Server) startCAExpiryMonitor() {
+	if s.ca == nil {
+		return
+	}
+	stop := make(chan struct{})
+	s.caExpiry = stop
+	go func() {
+		ticker := time.NewTicker(caExpiryCheckInterval)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-stop:
+				return
+			case now := <-ticker.C:
+				if remaining, soon := s.ca.ExpiresWithin(now.UTC(), workerca.ExpiryWarningWindow); soon {
+					s.log.Warn("worker CA certificate expires soon",
+						"not_after", s.ca.NotAfter().Format(time.RFC3339),
+						"remaining", remaining.Truncate(time.Minute).String())
+				}
+			}
+		}
+	}()
 }
 
 // ShutdownGrace is how long Run waits for in-flight requests.

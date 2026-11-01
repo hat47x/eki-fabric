@@ -1073,3 +1073,25 @@ MVPの一続きの流れで、Control Planeが署名して保存したLeaseとWo
 
 - 更新の応答が失われたWorkerは、新しい証明書を受け取れないまま、古い証明書も使えなくなる。再enrollmentの運用（資格の発行）で回復する。更新の再送で同じ証明書を返す仕組みは未定。
 - 失効の伝播の上限（#304）、複数のControl Planeで登録簿を共有する場合の整合。
+
+### 2026-11-01 Worker CA証明書の期限を、起動時と稼働中に確かめる（#304）
+
+Worker CA証明書が期限切れになると、Control Planeは起動したまま、すべてのWorkerの登録と更新が失敗する。Workerが見るのは401だけで、原因がCAの期限だと分からない。CAの期限を、起動と稼働の中で見えるようにした。
+
+- `workerca.CA`に`ValidateCurrent(now)`、`ExpiresWithin(now, window)`、`NotAfter()`を加えた。`ExpiryWarningWindow`は30日。
+- Control Planeは、WorkerのmTLS listenerを組み立てるときにCAの現在の有効性を確かめ、期限切れ・未開始なら起動しない（`ErrInvalidConfig`）。30日以内なら起動時に警告し、稼働中は6時間ごとに同じ警告を出す。
+- `IssueCertificate`は、CAの期限で証明書の有効期間を切り詰めたときに`IssuedCertificate.Truncated`を立てる。Workerの登録・更新のhandlerは、切り詰めを監査ログに残す（Workerの識別子と通し番号、秘密は含めない）。
+- Agentの更新失敗のログに、Control PlaneのWorker CAの期限が原因であり得ることを書いた。Agentからは、CAの期限とnetworkの障害を区別できないためである。
+- 試験: CAの有効・期限切れ・未開始、警告の窓、切り詰めの有無（workerca）。期限切れCAでの起動失敗と、期限間近CAでの起動警告（control/service）。
+
+仮決め（承認待ち）:
+
+- 起動時に期限切れを失敗させ、警告の窓を30日、稼働中の確認を6時間ごととした。
+- CAの期限で短縮された証明書は、発行を拒否せず、短い有効期間で発行してログに残す。Workerは残り3分の1で更新するため、短い証明書は早く更新される。
+- 警告はログだけで、readiness（#289）には含めていない。
+
+未決:
+
+- CAの更新（鍵の入れ替え、中間CA、企業のPKI）の方式。ADR-0027の未決のまま。
+- 警告の窓と確認の間隔の運用値。CAの有効期間が短い配備では見直す。
+- 期限切れCAでの起動を、設定で明示的に許す必要があるか。

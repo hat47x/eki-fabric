@@ -8,6 +8,7 @@ import (
 	"crypto/x509"
 	"crypto/x509/pkix"
 	"encoding/pem"
+	"errors"
 	"math/big"
 	"net/url"
 	"strings"
@@ -311,5 +312,76 @@ func TestParseCSR(t *testing.T) {
 		} else if !strings.Contains(err.Error(), "certificate signing request") {
 			t.Errorf("%s: unexpected error class %v", name, err)
 		}
+	}
+}
+
+func TestValidateCurrentAndExpiryWindow(t *testing.T) {
+	now := time.Now().UTC()
+	certPEM, keyPEM, err := workerca.GenerateCA("example.org", 2*time.Hour, now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ca, err := workerca.New(certPEM, keyPEM, "example.org", 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := ca.ValidateCurrent(now); err != nil {
+		t.Fatalf("ValidateCurrent(valid) error = %v", err)
+	}
+	remaining, soon := ca.ExpiresWithin(now, 3*time.Hour)
+	if !soon || remaining <= 0 {
+		t.Fatalf("ExpiresWithin(3h) = %s, %v; want a warning", remaining, soon)
+	}
+	if _, soon := ca.ExpiresWithin(now, time.Minute); soon {
+		t.Fatal("ExpiresWithin(1m) warned about a CA valid for hours")
+	}
+	if err := ca.ValidateCurrent(now.Add(3 * time.Hour)); !errors.Is(err, workerca.ErrInvalidCA) {
+		t.Fatalf("ValidateCurrent(expired) error = %v, want %v", err, workerca.ErrInvalidCA)
+	}
+	if err := ca.ValidateCurrent(now.Add(-2 * time.Hour)); !errors.Is(err, workerca.ErrInvalidCA) {
+		t.Fatalf("ValidateCurrent(not yet valid) error = %v, want %v", err, workerca.ErrInvalidCA)
+	}
+}
+
+func TestIssueCertificateReportsTruncation(t *testing.T) {
+	now := time.Now().UTC()
+	certPEM, keyPEM, err := workerca.GenerateCA("example.org", time.Hour, now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ca, err := workerca.New(certPEM, keyPEM, "example.org", 72*time.Hour)
+	if err != nil {
+		t.Fatal(err)
+	}
+	id, err := ids.NewWorkerIdentity()
+	if err != nil {
+		t.Fatal(err)
+	}
+	key := newKey(t)
+	got, err := ca.IssueCertificate(workerenrollment.CertificateRequest{
+		Identity: id, TrustDomain: "example.org", PublicKey: &key.PublicKey, Now: now,
+	})
+	if err != nil {
+		t.Fatalf("IssueCertificate() error = %v", err)
+	}
+	if !got.Truncated {
+		t.Fatal("a certificate capped by the CA expiry was not reported as truncated")
+	}
+	if got.NotAfter.After(ca.NotAfter()) {
+		t.Fatalf("issued NotAfter %s is after the CA NotAfter %s", got.NotAfter, ca.NotAfter())
+	}
+
+	short, err := workerca.New(certPEM, keyPEM, "example.org", 10*time.Minute)
+	if err != nil {
+		t.Fatal(err)
+	}
+	untruncated, err := short.IssueCertificate(workerenrollment.CertificateRequest{
+		Identity: id, TrustDomain: "example.org", PublicKey: &key.PublicKey, Now: now,
+	})
+	if err != nil {
+		t.Fatalf("IssueCertificate(short) error = %v", err)
+	}
+	if untruncated.Truncated {
+		t.Fatal("a certificate inside the CA validity was reported as truncated")
 	}
 }
