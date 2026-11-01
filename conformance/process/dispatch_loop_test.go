@@ -31,6 +31,7 @@ import (
 	"github.com/hat47x/eki-fabric/internal/core/contract"
 	"github.com/hat47x/eki-fabric/internal/core/ids"
 	"github.com/hat47x/eki-fabric/internal/core/taskstate"
+	"github.com/hat47x/eki-fabric/internal/spi/workerplane"
 	"github.com/hat47x/eki-fabric/internal/spi/workerplane/testprofile"
 )
 
@@ -132,6 +133,32 @@ func (e *mtlsEnv) assignedAttempt(t *testing.T, taskID ids.TaskID) attemptstate.
 	return attemptstate.AttemptRecord{}
 }
 
+// waitForAssignments polls the TEST PROFILE fetch until the Worker can see at
+// least want Assignments, and returns them.
+//
+// The dispatch loop commits the Attempt as ASSIGNED before it emits the signed
+// WorkOrder, and the listing only carries an Attempt once both the Lease and
+// the WorkOrder are EMITTED. A single fetch therefore races the loop; the
+// Worker's own fetch loop polls for the same reason.
+func (e *mtlsEnv) waitForAssignments(t *testing.T, w rawWorker, want int) []workerplane.Assignment {
+	t.Helper()
+	deadline := time.Now().Add(pollDeadline)
+	var (
+		status int
+		body   string
+		got    []workerplane.Assignment
+	)
+	for time.Now().Before(deadline) {
+		status, got, body = e.fetchAssignments(t, w, testprofile.EncodeAssignmentsRequest(nil))
+		if status == http.StatusOK && len(got) >= want {
+			return got
+		}
+		time.Sleep(100 * time.Millisecond)
+	}
+	t.Fatalf("fetch = %d %d assignments %s within the deadline", status, len(got), body)
+	return nil
+}
+
 func TestDispatchLoopAssignsAReadyTaskAndTheWorkerFetchesItsLease(t *testing.T) {
 	e := newMTLSEnv(t, 0)
 	e.seedPolicyNow(t)
@@ -155,11 +182,10 @@ func TestDispatchLoopAssignsAReadyTaskAndTheWorkerFetchesItsLease(t *testing.T) 
 	}
 
 	// The Worker the loop chose can fetch the Lease and WorkOrder issued for
-	// its Attempt.
-	status, got, body := e.fetchAssignments(t, w, testprofile.EncodeAssignmentsRequest(nil))
-	if status != http.StatusOK || len(got) != 1 {
-		t.Fatalf("fetch = %d %d assignments %s", status, len(got), body)
-	}
+	// its Attempt. The loop commits the Attempt as ASSIGNED before it emits
+	// the WorkOrder, so the first fetch can legitimately come back empty;
+	// poll like the Worker's own fetch loop does.
+	got := e.waitForAssignments(t, w, 1)
 	if got[0].AttemptID != attempt.ID.String() || got[0].LeaseID != attempt.LeaseID.String() {
 		t.Fatalf("the Assignment names %s/%s, want the Attempt and Lease the loop issued", got[0].AttemptID, got[0].LeaseID)
 	}
