@@ -22,10 +22,13 @@ import (
 	"github.com/hat47x/eki-fabric/conformance/signedchain"
 	agentservice "github.com/hat47x/eki-fabric/internal/agent/service"
 	"github.com/hat47x/eki-fabric/internal/agent/trustanchor"
+	"github.com/hat47x/eki-fabric/internal/control/resultacceptance"
 	"github.com/hat47x/eki-fabric/internal/control/signingkeys"
 	"github.com/hat47x/eki-fabric/internal/core/attemptstate"
+	"github.com/hat47x/eki-fabric/internal/core/contract"
 	"github.com/hat47x/eki-fabric/internal/core/decisionpayload"
 	"github.com/hat47x/eki-fabric/internal/core/ids"
+	"github.com/hat47x/eki-fabric/internal/core/resultaccept"
 	"github.com/hat47x/eki-fabric/internal/core/taskstate"
 )
 
@@ -143,12 +146,16 @@ func TestHTTPTaskSubmissionIsExecutedByTheAgent(t *testing.T) {
 	store := openState(t, e.controlDB)
 	task, err := store.LoadTask(context.Background(), taskID)
 	must(t, err)
-	if task.Phase != taskstate.TaskPhaseAdmitted {
-		t.Fatalf("admitted task phase = %s", task.Phase)
+	switch task.Phase {
+	case taskstate.TaskPhaseAdmitted:
+		task.Phase, task.UpdatedAt = taskstate.TaskPhaseReady, time.Now().UTC()
+		task.Revision++
+		must(t, store.CompareAndSwapTask(context.Background(), taskID, task.Revision-1, task))
+	case taskstate.TaskPhaseReady, taskstate.TaskPhaseActive:
+		// The dispatch loop promoted the Task before this read.
+	default:
+		t.Fatalf("task phase = %s", task.Phase)
 	}
-	task.Phase, task.UpdatedAt = taskstate.TaskPhaseReady, time.Now().UTC()
-	task.Revision++
-	must(t, store.CompareAndSwapTask(context.Background(), taskID, task.Revision-1, task))
 	store.Close()
 
 	waitFor(t, "agent execution and claim", func() (bool, string) {
@@ -183,4 +190,50 @@ func TestHTTPTaskSubmissionIsExecutedByTheAgent(t *testing.T) {
 		t.Fatal("the Agent's ResultClaim was not stored")
 	}
 	t.Logf("task=%s attempt=%s claim=%s", taskID, found.ID, claim.OutputDigest().Hex())
+
+	// Verification by re-execution: run the same fixed command outside the
+	// Agent and compare the digest with the claim. This is reproducible on
+	// this host; it is not an independent verifier.
+	reproduced, err := reexecuteOutputDigest()
+	must(t, err)
+	if reproduced != claim.OutputDigest().Hex() {
+		t.Fatalf("re-execution digest %s does not match claim %s", reproduced, claim.OutputDigest().Hex())
+	}
+	policy := resultaccept.Policy{
+		Level: resultaccept.LevelRA2, Threshold: 2,
+		DistinctDimensions: []resultaccept.Dimension{resultaccept.DimensionPrincipal, resultaccept.DimensionOperator},
+	}
+	acceptance, err := resultacceptance.New(resultacceptance.Config{
+		Attempts: finalStore, Tasks: finalStore, Claims: finalStore, Results: finalStore,
+		Rejections: finalStore,
+		Policies:   fixedPolicy{policy: resultacceptance.ResultPolicy{Policy: policy, Output: resultaccept.OutputMechanical}},
+		Producers:  fixedProducers{executorDigest: claim.ExecutorDigest().Hex()},
+		Clock:      systemClock{},
+	})
+	must(t, err)
+	verification := func(id, principal, operator string) resultaccept.Verification {
+		return resultaccept.Verification{
+			VerifierID: id, TaskID: claim.TaskID().String(), AttemptID: claim.AttemptID().String(),
+			Check: resultaccept.CheckReproduced, ObservedDigest: reproduced,
+			Dimensions: map[resultaccept.Dimension]string{
+				resultaccept.DimensionPrincipal: principal, resultaccept.DimensionOperator: operator,
+				resultaccept.DimensionExecutorDigest: contract.SHA256([]byte("verifier-" + id)).Hex(),
+			},
+		}
+	}
+	acceptanceResult, err := acceptance.Accept(context.Background(), resultacceptance.Request{
+		AttemptID: found.ID,
+		Verifications: []resultaccept.Verification{
+			verification("verifier-1", "p-1", "o-1"),
+			verification("verifier-2", "p-2", "o-2"),
+		},
+	})
+	must(t, err)
+	if acceptanceResult.Outcome() != resultaccept.OutcomeAccepted {
+		t.Fatalf("acceptance outcome = %s (rejected: %v)", acceptanceResult.Outcome(), acceptanceResult.Rejected)
+	}
+	if !acceptanceResult.Accepted.Valid() || acceptanceResult.Accepted.TaskID() != taskID {
+		t.Fatalf("accepted result = %+v", acceptanceResult.Accepted)
+	}
+	t.Logf("accepted result digest=%s", acceptanceResult.Accepted.OutputDigest().Hex())
 }
