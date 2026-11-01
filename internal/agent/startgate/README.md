@@ -16,6 +16,7 @@ admitted WorkOrder（Control Planeの上限）
 - GPUは、`機械のGPU数 × Governorの上限%`（切り捨て）と、WorkOrderの要求数の小さい方。0台になる場合は開始しません。
 - 期限は、WorkOrderの`WallTimeMillis`とAdmissionの期限の早い方。
 - Temporary Disk、Network、出力byteは、この版では**使用の可否だけ**を見ます。0の上限は「使えない」という意味であり、不明ではありません。量の按分には、資源ごとの単位の定義が別に必要です。
+- **他の実行が使っている分は、この版の判定に入りません。** 1件ずつ実行している間は結果が同じになりますが、同時実行を入れると、2件の割当がそれぞれ全容量を上限に通ります。合計で判定する形と、実行slot・予約の扱いは[ADR-0031](../../../plan/adr/0031-local-execution-slots-and-resource-reservation.md)で決めています（#354）。
 
 ## 拒否する条件
 
