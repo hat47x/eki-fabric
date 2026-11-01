@@ -60,6 +60,11 @@ type IssuedCertificate struct {
 	Serial    string
 	NotBefore time.Time
 	NotAfter  time.Time
+	// Truncated is true when the CA certificate expiry shortened the requested
+	// validity. The Control Plane logs it: a Worker that silently receives a
+	// much shorter certificate renews much sooner, and an operator must know
+	// that the CA is the reason (#304).
+	Truncated bool
 }
 
 // CertificateIssuer signs Worker client certificates. The CA adapter

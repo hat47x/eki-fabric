@@ -142,6 +142,36 @@ func (c *CA) TrustDomain() string { return c.trustDomain }
 // Validity is the lifetime of the certificates this CA signs.
 func (c *CA) Validity() time.Duration { return c.validity }
 
+// ExpiryWarningWindow is how long before the CA certificate expires the Control
+// Plane starts warning. A CA expiry stops every enrollment and renewal at once,
+// so the warning must leave time for an operator to replace it.
+const ExpiryWarningWindow = 30 * 24 * time.Hour
+
+// NotAfter is when the CA certificate stops being valid.
+func (c *CA) NotAfter() time.Time { return c.cert.NotAfter.UTC() }
+
+// ValidateCurrent reports whether the CA certificate is valid at now. The
+// Control Plane calls it at startup so an expired CA is a startup failure
+// instead of the first enrollment error.
+func (c *CA) ValidateCurrent(now time.Time) error {
+	now = now.UTC()
+	if now.Before(c.cert.NotBefore) {
+		return fmt.Errorf("%w: the CA certificate is valid only from %s", ErrInvalidCA, c.cert.NotBefore.UTC().Format(time.RFC3339))
+	}
+	if !now.Before(c.cert.NotAfter) {
+		return fmt.Errorf("%w: the CA certificate expired at %s", ErrInvalidCA, c.cert.NotAfter.UTC().Format(time.RFC3339))
+	}
+	return nil
+}
+
+// ExpiresWithin reports how long the CA certificate remains valid and whether
+// that is at most window from now. A certificate that has already expired
+// reports ok=false here; ValidateCurrent is the check that refuses it.
+func (c *CA) ExpiresWithin(now time.Time, window time.Duration) (time.Duration, bool) {
+	remaining := c.cert.NotAfter.Sub(now.UTC())
+	return remaining, remaining > 0 && remaining <= window
+}
+
 // IssueCertificate signs a client certificate for req.Identity over
 // req.PublicKey. Nothing from the requester but the public key is used.
 func (c *CA) IssueCertificate(req workerenrollment.CertificateRequest) (workerenrollment.IssuedCertificate, error) {
@@ -161,7 +191,8 @@ func (c *CA) IssueCertificate(req workerenrollment.CertificateRequest) (workeren
 		return workerenrollment.IssuedCertificate{}, fmt.Errorf("%w: the CA certificate is not valid now", ErrInvalidCA)
 	}
 	notAfter := now.Add(c.validity)
-	if notAfter.After(c.cert.NotAfter) {
+	truncated := notAfter.After(c.cert.NotAfter)
+	if truncated {
 		notAfter = c.cert.NotAfter
 	}
 	serial, err := newSerial()
@@ -190,6 +221,7 @@ func (c *CA) IssueCertificate(req workerenrollment.CertificateRequest) (workeren
 		Serial:    fmt.Sprintf("%x", serial),
 		NotBefore: now,
 		NotAfter:  notAfter,
+		Truncated: truncated,
 	}, nil
 }
 
