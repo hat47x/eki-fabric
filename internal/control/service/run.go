@@ -23,6 +23,7 @@ import (
 	"github.com/hat47x/eki-fabric/internal/control/workerplane"
 	"github.com/hat47x/eki-fabric/internal/core/admission"
 	"github.com/hat47x/eki-fabric/internal/core/ids"
+	"github.com/hat47x/eki-fabric/internal/core/measurement"
 	"github.com/hat47x/eki-fabric/internal/core/trustbundle"
 	"github.com/hat47x/eki-fabric/internal/core/workerenrollment"
 	"github.com/hat47x/eki-fabric/internal/spi/statestore"
@@ -35,6 +36,8 @@ type Server struct {
 	listener net.Listener
 	log      *slog.Logger
 
+	// counters holds the ADR-0039 numbers for the life of the process.
+	counters *measurement.Counters
 	// operator is the Operator listener of ADR-0038, nil when the process has no
 	// Operator routes. approvals is the book those approvals are collected in,
 	// shared with whatever admits a new trust bundle version.
@@ -124,6 +127,7 @@ func Start(ctx context.Context, cfg Config, log *slog.Logger) (*Server, error) {
 		}
 		artifacts = artifactSource{store: bodies}
 	}
+	counters := measurement.New()
 	handler, err := clientapi.NewHandler(clientapi.Config{
 		Service:       svc,
 		Authenticator: auth,
@@ -136,6 +140,9 @@ func Start(ctx context.Context, cfg Config, log *slog.Logger) (*Server, error) {
 		_ = store.Close()
 		return nil, err
 	}
+	// The counters of ADR-0039 are counted by the handler and written out when the
+	// process stops; nothing here is stored.
+	handler.SetCounters(counters)
 
 	var lc net.ListenConfig
 	listener, err := lc.Listen(ctx, "tcp", cfg.Listen)
@@ -160,7 +167,7 @@ func Start(ctx context.Context, cfg Config, log *slog.Logger) (*Server, error) {
 		listener = tls.NewListener(listener, httpServer.TLSConfig)
 	}
 
-	s := &Server{http: httpServer, store: store, listener: listener, log: log, done: make(chan struct{})}
+	s := &Server{http: httpServer, store: store, listener: listener, log: log, done: make(chan struct{}), counters: counters}
 	s.readyFlag = &readyState
 	s.refreshReady()
 
@@ -422,6 +429,11 @@ func (s *Server) Shutdown(ctx context.Context) error {
 			close(s.caExpiry)
 		}
 		<-s.done
+		// Write the ADR-0039 numbers once, on the way out. They are not stored
+		// anywhere by EKI, so this line is what a deployment keeps.
+		if s.counters != nil {
+			s.counters.Log(s.log)
+		}
 		if err := s.store.Close(); err != nil {
 			result = errors.Join(result, fmt.Errorf("close state store: %w", err))
 		}
