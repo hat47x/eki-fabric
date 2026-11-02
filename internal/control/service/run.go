@@ -12,16 +12,16 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/hat47x/eki-fabric/internal/adapters/reference/statestore/sqlite"
 	artifactfile "github.com/hat47x/eki-fabric/internal/adapters/reference/artifactstore/file"
+	"github.com/hat47x/eki-fabric/internal/adapters/reference/statestore/sqlite"
 	"github.com/hat47x/eki-fabric/internal/adapters/reference/workerca"
-	"github.com/hat47x/eki-fabric/internal/control/claimbody"
-	"github.com/hat47x/eki-fabric/internal/core/ids"
 	"github.com/hat47x/eki-fabric/internal/control/claimaccept"
+	"github.com/hat47x/eki-fabric/internal/control/claimbody"
 	"github.com/hat47x/eki-fabric/internal/control/claimplane"
 	"github.com/hat47x/eki-fabric/internal/control/clientapi"
 	"github.com/hat47x/eki-fabric/internal/control/workerplane"
 	"github.com/hat47x/eki-fabric/internal/core/admission"
+	"github.com/hat47x/eki-fabric/internal/core/ids"
 	"github.com/hat47x/eki-fabric/internal/core/workerenrollment"
 )
 

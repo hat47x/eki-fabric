@@ -4,8 +4,8 @@ import (
 	"bytes"
 	"context"
 
-	claimbody "github.com/hat47x/eki-fabric/internal/control/claimbody"
 	artifactfile "github.com/hat47x/eki-fabric/internal/adapters/reference/artifactstore/file"
+	claimbody "github.com/hat47x/eki-fabric/internal/control/claimbody"
 	"github.com/hat47x/eki-fabric/internal/core/ids"
 )
 

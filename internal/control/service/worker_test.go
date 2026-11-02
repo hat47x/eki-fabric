@@ -155,11 +155,11 @@ func mtlsWorkerConfig(t *testing.T, mutate func(*Config)) Config {
 	t.Helper()
 	cfg := testConfig(t, t.TempDir())
 	cfg.Worker = &WorkerConfig{
-		Listen: "0.0.0.0:9443",
-		Auth:   WorkerAuthMTLS,
-		TLS:    &TLSConfig{CertFile: "server.pem", KeyFile: "server.key"},
+		Listen:       "0.0.0.0:9443",
+		Auth:         WorkerAuthMTLS,
+		TLS:          &TLSConfig{CertFile: "server.pem", KeyFile: "server.key"},
 		ArtifactsDir: t.TempDir(),
-		MTLS:   &WorkerMTLSConfig{TrustDomain: "example.org", CACertFile: "worker-ca.pem", CAKeyFile: "worker-ca.key"},
+		MTLS:         &WorkerMTLSConfig{TrustDomain: "example.org", CACertFile: "worker-ca.pem", CAKeyFile: "worker-ca.key"},
 	}
 	if mutate != nil {
 		mutate(&cfg)

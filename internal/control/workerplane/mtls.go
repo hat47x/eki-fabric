@@ -72,7 +72,7 @@ type MTLSConfig struct {
 
 type mtlsHandler struct {
 	claimEndpoint
-	bodies BodyReceiver
+	bodies      BodyReceiver
 	assignments workerplane.AssignmentSource
 	// heartbeats records the running-Lease reports the assignments request
 	// carries (ADR-0030 §2.2). Nil means the reports are accepted and

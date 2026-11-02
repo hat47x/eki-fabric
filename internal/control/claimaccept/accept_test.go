@@ -469,3 +469,18 @@ func TestACancelledClaimDoesNotRestartTheTask(t *testing.T) {
 		t.Fatalf("task updates = %d, want none", len(tasks.updates))
 	}
 }
+
+// The retry cap counts a Task's tries by the highest Attempt number, so the
+// third attempt is the last one (ADR-0032 §2.5, #424).
+func TestHighestAttemptNumberIsTheNumberOfTries(t *testing.T) {
+	if got := highestAttemptNumber(nil); got != 0 {
+		t.Fatalf("no attempts = %d, want 0", got)
+	}
+	attempts := []attemptstate.AttemptRecord{{Number: 1}, {Number: 3}, {Number: 2}}
+	if got := highestAttemptNumber(attempts); got != 3 {
+		t.Fatalf("highest = %d, want 3", got)
+	}
+	if defaultMaxAttempts < 2 {
+		t.Fatalf("defaultMaxAttempts = %d, want at least 2", defaultMaxAttempts)
+	}
+}
