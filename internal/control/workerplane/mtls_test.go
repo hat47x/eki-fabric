@@ -10,6 +10,8 @@ import (
 	"crypto/x509"
 	"crypto/x509/pkix"
 	"encoding/pem"
+	"github.com/hat47x/eki-fabric/internal/core/contract"
+	"github.com/hat47x/eki-fabric/internal/core/trustbundle"
 	"io"
 	"log/slog"
 	"math/big"
@@ -57,7 +59,7 @@ type mtlsFixture struct {
 	closedN int
 }
 
-func newMTLSFixture(t *testing.T) *mtlsFixture {
+func newMTLSFixture(t *testing.T, opts ...func(*server.MTLSConfig)) *mtlsFixture {
 	t.Helper()
 	clock := &mtlsClock{now: time.Now().UTC().Truncate(time.Second)}
 	certPEM, keyPEM, err := workerca.GenerateCA("example.org", 0, clock.Now().Add(-time.Hour))
@@ -79,10 +81,14 @@ func newMTLSFixture(t *testing.T) *mtlsFixture {
 	k, _ := x509.ParsePKCS8PrivateKey(kb.Bytes)
 	f.caKey = k.(*ecdsa.PrivateKey)
 
-	h, err := server.NewMTLSHandler(server.MTLSConfig{
+	cfg := server.MTLSConfig{
 		Claims: f.claims, Assignments: f.assign, Registry: svc, WorkerCA: ca.Certificate(), TrustDomain: "example.org",
 		Clock: clock.Now, Logger: slog.New(slog.NewTextHandler(&syncWriter{w: f.logs}, nil)),
-	})
+	}
+	for _, opt := range opts {
+		opt(&cfg)
+	}
+	h, err := server.NewMTLSHandler(cfg)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -664,5 +670,37 @@ func assertRefusal(t *testing.T, logs, reason string) {
 	}
 	if marked != 1 {
 		t.Fatalf("%d refusal lines in the log, want 1 for reason=%s\nlog:\n%s", marked, reason, logs)
+	}
+}
+
+// A Worker whose root the current version no longer lists is refused on the
+// next request, and the refusal names the check that failed (ADR-0036 §2.3).
+func TestMTLSAWorkerWhoseRootTheVersionDroppedIsRefused(t *testing.T) {
+	refuse := false
+	other := trustbundle.Bundle{
+		Version: 1,
+		Issuers: []trustbundle.Issuer{{
+			Fingerprint: contract.SHA256([]byte("another-root")),
+			NotBefore:   time.Now().UTC().Add(-time.Hour),
+			NotAfter:    time.Now().UTC().Add(24 * time.Hour),
+		}},
+		NotAfter: time.Now().UTC().Add(24 * time.Hour),
+	}
+	f := newMTLSFixture(t, func(cfg *server.MTLSConfig) {
+		cfg.TrustBundle = func() (trustbundle.Bundle, bool) {
+			if !refuse {
+				return trustbundle.Bundle{}, false
+			}
+			return other, true
+		}
+	})
+	w := f.enroll(t, nil)
+	refuse = true
+	resp, body := f.claim(t, w, nil)
+	if resp.StatusCode != http.StatusUnauthorized {
+		t.Fatalf("claim = %d %s, want 401", resp.StatusCode, body)
+	}
+	if !strings.Contains(f.logs.String(), "issuer_not_trusted_by_version") {
+		t.Fatalf("the log does not name the failed check:\n%s", f.logs.String())
 	}
 }
