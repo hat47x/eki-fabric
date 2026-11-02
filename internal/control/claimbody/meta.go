@@ -2,9 +2,13 @@ package claimbody
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"time"
 )
+
+// ErrNoOwner means the Control Plane cannot tell whose body this is.
+var ErrNoOwner = errors.New("claimbody: the attempt has no owner recorded")
 
 // MetaSink records what a retrieval needs besides the bytes: who may read the
 // body and until when (#494, #514). It is optional so a deployment that keeps
@@ -45,6 +49,12 @@ func (r *Receiver) recordMeta(ctx context.Context, attemptID string, digestHex s
 		return nil
 	}
 	owner, err := r.owners.LoadAttemptOwner(ctx, attemptID)
+	if errors.Is(err, ErrNoOwner) {
+		// The body is kept but nobody is recorded as allowed to read it, so it
+		// will never be served. Refusing the body instead would punish the Worker
+		// for a bookkeeping gap on this side; ADR-0037 §8 records the trade.
+		return nil
+	}
 	if err != nil {
 		return fmt.Errorf("claimbody: owner of attempt: %w", err)
 	}

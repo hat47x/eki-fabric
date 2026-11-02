@@ -2,8 +2,10 @@ package service
 
 import (
 	"context"
+	"errors"
 	"fmt"
 
+	"github.com/hat47x/eki-fabric/internal/control/claimbody"
 	"github.com/hat47x/eki-fabric/internal/core/attemptstate"
 	"github.com/hat47x/eki-fabric/internal/core/ids"
 	"github.com/hat47x/eki-fabric/internal/spi/statestore"
@@ -33,6 +35,11 @@ func (o attemptOwner) LoadAttemptOwner(ctx context.Context, attemptID string) (s
 		return "", fmt.Errorf("service: load attempt: %w", err)
 	}
 	admission, err := o.admissions.LoadAdmission(ctx, attempt.TaskID)
+	if errors.Is(err, statestore.ErrNotFound) {
+		// No admission record means this Control Plane cannot say who asked for
+		// the work, so it cannot say who may read the body either (#520).
+		return "", claimbody.ErrNoOwner
+	}
 	if err != nil {
 		return "", fmt.Errorf("service: load admission: %w", err)
 	}
