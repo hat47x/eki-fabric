@@ -250,6 +250,9 @@ type taskAccepted struct {
 	TaskID      string `json:"task_id"`
 	Status      string `json:"status"`
 	SubmittedAt string `json:"submitted_at"`
+	// Replayed says the Idempotency-Key had already been accepted, so this body
+	// is the answer to a replay rather than to a new request (#315).
+	Replayed bool `json:"replayed"`
 }
 
 func (h *Handler) submit(w http.ResponseWriter, r *http.Request, id Identity) {
@@ -285,6 +288,7 @@ func (h *Handler) submit(w http.ResponseWriter, r *http.Request, id Identity) {
 		TaskID:      accepted.TaskID.String(),
 		Status:      "queued",
 		SubmittedAt: accepted.SubmittedAt.UTC().Format(time.RFC3339Nano),
+		Replayed:    accepted.Replayed,
 	})
 }
 

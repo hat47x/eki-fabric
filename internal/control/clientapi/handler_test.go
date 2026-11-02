@@ -736,3 +736,20 @@ func TestAReadinessProbeIsAnsweredWithoutAuthentication(t *testing.T) {
 		}
 	})
 }
+
+// A replay of the same Idempotency-Key answers with the first Task and says so,
+// so the requester can tell a replay from a new admission (#315).
+func TestSubmitMarksAReplayAsReplayed(t *testing.T) {
+	e := newEnv(t)
+	first := decode(t, e.submit(aliceToken, "key-replay-0001", validRequest))
+	if first["replayed"] != false {
+		t.Fatalf("first replayed = %v, want false", first["replayed"])
+	}
+	again := decode(t, e.submit(aliceToken, "key-replay-0001", validRequest))
+	if again["replayed"] != true {
+		t.Fatalf("replay replayed = %v, want true", again["replayed"])
+	}
+	if again["task_id"] != first["task_id"] {
+		t.Fatalf("replay task_id = %v, want %v", again["task_id"], first["task_id"])
+	}
+}
