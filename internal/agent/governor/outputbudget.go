@@ -19,6 +19,8 @@ type OutputBudget struct {
 	// limitBytes is how much the host agreed to hold. Zero means the check is
 	// off, which keeps a deployment that has not set a budget running as before.
 	limitBytes int64
+	// onRefusal counts refusals for ADR-0039; nil counts nothing.
+	onRefusal func()
 }
 
 // NewOutputBudget returns a budget over store with the given limit. A nil store
@@ -49,10 +51,29 @@ func (b *OutputBudget) Admit(nextBytes int64) error {
 	if _, sweepErr := b.store.Sweep(); sweepErr != nil {
 		// The sweep is a courtesy, not a precondition: a failure to remove an old
 		// body must not hide the answer that the budget is full.
+		b.recordRefusal()
 		return err
 	}
-	return b.check(nextBytes)
+	if err := b.check(nextBytes); err != nil {
+		if errors.Is(err, ErrOutputBudget) {
+			b.recordRefusal()
+		}
+		return err
+	}
+	return nil
 }
+
+// recordRefusal counts one refusal (ADR-0039 §2.1). A refusal that a sweep turns
+// into an admission is not counted: nothing was refused in the end.
+func (b *OutputBudget) recordRefusal() {
+	if b != nil && b.onRefusal != nil {
+		b.onRefusal()
+	}
+}
+
+// SetRefusalHook is how a caller connects ADR-0039's counter. Nil means the
+// refusal is not counted, which is the behaviour before the hook existed.
+func (b *OutputBudget) SetRefusalHook(f func()) { b.onRefusal = f }
 
 // check answers the question without sweeping.
 func (b *OutputBudget) check(nextBytes int64) error {
