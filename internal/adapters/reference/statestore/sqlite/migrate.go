@@ -922,6 +922,35 @@ END`,
 	recorded_at_ns  INTEGER NOT NULL,
 	revision        INTEGER NOT NULL CHECK (revision >= 1)
 ) STRICT`,
+	// 19: Trust bundles (ADR-0036 §6, #451). A version is append-only: the
+	// digest identifies what the signature covered, so a second row with the
+	// same number and another digest is refused by the primary key. Issuers and
+	// approvals belong to their version and are written in the same
+	// transaction, so no reader sees a version without them.
+	`CREATE TABLE trust_bundles (
+	version       INTEGER NOT NULL PRIMARY KEY CHECK (version >= 1),
+	not_after_ns  INTEGER NOT NULL,
+	key_id        TEXT    NOT NULL CHECK (length(key_id) BETWEEN 1 AND 256),
+	signature     BLOB    NOT NULL CHECK (length(signature) > 0),
+	digest        TEXT    NOT NULL CHECK (length(digest) BETWEEN 64 AND 100),
+	recorded_at_ns INTEGER NOT NULL
+) STRICT;
+CREATE TABLE trust_bundle_issuers (
+	version      INTEGER NOT NULL REFERENCES trust_bundles (version),
+	fingerprint  TEXT    NOT NULL CHECK (length(fingerprint) BETWEEN 64 AND 100),
+	not_before_ns INTEGER NOT NULL,
+	not_after_ns  INTEGER NOT NULL CHECK (not_after_ns > not_before_ns),
+	PRIMARY KEY (version, fingerprint)
+) STRICT;
+CREATE TABLE trust_bundle_approvals (
+	id             INTEGER NOT NULL PRIMARY KEY,
+	version        INTEGER NOT NULL REFERENCES trust_bundles (version),
+	operation      TEXT    NOT NULL CHECK (operation IN ('add','remove')),
+	issuer         TEXT    NOT NULL CHECK (length(issuer) BETWEEN 64 AND 100),
+	approved_by    TEXT    NOT NULL CHECK (length(approved_by) BETWEEN 1 AND 256),
+	approved_at_ns INTEGER NOT NULL,
+	justification  TEXT    NOT NULL DEFAULT ''
+) STRICT`,
 }
 
 // migrate brings the database to the latest version. It is idempotent, rejects
