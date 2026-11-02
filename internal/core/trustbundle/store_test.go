@@ -101,3 +101,32 @@ func TestAnEmptyStoreHasNoCurrentVersion(t *testing.T) {
 		t.Fatalf("error = %v, want %v", err, ErrNotInitialised)
 	}
 }
+
+// The two halves must compose: what the Control Plane admits is exactly what a
+// Worker's chain check accepts. A gap here would let a version be published and
+// still be refused, or the reverse.
+func TestAWorkersChainCheckAcceptsWhatTheStoreAdmitted(t *testing.T) {
+	pub, priv := testKey(t)
+	store, err := NewStore(signedVersion(t, validBundle(), "control-key-1", priv))
+	if err != nil {
+		t.Fatal(err)
+	}
+	next := validBundle()
+	next.Version = 2
+	next.NotAfter = next.NotAfter.Add(24 * time.Hour)
+	next.Issuers = append(next.Issuers, issuer(9, base, base.Add(365*24*time.Hour)))
+	if err := store.Admit(signedVersion(t, next, "control-key-1", priv), pub, []Approval{approvalForBundle(2, OperationAdd, 9)}, base.Add(time.Hour)); err != nil {
+		t.Fatalf("Admit() error = %v", err)
+	}
+	keys := keyringOf(map[string]ed25519.PublicKey{"control-key-1": pub})
+	if err := VerifyChain(store.Chain(), keys, base.Add(time.Hour)); err != nil {
+		t.Fatalf("VerifyChain(store.Chain()) error = %v", err)
+	}
+	current, err := store.Current()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := CheckIssuer(current.Bundle, issuer(9, base, base.Add(time.Hour)).Fingerprint, base.Add(time.Hour)); err != nil {
+		t.Fatalf("the admitted issuer is not trusted by its own bundle: %v", err)
+	}
+}
