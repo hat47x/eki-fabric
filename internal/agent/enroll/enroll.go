@@ -18,6 +18,7 @@ import (
 	"path/filepath"
 	"time"
 
+	"github.com/hat47x/eki-fabric/internal/agent/trustanchor"
 	"github.com/hat47x/eki-fabric/internal/core/workercert"
 	"github.com/hat47x/eki-fabric/internal/core/workerregistry"
 	"github.com/hat47x/eki-fabric/internal/spi/workerplane/enrollwire"
@@ -51,6 +52,11 @@ type Params struct {
 	// Clock is the time against which the Control Plane's certificate and the
 	// issued certificate are checked. Nil means the system clock.
 	Clock Clock
+	// TrustAnchorPath is the trust anchor document that holds the Control Plane's
+	// signing key and the accepted bundle versions. When set, a version carried by
+	// the enrollment response is verified and stored before the identity is used
+	// (ADR-0036 §2.1, #478).
+	TrustAnchorPath string
 }
 
 // Enroll generates a key on this device, enrolls with the Control Plane, and
@@ -124,6 +130,11 @@ func Enroll(ctx context.Context, p Params) (Identity, error) {
 		return Identity{}, ErrRefused
 	}
 	id, caPEM, err := parseResponse(resp, key, clock.Now())
+	if err == nil && p.TrustAnchorPath != "" {
+		if aerr := acceptEnrollmentBundle(p.TrustAnchorPath, resp.body, clock.Now()); aerr != nil {
+			return Identity{}, aerr
+		}
+	}
 	if err != nil {
 		return Identity{}, err
 	}
@@ -354,4 +365,26 @@ func (v *pinnedVerifier) verify(cs tls.ConnectionState) error {
 	}
 	v.anchor = anchor
 	return nil
+}
+
+// acceptEnrollmentBundle verifies and stores the version an enrollment response
+// carried, using the Control Plane key recorded in the anchor. A response without
+// a version is not an error: an older Control Plane does not send one.
+func acceptEnrollmentBundle(path string, body []byte, now time.Time) error {
+	out, err := enrollwire.DecodeResponse(body)
+	if err != nil {
+		return err
+	}
+	if out.TrustBundle == nil {
+		return nil
+	}
+	doc, err := trustanchor.ReadFile(path)
+	if err != nil {
+		return fmt.Errorf("read the trust anchor: %w", err)
+	}
+	key, err := ParseControlKey(doc.ControlPublicKey)
+	if err != nil {
+		return err
+	}
+	return AcceptBundleToFile(path, out, key, now)
 }
