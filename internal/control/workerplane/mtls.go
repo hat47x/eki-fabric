@@ -16,6 +16,7 @@ import (
 	"github.com/hat47x/eki-fabric/internal/adapters/reference/workerca"
 	"github.com/hat47x/eki-fabric/internal/control/claimbody"
 	"github.com/hat47x/eki-fabric/internal/core/ids"
+	"github.com/hat47x/eki-fabric/internal/core/trustbundle"
 	"github.com/hat47x/eki-fabric/internal/core/workercert"
 	"github.com/hat47x/eki-fabric/internal/core/workerenrollment"
 	"github.com/hat47x/eki-fabric/internal/core/workerregistry"
@@ -48,6 +49,10 @@ type MTLSConfig struct {
 	// BodyReceiver receives the body a Worker sends after its claim report
 	// (ADR-0034 §2.2). Nil means the route does not exist (404).
 	BodyReceiver BodyReceiver
+	// TrustBundle reports the current trust bundle version, or false when no
+	// version is configured. When it reports a version, a peer whose root the
+	// version no longer lists is refused (ADR-0036 §2.3).
+	TrustBundle func() (trustbundle.Bundle, bool)
 	// Assignments serves the assignment route of the test profile. Nil means
 	// the route does not exist (404).
 	Assignments workerplane.AssignmentSource
@@ -78,9 +83,12 @@ type mtlsHandler struct {
 	// carries (ADR-0030 §2.2). Nil means the reports are accepted and
 	// dropped, which keeps the route usable for a Control Plane that does
 	// not track liveness yet.
-	heartbeats  workerplane.HeartbeatRecorder
-	registry    *workerenrollment.Service
-	roots       *x509.CertPool
+	heartbeats workerplane.HeartbeatRecorder
+	registry   *workerenrollment.Service
+	roots      *x509.CertPool
+	// trustBundle is the version the Control Plane holds, when one is
+	// configured. Nil keeps the certificate check alone (ADR-0036 §2.3).
+	trustBundle func() (trustbundle.Bundle, bool)
 	caPEM       string
 	trustDomain string
 	now         func() time.Time
@@ -111,6 +119,7 @@ func NewMTLSHandler(cfg MTLSConfig) (http.Handler, error) {
 		heartbeats:    cfg.Heartbeats,
 		registry:      cfg.Registry,
 		roots:         x509.NewCertPool(),
+		trustBundle:   cfg.TrustBundle,
 		caPEM:         string(pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: cfg.WorkerCA.Raw})),
 		trustDomain:   cfg.TrustDomain,
 		now:           cfg.Clock,
@@ -258,12 +267,23 @@ func (h *mtlsHandler) authenticate(r *http.Request) (workerenrollment.WorkerPrin
 	leaf := r.TLS.PeerCertificates[0]
 	// The leaf must be signed directly by the Worker CA. Certificates the peer
 	// sends along are not used as intermediates.
-	if _, err := leaf.Verify(x509.VerifyOptions{
+	chains, err := leaf.Verify(x509.VerifyOptions{
 		Roots:       h.roots,
 		KeyUsages:   []x509.ExtKeyUsage{x509.ExtKeyUsageClientAuth},
 		CurrentTime: h.now(),
-	}); err != nil {
+	})
+	if err != nil {
 		return h.refuseAuth(r, "certificate_not_verified", http.StatusUnauthorized, "verify_error", err.Error())
+	}
+	// When a trust bundle is configured, the version the Control Plane holds must
+	// still trust the root that signed this certificate. Removing an issuer from
+	// the bundle stops the next connection (ADR-0036 §2.3, #433).
+	if h.trustBundle != nil {
+		if bundle, ok := h.trustBundle(); ok {
+			if err := trustbundle.CheckPeerChains(bundle, chains, h.now()); err != nil {
+				return h.refuseAuth(r, "issuer_not_trusted_by_version", http.StatusUnauthorized, "bundle_error", err.Error())
+			}
+		}
 	}
 	if leaf.IsCA || len(leaf.URIs) != 1 || len(leaf.DNSNames)+len(leaf.IPAddresses)+len(leaf.EmailAddresses) != 0 {
 		return h.refuseAuth(r, "certificate_shape", http.StatusUnauthorized, "is_ca", leaf.IsCA, "uris", len(leaf.URIs))
