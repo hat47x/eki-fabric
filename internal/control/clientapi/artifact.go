@@ -68,16 +68,19 @@ func (h *Handler) artifact(w http.ResponseWriter, r *http.Request, id Identity, 
 		}
 		return
 	}
-	h.log.Info("artifact served", "principal", string(id.Principal.ID), "artifact", digest)
+	h.audit(string(id.Principal.ID), digest, ArtifactServed)
 }
 
 // writeArtifactFailure answers with the status and code the contract fixes. The
 // body carries nothing about the artifact or the Task it came from (#494).
 func (h *Handler) writeArtifactFailure(w http.ResponseWriter, outcome claimbody.Outcome, digest string) {
-	code := outcome.Code()
-	h.log.Info("artifact refused", "artifact", digest, "code", code)
+	outcomeName := ArtifactNotFound
+	if outcome == claimbody.OutcomeExpired {
+		outcomeName = ArtifactExpired
+	}
+	h.audit("", digest, outcomeName)
 	writeJSON(w, outcome.Status(), map[string]any{
-		"error": map[string]string{"code": code},
+		"error": map[string]string{"code": outcome.Code()},
 	})
 }
 
