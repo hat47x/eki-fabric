@@ -53,5 +53,5 @@ TAI側の要求を、EKIの三要素（データ・機能・業務）に引き�
 ## 6. 未決
 
 - T5・T6の測り方を、EKIの要求（RQ-036、RQ-037、RQ-005/006/009/035）の拡張として書くか、TAI側の評価に置くか。
-- T2の「委任完了」を、EKIのどの状態（`terminal/completed`か、AcceptedResultの受理か）で表すか。#365の決定と合わせる。
+- T2の「委任完了」を、EKIのどの状態で表すか。**`terminal/completed`のTaskと、受理済みのAcceptedResultが揃った時点**とします（2026-11-02 決定）。理由は、#365の決定で`terminal/completed`を書けるのが受理のcommitだけになり、完了のTaskには必ずAcceptedResultがあることが境界で保証されるためです。依頼元から見ると、公開状態が`completed`で、結果の取得が受理済みの内容を返すことが「委任完了」の観測点になります。AcceptedResultの受理だけでは足りません（Taskの状態が完了に至っていない可能性があるため）。
 - TAI側のreceiptの版（`integrations/capability-inventory.md`が固定する`84f03d1`など）と、EKIの現在の`main`の差を、どこで記録するか。
