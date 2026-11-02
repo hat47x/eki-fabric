@@ -46,6 +46,11 @@ type File struct {
 	MaxBundleStalenessSeconds  int64     `json:"max_bundle_staleness_seconds"`
 	MaxDecisionLifetimeSeconds int64     `json:"max_decision_lifetime_seconds"`
 	Keys                       []Key     `json:"keys"`
+	// ControlPublicKey is the Control Plane's signing key, in the out-of-band
+	// spelling the deployment chose (hex or base64). It is what the Agent verifies
+	// a delivered bundle version with; without it the Agent cannot accept one
+	// (ADR-0036 §5, #478).
+	ControlPublicKey string `json:"control_public_key,omitempty"`
 	// TrustBundleVersions is the history of bundle versions this Agent accepted,
 	// oldest first. It is optional so an anchor written before versions existed
 	// still loads (ADR-0036, #478).
