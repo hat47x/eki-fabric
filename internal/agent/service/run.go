@@ -184,7 +184,9 @@ func Run(ctx context.Context, cfg Config, token string, log *slog.Logger) error 
 				// One hold, shared by the execution handler (which puts each
 				// Attempt's output in) and the sender (which takes it out), so the
 				// bytes that are sent are the bytes the Attempt actually produced.
-				holds = newBodyHold()
+				// The body is kept on disk when the Agent has a state directory, so a crash
+				// between the claim and the send does not lose the output (#508).
+				holds = openHold(cfg.StateDir, DefaultOutputLimit, log)
 				sender = sendingBodies{
 					next: client, bodies: holds, sender: bodyer,
 					events: events, log: log,
