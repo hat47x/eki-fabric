@@ -159,6 +159,15 @@ func runAssignments(ctx context.Context, c *AssignmentConfig, anchor *trustancho
 			return err
 		}
 		execHandler.bodies = holds
+		// The budget answers with the same spool the bodies go into (#559): if the
+		// disk cannot keep this Attempt's output, the Attempt is not started.
+		if holds != nil && holds.spool != nil {
+			if budget, berr := openBudget(holds.spool, DefaultOutputLimit); berr == nil {
+				execHandler.SetBudget(budget)
+			} else {
+				log.Warn("output budget disabled", "error", berr.Error())
+			}
+		}
 		handler = execHandler
 	}
 	// The heartbeat (ADR-0030 §2.2): the Agent reports the Lease it is
