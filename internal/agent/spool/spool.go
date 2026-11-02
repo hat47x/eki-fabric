@@ -24,6 +24,9 @@ import (
 )
 
 var (
+	// ErrOverBudget means starting another Task would put the host over the
+	// budget its owner set (ADR-0037 §5, #498).
+	ErrOverBudget = errors.New("the host is holding more than its budget allows")
 	// ErrTooLarge means the output did not fit the limit the WorkOrder set. The
 	// body is not kept and nothing is truncated: a truncated body would have a
 	// different digest, so "the output did not fit" is the only honest answer.
@@ -214,6 +217,25 @@ func (s *Store) Usage() (Usage, error) {
 		}
 	}
 	return usage, nil
+}
+
+// Within reports whether one more Task of nextBytes would still fit the host's
+// budget. The Governor asks this before it starts a Task, so a host never fills
+// its disk and then discovers it cannot finish (ADR-0037 §5, #498).
+//
+// Expired bodies count: they still occupy the disk until Sweep removes them, so
+// a caller that wants the budget back should sweep first.
+func (u Usage) Within(budgetBytes, nextBytes int64) error {
+	if budgetBytes <= 0 {
+		return fmt.Errorf("spool: no budget")
+	}
+	if nextBytes < 0 {
+		return fmt.Errorf("spool: negative size")
+	}
+	if u.Bytes+nextBytes > budgetBytes {
+		return fmt.Errorf("%w: holding %d of %d bytes, next task asks for %d", ErrOverBudget, u.Bytes, budgetBytes, nextBytes)
+	}
+	return nil
 }
 
 // expiryOf reads the expiry out of a stored body's name. A file that does not

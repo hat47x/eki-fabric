@@ -172,3 +172,23 @@ func TestUsageIgnoresFilesTheStoreDidNotWrite(t *testing.T) {
 		t.Fatalf("bodies = %d, want 1", usage.Bodies)
 	}
 }
+
+func TestABudgetIsCheckedBeforeTheNextTaskStarts(t *testing.T) {
+	usage := Usage{Bodies: 1, Bytes: 900}
+	if err := usage.Within(1000, 50); err != nil {
+		t.Fatalf("Within() error = %v", err)
+	}
+	if err := usage.Within(1000, 200); !errors.Is(err, ErrOverBudget) {
+		t.Fatalf("error = %v, want %v", err, ErrOverBudget)
+	}
+	if err := usage.Within(0, 1); err == nil {
+		t.Fatal("Within() accepted a missing budget")
+	}
+}
+
+func TestAnExpiredBodyStillCountsAgainstTheBudget(t *testing.T) {
+	usage := Usage{Bodies: 2, Bytes: 1000, Expired: 1}
+	if err := usage.Within(1050, 100); !errors.Is(err, ErrOverBudget) {
+		t.Fatalf("error = %v, want %v (sweep first)", err, ErrOverBudget)
+	}
+}
