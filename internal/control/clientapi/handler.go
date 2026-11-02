@@ -44,6 +44,10 @@ type Config struct {
 	// The probe is answered without authentication; the function must not
 	// put state into the answer — the endpoint reduces it to ok/503 itself.
 	Ready func() bool
+	// Artifacts is the store GET /v1/artifacts/{id} reads from. Nil means the
+	// route answers 501, which is what a deployment without body storage has
+	// always done.
+	Artifacts ArtifactSource
 }
 
 type Handler struct {
@@ -57,6 +61,9 @@ type Handler struct {
 	// means the process carries no readiness information and /readyz refuses
 	// (fail closed).
 	ready func() bool
+
+	// artifacts is nil when the deployment keeps no bodies (#494).
+	artifacts ArtifactSource
 }
 
 var ErrInvalidConfig = errors.New("invalid client API configuration")
@@ -71,7 +78,7 @@ func NewHandler(cfg Config) (*Handler, error) {
 	if cfg.MaxBodyBytes < 0 {
 		return nil, fmt.Errorf("%w: negative body limit", ErrInvalidConfig)
 	}
-	h := &Handler{svc: cfg.Service, auth: cfg.Authenticator, maxBody: cfg.MaxBodyBytes, log: cfg.Logger, ready: cfg.Ready}
+	h := &Handler{svc: cfg.Service, auth: cfg.Authenticator, maxBody: cfg.MaxBodyBytes, log: cfg.Logger, ready: cfg.Ready, artifacts: cfg.Artifacts}
 	if h.maxBody == 0 {
 		h.maxBody = DefaultMaxBodyBytes
 	}
@@ -89,13 +96,15 @@ const (
 	routeGetTask
 	routeCancelTask
 	routeGetResult
+	routeGetArtifact
 	routeNotImplemented
 )
 
 type matched struct {
-	route  route
-	taskID string
-	allow  string
+	route      route
+	taskID     string
+	artifactID string
+	allow      string
 }
 
 func match(path string) matched {
@@ -118,7 +127,7 @@ func match(path string) matched {
 		return matched{}
 	}
 	if rest, ok := strings.CutPrefix(path, "/v1/artifacts/"); ok && rest != "" && !strings.Contains(rest, "/") {
-		return matched{route: routeNotImplemented, allow: http.MethodGet}
+		return matched{route: routeGetArtifact, artifactID: rest, allow: http.MethodGet}
 	}
 	if rest, ok := strings.CutPrefix(path, "/v1/artifact-uploads/"); ok && rest != "" && !strings.Contains(rest, "/") {
 		return matched{route: routeNotImplemented, allow: http.MethodPut}
@@ -218,6 +227,12 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		h.status(rec, r, identity, m.taskID)
 	case routeCancelTask:
 		h.cancel(rec, r, identity, m.taskID)
+	case routeGetArtifact:
+		if h.artifacts == nil {
+			writeProblem(rec, http.StatusNotImplemented, &admission.Error{Kind: admission.KindInternal, Code: "NOT_IMPLEMENTED", Title: "This operation is not available in this deployment"})
+			return
+		}
+		h.artifact(rec, r, identity, m.artifactID)
 	case routeGetResult:
 		if !h.svc.ResultsEnabled() {
 			writeProblem(rec, http.StatusNotImplemented, &admission.Error{Kind: admission.KindInternal, Code: "NOT_IMPLEMENTED", Title: "This operation is not available in this deployment"})
