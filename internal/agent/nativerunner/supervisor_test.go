@@ -76,3 +76,32 @@ func TestSupervisorFailsNativeRunnerExit(t *testing.T) {
 		t.Fatalf("status = %s, want failed: %+v", outcome.Status, outcome)
 	}
 }
+
+// AB-1 (#465): the output bytes come back with the Outcome of the run that
+// produced them, and they measure to the digest the Outcome reports. A failed
+// run carries no body.
+func TestSupervisorOutcomeCarriesTheBodyItsDigestCovers(t *testing.T) {
+	now := time.Now().UTC()
+	supervisor, err := executor.New(executor.Config{Clock: fixedClock{now: now}, StopGrace: time.Second})
+	if err != nil {
+		t.Fatal(err)
+	}
+	outcome, err := supervisor.Execute(context.Background(), validSpec(now), helper("hello"), blockingDecisions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(outcome.Body) != "hello" {
+		t.Fatalf("body = %q, want hello", outcome.Body)
+	}
+	if contract.SHA256(outcome.Body) != outcome.OutputDigest {
+		t.Fatalf("body does not measure to the Outcome digest %s", outcome.OutputDigest)
+	}
+
+	failed, err := supervisor.Execute(context.Background(), validSpec(now), helper("exit7"), blockingDecisions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if failed.Status == executor.StatusCompleted || failed.Body != nil {
+		t.Fatalf("a failed run carried a body: %+v", failed)
+	}
+}

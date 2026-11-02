@@ -38,18 +38,6 @@ type Runner struct {
 	AllowedArgs      []string
 	Env              []string
 	ExecutableSHA256 string
-
-	lastOutput []byte
-}
-
-// BodyOf returns the output bytes of the last Run on this Runner. ADR-0034
-// keeps the body on the Worker until the claim is queued and the body sent;
-// the bytes live behind the Runner that produced them.
-func (r Runner) BodyOf() ([]byte, bool) {
-	if r.lastOutput == nil {
-		return nil, false
-	}
-	return r.lastOutput, true
 }
 
 func (r Runner) Run(ctx context.Context, spec executor.Spec) (executor.Result, error) {
@@ -187,7 +175,7 @@ func (r Runner) Run(ctx context.Context, spec executor.Spec) (executor.Result, e
 		return result, fmt.Errorf("native runner memory %d exceeds %d bytes", maxRSSBytes, spec.Limits.MemoryBytes)
 	}
 	result.OutputDigest = contract.SHA256(output.Bytes())
-	r.lastOutput = append([]byte(nil), output.Bytes()...)
+	result.Body = append([]byte(nil), output.Bytes()...)
 	return result, nil
 }
 
