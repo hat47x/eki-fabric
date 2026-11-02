@@ -115,3 +115,60 @@ func TestSweepRemovesTheBodiesWhoseRetentionPassed(t *testing.T) {
 		t.Fatalf("the fresh body was removed: %v", err)
 	}
 }
+
+func TestUsageCountsWhatTheStoreHolds(t *testing.T) {
+	store, clock := newStore(t)
+	if _, err := store.Put(strings.NewReader("first"), 1024); err != nil {
+		t.Fatal(err)
+	}
+	*clock = clock.Add(20 * time.Hour)
+	if _, err := store.Put(strings.NewReader("second!"), 1024); err != nil {
+		t.Fatal(err)
+	}
+	usage, err := store.Usage()
+	if err != nil {
+		t.Fatalf("Usage() error = %v", err)
+	}
+	if usage.Bodies != 2 || usage.Bytes != int64(len("first")+len("second!")) {
+		t.Fatalf("usage = %+v", usage)
+	}
+	if usage.Expired != 0 {
+		t.Fatalf("expired = %d, want 0", usage.Expired)
+	}
+}
+
+func TestUsageCountsABodyPastItsRetentionAsExpired(t *testing.T) {
+	store, clock := newStore(t)
+	if _, err := store.Put(strings.NewReader("body"), 1024); err != nil {
+		t.Fatal(err)
+	}
+	*clock = clock.Add(25 * time.Hour)
+	usage, err := store.Usage()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if usage.Bodies != 1 || usage.Expired != 1 {
+		t.Fatalf("usage = %+v, want one expired body", usage)
+	}
+	if usage.Bytes != 4 {
+		t.Fatalf("bytes = %d, want 4", usage.Bytes)
+	}
+}
+
+func TestUsageIgnoresFilesTheStoreDidNotWrite(t *testing.T) {
+	store, clock := newStore(t)
+	if _, err := store.Put(strings.NewReader("body"), 1024); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(store.dir+"/notes.txt", []byte("not a body"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	_ = clock
+	usage, err := store.Usage()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if usage.Bodies != 1 {
+		t.Fatalf("bodies = %d, want 1", usage.Bodies)
+	}
+}
