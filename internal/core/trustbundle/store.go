@@ -81,3 +81,11 @@ func (s *Store) Chain() []Signed {
 	}
 	return append([]Signed(nil), s.chain...)
 }
+
+// Append adds a version that was verified and stored earlier. It is for
+// rebuilding a store from persisted history (#478); the production paths check
+// what they add (Admit for the Control Plane, AcceptSigned for a Worker), so this
+// method deliberately checks nothing.
+func (s *Store) Append(signed Signed) {
+	s.chain = append(s.chain, signed)
+}
