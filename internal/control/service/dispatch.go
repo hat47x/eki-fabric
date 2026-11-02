@@ -5,6 +5,7 @@ import (
 	"crypto/rand"
 	"errors"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/hat47x/eki-fabric/internal/adapters/reference/statestore/sqlite"
@@ -278,7 +279,10 @@ func (s *Server) startDispatch(ctx context.Context, cfg *DispatchConfig, store *
 				continue
 			}
 			if result.Dispatched != 0 || len(result.Deferred) != 0 {
-				s.log.Info("dispatch tick", "considered", result.Considered, "dispatched", result.Dispatched, "deferred", len(result.Deferred))
+				// The reasons travel with the counts: a tick that considers a Task and
+				// dispatches none is the case an operator has to explain, and the counts
+				// alone do not say why (#437).
+				s.log.Info("dispatch tick", "considered", result.Considered, "dispatched", result.Dispatched, "deferred", len(result.Deferred), "reasons", deferredReasons(result.Deferred))
 			}
 			for _, d := range result.Deferred {
 				s.log.Debug("dispatch deferred", "task", d.TaskID.String(), "reason", d.Reason)
@@ -319,4 +323,19 @@ type selfBundle struct{ at time.Time }
 
 func (b selfBundle) CurrentTrustBundle(context.Context) (decisiontrust.TrustBundleMetadata, error) {
 	return decisiontrust.TrustBundleMetadata{Revision: 1, ValidatedAt: b.at}, nil
+}
+
+// deferredReasons summarises why a tick left Tasks alone, capped so the log
+// stays one line. The full set is still available at debug level.
+func deferredReasons(deferred []dispatch.DeferredTask) string {
+	const limit = 3
+	parts := make([]string, 0, limit)
+	for i, d := range deferred {
+		if i == limit {
+			parts = append(parts, "...")
+			break
+		}
+		parts = append(parts, d.TaskID.String()+": "+d.Reason)
+	}
+	return strings.Join(parts, "; ")
 }
