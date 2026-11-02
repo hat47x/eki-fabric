@@ -30,6 +30,9 @@ type executionHandler struct {
 	// the claim sender to send after the claim is acknowledged. Nil means the
 	// Agent has no body route.
 	bodies *bodyHold
+	// budget answers whether the host can keep this Attempt's output (#559).
+	// Nil means the check is off.
+	budget *governor.OutputBudget
 }
 
 // claimEnqueuer records a ResultClaim durably. Delivery to the Control Plane is
@@ -70,7 +73,18 @@ func newExecutionHandler(c *ExecutionConfig, events *eventLog, log *slog.Logger,
 }
 
 func (h *executionHandler) Start(ctx context.Context, ready assignment.Ready) error {
-	outcome, err := h.supervisor.Execute(ctx, executor.SpecFromPlan(ready.Plan), h.runner, noStopSource{})
+	spec := executor.SpecFromPlan(ready.Plan)
+	// The host's output budget is asked before the runner starts (#559, ADR-0037
+	// §5): a Task whose output cannot be kept should not run at all, because the
+	// work would be spent and the result thrown away.
+	if h.budget != nil {
+		if err := h.budget.Admit(int64(spec.Limits.OutputBytesMaximum)); err != nil {
+			h.log.Warn("attempt refused: the host cannot keep the output",
+				"attempt", string(ready.AttemptID), "error", err.Error())
+			return nil
+		}
+	}
+	outcome, err := h.supervisor.Execute(ctx, spec, h.runner, noStopSource{})
 	ev := event{
 		Time:            time.Now().UTC(),
 		AttemptID:       string(ready.AttemptID),
@@ -294,3 +308,7 @@ func (noStopSource) Next(ctx context.Context) (governor.Decision, error) {
 	<-ctx.Done()
 	return governor.Decision{}, ctx.Err()
 }
+
+// SetBudget connects the host's output budget (#559). Nil leaves the check off,
+// which is what an Agent without a state directory gets.
+func (h *executionHandler) SetBudget(b *governor.OutputBudget) { h.budget = b }
