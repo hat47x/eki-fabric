@@ -173,6 +173,49 @@ func digestOf(sum []byte) contract.Digest {
 	return digest
 }
 
+// Usage is how much the store is holding. It is what a Local Governor needs to
+// decide whether to start another Task (ADR-0037 §5, #498).
+type Usage struct {
+	// Bodies is the number of stored bodies, expired ones included.
+	Bodies int
+	// Bytes is the total size of those bodies.
+	Bytes int64
+	// Expired is how many of them are past their retention and waiting for
+	// Sweep. They are still on disk, so they still count against the host.
+	Expired int
+}
+
+// Usage walks the directory and adds up what is there. It reads the size from
+// the filesystem rather than from a record, so a body that a crash left behind
+// is counted too: the point is the disk, not the bookkeeping.
+func (s *Store) Usage() (Usage, error) {
+	entries, err := os.ReadDir(s.dir)
+	if err != nil {
+		return Usage{}, fmt.Errorf("spool: list: %w", err)
+	}
+	var usage Usage
+	now := s.now().UTC()
+	for _, entry := range entries {
+		if entry.IsDir() {
+			continue
+		}
+		expires, ok := expiryOf(entry.Name())
+		if !ok {
+			continue
+		}
+		info, err := entry.Info()
+		if err != nil {
+			return Usage{}, fmt.Errorf("spool: stat: %w", err)
+		}
+		usage.Bodies++
+		usage.Bytes += info.Size()
+		if !now.Before(expires) {
+			usage.Expired++
+		}
+	}
+	return usage, nil
+}
+
 // expiryOf reads the expiry out of a stored body's name. A file that does not
 // have the shape this package writes is left alone: it may be a temporary file
 // from a Put in another process.
