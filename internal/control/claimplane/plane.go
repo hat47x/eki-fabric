@@ -38,6 +38,8 @@ type Acceptor interface {
 
 type Service struct {
 	acceptor Acceptor
+	// onRefusal counts this boundary's own refusals for ADR-0039.
+	onRefusal func(reason string)
 }
 
 func New(acceptor Acceptor) (*Service, error) {
@@ -58,15 +60,18 @@ func (s *Service) Submit(ctx context.Context, principal Principal, claim resultc
 		return claimaccept.Result{}, fmt.Errorf("%w: context is required", ErrInvalidConfig)
 	}
 	if !validIdentity(principal.WorkerIdentity) {
+		s.recordRefusal("identity")
 		return claimaccept.Result{}, fmt.Errorf("%w: Worker identity is required", ErrInvalidPrincipal)
 	}
 	if principal.TrustDomain != "" && !validIdentity(principal.TrustDomain) {
 		return claimaccept.Result{}, fmt.Errorf("%w: Trust Domain is invalid", ErrInvalidPrincipal)
 	}
 	if !claim.Valid() {
+		s.recordRefusal("invalid")
 		return claimaccept.Result{}, resultclaim.ErrInvalidClaim
 	}
 	if claim.WorkerIdentity() != principal.WorkerIdentity {
+		s.recordRefusal("owner")
 		return claimaccept.Result{}, fmt.Errorf("%w: authenticated %q, claim names %q",
 			ErrNotClaimOwner, principal.WorkerIdentity, claim.WorkerIdentity())
 	}
