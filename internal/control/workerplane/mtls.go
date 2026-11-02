@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/hat47x/eki-fabric/internal/adapters/reference/workerca"
+	"github.com/hat47x/eki-fabric/internal/control/claimbody"
 	"github.com/hat47x/eki-fabric/internal/core/ids"
 	"github.com/hat47x/eki-fabric/internal/core/workercert"
 	"github.com/hat47x/eki-fabric/internal/core/workerenrollment"
@@ -44,6 +45,9 @@ var ErrInvalidMTLSConfig = errors.New("invalid Worker mTLS configuration")
 // MTLSConfig configures NewMTLSHandler.
 type MTLSConfig struct {
 	Claims workerplane.ClaimClient
+	// BodyReceiver receives the body a Worker sends after its claim report
+	// (ADR-0034 §2.2). Nil means the route does not exist (404).
+	BodyReceiver BodyReceiver
 	// Assignments serves the assignment route of the test profile. Nil means
 	// the route does not exist (404).
 	Assignments workerplane.AssignmentSource
@@ -68,6 +72,7 @@ type MTLSConfig struct {
 
 type mtlsHandler struct {
 	claimEndpoint
+	bodies BodyReceiver
 	assignments workerplane.AssignmentSource
 	// heartbeats records the running-Lease reports the assignments request
 	// carries (ADR-0030 §2.2). Nil means the reports are accepted and
@@ -101,6 +106,7 @@ func NewMTLSHandler(cfg MTLSConfig) (http.Handler, error) {
 	}
 	h := &mtlsHandler{
 		claimEndpoint: claimEndpoint{claims: cfg.Claims, maxBody: cfg.MaxBodyBytes, log: cfg.Logger},
+		bodies:        cfg.BodyReceiver,
 		assignments:   cfg.Assignments,
 		heartbeats:    cfg.Heartbeats,
 		registry:      cfg.Registry,
@@ -127,6 +133,11 @@ func (h *mtlsHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	case testprofile.Path, enrollwire.RenewPath, enrollwire.EnrollPath:
 	case testprofile.AssignmentsPath:
 		if h.assignments == nil {
+			reply(w, http.StatusNotFound, "not_found")
+			return
+		}
+	case testprofile.BodyPath:
+		if h.bodies == nil {
 			reply(w, http.StatusNotFound, "not_found")
 			return
 		}
@@ -158,7 +169,79 @@ func (h *mtlsHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		h.serveAssignments(w, r, caller)
 		return
 	}
+	if r.URL.Path == testprofile.BodyPath {
+		h.serveBody(w, r, caller)
+		return
+	}
 	h.serveClaim(w, r, caller)
+}
+
+// serveBody hands an authenticated claim-body request to the receiver. The
+// body is one envelope line, a newline, then the raw bytes; the receiver
+// measures them against the claim it already recorded (ADR-0034 §2.2). The
+// receiver's refusals are coarse; the reason stays in its log.
+func (h *mtlsHandler) serveBody(w http.ResponseWriter, r *http.Request, caller workerplane.Principal) {
+	if mt, _, _ := strings.Cut(r.Header.Get("Content-Type"), ";"); strings.TrimSpace(mt) != testprofile.ContentType {
+		reply(w, http.StatusUnsupportedMediaType, "unsupported_media_type")
+		return
+	}
+	if r.ContentLength > claimbody.HandlerMaxBodyBytes {
+		reply(w, http.StatusRequestEntityTooLarge, "request_too_large")
+		return
+	}
+	raw, err := io.ReadAll(http.MaxBytesReader(w, r.Body, claimbody.HandlerMaxBodyBytes+1))
+	if err != nil {
+		var tooBig *http.MaxBytesError
+		if errors.As(err, &tooBig) {
+			reply(w, http.StatusRequestEntityTooLarge, "request_too_large")
+			return
+		}
+		reply(w, http.StatusBadRequest, "bad_request")
+		return
+	}
+	line, rest, ok := strings.Cut(string(raw), "\n")
+	if !ok {
+		reply(w, http.StatusBadRequest, "invalid_envelope")
+		return
+	}
+	var envelope struct {
+		AttemptID ids.AttemptID `json:"attempt_id"`
+		MediaType string        `json:"media_type,omitempty"`
+	}
+	if err := json.Unmarshal([]byte(line), &envelope); err != nil {
+		reply(w, http.StatusBadRequest, "invalid_envelope")
+		return
+	}
+	mediaType := envelope.MediaType
+	if mediaType == "" {
+		mediaType = testprofile.MediaTypeOctetStream
+	}
+	if err := h.bodies.ReceiveBody(r.Context(), caller.WorkerIdentity, envelope.AttemptID, []byte(rest), mediaType); err != nil {
+		status, code := classifyBodyError(err)
+		if status == http.StatusInternalServerError {
+			h.log.Error("worker claim body failed", "worker", caller.WorkerIdentity, "error", err.Error())
+		}
+		reply(w, status, code)
+		return
+	}
+	reply(w, http.StatusOK, "stored")
+}
+
+func classifyBodyError(err error) (int, string) {
+	switch {
+	case errors.Is(err, claimbody.ErrWorkerMismatch):
+		return http.StatusForbidden, "worker_mismatch"
+	case errors.Is(err, claimbody.ErrNoCompletedClaim):
+		return http.StatusConflict, "no_completed_claim"
+	case errors.Is(err, claimbody.ErrDigestMismatch):
+		return http.StatusUnprocessableEntity, "digest_mismatch"
+	case errors.Is(err, claimbody.ErrTooLarge):
+		return http.StatusRequestEntityTooLarge, "body_too_large"
+	case errors.Is(err, claimbody.ErrUnknownAttempt):
+		return http.StatusNotFound, "attempt_unknown"
+	default:
+		return http.StatusInternalServerError, "internal_error"
+	}
 }
 
 // authenticate verifies the client certificate of the request and asks the

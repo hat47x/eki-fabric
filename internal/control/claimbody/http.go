@@ -82,7 +82,7 @@ func (h *HTTPReceiver) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	// The worker identity comes from the transport, not the envelope: the
 	// caller is who the certificate says. The ServeHTTP signature does not
 	// carry it, so the mount point passes it in.
-	worker := workerFromContext(r.Context())
+	worker := WorkerFromContext(r.Context())
 	if worker == "" {
 		http.Error(w, "unauthorized", http.StatusUnauthorized)
 		return
@@ -122,7 +122,7 @@ func WithWorker(ctx context.Context, worker string) context.Context {
 	return context.WithValue(ctx, workerContextKey{}, worker)
 }
 
-func workerFromContext(ctx context.Context) string {
+func WorkerFromContext(ctx context.Context) string {
 	worker, _ := ctx.Value(workerContextKey{}).(string)
 	return worker
 }

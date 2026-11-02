@@ -56,6 +56,7 @@ type mtlsEnv struct {
 	workerCACert string
 	workerCAKey  string
 	serverChain  string
+	artifactsDir string
 	validity     int64
 	clientTLS    bool
 }
@@ -63,6 +64,7 @@ type mtlsEnv struct {
 func newMTLSEnv(t *testing.T, validitySeconds int64) *mtlsEnv {
 	t.Helper()
 	e := &mtlsEnv{env: newEnv(t), validity: validitySeconds}
+	e.artifactsDir = filepath.Join(e.dir, "artifacts")
 	e.workerCACert = filepath.Join(e.dir, "worker-ca.pem")
 	e.workerCAKey = filepath.Join(e.dir, "worker-ca.key")
 	// The Worker CA comes from the operator command, as in a real deployment.
@@ -96,6 +98,7 @@ func (e *mtlsEnv) writeConfig(t *testing.T) {
 		Worker: &service.WorkerConfig{
 			Listen: strings.TrimPrefix(e.workerURL, "https://"), Auth: service.WorkerAuthMTLS,
 			TLS: &service.TLSConfig{CertFile: e.serverChain, KeyFile: e.pki.keyFile},
+			ArtifactsDir: e.artifactsDir,
 			MTLS: &service.WorkerMTLSConfig{
 				TrustDomain: trustDomain, CACertFile: e.workerCACert, CAKeyFile: e.workerCAKey, CertValiditySeconds: e.validity,
 			},

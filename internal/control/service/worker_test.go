@@ -158,6 +158,7 @@ func mtlsWorkerConfig(t *testing.T, mutate func(*Config)) Config {
 		Listen: "0.0.0.0:9443",
 		Auth:   WorkerAuthMTLS,
 		TLS:    &TLSConfig{CertFile: "server.pem", KeyFile: "server.key"},
+		ArtifactsDir: t.TempDir(),
 		MTLS:   &WorkerMTLSConfig{TrustDomain: "example.org", CACertFile: "worker-ca.pem", CAKeyFile: "worker-ca.key"},
 	}
 	if mutate != nil {

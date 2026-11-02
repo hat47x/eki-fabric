@@ -13,7 +13,10 @@ import (
 	"time"
 
 	"github.com/hat47x/eki-fabric/internal/adapters/reference/statestore/sqlite"
+	artifactfile "github.com/hat47x/eki-fabric/internal/adapters/reference/artifactstore/file"
 	"github.com/hat47x/eki-fabric/internal/adapters/reference/workerca"
+	"github.com/hat47x/eki-fabric/internal/control/claimbody"
+	"github.com/hat47x/eki-fabric/internal/core/ids"
 	"github.com/hat47x/eki-fabric/internal/control/claimaccept"
 	"github.com/hat47x/eki-fabric/internal/control/claimplane"
 	"github.com/hat47x/eki-fabric/internal/control/clientapi"
@@ -279,8 +282,19 @@ func (s *Server) mtlsHandler(w *WorkerConfig, store *sqlite.Store, plane *claimp
 	if err != nil {
 		return nil, err
 	}
+	if w.ArtifactsDir == "" {
+		return nil, fmt.Errorf("%w: artifacts_dir is required with auth %q: a Control Plane that cannot keep bodies must not accept them (ADR-0034 2.3)", ErrInvalidConfig, w.Auth)
+	}
+	bodies, err := artifactfile.New(w.ArtifactsDir)
+	if err != nil {
+		return nil, fmt.Errorf("%w: %v", ErrInvalidConfig, err)
+	}
+	receiver, err := claimbody.New(store, store, leaseWorker{store}, bodySink{bodies})
+	if err != nil {
+		return nil, fmt.Errorf("%w: %v", ErrInvalidConfig, err)
+	}
 	handler, err := workerplane.NewMTLSHandler(workerplane.MTLSConfig{
-		Claims: api, Assignments: assignments, Heartbeats: store, Registry: registry, WorkerCA: ca.Certificate(), TrustDomain: w.MTLS.TrustDomain,
+		Claims: api, Assignments: assignments, Heartbeats: store, BodyReceiver: bodyReceiver{receiver}, Registry: registry, WorkerCA: ca.Certificate(), TrustDomain: w.MTLS.TrustDomain,
 		MaxBodyBytes: w.MaxBodyBytes, Logger: s.log,
 	})
 	if err != nil {
@@ -391,4 +405,20 @@ func Run(ctx context.Context, cfg Config, log *slog.Logger) error {
 	defer cancel()
 	err = s.Shutdown(shutdownCtx)
 	return errors.Join(s.Err(), err)
+}
+
+// leaseWorker reads the Worker identity a Lease names, from the lease record
+// the State Store already keeps. The receiver's LeaseStore is the identity
+// read, not the whole record, so the receiver cannot grow a dependency on
+// lease internals.
+type leaseWorker struct {
+	store *sqlite.Store
+}
+
+func (l leaseWorker) LoadLeaseWorker(ctx context.Context, id ids.LeaseID) (string, error) {
+	lease, err := l.store.LoadLease(ctx, id)
+	if err != nil {
+		return "", err
+	}
+	return lease.WorkerIdentity, nil
 }

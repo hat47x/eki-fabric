@@ -106,6 +106,9 @@ type WorkerConfig struct {
 	AllowTestProfileOffLoopback bool `json:"allow_test_profile_off_loopback,omitempty"`
 	// MaxBodyBytes bounds a request body. Zero means the default.
 	MaxBodyBytes int64 `json:"max_body_bytes,omitempty"`
+	// ArtifactsDir keeps the bodies of accepted outputs, one file per
+	// digest (ADR-0034 §2.3). Required with auth "mtls".
+	ArtifactsDir string `json:"artifacts_dir,omitempty"`
 	// Sessions maps token hashes to the Worker they authenticate. Test profile
 	// only; it must be empty with auth "mtls".
 	Sessions []WorkerSessionConfig `json:"sessions"`
