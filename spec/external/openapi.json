@@ -1189,7 +1189,7 @@
             "type": "array",
             "maxItems": 64,
             "items": {
-              "$ref": "#/components/schemas/ArtifactDescriptor"
+              "$ref": "#/components/schemas/ResultArtifact"
             }
           },
           "assurance": {
@@ -1266,6 +1266,39 @@
               "available",
               "rejected"
             ]
+          }
+        }
+      },
+      "ResultArtifact": {
+        "type": "object",
+        "additionalProperties": false,
+        "description": "One entry of TaskResult.artifacts. It answers two questions the requester needs before it tries to fetch: what the Task produced, and whether the body can still be fetched (#493).",
+        "required": [
+          "sha256",
+          "size_bytes",
+          "available"
+        ],
+        "properties": {
+          "sha256": {
+            "$ref": "#/components/schemas/Digest"
+          },
+          "size_bytes": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
+          },
+          "available": {
+            "type": "boolean",
+            "description": "True when GET /v1/artifacts/{artifact_id} can serve the body now. A false entry keeps its digest and size: the record of what was produced survives the body's removal."
+          },
+          "artifact_id": {
+            "type": "string",
+            "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$",
+            "description": "Present only when available is true. Handing out an identifier that answers 410 or 404 would read as \"try and see\"."
+          },
+          "media_type": {
+            "type": "string",
+            "description": "What the Worker declared. It is not a promise about the bytes: EKI never inspects them."
           }
         }
       },
