@@ -146,7 +146,7 @@ func (l *eventLog) write(e event) error {
 
 // runAssignments polls until ctx ends. It returns when the loop has stopped.
 func runAssignments(ctx context.Context, c *AssignmentConfig, anchor *trustanchor.Anchor, execs []assignment.ExecutorApproval,
-	source workerplane.AssignmentSource, claims claimEnqueuer, events *eventLog, principal workerplane.Principal, interval time.Duration, log *slog.Logger) error {
+	source workerplane.AssignmentSource, claims claimEnqueuer, events *eventLog, holds *bodyHold, principal workerplane.Principal, interval time.Duration, log *slog.Logger) error {
 	guard, err := replaysqlite.Open(ctx, c.ReplayDB, systemClock{}, 4096)
 	if err != nil {
 		return fmt.Errorf("open replay guard: %w", err)
@@ -158,6 +158,7 @@ func runAssignments(ctx context.Context, c *AssignmentConfig, anchor *trustancho
 		if err != nil {
 			return err
 		}
+		execHandler.bodies = holds
 		handler = execHandler
 	}
 	// The heartbeat (ADR-0030 §2.2): the Agent reports the Lease it is

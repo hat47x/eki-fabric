@@ -70,6 +70,11 @@ type Result struct {
 	// report a completed execution, because nothing would say what a verifier
 	// is supposed to check.
 	OutputDigest contract.Digest
+	// Body is the output bytes the digest was computed over, when the Runner
+	// keeps them for the Worker to send after the claim (ADR-0034 2.1). A Runner
+	// that keeps no body leaves it nil. Body travels with the Result of one
+	// Run, so it cannot be read by another Attempt.
+	Body []byte
 }
 
 // Runner executes one Attempt. Run must return when ctx is cancelled; the
@@ -104,10 +109,12 @@ type Outcome struct {
 	OutputBytes uint64
 	// OutputDigest is set only for StatusCompleted.
 	OutputDigest contract.Digest
-	Reasons      []governor.Reason
-	StartedAt    time.Time
-	EndedAt      time.Time
-	Failure      error
+	// Body is set only for StatusCompleted, and only when the Runner kept it.
+	Body      []byte
+	Reasons   []governor.Reason
+	StartedAt time.Time
+	EndedAt   time.Time
+	Failure   error
 }
 
 type Config struct {
@@ -241,6 +248,7 @@ func (s *Supervisor) finish(run runResult, spec Spec, startedAt time.Time, reaso
 	}
 	outcome.Status = StatusCompleted
 	outcome.OutputDigest = run.result.OutputDigest
+	outcome.Body = run.result.Body
 	return outcome
 }
 
