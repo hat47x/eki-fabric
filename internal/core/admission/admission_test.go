@@ -1004,3 +1004,25 @@ func TestParametersAndVersionConstraintAreNotEvaluated(t *testing.T) {
 		t.Fatal("a fresh request reported replay")
 	}
 }
+
+func TestTheClientRequestIDIsCarriedThroughNormalization(t *testing.T) {
+	body := strings.TrimSuffix(strings.TrimSpace(requestWithoutInputs()), "}") + `, "client_request_id": "req-1"}`
+	got, err := ParseTaskRequest([]byte(body))
+	if err != nil {
+		t.Fatalf("ParseTaskRequest() error = %v", err)
+	}
+	if got.ClientRequestID != "req-1" {
+		t.Fatalf("client_request_id = %q, want req-1", got.ClientRequestID)
+	}
+}
+
+func TestAnInvalidClientRequestIDIsRefused(t *testing.T) {
+	for _, id := range []string{"has space", "a/b", "日本語", strings.Repeat("a", 65)} {
+		body := strings.TrimSuffix(strings.TrimSpace(requestWithoutInputs()), "}") + `, "client_request_id": "` + id + `"}`
+		_, err := ParseTaskRequest([]byte(body))
+		var ae *Error
+		if !errors.As(err, &ae) || ae.Kind != KindBadRequest {
+			t.Fatalf("client_request_id %q: error = %v, want a bad request", id, err)
+		}
+	}
+}

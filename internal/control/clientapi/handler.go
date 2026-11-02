@@ -256,6 +256,9 @@ type taskAccepted struct {
 	// RequestFingerprint is the digest of the normalized request, so a requester
 	// can match this answer with the request it sent (#315).
 	RequestFingerprint string `json:"request_fingerprint"`
+	// ClientRequestID is the identifier the requester put in the request,
+	// unchanged. It is absent when the request carried none (#315).
+	ClientRequestID string `json:"client_request_id,omitempty"`
 }
 
 func (h *Handler) submit(w http.ResponseWriter, r *http.Request, id Identity) {
@@ -293,6 +296,7 @@ func (h *Handler) submit(w http.ResponseWriter, r *http.Request, id Identity) {
 		SubmittedAt:        accepted.SubmittedAt.UTC().Format(time.RFC3339Nano),
 		Replayed:           accepted.Replayed,
 		RequestFingerprint: accepted.RequestFingerprint.String(),
+		ClientRequestID:    accepted.ClientRequestID,
 	})
 }
 

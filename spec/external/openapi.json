@@ -996,6 +996,11 @@
             "items": {
               "$ref": "#/components/schemas/ExtensionEnvelope"
             }
+          },
+          "client_request_id": {
+            "type": "string",
+            "pattern": "^[A-Za-z0-9._:-]{1,64}$",
+            "description": "The requester's own identifier for this request. EKI never interprets it; the acceptance answers with the same value (#315)."
           }
         },
         "example": {
@@ -1058,6 +1063,11 @@
           "request_fingerprint": {
             "type": "string",
             "description": "Digest of the normalized request, so the requester can match this answer with the request it sent (#315)."
+          },
+          "client_request_id": {
+            "type": "string",
+            "pattern": "^[A-Za-z0-9._:-]{1,64}$",
+            "description": "The identifier the requester put in the request, unchanged. Absent when the request carried none (#315)."
           },
           "replayed": {
             "type": "boolean",

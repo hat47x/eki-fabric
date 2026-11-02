@@ -88,6 +88,9 @@ type Accepted struct {
 	// RequestFingerprint is the digest of the normalized request, so the
 	// requester can match an answer with the request it sent (#315).
 	RequestFingerprint contract.Digest
+	// ClientRequestID is the requester's own identifier, echoed back unchanged
+	// (#315). Empty when the request carried none.
+	ClientRequestID string
 }
 
 // Submit admits a Task for principal. idempotencyKey scopes to the principal.
@@ -136,6 +139,7 @@ func (s *Service) Submit(ctx context.Context, p Principal, idempotencyKey string
 				SubmittedAt:        record.Task.CreatedAt,
 				Replayed:           true,
 				RequestFingerprint: record.RequestFingerprint,
+				ClientRequestID:    req.ClientRequestID,
 			}, nil
 		case errors.Is(rerr, statestore.ErrNotFound):
 			// A fresh key: run the admission path below.
@@ -182,6 +186,7 @@ func (s *Service) Submit(ctx context.Context, p Principal, idempotencyKey string
 			SubmittedAt:        result.Admission.Task.CreatedAt,
 			Replayed:           result.Replayed,
 			RequestFingerprint: result.Admission.RequestFingerprint,
+			ClientRequestID:    req.ClientRequestID,
 		}, nil
 	case errors.Is(err, statestore.ErrIdempotencyConflict):
 		return Accepted{}, &Error{
