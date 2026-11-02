@@ -47,6 +47,10 @@ type Response struct {
 	CAChainPEM string    `json:"ca_chain_pem"`
 	NotBefore  time.Time `json:"not_before"`
 	NotAfter   time.Time `json:"not_after"`
+	// TrustBundle is the version the Worker should hold after enrolling. It is
+	// optional so an older Control Plane and an older Agent keep working, but a
+	// Worker that receives it must verify it before use (ADR-0036 §2.1).
+	TrustBundle *Bundle `json:"trust_bundle,omitempty"`
 }
 
 var ErrInvalidResponse = errors.New("invalid enrollment response")
@@ -65,6 +69,11 @@ func DecodeResponse(raw []byte) (Response, error) {
 	}
 	if r.WorkerIdentity == "" || r.TrustDomain == "" || r.CertificatePEM == "" || r.NotAfter.IsZero() {
 		return Response{}, ErrInvalidResponse
+	}
+	if r.TrustBundle != nil {
+		if _, err := DecodeBundle(*r.TrustBundle); err != nil {
+			return Response{}, ErrInvalidResponse
+		}
 	}
 	return r, nil
 }
