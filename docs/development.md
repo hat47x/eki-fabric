@@ -229,7 +229,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File scripts\verify.ps1 -Race
 
 Markdownの相対リンクの先が存在することは、`conformance/doclinks`のtestが確かめます（`go test ./...`に含まれるため、検証スクリプトの`go test`の段階で走り、`--quick`では走りません）。対象は、リポジトリ内の`*.md`の`[文字列](相対パス)`と参照定義で、`#`断片は取り除いて存在だけを見ます。コードブロックとコード書式の中、`http(s)`のリンク、リンクではないパスの言及（別リポジトリの文書名など）、見出しの存在は対象にしません。解決を別Issueで扱っているリンク切れ（現在はLICENSE、#247）は、testの`knownBroken`に理由つきで置き、解決したら消します（消し忘れもtestが失敗にします）。
 
-`gofmt`の判定は、CRLFの作業ツリーでもLFと同じ結果になるようにしています。改行コードの違いを整形の差分として扱いません。
+`gofmt`の判定は、CRLFの作業ツリーでもLFと同じ結果になるようにしています。改行コードの違いを整形の差分として扱いません。一方、ファイル末尾の改行がない、または空行が余分にあるだけの差分は、`gofmt -l`と同じく整形が必要なファイルとして報告します（#471）。判定は`scripts/gofmt-check.sh`に切り出してあり、この性質は`scripts/check-gofmt-detection.sh`（gofmtが必要、リポジトリは変更しない）で確かめられます。
 
 ### データ競合の検出（`-race`）
 

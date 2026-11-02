@@ -50,21 +50,12 @@ go version
 
 echo
 echo "== gofmt =="
-unformatted=""
-while IFS= read -r file; do
-	[ -f "$file" ] || continue
-	# CRLF の作業ツリーでも判定できるよう、改行をLFへそろえてから比較する。
-	normalized=$(tr -d '\r' <"$file")
-	formatted=$(printf '%s' "$normalized" | gofmt)
-	if [ "$normalized" != "$formatted" ]; then
-		unformatted="$unformatted$file"$'\n'
-	fi
-done <<EOF
-$(git ls-files '*.go')
-EOF
+# shellcheck source=scripts/gofmt-check.sh
+. "$root/scripts/gofmt-check.sh"
+unformatted=$(git ls-files '*.go' | eki_gofmt_unformatted)
 if [ -n "$unformatted" ]; then
 	echo "gofmt が必要なファイル:"
-	printf '%s' "$unformatted"
+	printf '%s\n' "$unformatted"
 	status=1
 else
 	echo "OK: すべての .go ファイルが gofmt 済み"
