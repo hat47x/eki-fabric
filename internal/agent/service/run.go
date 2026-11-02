@@ -21,6 +21,7 @@ import (
 	"github.com/hat47x/eki-fabric/internal/agent/claimclient"
 	"github.com/hat47x/eki-fabric/internal/agent/claimqueue"
 	"github.com/hat47x/eki-fabric/internal/agent/enroll"
+	"github.com/hat47x/eki-fabric/internal/agent/nativerunner"
 	"github.com/hat47x/eki-fabric/internal/agent/trustanchor"
 	"github.com/hat47x/eki-fabric/internal/spi/workerplane"
 )
@@ -176,8 +177,20 @@ func Run(ctx context.Context, cfg Config, token string, log *slog.Logger) error 
 		return fmt.Errorf("open claim queue: %w", err)
 	}
 	defer store.Close()
+	var sender claimqueue.Sender = client
+	if cfg.Assignments != nil {
+		if bodyer, ok := any(api).(bodySender); ok {
+			if execCfg := cfg.Assignments.Execution; execCfg != nil && execCfg.Command != "" {
+				sender = sendingBodies{
+					next: client, bodies: bodyer,
+					runner: nativerunner.Runner{Command: execCfg.Command, Args: execCfg.Args, Env: execCfg.Env, AllowedArgs: execCfg.AllowedArgs, ExecutableSHA256: execCfg.ExecutableSHA256},
+					events: events, log: log,
+				}
+			}
+		}
+	}
 	queue, err := claimqueue.New(claimqueue.Config{
-		Store: store, Sender: client, Clock: systemClock{}, BaseDelay: base, MaxDelay: max,
+		Store: store, Sender: sender, Clock: systemClock{}, BaseDelay: base, MaxDelay: max,
 	})
 	if err != nil {
 		return err

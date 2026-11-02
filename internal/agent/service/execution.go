@@ -138,6 +138,7 @@ func isNilEnqueuer(c claimEnqueuer) bool {
 // Plane has it.
 const (
 	eventClaimQueued         = "result_claim_queued"
+	eventBodySent            = "claim_body_sent"
 	eventClaimSubmitted      = "result_claim_submitted"
 	eventClaimDeliveryFailed = "result_claim_delivery_failed"
 )
@@ -163,6 +164,57 @@ func (r recordingClaims) SubmitClaim(ctx context.Context, p workerplane.Principa
 		r.log.Error("claim delivery event not recorded", "error", writeErr.Error())
 	}
 	return ack, err
+}
+
+// bodySender sends the body of a completed claim, after the claim itself
+// (ADR-0034 2.2). A nil sender means the Agent has no body route; claims
+// still go out.
+type bodySender interface {
+	SendBody(ctx context.Context, attemptID ids.AttemptID, body []byte, declaredMediaType string) error
+}
+
+// claimSender is the claim queue's Sender, narrowed for wrapping.
+type claimSender = claimqueue.Sender
+
+// sendingBodies wraps the claim queue's Sender. After a claim is
+// acknowledged, it sends the body the Runner kept, so the Control Plane can
+// verify the digest against the claim it just accepted. A body that does not
+// arrive is not a claim failure: the claim is already acknowledged, the
+// queue must not resend it, and the body's absence is visible on the Control
+// Plane side (the accepted result has no body). The next completed run of
+// the same Task retries nothing here; a retry is a new Attempt.
+type sendingBodies struct {
+	next   claimSender
+	bodies bodySender
+	runner executor.Runner
+	events *eventLog
+	log    *slog.Logger
+}
+
+func (s sendingBodies) Send(ctx context.Context, claim resultclaim.Claim) error {
+	if err := s.next.Send(ctx, claim); err != nil {
+		return err
+	}
+	if s.bodies == nil {
+		return nil
+	}
+	body, ok := executor.BodyOf(s.runner)
+	if !ok || len(body) == 0 {
+		return nil
+	}
+	sendCtx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+	err := s.bodies.SendBody(sendCtx, claim.AttemptID(), body, "")
+	ev := event{Time: time.Now().UTC(), AttemptID: string(claim.AttemptID()), LeaseID: string(claim.LeaseID())}
+	if err != nil {
+		ev.Outcome, ev.Failure = eventClaimQueued, err.Error()
+	} else {
+		ev.Outcome = eventBodySent
+	}
+	if writeErr := s.events.write(ev); writeErr != nil {
+		s.log.Error("body event not recorded", "error", writeErr.Error())
+	}
+	return nil
 }
 
 type claimSource struct {
