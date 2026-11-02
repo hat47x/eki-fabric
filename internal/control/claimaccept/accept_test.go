@@ -31,6 +31,9 @@ type fakeAttempts struct {
 	record  attemptstate.AttemptRecord
 	casErr  error
 	updates []attemptstate.AttemptRecord
+	// list lets a test answer with several Attempts of one Task (the retry cap
+	// counts them by number).
+	list []attemptstate.AttemptRecord
 }
 
 func (f *fakeAttempts) LoadAttempt(context.Context, ids.AttemptID) (attemptstate.AttemptRecord, error) {
@@ -50,6 +53,9 @@ func (f *fakeAttempts) CompareAndSwapAttempt(_ context.Context, _ ids.AttemptID,
 }
 
 func (f *fakeAttempts) ListAttemptsByTask(_ context.Context, _ ids.TaskID) ([]attemptstate.AttemptRecord, error) {
+	if f.list != nil {
+		return f.list, nil
+	}
 	return []attemptstate.AttemptRecord{f.record}, nil
 }
 
@@ -482,5 +488,40 @@ func TestHighestAttemptNumberIsTheNumberOfTries(t *testing.T) {
 	}
 	if defaultMaxAttempts < 2 {
 		t.Fatalf("defaultMaxAttempts = %d, want at least 2", defaultMaxAttempts)
+	}
+}
+
+// The third attempt is the last one: when the next close is retryable, the Task
+// ends as exhausted instead of going back to ready (ADR-0032 §2.5, #424).
+func TestARetryableCloseOnTheLastAttemptEndsTheTaskAsExhausted(t *testing.T) {
+	last := attempt(t, attemptstate.AttemptPhaseClaimed)
+	last.Number = defaultMaxAttempts
+	attempts := &fakeAttempts{record: last}
+	closed := last
+	closed.Phase = attemptstate.AttemptPhaseClosed
+	attempts.list = []attemptstate.AttemptRecord{
+		{Number: 1, Phase: attemptstate.AttemptPhaseClosed},
+		{Number: 2, Phase: attemptstate.AttemptPhaseClosed},
+		closed,
+	}
+	tasks := &fakeTasks{record: taskstate.TaskRecord{
+		ID: testTask, TaskIRDigest: contract.SHA256([]byte("taskir")),
+		Phase: taskstate.TaskPhaseActive, Revision: 4, CreatedAt: baseTime.Add(-time.Hour), UpdatedAt: baseTime.Add(-time.Minute),
+	}}
+	service, err := New(Config{
+		Attempts: attempts, Leases: fakeLeases{record: lease(t)}, Claims: &fakeClaims{attempts: attempts},
+		Clock: &fakeClock{now: baseTime}, Tasks: tasks,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := service.Accept(context.Background(), claim(t, resultclaim.StatusFailed, defaultMaxAttempts)); err != nil {
+		t.Fatalf("Accept() error = %v", err)
+	}
+	if len(tasks.updates) != 1 {
+		t.Fatalf("task updates = %d, want 1", len(tasks.updates))
+	}
+	if tasks.record.Phase != taskstate.TaskPhaseTerminal || tasks.record.TerminalOutcome != taskstate.TerminalOutcomeExhausted {
+		t.Fatalf("task = %s/%s, want terminal/exhausted", tasks.record.Phase, tasks.record.TerminalOutcome)
 	}
 }
