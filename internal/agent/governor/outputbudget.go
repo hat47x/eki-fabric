@@ -33,13 +33,29 @@ func NewOutputBudget(store *spool.Store, limitBytes int64) (*OutputBudget, error
 // Admit reports whether a Task whose output may reach nextBytes may start.
 // When the budget is not set, or no store is configured, it admits.
 //
-// A body that is past its retention still occupies the disk, so the caller that
-// wants the space back must sweep before asking; that ordering is the caller's
-// decision because only it knows whether losing an old body is acceptable.
+// If the budget looks short, it sweeps first and asks again once. Bodies past
+// their retention are already lost to the requester (ADR-0037 §5), so refusing
+// work for space that is reclaimable would turn a full disk into a refusal that
+// was not necessary. Sweeping here never removes a body that is still within its
+// retention, so a Task in flight is never affected.
 func (b *OutputBudget) Admit(nextBytes int64) error {
 	if b == nil || b.store == nil || b.limitBytes == 0 {
 		return nil
 	}
+	err := b.check(nextBytes)
+	if err == nil || !errors.Is(err, ErrOutputBudget) {
+		return err
+	}
+	if _, sweepErr := b.store.Sweep(); sweepErr != nil {
+		// The sweep is a courtesy, not a precondition: a failure to remove an old
+		// body must not hide the answer that the budget is full.
+		return err
+	}
+	return b.check(nextBytes)
+}
+
+// check answers the question without sweeping.
+func (b *OutputBudget) check(nextBytes int64) error {
 	usage, err := b.store.Usage()
 	if err != nil {
 		// Fail closed: a budget that cannot be read is not a budget that is met.
