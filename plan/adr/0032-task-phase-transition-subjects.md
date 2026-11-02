@@ -78,7 +78,9 @@ Taskは、受理のときに`admitted`で作られます（`taskstate.NewTask`�
 
 - 完了でないResultClaim（失敗・取消）では`verifying`にしません。Attemptのcloseと、`active`→`ready`（再試行）または`terminal`への遷移で扱います。
 - `verifying`をphaseとして持つか、`active`の導出状態にするかは、実装の都合で選べます（§5が許しています）。このADRでは、**保存するphaseとして扱う**ことを既定にします。検証が非同期に走る場合、`active`のままでは「検証中」と「実行中」を外から区別できないためです。
-- **遷移の主体は2つあり、優先順位を決めます**（2026-11-02 追記）。ResultClaimを受理する経路が2つあるためです。`claimaccept`（Claimの受理とAttemptの`verifying`を同じ流れで書く経路）が**第一の主体**で、Claimが届いた時点でTaskを`verifying`にします。`resultacceptance`（受理のcommitの直前）の遷移は**代替の主体**で、Taskがまだ`active`のときだけ発火します。前者を通ったClaimでは発火しないため、二重遷移にはなりません。片方の経路を持たない構成（Claimが`claimaccept`を通らない構成）でも、`verifying`を経て完了することを保証するための保険です。
+- **遷移の主体は2つあり、優先順位を決めます**（2026-11-02 追記）。ResultClaimを受理する経路が2つあるためです。`claimaccept`（Claimの受理とAttemptの`verifying`を同じ流れで書く経路）が**第一の主体**で、Claimが届いた時点でTaskを`verifying`にします。`resultacceptance`（受理のcommitの直前）の遷移は**代替の主体**で、Taskがまだ`active`のときだけ発火します。前者を通ったClaimでは発火しないため、二重遷移にはなりません。`claimaccept`を通らない構成（Claimが別経路で記録される構成）でも、`verifying`を経て完了することを保証するための保険です。
+
+Control Planeの受理経路（`internal/control/service`）は`claimaccept`を必ず配線するため、通常の構成で動くのは第一の主体だけです。`resultacceptance`を単独で使う構成（Taskが`ready`のまま受理する経路）を無くすと決めたときは、代替の主体を削除できます。
 
 ### 2.5 `active` → `ready` は、closeされていないAttemptが無くなったときに行う
 
