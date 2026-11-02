@@ -53,6 +53,9 @@ type Config struct {
 	// "running" and "verifying" stay distinguishable from the outside. Nil
 	// keeps the Task untouched (the old behaviour).
 	Tasks statestore.TaskStore
+	// MaxAttempts caps the retries of one Task (ADR-0032 §2.5). Zero means
+	// defaultMaxAttempts.
+	MaxAttempts uint64
 }
 
 type Service struct {
@@ -61,6 +64,7 @@ type Service struct {
 	claims   statestore.ResultClaimStore
 	clock    Clock
 	tasks    statestore.TaskStore
+	maxTries uint64
 }
 
 func New(cfg Config) (*Service, error) {
@@ -74,7 +78,11 @@ func New(cfg Config) (*Service, error) {
 	case cfg.Clock == nil:
 		return nil, fmt.Errorf("%w: clock is required", ErrInvalidConfig)
 	}
-	return &Service{attempts: cfg.Attempts, leases: cfg.Leases, claims: cfg.Claims, clock: cfg.Clock, tasks: cfg.Tasks}, nil
+	maxTries := cfg.MaxAttempts
+	if maxTries == 0 {
+		maxTries = defaultMaxAttempts
+	}
+	return &Service{attempts: cfg.Attempts, leases: cfg.Leases, claims: cfg.Claims, clock: cfg.Clock, tasks: cfg.Tasks, maxTries: maxTries}, nil
 }
 
 // Result reports what happened to one claim. VerificationRequired is true only
@@ -246,7 +254,7 @@ func (s *Service) markTaskVerifying(ctx context.Context, taskID ids.TaskID) erro
 // defaultMaxAttempts caps the retries of one Task. The cap counts Attempts by
 // their number, not by budget: failures with budget to spare must not loop
 // (ADR-0032 §2.5).
-const defaultMaxAttempts = 3
+const defaultMaxAttempts uint64 = 3
 
 var retryableCloseReasons = map[attemptstate.CloseReason]bool{
 	attemptstate.CloseReasonExecutionFailureConfirmed: true,
@@ -292,7 +300,7 @@ func (s *Service) markTaskReadyAfterClose(ctx context.Context, taskID ids.TaskID
 	// The Task goes back to ready while it still has attempts left. Once the
 	// last one is used up, it ends as exhausted rather than failed: the request
 	// was not wrong, the tries ran out (ADR-0032 §2.5).
-	if highestAttemptNumber(attempts) >= defaultMaxAttempts {
+	if highestAttemptNumber(attempts) >= s.maxTries {
 		next.Phase = taskstate.TaskPhaseTerminal
 		next.TerminalOutcome = taskstate.TerminalOutcomeExhausted
 	} else {
