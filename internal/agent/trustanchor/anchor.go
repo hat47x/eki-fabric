@@ -25,6 +25,7 @@ import (
 
 	"github.com/hat47x/eki-fabric/internal/core/authority"
 	"github.com/hat47x/eki-fabric/internal/core/decisiontrust"
+	"github.com/hat47x/eki-fabric/internal/core/trustbundle"
 	"github.com/hat47x/eki-fabric/internal/spi/workerplane/enrollwire"
 )
 
@@ -69,6 +70,17 @@ type Anchor struct {
 	TrustDomain    string
 	PolicyRevision string
 	bundle         decisiontrust.TrustBundleMetadata
+	// version is the newest accepted trust bundle version, when the file holds
+	// one (ADR-0036, #478). Nil means the anchor predates versions.
+	version *trustbundle.Signed
+}
+
+// BundleVersion returns the newest accepted version, if the anchor holds one.
+func (a *Anchor) BundleVersion() (trustbundle.Signed, bool) {
+	if a == nil || a.version == nil {
+		return trustbundle.Signed{}, false
+	}
+	return *a.version, true
 }
 
 // TrustBundle returns the bundle metadata the verifiers check for freshness.
@@ -172,10 +184,18 @@ func Build(doc File) (*Anchor, error) {
 	if err != nil {
 		return nil, fmt.Errorf("%w: %v", ErrInvalid, err)
 	}
-	return &Anchor{
+	anchor := &Anchor{
 		Boundary: boundary, TrustDomain: doc.TrustDomain, PolicyRevision: doc.PolicyRevision,
 		bundle: decisiontrust.TrustBundleMetadata{Revision: doc.BundleRevision, ValidatedAt: doc.ValidatedAt.UTC()},
-	}, nil
+	}
+	if len(doc.TrustBundleVersions) > 0 {
+		newest, err := enrollwire.DecodeBundle(doc.TrustBundleVersions[len(doc.TrustBundleVersions)-1])
+		if err != nil {
+			return nil, fmt.Errorf("%w: %v", ErrInvalid, err)
+		}
+		anchor.version = &newest
+	}
+	return anchor, nil
 }
 
 // checkVersions keeps bundle_revision and the stored history from drifting. The
