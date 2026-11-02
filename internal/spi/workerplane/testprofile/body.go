@@ -27,4 +27,3 @@ type BodyEnvelope struct {
 	// MediaTypeOctetStream. The receiver records it and acts on nothing.
 	MediaType string `json:"media_type,omitempty"`
 }
-
