@@ -63,4 +63,12 @@ native runner は標準出力をメモリのバッファへ溜め、SHA-256 と 
 
 **この決定の限界:** 経路そのもの（HTTP の形、再送、分割アップロード）は ADR-0034 の決定に従います。この節は「どの値で何を確かめるか」だけを決めています。
 
+**受信側は、すでにこの規則で動いています**（2026-11-03 に確認）。`internal/control/claimbody` の `Receive` は claim を読み、worker の一致を確かめ、`Put` に申告ダイジェストと上限（**claim の値**であり、リクエストの値ではない）を渡し、測った値が一致したときだけ保持します。試験も揃っています。
+
+- `TestAReceivedBodyIsMeasuredAgainstTheClaimItBindsTo` — 申告と一致すれば保持され、測ったダイジェストが返る。
+- `TestADisagreeingBodyIsNotKept` — 一致しなければ `ErrDigestMismatch` で、保持されない。
+- `TestTheMaximumComesFromTheClaimNotTheRequest` — 上限は claim から取る（送信側の言い値では広がらない）。
+
+したがって #492 の残りは**送る側**だけです。Worker が spool に置いた本体を、claim の報告に続けてこの経路へ送る配線が要ります。
+
 **未決:** 転送が成功した後、spool の本体をすぐ消すか、保持期間まで残すか。すぐ消すと、Control Plane 側で保管に失敗したときに再送できません。
