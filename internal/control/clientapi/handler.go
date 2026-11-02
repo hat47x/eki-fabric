@@ -20,6 +20,7 @@ import (
 
 	"github.com/hat47x/eki-fabric/internal/core/admission"
 	"github.com/hat47x/eki-fabric/internal/core/contract"
+	"github.com/hat47x/eki-fabric/internal/core/measurement"
 )
 
 // DefaultMaxBodyBytes bounds a request body. A valid TaskRequest is a few
@@ -68,6 +69,8 @@ type Handler struct {
 
 	// artifacts is nil when the deployment keeps no bodies (#494).
 	artifacts ArtifactSource
+	// counters counts refusals for ADR-0039; nil means nothing is counted.
+	counters *measurement.Counters
 	// artifactAudit receives one entry per retrieval; nil logs instead (#494).
 	artifactAudit func(ArtifactAccess)
 }
@@ -419,7 +422,9 @@ func (h *Handler) fail(w http.ResponseWriter, r *http.Request, err error) {
 		if ae.Retryable && ae.Kind == admission.KindTooManyRequests {
 			w.Header().Set("Retry-After", "5")
 		}
-		writeProblem(w, statusFor(ae), ae)
+		status := statusFor(ae)
+		h.countRejection(ae, status)
+		writeProblem(w, status, ae)
 		return
 	}
 	if r.Context().Err() != nil {
