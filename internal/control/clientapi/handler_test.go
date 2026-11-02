@@ -752,4 +752,10 @@ func TestSubmitMarksAReplayAsReplayed(t *testing.T) {
 	if again["task_id"] != first["task_id"] {
 		t.Fatalf("replay task_id = %v, want %v", again["task_id"], first["task_id"])
 	}
+	if first["request_fingerprint"] == nil || first["request_fingerprint"] == "" {
+		t.Fatal("request_fingerprint is empty")
+	}
+	if again["request_fingerprint"] != first["request_fingerprint"] {
+		t.Fatalf("replay request_fingerprint = %v, want %v", again["request_fingerprint"], first["request_fingerprint"])
+	}
 }
