@@ -19,6 +19,7 @@ import (
 	"github.com/hat47x/eki-fabric/internal/control/claimbody"
 	"github.com/hat47x/eki-fabric/internal/control/claimplane"
 	"github.com/hat47x/eki-fabric/internal/control/clientapi"
+	"github.com/hat47x/eki-fabric/internal/control/operatorapi"
 	"github.com/hat47x/eki-fabric/internal/control/workerplane"
 	"github.com/hat47x/eki-fabric/internal/core/admission"
 	"github.com/hat47x/eki-fabric/internal/core/ids"
@@ -33,6 +34,12 @@ type Server struct {
 	store    *sqlite.Store
 	listener net.Listener
 	log      *slog.Logger
+
+	// operator is the Operator listener of ADR-0038, nil when the process has no
+	// Operator routes. approvals is the book those approvals are collected in,
+	// shared with whatever admits a new trust bundle version.
+	operator  *operatorapi.Server
+	approvals *trustbundle.ApprovalBook
 
 	done     chan struct{}
 	serveErr error
@@ -156,6 +163,38 @@ func Start(ctx context.Context, cfg Config, log *slog.Logger) (*Server, error) {
 	s := &Server{http: httpServer, store: store, listener: listener, log: log, done: make(chan struct{})}
 	s.readyFlag = &readyState
 	s.refreshReady()
+
+	if cfg.Operator != nil {
+		// The Operator listener is a second, separate door (ADR-0038): its own
+		// port, its own CA, and a client certificate required before any request
+		// reaches the handler.
+		oc, err := cfg.Operator.ServerConfig()
+		if err != nil {
+			_ = listener.Close()
+			_ = store.Close()
+			return nil, err
+		}
+		s.approvals = trustbundle.NewApprovalBook()
+		oc.Approver = s.approvals
+		oc.Audit = func(a operatorapi.Access) {
+			log.Info("operator access", "name", a.Name, "role", a.Role,
+				"operation", a.Operation, "target", a.Target, "outcome", a.Outcome)
+		}
+		oc.Logger = log
+		handler, tlsConfig, err := operatorapi.Build(oc)
+		if err != nil {
+			_ = listener.Close()
+			_ = store.Close()
+			return nil, err
+		}
+		s.operator, err = operatorapi.Serve(cfg.Operator.Listen, handler, tlsConfig, log)
+		if err != nil {
+			_ = listener.Close()
+			_ = store.Close()
+			return nil, err
+		}
+		log.Info("operator listener started", "address", s.operator.Addr())
+	}
 
 	if cfg.Worker != nil {
 		s.workerConfigured = true
@@ -360,6 +399,11 @@ func (s *Server) Err() error { return errors.Join(s.serveErr, s.workerErr) }
 func (s *Server) Shutdown(ctx context.Context) error {
 	var result error
 	s.closing.Do(func() {
+		if s.operator != nil {
+			if err := s.operator.Close(ctx); err != nil {
+				result = errors.Join(result, fmt.Errorf("shutdown operator: %w", err))
+			}
+		}
 		if err := s.http.Shutdown(ctx); err != nil {
 			result = errors.Join(result, fmt.Errorf("shutdown http: %w", err))
 			_ = s.http.Close()
