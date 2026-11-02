@@ -15,6 +15,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"time"
 
 	"github.com/hat47x/eki-fabric/internal/core/attemptstate"
 	"github.com/hat47x/eki-fabric/internal/core/ids"
@@ -83,6 +84,12 @@ type Receiver struct {
 	claims   ClaimStore
 	leases   LeaseStore
 	bodies   BodySink
+
+	// owners and meta are set by WithMeta. Both nil means no metadata is
+	// recorded, which is what a deployment that keeps no bodies wants (#514).
+	owners    OwnerStore
+	meta      MetaSink
+	retention time.Duration
 }
 
 // New returns a receiver. Every dependency is required: a receiver without
@@ -135,6 +142,9 @@ func (r *Receiver) Receive(ctx context.Context, attemptID ids.AttemptID, workerI
 	case errors.Is(err, ErrDigestMismatch), errors.Is(err, ErrTooLarge):
 		return Kept{}, err
 	case err != nil:
+		return Kept{}, err
+	}
+	if err := r.recordMeta(ctx, string(attemptID), digest, size, mediaType); err != nil {
 		return Kept{}, err
 	}
 	return Kept{Digest: digest, Size: size, MediaType: mediaType}, nil
