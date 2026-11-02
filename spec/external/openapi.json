@@ -1038,7 +1038,8 @@
           "schema",
           "task_id",
           "status",
-          "submitted_at"
+          "submitted_at",
+          "replayed"
         ],
         "properties": {
           "schema": {
@@ -1052,6 +1053,10 @@
           "status": {
             "type": "string",
             "const": "queued"
+          },
+          "replayed": {
+            "type": "boolean",
+            "description": "The Idempotency-Key had already been accepted, so this body answers a replay rather than a new request (#315)."
           },
           "submitted_at": {
             "type": "string",
@@ -1110,6 +1115,10 @@
               "cancelled",
               "failed"
             ]
+          },
+          "replayed": {
+            "type": "boolean",
+            "description": "The Idempotency-Key had already been accepted, so this body answers a replay rather than a new request (#315)."
           },
           "submitted_at": {
             "type": "string",
