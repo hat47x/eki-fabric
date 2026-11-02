@@ -87,3 +87,10 @@ func TestAnIncompleteApprovalIsRefused(t *testing.T) {
 		t.Fatalf("error = %v, want %v", err, ErrUnapproved)
 	}
 }
+
+func approvalForBundle(version uint64, op Operation, issuerByte byte) Approval {
+	return Approval{
+		Version: version, Operation: op, Issuer: contractSHA(issuerByte),
+		ApprovedBy: "operator@example.org", ApprovedAt: base,
+	}
+}
