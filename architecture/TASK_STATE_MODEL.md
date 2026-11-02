@@ -222,6 +222,9 @@ T-ACTIVEと、内部的に重なり得るため、実装では、substateやderi
 重要なのは、ExecutionとVerificationを区別することです。
 
 **この実装では、T-VERIFYINGを保存するphaseとして扱います**（ADR-0032 §2.4、ADR-0033の仮定A3）。完了のResultClaimを受理する経路が、Taskを`active`から`verifying`へCASし（`internal/control/resultacceptance`）、受理のcommitが`verifying`から`terminal/completed`へ進めます。実行中と検証中を、依頼元への説明と監査で区別するためです。`verifying`のTaskは、配置ループが新しいAttemptを作らない対象です。
+**結果が拒否された場合の戻り先。** 結果の拒否（検証で不合格、Claimの不整合）では、Taskを`verifying`のままにしません。受理の経路は`verifying`→`active`へ戻し（`internal/control/resultacceptance`）、Attemptをcloseした後に、再試行の余地があれば`active`→`ready`（配置ループが次のAttemptを作れる）、余地が無ければ`terminal`（`failed`・`abandoned`）へ進みます。`ready`へ戻す判断はAttemptのcloseと同じ流れで行い、Taskだけが`active`に残る状態を作りません。
+
+**完了の書き込み。** `terminal/completed`を書けるのは受理のcommit（`CommitAcceptedResult`）だけで、汎用のTask書き込みは`ErrInvalidTaskTransition`で拒否します（#365）。受理のcommitは、AcceptedResult・閉じたAttempt・完了したTaskを同じtransactionで書きます。
 
 ## T-RECONCILING
 
