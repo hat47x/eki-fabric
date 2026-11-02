@@ -117,3 +117,48 @@ func TestWriteFileReplacesTheDocumentAtomically(t *testing.T) {
 		}
 	}
 }
+
+func TestReadFileReturnsTheDocumentWithoutBuildingAKeyBoundary(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "anchor.json")
+	doc, err := File{}.WithVersion(signedVersion(t, 1))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := WriteFile(path, doc); err != nil {
+		t.Fatal(err)
+	}
+	back, err := ReadFile(path)
+	if err != nil {
+		t.Fatalf("ReadFile() error = %v", err)
+	}
+	if back.BundleRevision != 1 || len(back.TrustBundleVersions) != 1 {
+		t.Fatalf("doc = %+v", back)
+	}
+}
+
+func TestReadFileRefusesADocumentWhoseRevisionDisagrees(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "anchor.json")
+	doc, err := File{}.WithVersion(signedVersion(t, 1))
+	if err != nil {
+		t.Fatal(err)
+	}
+	doc.BundleRevision = 4
+	raw, err := json.Marshal(doc)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(path, raw, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := ReadFile(path); !errors.Is(err, ErrInvalid) {
+		t.Fatalf("error = %v, want %v", err, ErrInvalid)
+	}
+}
+
+func TestReadFileOnAMissingFileIsRefused(t *testing.T) {
+	if _, err := ReadFile(filepath.Join(t.TempDir(), "absent.json")); !errors.Is(err, ErrInvalid) {
+		t.Fatalf("error = %v, want %v", err, ErrInvalid)
+	}
+}

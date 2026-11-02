@@ -3,6 +3,7 @@ package trustanchor
 import (
 	"encoding/json"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 
@@ -68,4 +69,31 @@ func WriteFile(path string, doc File) error {
 		return fmt.Errorf("replace %s: %w", path, err)
 	}
 	return nil
+}
+
+// ReadFile reads the document without building a verifier boundary, so a caller
+// that only appends a version does not need working keys yet (ADR-0036, #478).
+// The size limit and the strict decoder match Load: a file that Load refuses is
+// not silently accepted here.
+func ReadFile(path string) (File, error) {
+	f, err := os.Open(path)
+	if err != nil {
+		return File{}, fmt.Errorf("%w: %v", ErrInvalid, err)
+	}
+	defer f.Close()
+	raw, err := io.ReadAll(io.LimitReader(f, maxFileBytes+1))
+	if err != nil {
+		return File{}, fmt.Errorf("%w: %v", ErrInvalid, err)
+	}
+	if len(raw) > maxFileBytes {
+		return File{}, fmt.Errorf("%w: file is too large", ErrInvalid)
+	}
+	var doc File
+	if err := json.Unmarshal(raw, &doc); err != nil {
+		return File{}, fmt.Errorf("%w: %v", ErrInvalid, err)
+	}
+	if err := checkVersions(doc); err != nil {
+		return File{}, err
+	}
+	return doc, nil
 }
