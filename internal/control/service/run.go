@@ -22,7 +22,9 @@ import (
 	"github.com/hat47x/eki-fabric/internal/control/workerplane"
 	"github.com/hat47x/eki-fabric/internal/core/admission"
 	"github.com/hat47x/eki-fabric/internal/core/ids"
+	"github.com/hat47x/eki-fabric/internal/core/trustbundle"
 	"github.com/hat47x/eki-fabric/internal/core/workerenrollment"
+	"github.com/hat47x/eki-fabric/internal/spi/statestore"
 )
 
 // Server is a running Control Plane process.
@@ -296,6 +298,11 @@ func (s *Server) mtlsHandler(w *WorkerConfig, store *sqlite.Store, plane *claimp
 	handler, err := workerplane.NewMTLSHandler(workerplane.MTLSConfig{
 		Claims: api, Assignments: assignments, Heartbeats: store, BodyReceiver: bodyReceiver{receiver}, Registry: registry, WorkerCA: ca.Certificate(), TrustDomain: w.MTLS.TrustDomain,
 		MaxBodyBytes: w.MaxBodyBytes, Logger: s.log,
+		// The version the Control Plane holds is what Workers are given at
+		// enrollment and what their roots are checked against (ADR-0036 §2.1).
+		// A store that does not keep trust bundles leaves the check off, so a
+		// deployment can adopt the feature by storing its first version.
+		TrustBundle: currentTrustBundle(store),
 	})
 	if err != nil {
 		return nil, fmt.Errorf("%w: %v", ErrInvalidConfig, err)
@@ -421,4 +428,27 @@ func (l leaseWorker) LoadLeaseWorker(ctx context.Context, id ids.LeaseID) (strin
 		return "", err
 	}
 	return lease.WorkerIdentity, nil
+}
+
+// currentTrustBundle reports the newest stored version, or false when the store
+// keeps none. It reads on each call so a version admitted at runtime is used by
+// the next request without a restart; the read is one row plus its issuers.
+func currentTrustBundle(store any) func() (trustbundle.Signed, bool) {
+	bundles, ok := store.(statestore.TrustBundleStore)
+	if !ok {
+		return nil
+	}
+	return func() (trustbundle.Signed, bool) {
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		record, err := bundles.LatestTrustBundle(ctx)
+		if err != nil {
+			return trustbundle.Signed{}, false
+		}
+		signed, err := trustbundle.FromRecord(record)
+		if err != nil {
+			return trustbundle.Signed{}, false
+		}
+		return signed, true
+	}
 }
