@@ -89,6 +89,9 @@ Attemptが閉じ（成功・失敗・回収のいずれでも）、再試行の�
 - 判断は結果の受理と回復の経路に置きます（Attemptのcloseを書くのと同じトランザクション、または直後のCAS）。
 - Taskに複数のAttemptがある場合（同じTaskの並行Attempt）は、すべてが閉じたときにだけ`ready`または`terminal`へ進めます。
 
+**再試行の余地の判定（2026-11-02 追記）。** Attemptのcloseが再試行可能かは、closeの理由で決めます（`internal/control/claimaccept`の`retryableCloseReasons`）。実行失敗（Workerの申告）、期限、予算の枯渇、結果の拒否は再試行可能で、Taskを`active`→`ready`に戻します。取消と回収はTask側の別の経路（`admission.Cancel`、revocation）で収束するため、ここでは再開しません。
+
+**未決:** 再試行の回数に上限を置くか。現状は、再試行可能な理由でcloseされたAttemptが続く限り、Taskは`ready`に戻ります。上限を置くなら、Taskの`budget`（ADR-0014）とAttemptの番号のどちらで数えるかを決める必要があります。
 ### 2.6 権限と失敗時の扱い
 
 - phaseを書けるのは、上の表の主体だけです。ほかの部品は読むだけにします。
