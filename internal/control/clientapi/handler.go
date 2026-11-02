@@ -19,6 +19,7 @@ import (
 	"time"
 
 	"github.com/hat47x/eki-fabric/internal/core/admission"
+	"github.com/hat47x/eki-fabric/internal/core/contract"
 )
 
 // DefaultMaxBodyBytes bounds a request body. A valid TaskRequest is a few
@@ -354,7 +355,7 @@ func (h *Handler) status(w http.ResponseWriter, r *http.Request, id Identity, ta
 type taskResult struct {
 	Schema       string                 `json:"schema"`
 	TaskID       string                 `json:"task_id"`
-	Artifacts    []struct{}             `json:"artifacts"`
+	Artifacts    []publicArtifact       `json:"artifacts"`
 	Assurance    publicAssuranceSummary `json:"assurance"`
 	OutputDigest publicDigest           `json:"output_digest"`
 }
@@ -379,7 +380,7 @@ func (h *Handler) result(w http.ResponseWriter, r *http.Request, id Identity, ta
 	writeJSON(w, http.StatusOK, taskResult{
 		Schema:       "eki.task-result/v1",
 		TaskID:       res.TaskID.String(),
-		Artifacts:    []struct{}{},
+		Artifacts:    h.artifactsOf(res.OutputDigest),
 		Assurance:    publicAssuranceSummary{Profile: res.AssuranceProfile, Status: "satisfied"},
 		OutputDigest: publicDigest{Algorithm: res.OutputDigest.Algorithm(), Value: res.OutputDigest.Hex()},
 	})
@@ -509,4 +510,23 @@ func writeJSON(w http.ResponseWriter, status int, v any) {
 	w.Header().Set("Content-Type", jsonContentType)
 	w.WriteHeader(status)
 	_ = json.NewEncoder(w).Encode(v)
+}
+
+// artifactsOf lists what the result produced. The list is built from the store's
+// record rather than from the Task, so it answers the same question the retrieval
+// route answers: can this body be fetched, and until when (#493).
+func (h *Handler) artifactsOf(digest contract.Digest) []publicArtifact {
+	if digest == (contract.Digest{}) {
+		return []publicArtifact{}
+	}
+	if h.artifacts == nil {
+		// A deployment that keeps no bodies advertises none: listing an entry
+		// that can never be fetched would be a promise this process cannot keep.
+		return []publicArtifact{}
+	}
+	meta, err := h.artifacts.LoadMeta(digest.Hex())
+	if err != nil {
+		return buildArtifacts(digest, ArtifactMeta{}, false, time.Now())
+	}
+	return buildArtifacts(digest, meta, true, time.Now())
 }
