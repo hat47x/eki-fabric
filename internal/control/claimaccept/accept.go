@@ -243,6 +243,11 @@ func (s *Service) markTaskVerifying(ctx context.Context, taskID ids.TaskID) erro
 // unachieved and re-attemptable: the Worker reported a failure, a deadline or
 // a budget stop. Cancellation and reclamation converge on the Task elsewhere
 // (admission.Cancel, the revocation), so they must not restart the Task here.
+// defaultMaxAttempts caps the retries of one Task. The cap counts Attempts by
+// their number, not by budget: failures with budget to spare must not loop
+// (ADR-0032 §2.5).
+const defaultMaxAttempts = 3
+
 var retryableCloseReasons = map[attemptstate.CloseReason]bool{
 	attemptstate.CloseReasonExecutionFailureConfirmed: true,
 	attemptstate.CloseReasonDeadline:                  true,
@@ -282,10 +287,30 @@ func (s *Service) markTaskReadyAfterClose(ctx context.Context, taskID ids.TaskID
 		return nil
 	}
 	next := task
-	next.Phase = taskstate.TaskPhaseReady
 	next.Revision = task.Revision + 1
 	next.UpdatedAt = s.clock.Now().UTC()
+	// The Task goes back to ready while it still has attempts left. Once the
+	// last one is used up, it ends as exhausted rather than failed: the request
+	// was not wrong, the tries ran out (ADR-0032 §2.5).
+	if highestAttemptNumber(attempts) >= defaultMaxAttempts {
+		next.Phase = taskstate.TaskPhaseTerminal
+		next.TerminalOutcome = taskstate.TerminalOutcomeExhausted
+	} else {
+		next.Phase = taskstate.TaskPhaseReady
+	}
 	return s.tasks.CompareAndSwapTask(ctx, task.ID, task.Revision, next)
+}
+
+// highestAttemptNumber is the largest Attempt number of a Task, which is the
+// number of tries it has used.
+func highestAttemptNumber(attempts []attemptstate.AttemptRecord) uint64 {
+	var highest uint64
+	for _, a := range attempts {
+		if a.Number > highest {
+			highest = a.Number
+		}
+	}
+	return highest
 }
 
 func checkBinding(attempt attemptstate.AttemptRecord, claim resultclaim.Claim) error {
