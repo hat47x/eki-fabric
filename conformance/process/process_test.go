@@ -53,7 +53,9 @@ const (
 	workerAToken = "test-profile-token-worker-a-0123456789"
 	workerBToken = "test-profile-token-worker-b-0123456789"
 	clientToken  = "test-profile-client-token-0123456789"
-	pollDeadline = 45 * time.Second
+	// pollDeadline is generous because the whole suite runs in parallel: a loaded
+	// machine must not turn a slow tick into a failure (#437).
+	pollDeadline = 90 * time.Second
 )
 
 var binDir string
