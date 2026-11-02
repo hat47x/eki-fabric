@@ -105,12 +105,25 @@ func Start(ctx context.Context, cfg Config, log *slog.Logger) (*Server, error) {
 	// (#289). Until then the probe refuses: the process is not serving for
 	// real yet.
 	var readyState atomic.Bool
+	// The retrieval route reads the same directory the Worker listener writes to.
+	// Two Store values over one directory are fine: the store keeps no state in
+	// memory, and a body is one file named after its digest (#494).
+	var artifacts clientapi.ArtifactSource
+	if cfg.Worker != nil && cfg.Worker.ArtifactsDir != "" {
+		bodies, aerr := artifactfile.New(cfg.Worker.ArtifactsDir)
+		if aerr != nil {
+			_ = store.Close()
+			return nil, fmt.Errorf("open the artifact store: %w", aerr)
+		}
+		artifacts = artifactSource{store: bodies}
+	}
 	handler, err := clientapi.NewHandler(clientapi.Config{
 		Service:       svc,
 		Authenticator: auth,
 		MaxBodyBytes:  cfg.MaxBodyBytes,
 		Logger:        log,
 		Ready:         readyState.Load,
+		Artifacts:     artifacts,
 	})
 	if err != nil {
 		_ = store.Close()
