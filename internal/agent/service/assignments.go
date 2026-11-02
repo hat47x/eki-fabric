@@ -197,7 +197,7 @@ func runAssignments(ctx context.Context, c *AssignmentConfig, anchor *trustancho
 			log.Error("assignment poll failed", "error", err.Error())
 		}
 		for _, r := range results {
-			ev := event{Time: time.Now().UTC(), AttemptID: r.AttemptID, LeaseID: r.LeaseID, Outcome: string(r.Outcome), Reason: r.Reason, FenceEpoch: r.FenceEpoch}
+			ev := event{Time: time.Now().UTC(), AttemptID: r.AttemptID, LeaseID: r.LeaseID, Outcome: string(r.Outcome), Reason: r.Reason, Failure: r.Detail, FenceEpoch: r.FenceEpoch}
 			if r.Outcome == assignment.OutcomeReady {
 				ev.CPUMillis, ev.MemBytes, ev.Deadline = r.Plan.Limits().CPUMillis, r.Plan.Limits().MemoryBytes, r.Plan.Deadline()
 			}

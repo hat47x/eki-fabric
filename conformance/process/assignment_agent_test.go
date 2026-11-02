@@ -262,3 +262,30 @@ func TestAgentRefusesToStartWithoutATrustAnchor(t *testing.T) {
 		t.Fatalf("exit %v, output:\n%s", agent.cmd.ProcessState, agent.out.String())
 	}
 }
+
+// readyEventFor reports whether the Agent has recorded that it started the
+// Attempt. Unlike eventFor, it does not stop at the first event: an Agent may
+// reject a delivery on an early poll and start it on a later one, and the
+// rejections before the start are logged with their reason and detail so that
+// a transient refusal stays visible.
+func readyEventFor(t *testing.T, events []assignmentEvent, attempt string) bool {
+	t.Helper()
+	ready := false
+	for _, ev := range events {
+		if ev.AttemptID != attempt {
+			continue
+		}
+		if ev.Outcome == "ready" {
+			ready = true
+		}
+	}
+	if ready {
+		for _, ev := range events {
+			if ev.AttemptID == attempt && ev.Outcome == "rejected" {
+				t.Logf("before it started, the Agent rejected the delivery once: reason=%s detail=%s", ev.Reason, ev.Failure)
+				break
+			}
+		}
+	}
+	return ready
+}
