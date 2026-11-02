@@ -88,3 +88,33 @@ func TestAnUnreadableStoreIsTreatedAsNotFoundRatherThan500(t *testing.T) {
 		t.Fatalf("status = %d, want 404", rec.Code)
 	}
 }
+
+func TestTheAuditRecordsServedAndRefused(t *testing.T) {
+	var entries []ArtifactAccess
+	source := fakeArtifacts{meta: ArtifactMeta{Owner: "alice", Size: 5, ExpiresAt: time.Now().Add(time.Hour)}, body: "hello"}
+	handler := &Handler{artifacts: source, log: slog.New(slog.NewTextHandler(io.Discard, nil)), artifactAudit: func(a ArtifactAccess) { entries = append(entries, a) }}
+	digest := strings.Repeat("a", 64)
+	rec := httptest.NewRecorder()
+	handler.artifact(rec, httptest.NewRequest(http.MethodGet, "/v1/artifacts/"+digest, nil), Identity{Principal: admission.Principal{ID: "alice"}, Role: RoleClient}, digest)
+	if len(entries) != 1 || entries[0].Outcome != ArtifactServed || entries[0].Principal != "alice" || entries[0].Artifact != digest {
+		t.Fatalf("entries = %+v", entries)
+	}
+	entries = nil
+	foreign := fakeArtifacts{meta: ArtifactMeta{Owner: "bob", Size: 5, ExpiresAt: time.Now().Add(time.Hour)}, body: "hello"}
+	handler = &Handler{artifacts: foreign, log: slog.New(slog.NewTextHandler(io.Discard, nil)), artifactAudit: func(a ArtifactAccess) { entries = append(entries, a) }}
+	handler.artifact(httptest.NewRecorder(), httptest.NewRequest(http.MethodGet, "/v1/artifacts/"+digest, nil), Identity{Principal: admission.Principal{ID: "alice"}, Role: RoleClient}, digest)
+	if len(entries) != 1 || entries[0].Outcome != ArtifactNotFound {
+		t.Fatalf("entries = %+v", entries)
+	}
+}
+
+func TestAnExpiredRetrievalIsAuditedAsExpired(t *testing.T) {
+	var entries []ArtifactAccess
+	source := fakeArtifacts{meta: ArtifactMeta{Owner: "alice", Size: 5, ExpiresAt: time.Now().Add(-time.Hour)}, body: "hello"}
+	handler := &Handler{artifacts: source, log: slog.New(slog.NewTextHandler(io.Discard, nil)), artifactAudit: func(a ArtifactAccess) { entries = append(entries, a) }}
+	digest := strings.Repeat("b", 64)
+	handler.artifact(httptest.NewRecorder(), httptest.NewRequest(http.MethodGet, "/v1/artifacts/"+digest, nil), Identity{Principal: admission.Principal{ID: "alice"}, Role: RoleClient}, digest)
+	if len(entries) != 1 || entries[0].Outcome != ArtifactExpired {
+		t.Fatalf("entries = %+v", entries)
+	}
+}

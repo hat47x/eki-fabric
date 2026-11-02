@@ -48,6 +48,9 @@ type Config struct {
 	// route answers 501, which is what a deployment without body storage has
 	// always done.
 	Artifacts ArtifactSource
+	// ArtifactAudit receives one entry per retrieval. Nil means the entry goes to
+	// the logger, so an audit trail exists without extra setup.
+	ArtifactAudit func(ArtifactAccess)
 }
 
 type Handler struct {
@@ -64,6 +67,8 @@ type Handler struct {
 
 	// artifacts is nil when the deployment keeps no bodies (#494).
 	artifacts ArtifactSource
+	// artifactAudit receives one entry per retrieval; nil logs instead (#494).
+	artifactAudit func(ArtifactAccess)
 }
 
 var ErrInvalidConfig = errors.New("invalid client API configuration")
@@ -78,7 +83,7 @@ func NewHandler(cfg Config) (*Handler, error) {
 	if cfg.MaxBodyBytes < 0 {
 		return nil, fmt.Errorf("%w: negative body limit", ErrInvalidConfig)
 	}
-	h := &Handler{svc: cfg.Service, auth: cfg.Authenticator, maxBody: cfg.MaxBodyBytes, log: cfg.Logger, ready: cfg.Ready, artifacts: cfg.Artifacts}
+	h := &Handler{svc: cfg.Service, auth: cfg.Authenticator, maxBody: cfg.MaxBodyBytes, log: cfg.Logger, ready: cfg.Ready, artifacts: cfg.Artifacts, artifactAudit: cfg.ArtifactAudit}
 	if h.maxBody == 0 {
 		h.maxBody = DefaultMaxBodyBytes
 	}
