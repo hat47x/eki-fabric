@@ -53,3 +53,8 @@ func (m metaSink) PutMeta(digestHex, owner string, size int64, mediaType string,
 		Owner: owner, MediaType: mediaType, Size: size, ExpiresAt: expiresAt,
 	})
 }
+
+// artifactRetention is how long a kept body may be fetched. It matches the
+// Worker's spool default (ADR-0037 §2): a body the Worker still holds must not be
+// expired here, or the two sides disagree about whether it can be sent.
+const artifactRetention = 24 * time.Hour

@@ -295,6 +295,14 @@ func (s *Server) mtlsHandler(w *WorkerConfig, store *sqlite.Store, plane *claimp
 	if err != nil {
 		return nil, fmt.Errorf("%w: %v", ErrInvalidConfig, err)
 	}
+	// Keeping a body without recording who may read it would fill the disk with
+	// bytes nobody can fetch, so the metadata is written as part of receiving
+	// (#514). The retention matches the Worker's own spool default, so a body a
+	// Worker still holds is not already expired here.
+	receiver, err = receiver.WithMeta(attemptOwner{attempts: store, admissions: store}, metaSink{store: bodies}, artifactRetention)
+	if err != nil {
+		return nil, fmt.Errorf("%w: %v", ErrInvalidConfig, err)
+	}
 	handler, err := workerplane.NewMTLSHandler(workerplane.MTLSConfig{
 		Claims: api, Assignments: assignments, Heartbeats: store, BodyReceiver: bodyReceiver{receiver}, Registry: registry, WorkerCA: ca.Certificate(), TrustDomain: w.MTLS.TrustDomain,
 		MaxBodyBytes: w.MaxBodyBytes, Logger: s.log,
