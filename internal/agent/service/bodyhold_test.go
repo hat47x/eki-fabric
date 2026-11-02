@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"github.com/hat47x/eki-fabric/internal/agent/spool"
 	"log/slog"
 	"os"
 	"path/filepath"
@@ -150,5 +151,48 @@ func TestSendingBodiesRecordsABodyThatDidNotArrive(t *testing.T) {
 	}
 	if !bytes.Contains(raw, []byte(eventBodySendFailed)) || strings.Contains(string(raw), eventClaimQueued) {
 		t.Fatalf("events = %s, want %s and no %s", raw, eventBodySendFailed, eventClaimQueued)
+	}
+}
+
+func TestADurableHoldKeepsTheBodyOnDiskToo(t *testing.T) {
+	store, err := spool.New(t.TempDir(), time.Hour, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	hold := newDurableBodyHold(store, 1024)
+	hold.Put(attemptX, []byte("the output"))
+	usage, err := store.Usage()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if usage.Bodies != 1 || usage.Bytes != int64(len("the output")) {
+		t.Fatalf("usage = %+v", usage)
+	}
+	if hold.LastSpoolError() != nil {
+		t.Fatalf("spool error = %v", hold.LastSpoolError())
+	}
+}
+
+func TestTheBodyIsHeldInMemoryEvenWhenTheMirrorFails(t *testing.T) {
+	store, err := spool.New(t.TempDir(), time.Hour, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	hold := newDurableBodyHold(store, 2)
+	hold.Put(attemptX, []byte("too long"))
+	if hold.LastSpoolError() == nil {
+		t.Fatal("the mirror failure was not recorded")
+	}
+	body, ok := hold.Take(attemptX)
+	if !ok || string(body) != "too long" {
+		t.Fatalf("body = %q, ok = %v", body, ok)
+	}
+}
+
+func TestAMemoryHoldWritesNothing(t *testing.T) {
+	hold := newBodyHold()
+	hold.Put(attemptX, []byte("body"))
+	if hold.LastSpoolError() != nil {
+		t.Fatalf("spool error = %v", hold.LastSpoolError())
 	}
 }
