@@ -25,6 +25,7 @@ import (
 
 	"github.com/hat47x/eki-fabric/internal/core/authority"
 	"github.com/hat47x/eki-fabric/internal/core/decisiontrust"
+	"github.com/hat47x/eki-fabric/internal/spi/workerplane/enrollwire"
 )
 
 // ErrInvalid means the trust anchor file is missing, unreadable or unusable.
@@ -44,6 +45,10 @@ type File struct {
 	MaxBundleStalenessSeconds  int64     `json:"max_bundle_staleness_seconds"`
 	MaxDecisionLifetimeSeconds int64     `json:"max_decision_lifetime_seconds"`
 	Keys                       []Key     `json:"keys"`
+	// TrustBundleVersions is the history of bundle versions this Agent accepted,
+	// oldest first. It is optional so an anchor written before versions existed
+	// still loads (ADR-0036, #478).
+	TrustBundleVersions []enrollwire.Bundle `json:"trust_bundle_versions"`
 }
 
 // Key is one Authority public key.
@@ -110,6 +115,9 @@ func Build(doc File) (*Anchor, error) {
 	case len(doc.Keys) == 0:
 		return nil, fmt.Errorf("%w: no keys", ErrInvalid)
 	}
+	if err := checkVersions(doc); err != nil {
+		return nil, err
+	}
 	keyTime := doc.Keys[0].SigningNotBefore
 	for _, k := range doc.Keys {
 		if k.SigningNotBefore.Before(keyTime) {
@@ -168,4 +176,24 @@ func Build(doc File) (*Anchor, error) {
 		Boundary: boundary, TrustDomain: doc.TrustDomain, PolicyRevision: doc.PolicyRevision,
 		bundle: decisiontrust.TrustBundleMetadata{Revision: doc.BundleRevision, ValidatedAt: doc.ValidatedAt.UTC()},
 	}, nil
+}
+
+// checkVersions keeps bundle_revision and the stored history from drifting. The
+// history is optional so an anchor written before versions existed still loads;
+// when it is present, its newest version is what bundle_revision must name
+// (ADR-0036, #478).
+func checkVersions(doc File) error {
+	if len(doc.TrustBundleVersions) == 0 {
+		return nil
+	}
+	newest := doc.TrustBundleVersions[len(doc.TrustBundleVersions)-1]
+	if newest.Version != doc.BundleRevision {
+		return fmt.Errorf("%w: bundle_revision %d, newest stored version %d", ErrInvalid, doc.BundleRevision, newest.Version)
+	}
+	for i, wire := range doc.TrustBundleVersions {
+		if _, err := enrollwire.DecodeBundle(wire); err != nil {
+			return fmt.Errorf("%w: version %d: %v", ErrInvalid, i, err)
+		}
+	}
+	return nil
 }
