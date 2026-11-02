@@ -97,7 +97,7 @@ func (e *mtlsEnv) writeConfig(t *testing.T) {
 		},
 		Worker: &service.WorkerConfig{
 			Listen: strings.TrimPrefix(e.workerURL, "https://"), Auth: service.WorkerAuthMTLS,
-			TLS: &service.TLSConfig{CertFile: e.serverChain, KeyFile: e.pki.keyFile},
+			TLS:          &service.TLSConfig{CertFile: e.serverChain, KeyFile: e.pki.keyFile},
 			ArtifactsDir: e.artifactsDir,
 			MTLS: &service.WorkerMTLSConfig{
 				TrustDomain: trustDomain, CACertFile: e.workerCACert, CAKeyFile: e.workerCAKey, CertValiditySeconds: e.validity,
