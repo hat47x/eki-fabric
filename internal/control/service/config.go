@@ -59,6 +59,11 @@ type Config struct {
 	// profile. Absent means no Worker listener is opened.
 	Worker *WorkerConfig `json:"worker,omitempty"`
 
+	// Operator enables the Operator listener of ADR-0038. Absent means this
+	// process has no Operator routes at all: there is no "unauthenticated
+	// because unconfigured" path to approving trust.
+	Operator *OperatorConfig `json:"operator,omitempty"`
+
 	// Dispatch enables the placement loop. Absent means the process accepts
 	// Tasks but does not move them.
 	Dispatch *DispatchConfig `json:"dispatch,omitempty"`
