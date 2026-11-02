@@ -12,6 +12,7 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/hat47x/eki-fabric/internal/core/contract"
 	"github.com/hat47x/eki-fabric/internal/core/ids"
 	"github.com/hat47x/eki-fabric/internal/core/taskstate"
 	"github.com/hat47x/eki-fabric/internal/spi/statestore"
@@ -84,6 +85,9 @@ type Accepted struct {
 	SubmittedAt time.Time
 	// Replayed is true when the idempotency key had already produced this Task.
 	Replayed bool
+	// RequestFingerprint is the digest of the normalized request, so the
+	// requester can match an answer with the request it sent (#315).
+	RequestFingerprint contract.Digest
 }
 
 // Submit admits a Task for principal. idempotencyKey scopes to the principal.
@@ -128,9 +132,10 @@ func (s *Service) Submit(ctx context.Context, p Principal, idempotencyKey string
 				}
 			}
 			return Accepted{
-				TaskID:      record.Task.ID,
-				SubmittedAt: record.Task.CreatedAt,
-				Replayed:    true,
+				TaskID:             record.Task.ID,
+				SubmittedAt:        record.Task.CreatedAt,
+				Replayed:           true,
+				RequestFingerprint: record.RequestFingerprint,
 			}, nil
 		case errors.Is(rerr, statestore.ErrNotFound):
 			// A fresh key: run the admission path below.
@@ -173,9 +178,10 @@ func (s *Service) Submit(ctx context.Context, p Principal, idempotencyKey string
 	switch {
 	case err == nil:
 		return Accepted{
-			TaskID:      result.Admission.Task.ID,
-			SubmittedAt: result.Admission.Task.CreatedAt,
-			Replayed:    result.Replayed,
+			TaskID:             result.Admission.Task.ID,
+			SubmittedAt:        result.Admission.Task.CreatedAt,
+			Replayed:           result.Replayed,
+			RequestFingerprint: result.Admission.RequestFingerprint,
 		}, nil
 	case errors.Is(err, statestore.ErrIdempotencyConflict):
 		return Accepted{}, &Error{

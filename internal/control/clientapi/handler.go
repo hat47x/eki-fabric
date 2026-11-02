@@ -253,6 +253,9 @@ type taskAccepted struct {
 	// Replayed says the Idempotency-Key had already been accepted, so this body
 	// is the answer to a replay rather than to a new request (#315).
 	Replayed bool `json:"replayed"`
+	// RequestFingerprint is the digest of the normalized request, so a requester
+	// can match this answer with the request it sent (#315).
+	RequestFingerprint string `json:"request_fingerprint"`
 }
 
 func (h *Handler) submit(w http.ResponseWriter, r *http.Request, id Identity) {
@@ -284,11 +287,12 @@ func (h *Handler) submit(w http.ResponseWriter, r *http.Request, id Identity) {
 		return
 	}
 	writeJSON(w, http.StatusAccepted, taskAccepted{
-		Schema:      "eki.task-accepted/v1",
-		TaskID:      accepted.TaskID.String(),
-		Status:      "queued",
-		SubmittedAt: accepted.SubmittedAt.UTC().Format(time.RFC3339Nano),
-		Replayed:    accepted.Replayed,
+		Schema:             "eki.task-accepted/v1",
+		TaskID:             accepted.TaskID.String(),
+		Status:             "queued",
+		SubmittedAt:        accepted.SubmittedAt.UTC().Format(time.RFC3339Nano),
+		Replayed:           accepted.Replayed,
+		RequestFingerprint: accepted.RequestFingerprint.String(),
 	})
 }
 
