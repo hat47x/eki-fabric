@@ -1313,3 +1313,12 @@ ResultClaimを受理する経路が2つ（`claimaccept`と`resultacceptance`）�
 - `claimaccept`（Claimの受理とAttemptの`verifying`を同じ流れで書く経路）を**第一の主体**とする。Claimが届いた時点でTaskを`verifying`にする。
 - `resultacceptance`（受理のcommitの直前）の遷移を**代替の主体**とする。Taskがまだ`active`のときだけ発火するため、前者を通ったClaimでは二重遷移にならない。`claimaccept`を通らない構成のための保険。
 - 実装の試験（`TestAnActiveTaskBecomesVerifyingBeforeItCompletes`、#400）は、代替の主体が発火する経路を固定している。
+### 2026-11-03 Inspect: Agent側のTrust Bundleの保存先は trustanchor と重なる（#433）
+
+Agent側の版の保存を新しいパッケージ（`internal/agent/truststore`）として書きかけたが、**`internal/agent/trustanchor` がすでに同じ役割の一部を持っている**ことが分かったため、取り下げた。
+
+- `trustanchor.File` は `trust_domain`・`policy_revision`・`bundle_revision`・`validated_at`・鮮度の上限・`keys`（鍵の一覧）を持つJSONで、`Anchor` は決定の検証境界（`decisiontrust.VerifierBoundary`）を組み立てる。
+- つまり「Agentが信じるもの」はすでに1つのファイルにまとまっており、版の履歴だけが無い。
+- 新しいパッケージを作ると、同じことを2つのファイルが担うことになり、更新のときに片方だけが変わる危険がある。
+
+**次の形（案）:** `trustanchor.File` に版の履歴（`trust_bundle_versions`）を足し、`bundle_revision` をその最新版と一致させる。受理（`AcceptSigned`）は履歴に追記し、`Load` は最新版を検証境界へ渡す。実装は別Issueで行う。
