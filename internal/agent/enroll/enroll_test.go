@@ -149,7 +149,7 @@ func TestEnrollGeneratesTheKeyLocallyAndSavesTheIdentity(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			if id.TrustDomain != "example.org" || id.Leaf.NotAfter.Sub(id.Leaf.NotBefore) != workercert.DefaultValidity {
+			if id.TrustDomain != "example.org" || id.Leaf.NotAfter.Sub(id.Leaf.NotBefore) != workercert.DefaultValidity+workerca.LeafBackdateMax {
 				t.Fatalf("identity %+v", id)
 			}
 			// What was saved is what was enrolled, and reloads.
@@ -525,9 +525,10 @@ func TestRenewLoopRenewsWhenAThirdRemains(t *testing.T) {
 	if next.Leaf.SerialNumber.Cmp(first.Leaf.SerialNumber) == 0 {
 		t.Fatal("the holder still has the first certificate")
 	}
-	// The Control Plane issued the new certificate at the time of the renewal.
-	if !next.Leaf.NotBefore.Equal(at.Truncate(time.Second)) {
-		t.Fatalf("new certificate NotBefore %s, renewal at %s", next.Leaf.NotBefore.Format(time.RFC3339), at.Format(time.RFC3339))
+	// The Control Plane issued the new certificate at the time of the renewal
+	// (its start is backdated, its end is a lifetime after issue).
+	if !next.Leaf.NotAfter.Equal(at.Truncate(time.Second).Add(time.Minute)) {
+		t.Fatalf("new certificate NotAfter %s, renewal at %s", next.Leaf.NotAfter.Format(time.RFC3339), at.Format(time.RFC3339))
 	}
 	if loaded, err := enroll.Load(p.StateDir); err != nil || loaded.Leaf.SerialNumber.Cmp(next.Leaf.SerialNumber) != 0 {
 		t.Fatalf("the renewed identity was not saved: %v", err)

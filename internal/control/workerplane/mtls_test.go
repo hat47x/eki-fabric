@@ -704,3 +704,27 @@ func TestMTLSAWorkerWhoseRootTheVersionDroppedIsRefused(t *testing.T) {
 		t.Fatalf("the log does not name the failed check:\n%s", f.logs.String())
 	}
 }
+
+// A certificate that has only just been issued must survive the verifying
+// clock being a few seconds behind the issuing one (a stepped clock, a replica
+// that runs behind). The margin is bounded, though: a clock further behind
+// than the backdate still sees a certificate that is not yet valid, so the
+// check is not loosened beyond the margin.
+func TestMTLSJustIssuedCertificateSurvivesAClockStepBack(t *testing.T) {
+	f := newMTLSFixture(t)
+	w := f.enroll(t, nil)
+	margin := workerca.LeafBackdate(workerenrollmentDefaultValidity())
+
+	for _, back := range []time.Duration{0, 10 * time.Second, margin - time.Second} {
+		f.clock.add(-back)
+		if resp, body := f.claim(t, w, nil); resp.StatusCode != http.StatusOK {
+			t.Fatalf("verifier %v behind the issuer = %d %s, want 200", back, resp.StatusCode, body)
+		}
+		f.clock.add(back)
+	}
+
+	f.clock.add(-margin - time.Second)
+	if resp, _ := f.claim(t, w, nil); resp.StatusCode != http.StatusUnauthorized {
+		t.Fatalf("verifier beyond the margin behind the issuer = %d, want 401", resp.StatusCode)
+	}
+}
