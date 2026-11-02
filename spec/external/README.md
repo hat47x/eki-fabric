@@ -111,6 +111,21 @@ Clientがdeclared / expected Digestを送っても、それだけでverified con
 
 `trusted: true` のような総合bitは作りません。
 
+## 依頼元が自分の依頼と結果を照合する（相関）
+
+依頼元が受理応答・状態・結果を「自分が出した、その依頼のもの」と結び付ける手段は、いまは `task_id` だけです（#315）。
+
+- 受理応答（`TaskAccepted`）は `schema`・`task_id`・`status`・`submitted_at` を返します。公開状態（`TaskPublicStatus`）と結果（`TaskResult`）も `task_id` で対応づけます。
+- 冪等再送では、同じ `Idempotency-Key` と同じ本文の再送が同じ `task_id` を返します。ただし応答の形は初回と同じで、**再送への応答であることは分かりません**。
+- `TaskRequest.extensions` は登録がないため `EXTENSION_NOT_SUPPORTED` で拒まれ、依頼元が任意の相関IDを付けることはできません。一覧・検索のAPIもありません。
+
+したがって、依頼元は `task_id` を保存しておく必要があります。`task_id` を失った場合に再発見する手段は、同じ `Idempotency-Key` と本文で再送することだけです。
+
+今後、次のどれを契約に足すかを#315で決めます。
+
+1. 再送への応答であることを示す印（例: `replayed: true`）。
+2. 依頼の指紋（受理審査がすでに計算している `RequestFingerprint` とTask IRのdigest）を受理応答へ載せる。
+3. 依頼元が付ける相関ID（`extensions` の登録、または専用の欄）。
 ## 処理依頼の公開状態
 
 公開する状態は、内部の状態モデルから必要な情報に絞ったものです。
