@@ -515,11 +515,38 @@ func TestARetryableCloseOnTheLastAttemptEndsTheTaskAsExhausted(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := service.Accept(context.Background(), claim(t, resultclaim.StatusFailed, defaultMaxAttempts)); err != nil {
+	if _, err := service.Accept(context.Background(), claim(t, resultclaim.StatusFailed, int(defaultMaxAttempts))); err != nil {
 		t.Fatalf("Accept() error = %v", err)
 	}
 	if len(tasks.updates) != 1 {
 		t.Fatalf("task updates = %d, want 1", len(tasks.updates))
+	}
+	if tasks.record.Phase != taskstate.TaskPhaseTerminal || tasks.record.TerminalOutcome != taskstate.TerminalOutcomeExhausted {
+		t.Fatalf("task = %s/%s, want terminal/exhausted", tasks.record.Phase, tasks.record.TerminalOutcome)
+	}
+}
+
+// A configured cap of one try means the first retryable close is the last one.
+func TestAConfiguredCapOfOneTryEndsTheTaskAtOnce(t *testing.T) {
+	first := attempt(t, attemptstate.AttemptPhaseClaimed)
+	first.Number = 1
+	attempts := &fakeAttempts{record: first}
+	closed := first
+	closed.Phase = attemptstate.AttemptPhaseClosed
+	attempts.list = []attemptstate.AttemptRecord{closed}
+	tasks := &fakeTasks{record: taskstate.TaskRecord{
+		ID: testTask, TaskIRDigest: contract.SHA256([]byte("taskir")),
+		Phase: taskstate.TaskPhaseActive, Revision: 4, CreatedAt: baseTime.Add(-time.Hour), UpdatedAt: baseTime.Add(-time.Minute),
+	}}
+	service, err := New(Config{
+		Attempts: attempts, Leases: fakeLeases{record: lease(t)}, Claims: &fakeClaims{attempts: attempts},
+		Clock: &fakeClock{now: baseTime}, Tasks: tasks, MaxAttempts: 1,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := service.Accept(context.Background(), claim(t, resultclaim.StatusFailed, 1)); err != nil {
+		t.Fatalf("Accept() error = %v", err)
 	}
 	if tasks.record.Phase != taskstate.TaskPhaseTerminal || tasks.record.TerminalOutcome != taskstate.TerminalOutcomeExhausted {
 		t.Fatalf("task = %s/%s, want terminal/exhausted", tasks.record.Phase, tasks.record.TerminalOutcome)
