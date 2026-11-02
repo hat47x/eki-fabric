@@ -759,3 +759,22 @@ func TestSubmitMarksAReplayAsReplayed(t *testing.T) {
 		t.Fatalf("replay request_fingerprint = %v, want %v", again["request_fingerprint"], first["request_fingerprint"])
 	}
 }
+
+// A rejection explains why the request was refused, but it never carries the
+// policy's internals: the revision, the capacity numbers, or the Worker that
+// would have run the Task (#316). The requester names its own next step.
+func TestRejectionsDoNotLeakPolicyInternals(t *testing.T) {
+	e := newEnv(t)
+	for i := 0; i < 3; i++ {
+		if res := e.submit(aliceToken, fmt.Sprintf("key-leak-%03d", i), validRequest); res.status != http.StatusAccepted {
+			t.Fatalf("submit %d status = %d", i, res.status)
+		}
+	}
+	res := e.submit(aliceToken, "key-leak-999", validRequest)
+	body := string(res.body)
+	for _, forbidden := range []string{"policy-", "wrk_", "epoch"} {
+		if strings.Contains(body, forbidden) {
+			t.Errorf("problem body carries %q: %s", forbidden, body)
+		}
+	}
+}
