@@ -40,8 +40,7 @@ func TestAgentStopsOnARevokedAssignment(t *testing.T) {
 	// Before the revocation the Agent starts the assignment.
 	agent := a.start(t)
 	waitFor(t, "the Agent starts the live assignment", func() (bool, string) {
-		ev, ok := eventFor(readEvents(t, a.events), placed.AttemptID.String())
-		return ok && ev.Outcome == "ready", agent.out.String()
+		return readyEventFor(t, readEvents(t, a.events), placed.AttemptID.String()), agent.out.String()
 	})
 	agent.kill()
 

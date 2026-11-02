@@ -152,10 +152,10 @@ func (p VerificationPolicy) validateTrustBundle(bundle TrustBundleMetadata, now 
 	now = now.UTC()
 	validatedAt := bundle.ValidatedAt.UTC()
 	if validatedAt.After(now.Add(p.maxClockSkew)) {
-		return failure(ReasonTrustBundleInvalid, fmt.Errorf("%w: validated time is too far in the future", ErrInvalidTrustBundle))
+		return failure(ReasonTrustBundleInvalid, fmt.Errorf("%w: validated time is too far in the future (validated_at=%s, verified_at=%s, max_clock_skew=%s)", ErrInvalidTrustBundle, validatedAt.Format(time.RFC3339Nano), now.Format(time.RFC3339Nano), p.maxClockSkew))
 	}
 	if !now.Before(validatedAt.Add(p.maxTrustBundleStaleness).Add(p.maxClockSkew)) {
-		return failure(ReasonTrustBundleStale, fmt.Errorf("%w: trust bundle revision %d is stale", ErrInvalidTrustBundle, bundle.Revision))
+		return failure(ReasonTrustBundleStale, fmt.Errorf("%w: trust bundle revision %d is stale (validated_at=%s, verified_at=%s, max_staleness=%s, max_clock_skew=%s)", ErrInvalidTrustBundle, bundle.Revision, validatedAt.Format(time.RFC3339Nano), now.Format(time.RFC3339Nano), p.maxTrustBundleStaleness, p.maxClockSkew))
 	}
 	return nil
 }

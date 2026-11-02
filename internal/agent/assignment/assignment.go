@@ -73,10 +73,13 @@ const (
 
 // Result is the outcome of one assignment, for the log and the event record.
 type Result struct {
-	AttemptID  string
-	LeaseID    string
-	Outcome    Outcome
-	Reason     string
+	AttemptID string
+	LeaseID   string
+	Outcome   Outcome
+	Reason    string
+	// Detail explains a rejection for the audit record (events_file), for example
+	// which times a verification compared. It is not a stable reason code.
+	Detail     string
 	FenceEpoch uint64
 	Plan       startgate.Plan
 }
@@ -249,6 +252,7 @@ func (s *Service) check(ctx context.Context, a workerplane.Assignment) Result {
 	// 1. The Lease.
 	leaseVerified, err := s.lease.Verify(leaseverify.Request{Raw: a.LeaseEnvelope, Now: now, TrustBundle: bundle})
 	if err != nil {
+		r.Detail = err.Error()
 		return reject("lease_" + reasonOf(err))
 	}
 	lease := leaseVerified.Lease()
