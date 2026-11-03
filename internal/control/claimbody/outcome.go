@@ -4,7 +4,7 @@ package claimbody
 // #494).
 func (o Outcome) Status() int {
 	switch o {
-	case OutcomeExpired:
+	case OutcomeExpired, OutcomeWithdrawn:
 		return 410
 	case OutcomeDeliver:
 		return 200
@@ -19,6 +19,8 @@ func (o Outcome) Code() string {
 	switch o {
 	case OutcomeExpired:
 		return "artifact_expired"
+	case OutcomeWithdrawn:
+		return "artifact_withdrawn"
 	case OutcomeDeliver:
 		return ""
 	default:
