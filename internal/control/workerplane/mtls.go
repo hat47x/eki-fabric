@@ -51,8 +51,10 @@ type MTLSConfig struct {
 	BodyReceiver BodyReceiver
 	// TrustBundle reports the current trust bundle version, or false when no
 	// version is configured. When it reports a version, a peer whose root the
-	// version no longer lists is refused (ADR-0036 §2.3).
-	TrustBundle func() (trustbundle.Signed, bool)
+	// version no longer lists is refused (ADR-0036 §2.3). An error means the
+	// version could not be read: that is not "no version", so the connection is
+	// refused rather than checked against nothing (#467).
+	TrustBundle func() (trustbundle.Signed, bool, error)
 	// Assignments serves the assignment route of the test profile. Nil means
 	// the route does not exist (404).
 	Assignments workerplane.AssignmentSource
@@ -88,7 +90,7 @@ type mtlsHandler struct {
 	roots      *x509.CertPool
 	// trustBundle is the version the Control Plane holds, when one is
 	// configured. Nil keeps the certificate check alone (ADR-0036 §2.3).
-	trustBundle func() (trustbundle.Signed, bool)
+	trustBundle func() (trustbundle.Signed, bool, error)
 	caPEM       string
 	trustDomain string
 	now         func() time.Time
@@ -279,7 +281,15 @@ func (h *mtlsHandler) authenticate(r *http.Request) (workerenrollment.WorkerPrin
 	// still trust the root that signed this certificate. Removing an issuer from
 	// the bundle stops the next connection (ADR-0036 §2.3, #433).
 	if h.trustBundle != nil {
-		if signed, ok := h.trustBundle(); ok {
+		signed, ok, err := h.trustBundle()
+		if err != nil {
+			// The version exists but cannot be read. Treating that as "no version"
+			// would check the certificate against nothing while the operator
+			// believes the version is enforcing something (#467).
+			h.log.Error("trust bundle could not be read", "error", err.Error())
+			return h.refuseAuth(r, "trust_bundle_unavailable", http.StatusServiceUnavailable, "store_error", true)
+		}
+		if ok {
 			if err := trustbundle.CheckPeerChains(signed.Bundle, chains, h.now()); err != nil {
 				return h.refuseAuth(r, "issuer_not_trusted_by_version", http.StatusUnauthorized, "bundle_error", err.Error())
 			}
@@ -459,7 +469,10 @@ func (h *mtlsHandler) writeCertificate(w http.ResponseWriter, identity ids.Worke
 	// A Worker that enrolls leaves with the current version, so it does not have
 	// to be told out-of-band after the first deployment (ADR-0036 §2.1).
 	if h.trustBundle != nil {
-		if signed, ok := h.trustBundle(); ok {
+		// A failure here leaves the bundle out of the answer rather than failing the
+		// enrollment: the certificate already proved who the caller is, and the
+		// version is caught up on the next poll (loudly, as a store failure).
+		if signed, ok, err := h.trustBundle(); err == nil && ok {
 			bundle := enrollwire.EncodeBundle(signed)
 			response.TrustBundle = &bundle
 		}

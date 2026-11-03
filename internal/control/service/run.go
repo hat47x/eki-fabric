@@ -585,23 +585,30 @@ func (l leaseWorker) LoadLeaseWorker(ctx context.Context, id ids.LeaseID) (strin
 // currentTrustBundle reports the newest stored version, or false when the store
 // keeps none. It reads on each call so a version admitted at runtime is used by
 // the next request without a restart; the read is one row plus its issuers.
-func currentTrustBundle(store any) func() (trustbundle.Signed, bool) {
+func currentTrustBundle(store any) func() (trustbundle.Signed, bool, error) {
 	bundles, ok := store.(statestore.TrustBundleStore)
 	if !ok {
 		return nil
 	}
-	return func() (trustbundle.Signed, bool) {
+	return func() (trustbundle.Signed, bool, error) {
 		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 		defer cancel()
 		record, err := bundles.LatestTrustBundle(ctx)
+		if errors.Is(err, statestore.ErrNotFound) {
+			// No version stored is the compatibility mode the operator chose, not a
+			// fault: the certificate check alone applies (ADR-0036 §2.3).
+			return trustbundle.Signed{}, false, nil
+		}
 		if err != nil {
-			return trustbundle.Signed{}, false
+			// A version may exist and be unreadable. Saying "none" here would skip the
+			// version check while the operator believes it is on (#467).
+			return trustbundle.Signed{}, false, fmt.Errorf("trust bundle: read latest: %w", err)
 		}
 		signed, err := trustbundle.FromRecord(record)
 		if err != nil {
-			return trustbundle.Signed{}, false
+			return trustbundle.Signed{}, false, fmt.Errorf("trust bundle: decode version %d: %w", record.Version, err)
 		}
-		return signed, true
+		return signed, true, nil
 	}
 }
 
