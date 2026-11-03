@@ -78,7 +78,14 @@ func (e *mtlsEnv) assignmentAgent(t *testing.T, name string, auth *signedchain.A
 		stateDir: stateDir, worker: worker, cfgPath: filepath.Join(e.dir, name+"-agent.json"),
 		events: filepath.Join(e.dir, name+"-events.jsonl"), replayDB: filepath.Join(e.dir, name+"-replay.db"),
 	}
-	anchor, err := json.Marshal(auth.TrustAnchor(validatedAt, "policy-1"))
+	// The anchor is validated before the test starts, not at the test's now:
+	// the Agent verifies with its own realtime clock, and a machine whose clock
+	// steps backwards (a VM clock correction under load) would read validatedAt
+	// as still in its future-skew window and refuse every delivery with
+	// TRUST_BUNDLE_INVALID until the clock caught up (#472). A real anchor was
+	// validated some time before the Agent started, so an anchor 30s old is the
+	// realistic shape, and a backwards step of up to 30s cannot trip the skew.
+	anchor, err := json.Marshal(auth.TrustAnchor(validatedAt.Add(-30*time.Second), "policy-1"))
 	must(t, err)
 	anchorPath := filepath.Join(e.dir, name+"-trust-anchor.json")
 	must(t, os.WriteFile(anchorPath, anchor, 0o600))
