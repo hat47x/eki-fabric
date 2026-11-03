@@ -115,7 +115,11 @@ func (r Runner) Run(ctx context.Context, spec executor.Spec) (executor.Result, e
 	}
 	cmd := exec.CommandContext(runCtx, executable, execArgs...)
 	prepareProcess(cmd)
-	cmd.Cancel = func() error { return cancelProcess(cmd) }
+	// killer stops the process tree. On Windows it owns a kill-on-close Job
+	// Object assigned right after start; on unix the process group is enough
+	// and the killer carries no state.
+	killer := &processKiller{}
+	cmd.Cancel = func() error { return cancelProcess(killer, cmd) }
 	// An empty non-nil Env means the child receives no inherited environment.
 	cmd.Env = append([]string{}, r.Env...)
 	if tempDir != "" {
@@ -130,9 +134,14 @@ func (r Runner) Run(ctx context.Context, spec executor.Spec) (executor.Result, e
 	if err = cmd.Start(); err != nil {
 		return result, err
 	}
+	// Put the started process into its kill-on-close job (Windows) so a later
+	// cancellation stops the whole tree without an enumeration race. A failure
+	// here only downgrades Windows cancellation to taskkill; unix is a no-op.
+	_ = killer.assign(cmd.Process.Pid)
+	defer killer.release()
 	cleanupSandbox, err := applySandbox(cmd, spec)
 	if err != nil {
-		_ = cancelProcess(cmd)
+		_ = cancelProcess(killer, cmd)
 		_ = cmd.Wait()
 		return result, err
 	}
@@ -141,7 +150,7 @@ func (r Runner) Run(ctx context.Context, spec executor.Spec) (executor.Result, e
 	}
 	var watch *resourceWatch
 	if spec.Limits.MemoryBytes != 0 || spec.Limits.CPUMillis != 0 || spec.Limits.TemporaryDiskBytes != 0 {
-		watch = watchResources(cmd.Process.Pid, spec.Limits.MemoryBytes, spec.Limits.CPUMillis, spec.Limits.TemporaryDiskBytes, tempDir, func() { _ = cancelProcess(cmd) })
+		watch = watchResources(cmd.Process.Pid, spec.Limits.MemoryBytes, spec.Limits.CPUMillis, spec.Limits.TemporaryDiskBytes, tempDir, func() { _ = cancelProcess(killer, cmd) })
 	}
 	err = cmd.Wait()
 	watch.stop()

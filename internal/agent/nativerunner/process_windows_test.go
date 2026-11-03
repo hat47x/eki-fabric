@@ -5,16 +5,12 @@ package nativerunner
 import (
 	"context"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"testing"
 	"time"
 )
 
 func TestRunKillsProcessTreeWindows(t *testing.T) {
-	if _, err := exec.LookPath("taskkill"); err != nil {
-		t.Skip("taskkill is unavailable")
-	}
 	marker := filepath.Join(t.TempDir(), "child-survived")
 	ctx, cancel := context.WithTimeout(context.Background(), 300*time.Millisecond)
 	defer cancel()
@@ -25,6 +21,6 @@ func TestRunKillsProcessTreeWindows(t *testing.T) {
 	}
 	time.Sleep(1200 * time.Millisecond)
 	if _, err := os.Stat(marker); err == nil {
-		t.Fatal("child process survived taskkill /T")
+		t.Fatal("child process survived the tree stop")
 	}
 }

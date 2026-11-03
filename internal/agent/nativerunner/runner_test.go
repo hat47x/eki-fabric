@@ -227,7 +227,12 @@ func TestRunStopsProducerAtCeiling(t *testing.T) {
 	if _, err := helper("spam").Run(context.Background(), spec(10)); !errors.Is(err, ErrOutputCeiling) {
 		t.Fatalf("err = %v, want ErrOutputCeiling", err)
 	}
-	if elapsed := time.Since(started); elapsed > 2*time.Second {
+	// The bound is generous on purpose: the producer would loop forever if the
+	// Runner failed to cancel it, so Run returning at all is the mechanism
+	// under test. The bound only catches a runner that waits for the producer
+	// instead of stopping it. On a loaded machine the cancel goes through a
+	// spawned taskkill (process_windows.go), which alone can exceed seconds.
+	if elapsed := time.Since(started); elapsed > 30*time.Second {
 		t.Fatalf("producer was not stopped promptly: %s", elapsed)
 	}
 }
