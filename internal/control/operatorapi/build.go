@@ -6,6 +6,7 @@ import (
 	"log/slog"
 
 	"github.com/hat47x/eki-fabric/internal/core/trustbundle"
+	"github.com/hat47x/eki-fabric/internal/spi/statestore"
 )
 
 // ServerConfig is what a process needs to serve the Operator routes (ADR-0038).
@@ -22,6 +23,9 @@ type ServerConfig struct {
 	TrustDomain string
 	// Approver records approvals. Required with CAPath.
 	Approver Approver
+	// Bundles is where the accepted versions are read from (ADR-0038 §9). Nil hides
+	// the version history.
+	Bundles statestore.TrustBundleStore
 	// Book is where those approvals land, so an Operator can read them back (#545).
 	Book *trustbundle.ApprovalBook
 	// Admitter admits a signed version on behalf of an Administrator (#571).
