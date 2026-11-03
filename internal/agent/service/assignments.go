@@ -11,6 +11,7 @@ import (
 
 	replaysqlite "github.com/hat47x/eki-fabric/internal/adapters/reference/replayguard/sqlite"
 	"github.com/hat47x/eki-fabric/internal/agent/assignment"
+	"github.com/hat47x/eki-fabric/internal/agent/resourcemap"
 	"github.com/hat47x/eki-fabric/internal/agent/startgate"
 	"github.com/hat47x/eki-fabric/internal/agent/trustanchor"
 	"github.com/hat47x/eki-fabric/internal/core/contract"
@@ -190,6 +191,7 @@ func runAssignments(ctx context.Context, c *AssignmentConfig, anchor *trustancho
 		Source: source, Principal: principal, Anchor: anchor, Replay: guard, Clock: systemClock{},
 		Executors: execs, Governor: assignment.StaticGovernor(c.CeilingPercent),
 		Machine: startgate.MachineProfile{CPUMillis: c.Machine.CPUMillis, MemoryBytes: c.Machine.MemoryBytes, GPUDevices: c.Machine.GPUDevices},
+		Host:    resourcemap.Host{CPUMillis: int64(c.Machine.CPUMillis), MemoryBytes: int64(c.Machine.MemoryBytes)},
 		Handler: handler,
 		Logger:  log,
 	})
