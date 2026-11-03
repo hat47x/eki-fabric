@@ -26,7 +26,7 @@ func TestTheSourceReportsWhatWasRecorded(t *testing.T) {
 	store := newArtifactStore(t)
 	digest := putHello(t, store)
 	sink := metaSink{store: store}
-	if err := sink.PutMeta(digest, "alice", 5, "text/plain", time.Date(2026, 11, 3, 7, 0, 0, 0, time.UTC)); err != nil {
+	if err := sink.PutMeta(digest, "alice", "tsk_00000000000000000000000000000001", 5, "text/plain", time.Date(2026, 11, 3, 7, 0, 0, 0, time.UTC)); err != nil {
 		t.Fatal(err)
 	}
 	source := artifactSource{store: store}

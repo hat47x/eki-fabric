@@ -15,7 +15,7 @@ var ErrNoOwner = errors.New("claimbody: the attempt has no owner recorded")
 // no bodies keeps working.
 type MetaSink interface {
 	// PutMeta records the metadata for the body kept under digestHex.
-	PutMeta(digestHex string, owner string, size int64, mediaType string, expiresAt time.Time) error
+	PutMeta(digestHex string, owner string, taskID string, size int64, mediaType string, expiresAt time.Time) error
 }
 
 // OwnerStore answers which Principal submitted the Task an Attempt ran for. It
@@ -61,5 +61,27 @@ func (r *Receiver) recordMeta(ctx context.Context, attemptID string, digestHex s
 	if owner == "" {
 		return fmt.Errorf("claimbody: the attempt has no owner")
 	}
-	return r.meta.PutMeta(digestHex, owner, size, mediaType, time.Now().UTC().Add(r.retention))
+	return r.meta.PutMeta(digestHex, owner, r.taskOf(ctx, attemptID), size, mediaType, time.Now().UTC().Add(r.retention))
+}
+
+// taskOfAttempt is the optional half of an OwnerStore: an owner that also knows
+// which Task the Attempt ran for. It is asked separately so a store that predates
+// the field keeps working, and a body it records simply carries no Task id.
+type taskOfAttempt interface {
+	LoadAttemptTask(ctx context.Context, attemptID string) (string, error)
+}
+
+// taskOf returns the Task id when the owner store can name it. A store that cannot
+// is not an error: the body is served as before, it just cannot be withdrawn later
+// (ADR-0037 §9, #592).
+func (r *Receiver) taskOf(ctx context.Context, attemptID string) string {
+	lookup, ok := r.owners.(taskOfAttempt)
+	if !ok {
+		return ""
+	}
+	taskID, err := lookup.LoadAttemptTask(ctx, attemptID)
+	if err != nil {
+		return ""
+	}
+	return taskID
 }

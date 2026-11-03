@@ -54,9 +54,9 @@ type metaSink struct {
 	store *artifactfile.Store
 }
 
-func (m metaSink) PutMeta(digestHex, owner string, size int64, mediaType string, expiresAt time.Time) error {
+func (m metaSink) PutMeta(digestHex, owner, taskID string, size int64, mediaType string, expiresAt time.Time) error {
 	return m.store.PutMeta(digestHex, artifactfile.Meta{
-		Owner: owner, MediaType: mediaType, Size: size, ExpiresAt: expiresAt,
+		Owner: owner, MediaType: mediaType, Size: size, ExpiresAt: expiresAt, TaskID: taskID,
 	})
 }
 
