@@ -1299,6 +1299,11 @@
           "media_type": {
             "type": "string",
             "description": "What the Worker declared. It is not a promise about the bytes: EKI never inspects them."
+          },
+          "data_class": {
+            "type": "string",
+            "enum": ["public", "internal", "restricted"],
+            "description": "What the Worker declared about the data in the body (ADR-0034 §9). It is a declaration, not a check: EKI does not read the bytes, so it cannot confirm it. It never decides who may fetch the body: that stays owner-only."
           }
         }
       },
