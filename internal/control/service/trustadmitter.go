@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log/slog"
 	"time"
 
 	"github.com/hat47x/eki-fabric/internal/core/contract"
@@ -30,7 +31,10 @@ type trustAdmitter struct {
 	// state persists the version once it has been admitted. Nil keeps it in memory
 	// only, which a test may want but a deployment must not.
 	state statestore.TrustBundleStore
-	now   func() time.Time
+	// log records which key verified the version. The key itself is not stored with
+	// the version (ADR-0038 §7): the log is what an investigation reads.
+	log *slog.Logger
+	now func() time.Time
 }
 
 // signedDocument is the wire form of a signed version. It names every field
@@ -87,6 +91,11 @@ func (a *trustAdmitter) AdmitSigned(version uint64, raw []byte) error {
 	at := now().UTC()
 	if err := a.admit(signed, at); err != nil {
 		return err
+	}
+	if a.log != nil {
+		// Which key verified the version is not stored with it (ADR-0038 §7); the
+		// log is where an investigation looks, so the key id goes here.
+		a.log.Info("trust bundle admitted", "version", signed.Bundle.Version, "key_id", signed.KeyID)
 	}
 	if a.state == nil {
 		return nil
