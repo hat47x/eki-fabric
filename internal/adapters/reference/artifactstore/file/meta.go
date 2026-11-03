@@ -26,6 +26,10 @@ type Meta struct {
 	// means the Worker said nothing, and then the field is not served at all: an
 	// "unclassified" value would look like a classification.
 	DataClass string `json:"data_class,omitempty"`
+	// TaskID is the Task the body came from. It is what lets a retrieval ask
+	// whether the Task was withdrawn (ADR-0037 §9, #592). Empty means the
+	// record predates this field, and then no one is told the body was withdrawn.
+	TaskID string `json:"task_id,omitempty"`
 	// ExpiresAt is when the body may be removed.
 	ExpiresAt time.Time `json:"expires_at"`
 }
