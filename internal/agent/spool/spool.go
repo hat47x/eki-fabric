@@ -162,9 +162,11 @@ func (s *Store) Sweep() (int, error) {
 
 // path puts the expiry in the name so Sweep does not depend on the file's
 // modification time. The clock that decides expiry is the one Put used, which may
-// be the process clock rather than the disk's.
+// be the process clock rather than the disk's. The name is the bare hex digest:
+// the colon of Digest.String() is not a legal character in a Windows filename,
+// and a name the disk refuses would make every Put fail on that OS.
 func (s *Store) path(record Record) string {
-	return filepath.Join(s.dir, fmt.Sprintf("%s.%d.body", record.Digest.String(), record.ExpiresAt.UnixNano()))
+	return filepath.Join(s.dir, fmt.Sprintf("%s.%d.body", record.Digest.Hex(), record.ExpiresAt.UnixNano()))
 }
 
 // digestOf builds the Digest of bytes that were already hashed.
