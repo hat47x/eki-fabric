@@ -97,10 +97,14 @@ func Load(ctx context.Context, stored statestore.TrustBundleStore) (*Store, erro
 
 // Save writes one version and its approvals through the store. The store's own
 // transaction is what makes the pair atomic; this function only converts.
-func Save(ctx context.Context, stored statestore.TrustBundleStore, signed Signed, approvals []Approval, now time.Time) error {
+func Save(ctx context.Context, stored statestore.TrustBundleStore, signed Signed, approvals []Approval, verifiedKey string, now time.Time) error {
 	records := make([]statestore.TrustBundleApprovalRecord, 0, len(approvals))
 	for _, approval := range approvals {
 		records = append(records, ToApprovalRecord(approval))
 	}
-	return stored.SaveTrustBundle(ctx, ToRecord(signed, now), records)
+	record := ToRecord(signed, now)
+	// verifiedKey names the key that actually checked the signature, which is a fact;
+	// the record's KeyID is what the signer called it (ADR-0038 §8).
+	record.VerifiedKey = verifiedKey
+	return stored.SaveTrustBundle(ctx, record, records)
 }
