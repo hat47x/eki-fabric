@@ -389,7 +389,7 @@ func (s *Server) mtlsHandler(w *WorkerConfig, store *sqlite.Store, plane *claimp
 	// bytes nobody can fetch, so the metadata is written as part of receiving
 	// (#514). The retention matches the Worker's own spool default, so a body a
 	// Worker still holds is not already expired here.
-	receiver, err = receiver.WithMeta(attemptOwner{attempts: store, admissions: store}, metaSink{store: bodies}, artifactRetention)
+	receiver, err = receiver.WithMeta(attemptOwner{attempts: store, admissions: store}, metaSink{store: bodies, dataClass: w.DataClass}, artifactRetention)
 	if err != nil {
 		return nil, fmt.Errorf("%w: %v", ErrInvalidConfig, err)
 	}
