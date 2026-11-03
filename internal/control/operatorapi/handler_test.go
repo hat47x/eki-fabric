@@ -1,6 +1,7 @@
 package operatorapi
 
 import (
+	"encoding/base64"
 	"encoding/json"
 	"io"
 	"log/slog"
@@ -172,5 +173,65 @@ func TestPendingIsHiddenWithoutABook(t *testing.T) {
 	h.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, PendingPath+"?version=2", nil))
 	if rec.Code != http.StatusNotFound {
 		t.Fatalf("status = %d, want 404", rec.Code)
+	}
+}
+
+type fakeAdmitter struct {
+	version uint64
+	err     error
+}
+
+func (f *fakeAdmitter) AdmitSigned(version uint64, _ []byte) error {
+	f.version = version
+	return f.err
+}
+
+func TestAnAdministratorAdmitsASignedVersion(t *testing.T) {
+	admitter := &fakeAdmitter{}
+	h := New(Config{
+		Authenticate: func(*http.Request) (operatorcert.Identity, error) {
+			return operatorcert.Identity{Name: "bob", Role: operatorcert.RoleAdministrator}, nil
+		},
+		Approver: trustBundleApprover{}, Admitter: admitter,
+		Logger: slog.New(slog.NewTextHandler(io.Discard, nil)),
+	})
+	body := `{"version":2,"signed":"` + base64.StdEncoding.EncodeToString([]byte("signed")) + `"}`
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, httptest.NewRequest(http.MethodPost, AdmitPath, strings.NewReader(body)))
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("status = %d, body = %s", rec.Code, rec.Body.String())
+	}
+	if admitter.version != 2 {
+		t.Fatalf("admitted version = %d, want 2", admitter.version)
+	}
+}
+
+func TestAnOperatorCannotAdmit(t *testing.T) {
+	h := New(Config{
+		Authenticate: func(*http.Request) (operatorcert.Identity, error) {
+			return operatorcert.Identity{Name: "alice", Role: operatorcert.RoleOperator}, nil
+		},
+		Approver: trustBundleApprover{}, Admitter: &fakeAdmitter{},
+		Logger: slog.New(slog.NewTextHandler(io.Discard, nil)),
+	})
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, httptest.NewRequest(http.MethodPost, AdmitPath, strings.NewReader(`{"version":2,"signed":"eA=="}`)))
+	if rec.Code != http.StatusForbidden {
+		t.Fatalf("status = %d, want 403", rec.Code)
+	}
+}
+
+func TestAdmittingWithoutASignatureIsRefused(t *testing.T) {
+	h := New(Config{
+		Authenticate: func(*http.Request) (operatorcert.Identity, error) {
+			return operatorcert.Identity{Name: "bob", Role: operatorcert.RoleAdministrator}, nil
+		},
+		Approver: trustBundleApprover{}, Admitter: &fakeAdmitter{},
+		Logger: slog.New(slog.NewTextHandler(io.Discard, nil)),
+	})
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, httptest.NewRequest(http.MethodPost, AdmitPath, strings.NewReader(`{"version":2}`)))
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("status = %d, want 400", rec.Code)
 	}
 }

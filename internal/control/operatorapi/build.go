@@ -24,6 +24,8 @@ type ServerConfig struct {
 	Approver Approver
 	// Book is where those approvals land, so an Operator can read them back (#545).
 	Book *trustbundle.ApprovalBook
+	// Admitter admits a signed version on behalf of an Administrator (#571).
+	Admitter Admitter
 	// Audit receives one entry per request. Nil logs instead.
 	Audit func(Access)
 	// Logger receives one line per request.
@@ -56,6 +58,7 @@ func Build(cfg ServerConfig) (*Handler, *tls.Config, error) {
 		Authenticate: MTLSAuthenticator(pool, cfg.TrustDomain, nil),
 		Approver:     cfg.Approver,
 		Book:         cfg.Book,
+		Admitter:     cfg.Admitter,
 		Audit:        cfg.Audit,
 		Logger:       cfg.Logger,
 	})
