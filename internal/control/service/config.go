@@ -68,6 +68,11 @@ type Config struct {
 	// sweep survives a restart (#555). Empty means the sweep does not run.
 	LeaseRegistry string `json:"lease_registry,omitempty"`
 
+	// TrustBundleKey is the Administrator's public key, hex or with a prefix. It
+	// is the only half the Control Plane holds (ADR-0038 §6): with it the process
+	// can refuse a signed version, never create one. Empty hides the route.
+	TrustBundleKey string `json:"trust_bundle_key,omitempty"`
+
 	// Dispatch enables the placement loop. Absent means the process accepts
 	// Tasks but does not move them.
 	Dispatch *DispatchConfig `json:"dispatch,omitempty"`
