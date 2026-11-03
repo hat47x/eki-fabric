@@ -332,7 +332,7 @@ func (s *Service) check(ctx context.Context, a workerplane.Assignment) Result {
 	// with less (ADR-0037 §11.3). Unknown host totals skip the judgement, and the
 	// Agent says so at start-up rather than inventing a number.
 	if s.cfg.Host.Known() {
-		need, err := resourcemap.Demand(int64(preliminary.Limits().CPUMillis), int64(preliminary.Limits().MemoryBytes), s.cfg.Host)
+		need, err := resourcemap.Demand(resourcemap.Request{CPUMillis: int64(preliminary.Limits().CPUMillis), MemoryBytes: int64(preliminary.Limits().MemoryBytes), DiskBytes: int64(preliminary.Limits().TemporaryDiskBytes)}, s.cfg.Host)
 		if err != nil {
 			return reject("resource_request_" + err.Error())
 		}

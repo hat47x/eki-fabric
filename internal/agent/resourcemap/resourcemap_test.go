@@ -7,11 +7,11 @@ import (
 	"github.com/hat47x/eki-fabric/internal/agent/governor"
 )
 
-var host = Host{CPUMillis: 4000, MemoryBytes: 8 << 30}
+var host = Host{CPUMillis: 4000, MemoryBytes: 8 << 30, DiskBytes: 100 << 30}
 
 func TestTheStrictestResourceDecides(t *testing.T) {
 	// 25% of the CPU, 50% of the memory: the memory is the binding one.
-	need, err := Demand(1000, 4<<30, host)
+	need, err := Demand(Request{CPUMillis: 1000, MemoryBytes: 4 << 30}, host)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -27,7 +27,7 @@ func TestTheStrictestResourceDecides(t *testing.T) {
 }
 
 func TestATinyRequestIsStillOnePercent(t *testing.T) {
-	need, err := Demand(1, 1, host)
+	need, err := Demand(Request{CPUMillis: 1, MemoryBytes: 1}, host)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -37,7 +37,7 @@ func TestATinyRequestIsStillOnePercent(t *testing.T) {
 }
 
 func TestAnOversizedRequestIsCappedAtOneHundred(t *testing.T) {
-	need, err := Demand(40000, 80<<30, host)
+	need, err := Demand(Request{CPUMillis: 40000, MemoryBytes: 80 << 30}, host)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -47,23 +47,46 @@ func TestAnOversizedRequestIsCappedAtOneHundred(t *testing.T) {
 }
 
 func TestWithoutHostTotalsNothingIsGuessed(t *testing.T) {
-	if _, err := Demand(1000, 1<<30, Host{}); !errors.Is(err, ErrUnknownHost) {
+	if _, err := Demand(Request{CPUMillis: 1000}, Host{}); !errors.Is(err, ErrUnknownHost) {
 		t.Fatalf("Demand() error = %v, want %v", err, ErrUnknownHost)
 	}
 }
 
 func TestANegativeRequestIsRefused(t *testing.T) {
-	if _, err := Demand(-1, 1<<30, host); err == nil {
+	if _, err := Demand(Request{CPUMillis: -1}, host); err == nil {
 		t.Fatal("Demand() accepted a negative request")
 	}
 }
 
 func TestARequestThatAsksForNothingMapsToNoResource(t *testing.T) {
-	need, err := Demand(0, 0, host)
+	need, err := Demand(Request{}, host)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if len(need) != 0 || Strictest(need) != 0 {
 		t.Fatalf("Demand() = %v", need)
+	}
+}
+
+func TestDiskIsJudgedAgainstTotalCapacity(t *testing.T) {
+	// 25 GiB of a 100 GiB disk. The total, not the free space: a moving denominator
+	// would make the same request pass or fail depending on what else runs.
+	need, err := Demand(Request{DiskBytes: 25 << 30}, host)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := need[governor.ResourceDiskIO]; got != 25 {
+		t.Fatalf("disk = %d, want 25", got)
+	}
+}
+
+func TestDiskIsNotJudgedWithoutACapacity(t *testing.T) {
+	bare := Host{CPUMillis: 4000, MemoryBytes: 8 << 30}
+	need, err := Demand(Request{DiskBytes: 25 << 30}, bare)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, ok := need[governor.ResourceDiskIO]; ok {
+		t.Fatalf("disk was judged without a capacity: %v", need)
 	}
 }

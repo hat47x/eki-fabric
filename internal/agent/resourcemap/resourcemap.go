@@ -1,5 +1,5 @@
 // Package resourcemap turns a Task's absolute resource request into the
-// percentages the Local Governor judges (ADR-0037 §11.1).
+// percentages the Local Governor judges (ADR-0037 §11.1, §11.4).
 //
 // It is a separate package because the mapping is a decision, not plumbing: a
 // number invented at the call site ("just use 10") would make the Governor look
@@ -13,37 +13,57 @@ import (
 	"github.com/hat47x/eki-fabric/internal/agent/governor"
 )
 
-// Host is what this machine has to offer. Both values must be known before any
-// percentage means anything.
+// Host is what this machine has to offer. A zero total means that resource cannot
+// be judged: no percentage means anything without a denominator.
 type Host struct {
 	CPUMillis   int64
 	MemoryBytes int64
+	DiskBytes   int64
 }
 
-// Known reports whether the host can be used as a denominator.
+// Known reports whether the host can be used as a denominator for CPU and memory.
 func (h Host) Known() bool { return h.CPUMillis > 0 && h.MemoryBytes > 0 }
+
+// KnownDisk reports whether disk can be judged. It is asked separately because a
+// deployment may know its CPU and memory and not its disk (ADR-0037 §11.4).
+func (h Host) KnownDisk() bool { return h.DiskBytes > 0 }
 
 // ErrUnknownHost means the deployment did not say what this machine has, so no
 // percentage can be computed.
 var ErrUnknownHost = errors.New("resourcemap: host totals are not configured")
 
-// Demand returns the strictest percentage the request needs, between 1 and 100.
+// Request is what a WorkOrder asks for, in absolute units.
+type Request struct {
+	CPUMillis   int64
+	MemoryBytes int64
+	// DiskBytes is temporary disk. It is judged against the host's total capacity,
+	// not its free space: a moving denominator would make the same request pass or
+	// fail depending on what else is running (ADR-0037 §11.4).
+	DiskBytes int64
+}
+
+// Demand returns the percentages the request needs, each between 1 and 100.
 //
-// The strictest one, not the sum: CPU and memory are separate limits, and adding
-// them would count one short resource twice and refuse work that would fit.
-func Demand(cpuMillis, memoryBytes int64, host Host) (map[governor.Resource]int, error) {
+// Resources are kept apart rather than summed because they are separate limits;
+// the caller asks Strictest for the one that decides admission.
+func Demand(req Request, host Host) (map[governor.Resource]int, error) {
 	if !host.Known() {
 		return nil, ErrUnknownHost
 	}
-	if cpuMillis < 0 || memoryBytes < 0 {
-		return nil, fmt.Errorf("resourcemap: negative request (%d cpu, %d memory)", cpuMillis, memoryBytes)
+	if req.CPUMillis < 0 || req.MemoryBytes < 0 || req.DiskBytes < 0 {
+		return nil, fmt.Errorf("resourcemap: negative request (%d cpu, %d memory, %d disk)", req.CPUMillis, req.MemoryBytes, req.DiskBytes)
 	}
 	need := map[governor.Resource]int{}
-	if cpuMillis > 0 {
-		need[governor.ResourceCPU] = percent(cpuMillis, host.CPUMillis)
+	if req.CPUMillis > 0 {
+		need[governor.ResourceCPU] = percent(req.CPUMillis, host.CPUMillis)
 	}
-	if memoryBytes > 0 {
-		need[governor.ResourceMemory] = percent(memoryBytes, host.MemoryBytes)
+	if req.MemoryBytes > 0 {
+		need[governor.ResourceMemory] = percent(req.MemoryBytes, host.MemoryBytes)
+	}
+	// Disk is optional: a host that does not report its capacity gets no judgement
+	// for disk, rather than a made-up denominator.
+	if req.DiskBytes > 0 && host.KnownDisk() {
+		need[governor.ResourceDiskIO] = percent(req.DiskBytes, host.DiskBytes)
 	}
 	return need, nil
 }
