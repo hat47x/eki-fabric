@@ -40,12 +40,12 @@ type Authenticator func(*http.Request) (operatorcert.Identity, error)
 // Access is one line of the Operator audit (ADR-0038 §2). It is recorded for
 // refusals as well: the refusals are what an investigation needs.
 type Access struct {
-	At        time.Time
-	Name      string
-	Role      string
-	Operation string
-	Target    string
-	Outcome   string
+	At        time.Time `json:"at"`
+	Name      string    `json:"name"`
+	Role      string    `json:"role"`
+	Operation string    `json:"operation"`
+	Target    string    `json:"target"`
+	Outcome   string    `json:"outcome"`
 }
 
 // The outcomes an audit line can carry.
