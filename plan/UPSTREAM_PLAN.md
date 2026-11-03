@@ -1422,3 +1422,24 @@ dispatch tick considered=1 dispatched=0 deferred=1 reasons="...: reserve lease: 
 - Operator CA の発行・更新・失効の**手順**が未決です。認証の方式は決めましたが（ADR-0038）、**運用が無いと配備できません**。
 
 **次の行動**: 上のうち、**決定だけで前に進めるもの**（監査が落ちているときの振る舞い、分類ごとの保持）から Issue にします。CA の運用手順は、**配備の実例がまだ無い**ので、決定ではなく**手順の下書き**として Issue に置きます。
+
+### 2026-11-03 決定・実装・試験の対応（4巡目）
+
+ADR に書いた決定が、**実装と試験のどこまで届いているか**を並べました。**「決定はあるが、書いた本人しか知らない」状態を作らないため**の点検です。
+
+| 決定 | 実装 | 試験 |
+| --- | --- | --- |
+| `data_class` の語彙（ADR-0034 §9） | `admission.DataClasses`・`ValidDataClass` | `dataclass_test.go` |
+| 配備が分類を持つ（§10.2） | `WorkerConfig.DataClass`・起動時検査・メタ・結果本文 | `artifactsource_class_test.go`・`config_dataclass_test.go` |
+| 分類は扱いを変えない（§11） | 変更なし（**変えないことが実装**） | — |
+| 取消した Task の本体を返さない（ADR-0037 §9） | `OutcomeWithdrawn`・`TaskRecord.Withdrawn`・`artifactSource` | `access_test.go`・`withdrawn_test.go`・`artifactsource_withdrawn_test.go`・`taskwithdrawn_test.go` |
+| 台帳はファイルのまま（§10） | 変更なし（**決定のみ**） | — |
+| Administrator の鍵を集合で受ける（ADR-0038 §7） | `trustAdmitter.keys`・`sponsorKeys` | `admitterconfig_test.go`・`startadmitter_test.go` |
+| 版ごとの鍵 ID（§8） | 既存の `TrustBundleRecord.KeyID`・受理時のログ | `persist_test.go` |
+| 監査の保持と保存先（ADR-0040 §2） | 保存しない（**配備の責任**）。既定はログで**起動時に警告** | — |
+| 監査が書けないときの振る舞い（§5） | 取得は続けて数える・Operator 操作は 503 | `audit_unrecorded_test.go`・`auditfail_test.go` |
+| `audit_unrecorded` の監視（§6） | 5分ごとの書き出し（#392） | `measure_test.go` |
+
+**見つけた穴**: 監査の**差し替え口**（`clientapi.ArtifactAuditErr`・`operatorapi.AuditErr`）を**設定から挿せません**。口だけ作って**配備が使えない**状態なので、Issue にします。
+
+**判断**: 表の空欄（—）は**試験が無い**という意味で、**実装が無い**とは限りません。「分類は扱いを変えない」のように、**変えないことが実装**の行は、試験で固定しようがないため空けています。
