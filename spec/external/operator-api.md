@@ -23,11 +23,14 @@ Operator と Administrator は、Client とは**別の入口**から入ります
 ## 承認（`POST /v1/operator/trust-bundles`）
 
 ```json
-{"version": 2, "operation": "add", "issuer": "sha256:...", "not_before": "2026-11-03T00:00:00Z", "not_after": "2027-11-03T00:00:00Z"}
+{"version": 2, "operation": "add", "issuer": "ab12...", "approved_by": "alice", "justification": "add the second CA"}
 ```
 
 - `operation` は `add` か `remove`。
-- **`issuer` は発行者の指紋**（16進。`sha256:` 接頭辞なし）。
+- **`issuer` は発行者の指紋**（**16進のみ**。`sha256:` の接頭辞を**付けない**）。`Digest.String()` の形ではありません。
+- **`approved_by` は証明書の名前と一致**していること。食い違えば **400**（`INVALID_APPROVAL`）。
+- **`justification` は必須**（空なら **400** `INVALID_APPROVAL`）。**あとから「なぜ承認したか」を読む**ための欄です。
+- **`version` は必須**（0 は不可）。
 - 成功は **201**、拒否は **409**（`APPROVAL_REFUSED`）、本文が不正なら **400**（`INVALID_APPROVAL`）。
 
 ## 承認の読み出し（`GET .../approvals?version=N`）
