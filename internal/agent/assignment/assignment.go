@@ -41,6 +41,7 @@ import (
 	cosecbor "github.com/hat47x/eki-fabric/internal/adapters/reference/cosedecoder/cbor"
 	payloadcbor "github.com/hat47x/eki-fabric/internal/adapters/reference/decisiondecoder/cbor"
 	"github.com/hat47x/eki-fabric/internal/agent/governor"
+	"github.com/hat47x/eki-fabric/internal/agent/resourcemap"
 	"github.com/hat47x/eki-fabric/internal/agent/startgate"
 	"github.com/hat47x/eki-fabric/internal/agent/trustanchor"
 	"github.com/hat47x/eki-fabric/internal/core/contract"
@@ -124,8 +125,12 @@ type Config struct {
 	// Governor returns the Local Governor's current decision.
 	Governor func() governor.Decision
 	Machine  startgate.MachineProfile
-	Handler  Handler
-	Logger   *slog.Logger
+	// Host is what this machine offers, used to turn a WorkOrder's absolute request
+	// into the percentages the Governor judges (ADR-0037 §11.1). Unknown means the
+	// Agent does not judge the request, and says so at start-up rather than guessing.
+	Host    resourcemap.Host
+	Handler Handler
+	Logger  *slog.Logger
 }
 
 // Service polls for assignments and runs the checks.
@@ -322,6 +327,19 @@ func (s *Service) check(ctx context.Context, a workerplane.Assignment) Result {
 	// Capacity and slot shortages describe this endpoint right now, not the
 	// Assignment: defer it so a later poll can start it, and leave the nonce
 	// unspent (ADR-0031 §2.4). Everything else the gate refuses is a rejection.
+	// The request is judged in the Governor's own scale before the gate: a WorkOrder
+	// that asks for more than this machine may ever give is refused, not started
+	// with less (ADR-0037 §11.3). Unknown host totals skip the judgement, and the
+	// Agent says so at start-up rather than inventing a number.
+	if s.cfg.Host.Known() {
+		need, err := resourcemap.Demand(int64(preliminary.Limits().CPUMillis), int64(preliminary.Limits().MemoryBytes), s.cfg.Host)
+		if err != nil {
+			return reject("resource_request_" + err.Error())
+		}
+		if err := startgate.RequireWithinCeiling(gov, need); err != nil {
+			return reject(err.Error())
+		}
+	}
 	if _, err := s.gate.Check(startgate.Request{Admission: preliminary, Governor: gov, Machine: s.cfg.Machine}); err != nil {
 		if errors.Is(err, startgate.ErrNoCapacity) || errors.Is(err, startgate.ErrNoSlot) {
 			r.Outcome, r.Reason = OutcomeDeferred, "start_gate_"+gateReason(err)
