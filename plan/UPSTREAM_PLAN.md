@@ -1469,7 +1469,7 @@ ADR に書いた決定が、**実装と試験のどこまで届いているか**
 | キーは**小文字の契約** | 試験で固定 |
 | 取得の失敗は**続けて数える**、Operator 操作は**503 で止める** | 経路ごとに違う扱い |
 
-**契約**は [spec/external/audit-records.md](../../spec/external/audit-records.md) を正とし、ADR は「なぜ」を持ちます。
+**契約**は [spec/external/audit-records.md](../spec/external/audit-records.md) を正とし、ADR は「なぜ」を持ちます。
 
 #### 資源の判定（ADR-0037 §11）
 
@@ -1487,7 +1487,7 @@ ADR に書いた決定が、**実装と試験のどこまで届いているか**
 | **`key_id` は自称、`verified_key` は事実** | 記録に保存・ログ・履歴に出る |
 | 版の履歴を **Operator が API から読む** | `GET /v1/operator/trust-bundles/versions` |
 
-**契約**は [spec/external/operator-api.md](../../spec/external/operator-api.md)。**書いた契約は実装の分岐と1つずつ突き合わせる**（6巡目で 400 の記述漏れを1件見つけて直しました）。
+**契約**は [spec/external/operator-api.md](../spec/external/operator-api.md)。**書いた契約は実装の分岐と1つずつ突き合わせる**（6巡目で 400 の記述漏れを1件見つけて直しました）。
 
 #### 残した未決（Issue）
 
