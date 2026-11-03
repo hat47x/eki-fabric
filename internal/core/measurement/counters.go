@@ -25,12 +25,16 @@ const (
 	// LimitRefused is an output the Worker refused to send because it was over
 	// the limit.
 	LimitRefused Kind = "limit.refused"
+	// AuditUnrecorded is an event the Control Plane could not write to the audit
+	// sink but carried out anyway (ADR-0040 §5). It is counted so the gap is not
+	// silent: the answer itself said nothing about it.
+	AuditUnrecorded Kind = "audit.unrecorded"
 )
 
 // Valid reports whether the kind is one this package counts.
 func (k Kind) Valid() bool {
 	switch k {
-	case AdmissionRejected, LeaseReclaimed, ClaimRefused, LimitRefused:
+	case AdmissionRejected, LeaseReclaimed, ClaimRefused, LimitRefused, AuditUnrecorded:
 		return true
 	}
 	return false

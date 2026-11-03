@@ -53,6 +53,10 @@ type Config struct {
 	// ArtifactAudit receives one entry per retrieval. Nil means the entry goes to
 	// the logger, so an audit trail exists without extra setup.
 	ArtifactAudit func(ArtifactAccess)
+	// ArtifactAuditErr is a sink that can refuse (ADR-0040 §5). It takes precedence
+	// over ArtifactAudit: a deployment that hands the record to a store needs to know
+	// when the store did not take it.
+	ArtifactAuditErr func(ArtifactAccess) error
 }
 
 type Handler struct {
@@ -73,6 +77,9 @@ type Handler struct {
 	counters *measurement.Counters
 	// artifactAudit receives one entry per retrieval; nil logs instead (#494).
 	artifactAudit func(ArtifactAccess)
+	// artifactAuditErr is a sink that can refuse (ADR-0040 §5). It takes
+	// precedence over artifactAudit when set.
+	artifactAuditErr func(ArtifactAccess) error
 }
 
 var ErrInvalidConfig = errors.New("invalid client API configuration")
@@ -87,7 +94,7 @@ func NewHandler(cfg Config) (*Handler, error) {
 	if cfg.MaxBodyBytes < 0 {
 		return nil, fmt.Errorf("%w: negative body limit", ErrInvalidConfig)
 	}
-	h := &Handler{svc: cfg.Service, auth: cfg.Authenticator, maxBody: cfg.MaxBodyBytes, log: cfg.Logger, ready: cfg.Ready, artifacts: cfg.Artifacts, artifactAudit: cfg.ArtifactAudit}
+	h := &Handler{svc: cfg.Service, auth: cfg.Authenticator, maxBody: cfg.MaxBodyBytes, log: cfg.Logger, ready: cfg.Ready, artifacts: cfg.Artifacts, artifactAudit: cfg.ArtifactAudit, artifactAuditErr: cfg.ArtifactAuditErr}
 	if h.maxBody == 0 {
 		h.maxBody = DefaultMaxBodyBytes
 	}
