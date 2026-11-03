@@ -23,6 +23,10 @@ type ArtifactMeta struct {
 	MediaType string
 	// DataClass is what the Worker declared (ADR-0034 §9).
 	DataClass string
+	// Withdrawn is set when the Task that produced the body ended before its
+	// retention passed (ADR-0037 §9). The body is kept for an investigation but
+	// is not served.
+	Withdrawn bool
 	Size      int64
 	ExpiresAt time.Time
 }
@@ -48,7 +52,7 @@ func (h *Handler) artifact(w http.ResponseWriter, r *http.Request, id Identity, 
 		h.writeArtifactFailure(w, claimbody.OutcomeNotFound, digest)
 		return
 	}
-	outcome := claimbody.Decide(string(id.Principal.ID), meta.Owner, true, !time.Now().UTC().Before(meta.ExpiresAt))
+	outcome := claimbody.Decide(string(id.Principal.ID), meta.Owner, true, !time.Now().UTC().Before(meta.ExpiresAt), meta.Withdrawn)
 	if outcome != claimbody.OutcomeDeliver {
 		h.writeArtifactFailure(w, outcome, digest)
 		return
