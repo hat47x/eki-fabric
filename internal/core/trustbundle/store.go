@@ -55,14 +55,19 @@ func (s *Store) Approvals() []Approval {
 // Plane key, the version must follow the current one, and every issuer the
 // version adds or removes must carry an approval for that version.
 func (s *Store) Admit(next Signed, key ed25519.PublicKey, approvals []Approval, now time.Time) error {
-	current, err := s.Current()
-	if err != nil {
-		return err
+	current, currentErr := s.Current()
+	if currentErr != nil && !errors.Is(currentErr, ErrNotInitialised) {
+		return currentErr
 	}
 	if err := next.Verify(key); err != nil {
 		return err
 	}
-	if err := CheckTransition(current.Bundle, next.Bundle, approvals); err != nil {
+	if errors.Is(currentErr, ErrNotInitialised) {
+		// ADR-0036 §9.2: the first version cannot be approved yet. An Operator
+		// certificate is issued by a CA the version itself lists, so approving the
+		// first version would need the version. The deployment owner's configured
+		// key is what makes it trusted; every later version needs approvals.
+	} else if err := CheckTransition(current.Bundle, next.Bundle, approvals); err != nil {
 		return err
 	}
 	if err := next.Bundle.Current(now); err != nil {
