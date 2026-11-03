@@ -1,6 +1,7 @@
 package service
 
 import (
+	"context"
 	"crypto/ed25519"
 	"encoding/base64"
 	"encoding/json"
@@ -9,6 +10,7 @@ import (
 
 	"github.com/hat47x/eki-fabric/internal/core/contract"
 	"github.com/hat47x/eki-fabric/internal/core/trustbundle"
+	"github.com/hat47x/eki-fabric/internal/spi/statestore"
 )
 
 // trustAdmitter is the Administrator side of ADR-0038 §6: it reads a signed
@@ -21,6 +23,9 @@ type trustAdmitter struct {
 	store *trustbundle.Store
 	key   ed25519.PublicKey
 	book  *trustbundle.ApprovalBook
+	// state persists the version once it has been admitted. Nil keeps it in memory
+	// only, which a test may want but a deployment must not.
+	state statestore.TrustBundleStore
 	now   func() time.Time
 }
 
@@ -74,5 +79,19 @@ func (a *trustAdmitter) AdmitSigned(version uint64, raw []byte) error {
 	if a.now != nil {
 		now = a.now
 	}
-	return a.store.AdmitFromBook(signed, a.key, a.book, now().UTC())
+	approvals := a.book.For(signed.Bundle.Version)
+	at := now().UTC()
+	if err := a.store.AdmitFromBook(signed, a.key, a.book, at); err != nil {
+		return err
+	}
+	if a.state == nil {
+		return nil
+	}
+	// The version is admitted; now make it survive a restart. A failure here is
+	// reported rather than swallowed: an admission forgotten on the next start
+	// would let the same version through twice.
+	if err := trustbundle.Save(context.Background(), a.state, signed, approvals, at); err != nil {
+		return fmt.Errorf("trustadmitter: save version %d: %w", signed.Bundle.Version, err)
+	}
+	return nil
 }
