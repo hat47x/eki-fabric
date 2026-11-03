@@ -37,7 +37,7 @@ func (h *Handler) pending(w http.ResponseWriter, r *http.Request, identity opera
 			"justification": a.Justification,
 		})
 	}
-	h.record(identity, "", "", OutcomeApproved)
+	_ = h.record(identity, "", "", OutcomeApproved)
 	writeJSON(w, http.StatusOK, map[string]any{
 		"schema":    "eki.trust-bundle-approvals/v1",
 		"version":   version,

@@ -66,6 +66,9 @@ type Config struct {
 	Admitter Admitter
 	// Audit receives one entry per request. Nil logs instead.
 	Audit func(Access)
+	// AuditErr is a sink that can refuse (ADR-0040 §5). When set, an approval or
+	// an admission is refused if the line cannot be written.
+	AuditErr func(Access) error
 	// Logger receives one line per request. Nil discards.
 	Logger *slog.Logger
 	// Now is the clock. Nil means the system clock.
@@ -81,6 +84,9 @@ type Handler struct {
 	// admitter records a signed version; nil hides the Administrator route.
 	admitter Admitter
 	audit    func(Access)
+	// auditErr is a sink that can refuse (ADR-0040 §5). It takes precedence over
+	// audit: a sink that cannot fail cannot tell the handler to stop.
+	auditErr func(Access) error
 	log      *slog.Logger
 	now      func() time.Time
 }
@@ -89,7 +95,7 @@ type Handler struct {
 // a handler that answers 404 to everything, which is the same answer a process
 // that never had an Operator route would give.
 func New(cfg Config) *Handler {
-	h := &Handler{authenticate: cfg.Authenticate, approver: cfg.Approver, book: cfg.Book, admitter: cfg.Admitter, audit: cfg.Audit, log: cfg.Logger, now: cfg.Now}
+	h := &Handler{authenticate: cfg.Authenticate, approver: cfg.Approver, book: cfg.Book, admitter: cfg.Admitter, audit: cfg.Audit, auditErr: cfg.AuditErr, log: cfg.Logger, now: cfg.Now}
 	if h.log == nil {
 		h.log = slog.New(slog.NewTextHandler(io.Discard, nil))
 	}
@@ -116,12 +122,12 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	if cleaned == PendingPath && r.Method == http.MethodGet {
 		identity, err := h.authenticate(r)
 		if err != nil {
-			h.record(identity, "", "", OutcomeRefused)
+			_ = h.record(identity, "", "", OutcomeRefused)
 			writeError(w, http.StatusUnauthorized, "AUTHENTICATION_REQUIRED", "Authentication is required")
 			return
 		}
 		if identity.Role != operatorcert.RoleOperator {
-			h.record(identity, "", "", OutcomeRefused)
+			_ = h.record(identity, "", "", OutcomeRefused)
 			writeError(w, http.StatusForbidden, "OPERATOR_ROLE_REQUIRED", "This credential cannot read trust bundle approvals")
 			return
 		}
@@ -131,12 +137,12 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	if cleaned == AdmitPath && r.Method == http.MethodPost {
 		identity, err := h.authenticate(r)
 		if err != nil {
-			h.record(identity, "", "", OutcomeRefused)
+			_ = h.record(identity, "", "", OutcomeRefused)
 			writeError(w, http.StatusUnauthorized, "AUTHENTICATION_REQUIRED", "Authentication is required")
 			return
 		}
 		if identity.Role != operatorcert.RoleAdministrator {
-			h.record(identity, "", "", OutcomeRefused)
+			_ = h.record(identity, "", "", OutcomeRefused)
 			writeError(w, http.StatusForbidden, "ADMINISTRATOR_ROLE_REQUIRED", "This credential cannot admit trust bundles")
 			return
 		}
@@ -149,27 +155,35 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 	identity, err := h.authenticate(r)
 	if err != nil {
-		h.record(identity, "", "", OutcomeRefused)
+		_ = h.record(identity, "", "", OutcomeRefused)
 		writeError(w, http.StatusUnauthorized, "AUTHENTICATION_REQUIRED", "Authentication is required")
 		return
 	}
 	if identity.Role != operatorcert.RoleOperator {
-		h.record(identity, "", "", OutcomeRefused)
+		_ = h.record(identity, "", "", OutcomeRefused)
 		writeError(w, http.StatusForbidden, "OPERATOR_ROLE_REQUIRED", "This credential cannot approve trust bundles")
 		return
 	}
 	approval, err := decodeApproval(r, identity)
 	if err != nil {
-		h.record(identity, "", "", OutcomeRefused)
+		_ = h.record(identity, "", "", OutcomeRefused)
 		writeError(w, http.StatusBadRequest, "INVALID_APPROVAL", err.Error())
 		return
+	}
+	if h.auditErr != nil {
+		if err := h.record(identity, string(approval.Operation), approval.Issuer.String(), OutcomeApproved); err != nil {
+			writeError(w, http.StatusServiceUnavailable, "AUDIT_UNAVAILABLE", "The audit record could not be written, so the approval was not taken")
+			return
+		}
 	}
 	if err := h.approver.Approve(approval); err != nil {
 		h.record(identity, string(approval.Operation), approval.Issuer.String(), OutcomeRefused)
 		writeError(w, http.StatusConflict, "APPROVAL_REFUSED", err.Error())
 		return
 	}
-	h.record(identity, string(approval.Operation), approval.Issuer.String(), OutcomeApproved)
+	if h.auditErr == nil {
+		_ = h.record(identity, string(approval.Operation), approval.Issuer.String(), OutcomeApproved)
+	}
 	writeJSON(w, http.StatusCreated, map[string]any{
 		"schema":   "eki.trust-bundle-approval/v1",
 		"version":  approval.Version,
@@ -218,13 +232,25 @@ func decodeApproval(r *http.Request, identity operatorcert.Identity) (trustbundl
 	return approval, nil
 }
 
-func (h *Handler) record(identity operatorcert.Identity, operation, target, outcome string) {
+// record writes one audit line. When the sink can refuse, the refusal is returned:
+// an Operation that changes who the platform trusts must not happen unless it was
+// written down (ADR-0040 §5). Retrieval keeps going on a sink failure because the
+// owner-only rule does not depend on the record; an authority change is different.
+func (h *Handler) record(identity operatorcert.Identity, operation, target, outcome string) error {
 	entry := Access{At: h.now().UTC(), Name: identity.Name, Role: string(identity.Role), Operation: operation, Target: target, Outcome: outcome}
+	if h.auditErr != nil {
+		if err := h.auditErr(entry); err != nil {
+			h.log.Error("operator access was not recorded", "name", entry.Name, "operation", entry.Operation, "error", err.Error())
+			return err
+		}
+		return nil
+	}
 	if h.audit != nil {
 		h.audit(entry)
-		return
+		return nil
 	}
 	h.log.Info("operator access", "name", entry.Name, "role", entry.Role, "operation", entry.Operation, "target", entry.Target, "outcome", entry.Outcome)
+	return nil
 }
 
 func writeJSON(w http.ResponseWriter, status int, v any) {

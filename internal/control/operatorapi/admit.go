@@ -49,12 +49,26 @@ func (h *Handler) admit(w http.ResponseWriter, r *http.Request, identity operato
 		writeError(w, http.StatusBadRequest, "INVALID_VERSION_DOCUMENT", "signed must be base64 of the signed bundle")
 		return
 	}
+	// The record is written before the version is admitted. If the sink cannot take
+	// it, the admission does not happen: an authority change nobody can look up
+	// afterwards is what ADR-0040 §5 refuses.
+	// Only a sink that can refuse changes the order. With one, the line is written
+	// first: an admission that nobody can look up afterwards is what ADR-0040 §5
+	// refuses. A logger cannot fail, so the line still goes after the answer.
+	if h.auditErr != nil {
+		if err := h.record(identity, "admit", fmt.Sprintf("version %d", body.Version), OutcomeApproved); err != nil {
+			writeError(w, http.StatusServiceUnavailable, "AUDIT_UNAVAILABLE", "The audit record could not be written, so the version was not admitted")
+			return
+		}
+	}
 	if err := h.admitter.AdmitSigned(body.Version, signed); err != nil {
-		h.record(identity, "admit", fmt.Sprintf("version %d", body.Version), OutcomeRefused)
+		_ = h.record(identity, "admit", fmt.Sprintf("version %d", body.Version), OutcomeRefused)
 		writeError(w, http.StatusConflict, "ADMISSION_REFUSED", err.Error())
 		return
 	}
-	h.record(identity, "admit", fmt.Sprintf("version %d", body.Version), OutcomeApproved)
+	if h.auditErr == nil {
+		_ = h.record(identity, "admit", fmt.Sprintf("version %d", body.Version), OutcomeApproved)
+	}
 	writeJSON(w, http.StatusCreated, map[string]any{
 		"schema":        "eki.trust-bundle-admission/v1",
 		"version":       body.Version,
