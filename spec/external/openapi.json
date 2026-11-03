@@ -654,8 +654,8 @@
         "tags": [
           "Artifacts"
         ],
-        "operationId": "getArtifactDescriptor",
-        "summary": "Get a client-visible artifact descriptor",
+        "operationId": "getArtifact",
+        "summary": "Fetch an artifact body",
         "parameters": [
           {
             "name": "artifact_id",
@@ -669,11 +669,46 @@
         ],
         "responses": {
           "200": {
-            "description": "Artifact descriptor.",
-            "content": {
-              "application/json": {
+            "description": "The artifact body itself. The bytes are the ones the digest names: their SHA-256 is artifact_id, and the Digest header carries the same binding (RFC 3230) so the requester can recompute it after the transfer (ADR-0034 §2.3).",
+            "headers": {
+              "Content-Type": {
+                "description": "The media type the Worker declared at the transfer. A body without a declaration is answered as application/octet-stream.",
                 "schema": {
-                  "$ref": "#/components/schemas/ArtifactDescriptor"
+                  "type": "string"
+                }
+              },
+              "Content-Length": {
+                "description": "The recorded size of the body in bytes.",
+                "schema": {
+                  "type": "integer",
+                  "format": "int64"
+                }
+              },
+              "Digest": {
+                "description": "RFC 3230 digest of the body, sha-256= followed by the base64 of the digest. It equals artifact_id recomputed.",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-EKI-Artifact-Size": {
+                "description": "The recorded size in bytes, the same value as Content-Length, carried as a plain number.",
+                "schema": {
+                  "type": "integer",
+                  "format": "int64"
+                }
+              },
+              "X-Content-Type-Options": {
+                "description": "Always nosniff: the body is untrusted input and is not interpreted by any viewer.",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "content": {
+              "application/octet-stream": {
+                "schema": {
+                  "type": "string",
+                  "format": "binary"
                 }
               }
             }
@@ -688,8 +723,8 @@
               }
             }
           },
-          "403": {
-            "description": "The principal cannot observe this artifact.",
+          "404": {
+            "description": "Artifact not found or not disclosed. A retrieval by a principal other than the requester that produced the body receives this same answer: the contract does not distinguish the two, so the existence of another principal's artifact is not disclosed (ADR-0034 §2.4).",
             "content": {
               "application/problem+json": {
                 "schema": {
@@ -698,8 +733,8 @@
               }
             }
           },
-          "404": {
-            "description": "Artifact not found or not disclosed.",
+          "410": {
+            "description": "The artifact existed and its retention has passed (artifact_expired), or the Task that produced it ended before its retention and the body is kept only for an investigation (artifact_withdrawn). The owner receives this; it is the same answer as 404 to anyone else.",
             "content": {
               "application/problem+json": {
                 "schema": {
@@ -1199,7 +1234,7 @@
             "$ref": "#/components/schemas/Digest"
           }
         },
-        "description": "Public projection of an accepted result. output_digest is optional and additive within eki.task-result/v1: it is the digest of the output as recorded in the durable AcceptedResult, never recomputed. It lets a Client pin the accepted result and detect substitution or loss. It is not an ArtifactDescriptor and does not make the output retrievable; artifacts stays empty until artifact retrieval is specified. The claim digest, verification digests, verifier identities, policy digest, Worker and Lease data are not exposed."
+        "description": "Public projection of an accepted result. output_digest is optional and additive within eki.task-result/v1: it is the digest of the output as recorded in the durable AcceptedResult, never recomputed. It lets a Client pin the accepted result and detect substitution or loss. It is not an artifact reference of its own; whether the body can still be fetched is answered by artifacts[].available and the retrieval route. The claim digest, verification digests, verifier identities, policy digest, Worker and Lease data are not exposed."
       },
       "CancelAccepted": {
         "type": "object",
@@ -1302,7 +1337,11 @@
           },
           "data_class": {
             "type": "string",
-            "enum": ["public", "internal", "restricted"],
+            "enum": [
+              "public",
+              "internal",
+              "restricted"
+            ],
             "description": "What the Worker declared about the data in the body (ADR-0034 §9). It is a declaration, not a check: EKI does not read the bytes, so it cannot confirm it. It never decides who may fetch the body: that stays owner-only."
           }
         }
