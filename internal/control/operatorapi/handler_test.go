@@ -8,6 +8,7 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/hat47x/eki-fabric/internal/core/contract"
 	"github.com/hat47x/eki-fabric/internal/core/operatorcert"
@@ -108,5 +109,68 @@ func TestAnApprovalTheGuardRefusesIsReported(t *testing.T) {
 	}
 	if len(audit) != 1 || audit[0].Outcome != OutcomeRefused {
 		t.Fatalf("audit = %+v", audit)
+	}
+}
+
+func TestPendingListsTheApprovalsForAVersion(t *testing.T) {
+	book := trustbundle.NewApprovalBook()
+	issuer := contract.SHA256([]byte("ca"))
+	if err := book.Add(trustbundle.Approval{
+		Version: 2, Operation: trustbundle.OperationAdd, Issuer: issuer, ApprovedBy: "alice",
+		ApprovedAt: time.Date(2026, 11, 3, 0, 0, 0, 0, time.UTC), Justification: "new",
+	}); err != nil {
+		t.Fatal(err)
+	}
+	h := New(Config{
+		Authenticate: func(*http.Request) (operatorcert.Identity, error) {
+			return operatorcert.Identity{Name: "alice", Role: operatorcert.RoleOperator}, nil
+		},
+		Approver: book, Book: book, Logger: slog.New(slog.NewTextHandler(io.Discard, nil)),
+	})
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, PendingPath+"?version=2", nil))
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, body = %s", rec.Code, rec.Body.String())
+	}
+	var out struct {
+		Approvals []struct {
+			ApprovedBy string `json:"approved_by"`
+			Issuer     string `json:"issuer"`
+		} `json:"approvals"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &out); err != nil {
+		t.Fatal(err)
+	}
+	if len(out.Approvals) != 1 || out.Approvals[0].ApprovedBy != "alice" || out.Approvals[0].Issuer != issuer.String() {
+		t.Fatalf("approvals = %+v", out.Approvals)
+	}
+}
+
+func TestPendingRefusesAMissingVersion(t *testing.T) {
+	book := trustbundle.NewApprovalBook()
+	h := New(Config{
+		Authenticate: func(*http.Request) (operatorcert.Identity, error) {
+			return operatorcert.Identity{Name: "alice", Role: operatorcert.RoleOperator}, nil
+		},
+		Approver: book, Book: book, Logger: slog.New(slog.NewTextHandler(io.Discard, nil)),
+	})
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, PendingPath, nil))
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("status = %d, want 400", rec.Code)
+	}
+}
+
+func TestPendingIsHiddenWithoutABook(t *testing.T) {
+	h := New(Config{
+		Authenticate: func(*http.Request) (operatorcert.Identity, error) {
+			return operatorcert.Identity{Name: "alice", Role: operatorcert.RoleOperator}, nil
+		},
+		Approver: trustBundleApprover{}, Logger: slog.New(slog.NewTextHandler(io.Discard, nil)),
+	})
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, PendingPath+"?version=2", nil))
+	if rec.Code != http.StatusNotFound {
+		t.Fatalf("status = %d, want 404", rec.Code)
 	}
 }
