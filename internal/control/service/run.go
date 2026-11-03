@@ -254,6 +254,7 @@ func Start(ctx context.Context, cfg Config, log *slog.Logger) (*Server, error) {
 		}
 		oc.AuditErr = operatorAuditErr(cfg, log, ctx)
 		oc.Book = approvals
+		oc.Bundles = store
 		oc.Admitter = startAdmitter(ctx, store, approvals, append([]string{cfg.TrustBundleKey}, cfg.TrustBundleKeys...), log)
 		oc.Logger = log
 		handler, tlsConfig, err := operatorapi.Build(oc)

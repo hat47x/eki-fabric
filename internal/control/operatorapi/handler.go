@@ -18,6 +18,7 @@ import (
 	"github.com/hat47x/eki-fabric/internal/core/contract"
 	"github.com/hat47x/eki-fabric/internal/core/operatorcert"
 	"github.com/hat47x/eki-fabric/internal/core/trustbundle"
+	"github.com/hat47x/eki-fabric/internal/spi/statestore"
 )
 
 // Path is where an Operator approves a Trust Bundle version.
@@ -62,6 +63,9 @@ type Config struct {
 	Approver Approver
 	// Book is the ledger the approvals land in. Nil hides the read path.
 	Book *trustbundle.ApprovalBook
+	// Bundles is where the accepted versions are read from (ADR-0038 §9). Nil hides
+	// the version history.
+	Bundles statestore.TrustBundleStore
 	// Admitter admits a signed version on behalf of an Administrator.
 	Admitter Admitter
 	// Audit receives one entry per request. Nil logs instead.
@@ -81,6 +85,8 @@ type Handler struct {
 	approver     Approver
 	// book is where the approvals are collected; nil hides the read path.
 	book *trustbundle.ApprovalBook
+	// bundles is where the accepted versions are read from; nil hides the route.
+	bundles statestore.TrustBundleStore
 	// admitter records a signed version; nil hides the Administrator route.
 	admitter Admitter
 	audit    func(Access)
@@ -95,7 +101,7 @@ type Handler struct {
 // a handler that answers 404 to everything, which is the same answer a process
 // that never had an Operator route would give.
 func New(cfg Config) *Handler {
-	h := &Handler{authenticate: cfg.Authenticate, approver: cfg.Approver, book: cfg.Book, admitter: cfg.Admitter, audit: cfg.Audit, auditErr: cfg.AuditErr, log: cfg.Logger, now: cfg.Now}
+	h := &Handler{authenticate: cfg.Authenticate, approver: cfg.Approver, book: cfg.Book, bundles: cfg.Bundles, admitter: cfg.Admitter, audit: cfg.Audit, auditErr: cfg.AuditErr, log: cfg.Logger, now: cfg.Now}
 	if h.log == nil {
 		h.log = slog.New(slog.NewTextHandler(io.Discard, nil))
 	}
@@ -119,6 +125,21 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	cleaned := path.Clean(r.URL.Path)
+	if cleaned == VersionsPath && r.Method == http.MethodGet {
+		identity, err := h.authenticate(r)
+		if err != nil {
+			_ = h.record(identity, "", "", OutcomeRefused)
+			writeError(w, http.StatusUnauthorized, "AUTHENTICATION_REQUIRED", "Authentication is required")
+			return
+		}
+		if identity.Role != operatorcert.RoleOperator {
+			_ = h.record(identity, "", "", OutcomeRefused)
+			writeError(w, http.StatusForbidden, "OPERATOR_ROLE_REQUIRED", "This credential cannot read trust bundle versions")
+			return
+		}
+		h.versions(w, r, identity)
+		return
+	}
 	if cleaned == PendingPath && r.Method == http.MethodGet {
 		identity, err := h.authenticate(r)
 		if err != nil {
