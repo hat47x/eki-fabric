@@ -131,6 +131,9 @@ func Start(ctx context.Context, cfg Config, log *slog.Logger) (*Server, error) {
 		artifacts = artifactSource{store: bodies}
 	}
 	counters := measurement.New()
+	// One book for the whole process: the Operator API writes into it and the
+	// version admission path reads from it (#545).
+	approvals := trustbundle.NewApprovalBook()
 	handler, err := clientapi.NewHandler(clientapi.Config{
 		Service:       svc,
 		Authenticator: auth,
@@ -205,12 +208,13 @@ func Start(ctx context.Context, cfg Config, log *slog.Logger) (*Server, error) {
 			_ = store.Close()
 			return nil, err
 		}
-		s.approvals = trustbundle.NewApprovalBook()
-		oc.Approver = s.approvals
+		s.approvals = approvals
+		oc.Approver = approvals
 		oc.Audit = func(a operatorapi.Access) {
 			log.Info("operator access", "name", a.Name, "role", a.Role,
 				"operation", a.Operation, "target", a.Target, "outcome", a.Outcome)
 		}
+		oc.Book = approvals
 		oc.Logger = log
 		handler, tlsConfig, err := operatorapi.Build(oc)
 		if err != nil {
