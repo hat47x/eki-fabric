@@ -62,6 +62,8 @@ type Config struct {
 	Approver Approver
 	// Book is the ledger the approvals land in. Nil hides the read path.
 	Book *trustbundle.ApprovalBook
+	// Admitter admits a signed version on behalf of an Administrator.
+	Admitter Admitter
 	// Audit receives one entry per request. Nil logs instead.
 	Audit func(Access)
 	// Logger receives one line per request. Nil discards.
@@ -75,17 +77,19 @@ type Handler struct {
 	authenticate Authenticator
 	approver     Approver
 	// book is where the approvals are collected; nil hides the read path.
-	book  *trustbundle.ApprovalBook
-	audit func(Access)
-	log   *slog.Logger
-	now   func() time.Time
+	book *trustbundle.ApprovalBook
+	// admitter records a signed version; nil hides the Administrator route.
+	admitter Admitter
+	audit    func(Access)
+	log      *slog.Logger
+	now      func() time.Time
 }
 
 // New returns a Handler. Without both an authenticator and an approver it returns
 // a handler that answers 404 to everything, which is the same answer a process
 // that never had an Operator route would give.
 func New(cfg Config) *Handler {
-	h := &Handler{authenticate: cfg.Authenticate, approver: cfg.Approver, book: cfg.Book, audit: cfg.Audit, log: cfg.Logger, now: cfg.Now}
+	h := &Handler{authenticate: cfg.Authenticate, approver: cfg.Approver, book: cfg.Book, admitter: cfg.Admitter, audit: cfg.Audit, log: cfg.Logger, now: cfg.Now}
 	if h.log == nil {
 		h.log = slog.New(slog.NewTextHandler(io.Discard, nil))
 	}
@@ -122,6 +126,21 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		h.pending(w, r, identity)
+		return
+	}
+	if cleaned == AdmitPath && r.Method == http.MethodPost {
+		identity, err := h.authenticate(r)
+		if err != nil {
+			h.record(identity, "", "", OutcomeRefused)
+			writeError(w, http.StatusUnauthorized, "AUTHENTICATION_REQUIRED", "Authentication is required")
+			return
+		}
+		if identity.Role != operatorcert.RoleAdministrator {
+			h.record(identity, "", "", OutcomeRefused)
+			writeError(w, http.StatusForbidden, "ADMINISTRATOR_ROLE_REQUIRED", "This credential cannot admit trust bundles")
+			return
+		}
+		h.admit(w, r, identity)
 		return
 	}
 	if cleaned != Path || r.Method != http.MethodPost {
