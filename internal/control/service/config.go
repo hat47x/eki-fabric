@@ -73,6 +73,9 @@ type Config struct {
 	// can refuse a signed version, never create one. Empty hides the route.
 	TrustBundleKey string `json:"trust_bundle_key,omitempty"`
 
+	// requester that could lower it would be grading its own data. Empty means the
+	// deployment declares nothing, and then no class is shown at all.
+
 	// Dispatch enables the placement loop. Absent means the process accepts
 	// Tasks but does not move them.
 	Dispatch *DispatchConfig `json:"dispatch,omitempty"`
@@ -123,6 +126,11 @@ type WorkerConfig struct {
 	// ArtifactsDir keeps the bodies of accepted outputs, one file per
 	// digest (ADR-0034 §2.3). Required with auth "mtls".
 	ArtifactsDir string `json:"artifacts_dir,omitempty"`
+	// DataClass is what this deployment says about the data in the bodies it
+	// keeps (ADR-0034 §10.2). It is a deployment fact, not a Client claim: a
+	// requester that could lower it would be grading its own data. Empty means
+	// nothing is declared, and then no class is shown at all.
+	DataClass string `json:"data_class,omitempty"`
 	// Sessions maps token hashes to the Worker they authenticate. Test profile
 	// only; it must be empty with auth "mtls".
 	Sessions []WorkerSessionConfig `json:"sessions"`
@@ -322,6 +330,9 @@ func (c Config) Validate() error {
 	}
 	if c.TLS == nil && !isLoopback(host) && !c.AllowInsecureListen {
 		return fmt.Errorf("%w: plaintext HTTP on %q is refused; configure tls, listen on a loopback address, or set allow_insecure_listen when a trusted proxy terminates TLS", ErrInvalidConfig, c.Listen)
+	}
+	if c.Worker != nil && !admission.ValidDataClass(c.Worker.DataClass) {
+		return fmt.Errorf("%w: worker.data_class must be public, internal or restricted", ErrInvalidConfig)
 	}
 	if c.MaxBodyBytes < 0 {
 		return fmt.Errorf("%w: negative max_body_bytes", ErrInvalidConfig)

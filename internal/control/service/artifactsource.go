@@ -32,7 +32,7 @@ func (a artifactSource) LoadMeta(digestHex string) (clientapi.ArtifactMeta, erro
 	}
 	withdrawn, werr := a.withdrawnFor(context.Background(), meta)
 	return clientapi.ArtifactMeta{
-		Owner: meta.Owner, MediaType: meta.MediaType, Size: meta.Size, ExpiresAt: meta.ExpiresAt,
+		Owner: meta.Owner, MediaType: meta.MediaType, DataClass: meta.DataClass, Size: meta.Size, ExpiresAt: meta.ExpiresAt,
 		Withdrawn: withdrawn,
 	}, werr
 }
@@ -52,11 +52,15 @@ func (a artifactSource) Open(digestHex string) (io.ReadCloser, int64, error) {
 // also described well enough to be served later (#514).
 type metaSink struct {
 	store *artifactfile.Store
+	// dataClass is what this deployment declares about the bodies it keeps
+	// (ADR-0034 §10.2). Empty means nothing is declared and nothing is shown.
+	dataClass string
 }
 
 func (m metaSink) PutMeta(digestHex, owner, taskID string, size int64, mediaType string, expiresAt time.Time) error {
 	return m.store.PutMeta(digestHex, artifactfile.Meta{
 		Owner: owner, MediaType: mediaType, Size: size, ExpiresAt: expiresAt, TaskID: taskID,
+		DataClass: m.dataClass,
 	})
 }
 
