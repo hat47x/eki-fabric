@@ -17,6 +17,9 @@ type publicArtifact struct {
 	ArtifactID string `json:"artifact_id,omitempty"`
 	// MediaType is the Worker's declaration, not a promise about the bytes.
 	MediaType string `json:"media_type,omitempty"`
+	// DataClass is the Worker's declaration (ADR-0034 §9). Omitted when it said
+	// nothing: a served "unclassified" would look like a classification.
+	DataClass string `json:"data_class,omitempty"`
 }
 
 // buildArtifacts projects what the store knows onto the result body. An artifact
@@ -41,6 +44,7 @@ func buildArtifacts(digest contract.Digest, meta ArtifactMeta, found bool, now t
 		out.Available = true
 		out.ArtifactID = digest.Hex()
 		out.MediaType = meta.MediaType
+		out.DataClass = meta.DataClass
 		return []publicArtifact{out}
 	}
 }

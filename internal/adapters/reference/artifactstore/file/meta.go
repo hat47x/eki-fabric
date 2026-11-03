@@ -22,6 +22,10 @@ type Meta struct {
 	MediaType string `json:"media_type,omitempty"`
 	// Size is the number of bytes the body had when it was accepted.
 	Size int64 `json:"size"`
+	// DataClass is what the Worker declared about the data (ADR-0034 §9). Empty
+	// means the Worker said nothing, and then the field is not served at all: an
+	// "unclassified" value would look like a classification.
+	DataClass string `json:"data_class,omitempty"`
 	// ExpiresAt is when the body may be removed.
 	ExpiresAt time.Time `json:"expires_at"`
 }

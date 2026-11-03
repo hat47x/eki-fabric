@@ -21,6 +21,8 @@ var ErrArtifactNotFound = errors.New("clientapi: no such artifact")
 type ArtifactMeta struct {
 	Owner     string
 	MediaType string
+	// DataClass is what the Worker declared (ADR-0034 §9).
+	DataClass string
 	Size      int64
 	ExpiresAt time.Time
 }
