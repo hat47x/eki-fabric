@@ -187,6 +187,12 @@ func runAssignments(ctx context.Context, c *AssignmentConfig, anchor *trustancho
 		beats.client = reporter
 		handler = beats.wrapped(handler)
 	}
+	if c.Machine.CPUMillis == 0 || c.Machine.MemoryBytes == 0 {
+		// A WorkOrder that asks for more than the machine can give is only caught
+		// when the totals are known. Say the judgement is off rather than let an
+		// operator assume it is on (ADR-0037 §11.1).
+		log.Warn("assignment resource judgement is disabled: the machine profile has no CPU or memory totals")
+	}
 	svc, err := assignment.New(assignment.Config{
 		Source: source, Principal: principal, Anchor: anchor, Replay: guard, Clock: systemClock{},
 		Executors: execs, Governor: assignment.StaticGovernor(c.CeilingPercent),
