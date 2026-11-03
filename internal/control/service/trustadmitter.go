@@ -3,7 +3,9 @@ package service
 import (
 	"context"
 	"crypto/ed25519"
+	"crypto/sha256"
 	"encoding/base64"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -34,7 +36,10 @@ type trustAdmitter struct {
 	// log records which key verified the version. The key itself is not stored with
 	// the version (ADR-0038 §7): the log is what an investigation reads.
 	log *slog.Logger
-	now func() time.Time
+	// verifiedKey is the fingerprint of the key that actually verified the last
+	// admitted version. It is a fact, unlike the signer's key_id claim (ADR-0038 §8).
+	verifiedKey string
+	now         func() time.Time
 }
 
 // signedDocument is the wire form of a signed version. It names every field
@@ -95,7 +100,7 @@ func (a *trustAdmitter) AdmitSigned(version uint64, raw []byte) error {
 	if a.log != nil {
 		// Which key verified the version is not stored with it (ADR-0038 §7); the
 		// log is where an investigation looks, so the key id goes here.
-		a.log.Info("trust bundle admitted", "version", signed.Bundle.Version, "key_id", signed.KeyID)
+		a.log.Info("trust bundle admitted", "version", signed.Bundle.Version, "key_id", signed.KeyID, "verified_key", a.verifiedKey)
 	}
 	if a.state == nil {
 		return nil
@@ -117,6 +122,7 @@ func (a *trustAdmitter) admit(signed trustbundle.Signed, at time.Time) error {
 	for _, key := range a.keys {
 		err := a.store.AdmitFromBook(signed, key, a.book, at)
 		if err == nil {
+			a.verifiedKey = fingerprint(key)
 			return nil
 		}
 		last = err
@@ -127,4 +133,11 @@ func (a *trustAdmitter) admit(signed trustbundle.Signed, at time.Time) error {
 		return errors.New("trustadmitter: no administrator key is configured")
 	}
 	return fmt.Errorf("trustadmitter: no configured key verifies version %d: %w", signed.Bundle.Version, last)
+}
+
+// fingerprint names a public key by what it is, not by what the signer called it.
+// It is the value an investigation can compare against a configured key.
+func fingerprint(key ed25519.PublicKey) string {
+	sum := sha256.Sum256(key)
+	return hex.EncodeToString(sum[:])
 }
