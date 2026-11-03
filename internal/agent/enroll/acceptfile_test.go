@@ -99,3 +99,35 @@ func TestAResponseWithoutAVersionWritesNothing(t *testing.T) {
 		t.Fatalf("error = %v, want %v", err, ErrNoBundle)
 	}
 }
+
+// TestTheVersionTheResponseCarriesIsUsableAfterTheEnrollment is #488: the version
+// an enrollment response carries must not only be written into the anchor file, it
+// must be the version the Agent verifies with afterwards. A test that stops at
+// "two versions are in the file" would pass even if the store could not read them.
+func TestTheVersionTheResponseCarriesIsUsableAfterTheEnrollment(t *testing.T) {
+	pub, priv, err := ed25519.GenerateKey(rand.Reader)
+	if err != nil {
+		t.Fatal(err)
+	}
+	path := anchorFile(t, signedAt(t, 1, priv))
+	bundle := enrollwire.EncodeBundle(signedAt(t, 2, priv))
+	out := enrollwire.Response{TrustBundle: &bundle}
+	if err := AcceptBundleToFile(path, out, pub, time.Date(2026, 11, 3, 1, 0, 0, 0, time.UTC)); err != nil {
+		t.Fatalf("AcceptBundleToFile() error = %v", err)
+	}
+	doc, err := trustanchor.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	store, err := trustanchor.StoreFromFile(doc)
+	if err != nil {
+		t.Fatalf("StoreFromFile() error = %v", err)
+	}
+	current, err := store.Current()
+	if err != nil {
+		t.Fatalf("Current() error = %v", err)
+	}
+	if current.Bundle.Version != 2 {
+		t.Fatalf("version = %d, want the version the response carried", current.Bundle.Version)
+	}
+}
