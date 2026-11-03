@@ -45,14 +45,14 @@ func TestAMalformedKeyIsRefused(t *testing.T) {
 }
 
 func TestWithoutEveryPieceTheRouteStaysHidden(t *testing.T) {
-	if admitter, err := admitterFor(nil, trustbundle.NewApprovalBook(), "abc"); err != nil || admitter != nil {
+	if admitter, err := admitterFor(nil, trustbundle.NewApprovalBook(), []string{"abc"}); err != nil || admitter != nil {
 		t.Fatalf("admitterFor() = %v, %v; want nil, nil", admitter, err)
 	}
 	store, err := trustbundle.NewStore(mustSignForTest(t))
 	if err != nil {
 		t.Fatal(err)
 	}
-	if admitter, err := admitterFor(store, trustbundle.NewApprovalBook(), ""); err != nil || admitter != nil {
+	if admitter, err := admitterFor(store, trustbundle.NewApprovalBook(), nil); err != nil || admitter != nil {
 		t.Fatalf("admitterFor() = %v, %v; want nil, nil", admitter, err)
 	}
 }

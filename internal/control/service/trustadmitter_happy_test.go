@@ -48,7 +48,7 @@ func TestASignedVersionIsAdmittedWithItsApprovals(t *testing.T) {
 	}); err != nil {
 		t.Fatal(err)
 	}
-	admitter := &trustAdmitter{store: store, key: public, book: book, now: func() time.Time { return now.Add(time.Minute) }}
+	admitter := &trustAdmitter{store: store, keys: []ed25519.PublicKey{public}, book: book, now: func() time.Time { return now.Add(time.Minute) }}
 
 	raw, err := json.Marshal(map[string]any{
 		"version":   2,

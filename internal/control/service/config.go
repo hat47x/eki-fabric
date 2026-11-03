@@ -72,6 +72,10 @@ type Config struct {
 	// is the only half the Control Plane holds (ADR-0038 §6): with it the process
 	// can refuse a signed version, never create one. Empty hides the route.
 	TrustBundleKey string `json:"trust_bundle_key,omitempty"`
+	// TrustBundleKeys is the same key, plus the ones a handover adds (ADR-0038 §7).
+	// Both fields are read: an existing deployment keeps working, and a deployment
+	// in a handover names every key that should verify.
+	TrustBundleKeys []string `json:"trust_bundle_keys,omitempty"`
 
 	// requester that could lower it would be grading its own data. Empty means the
 	// deployment declares nothing, and then no class is shown at all.

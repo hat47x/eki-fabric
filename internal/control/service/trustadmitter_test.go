@@ -16,7 +16,7 @@ func TestAdmittingADocumentWithTheWrongVersionIsRefused(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	admitter := &trustAdmitter{key: public, book: trustbundle.NewApprovalBook()}
+	admitter := &trustAdmitter{keys: []ed25519.PublicKey{public}, book: trustbundle.NewApprovalBook()}
 	raw, err := json.Marshal(map[string]any{
 		"version": 3, "key_id": "k1", "signature": base64.StdEncoding.EncodeToString([]byte("sig")),
 		"not_after": time.Now().Add(time.Hour),
@@ -34,7 +34,7 @@ func TestADocumentWithoutASignatureIsRefused(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	admitter := &trustAdmitter{key: public, book: trustbundle.NewApprovalBook()}
+	admitter := &trustAdmitter{keys: []ed25519.PublicKey{public}, book: trustbundle.NewApprovalBook()}
 	raw, err := json.Marshal(map[string]any{"version": 2, "key_id": "k1", "not_after": time.Now()})
 	if err != nil {
 		t.Fatal(err)

@@ -16,8 +16,8 @@ import (
 // transition: a version is only acceptable as the successor of the one already
 // stored. Without that version there is nothing to succeed, so the route stays
 // hidden rather than accepting a first version nobody approved.
-func startAdmitter(ctx context.Context, store any, book *trustbundle.ApprovalBook, key string, log *slog.Logger) operatorapi.Admitter {
-	if key == "" || book == nil {
+func startAdmitter(ctx context.Context, store any, book *trustbundle.ApprovalBook, keys []string, log *slog.Logger) operatorapi.Admitter {
+	if len(keys) == 0 || book == nil {
 		return nil
 	}
 	bundles, ok := store.(statestore.TrustBundleStore)
@@ -42,7 +42,7 @@ func startAdmitter(ctx context.Context, store any, book *trustbundle.ApprovalBoo
 		log.Warn("trust bundle admission disabled: the stored version is not usable", "error", err.Error())
 		return nil
 	}
-	admitter, err := admitterFor(store2, book, key)
+	admitter, err := admitterFor(store2, book, keys)
 	if err != nil {
 		log.Warn("trust bundle admission disabled: the control key is not usable", "error", err.Error())
 		return nil

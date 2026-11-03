@@ -43,13 +43,35 @@ func sponsorKey(value string) (ed25519.PublicKey, error) {
 // A missing piece returns nil, which hides the route: an admission path without a
 // key or without a store would accept nothing, and a hidden route says that
 // plainly.
-func admitterFor(store *trustbundle.Store, book *trustbundle.ApprovalBook, key string) (*trustAdmitter, error) {
-	if store == nil || book == nil || strings.TrimSpace(key) == "" {
+func admitterFor(store *trustbundle.Store, book *trustbundle.ApprovalBook, values []string) (*trustAdmitter, error) {
+	if store == nil || book == nil {
 		return nil, nil
 	}
-	public, err := sponsorKey(key)
+	keys, err := sponsorKeys(values)
 	if err != nil {
 		return nil, err
 	}
-	return &trustAdmitter{store: store, key: public, book: book}, nil
+	if len(keys) == 0 {
+		return nil, nil
+	}
+	return &trustAdmitter{store: store, keys: keys, book: book}, nil
+}
+
+// sponsorKeys reads every configured key. The list may hold more than one during
+// a handover (ADR-0038 §7). A malformed key is an error rather than a skip: a
+// deployment that thinks it configured two keys and silently runs with one is
+// exactly the case the handover window is meant to avoid.
+func sponsorKeys(values []string) ([]ed25519.PublicKey, error) {
+	keys := make([]ed25519.PublicKey, 0, len(values))
+	for _, value := range values {
+		if strings.TrimSpace(value) == "" {
+			continue
+		}
+		key, err := sponsorKey(value)
+		if err != nil {
+			return nil, err
+		}
+		keys = append(keys, key)
+	}
+	return keys, nil
 }
