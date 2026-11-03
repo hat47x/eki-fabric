@@ -264,6 +264,7 @@ func (s *Server) startDispatch(ctx context.Context, cfg *DispatchConfig, store *
 		defer close(s.dispatchDone)
 		ticker := time.NewTicker(cfg.Interval)
 		defer ticker.Stop()
+		var lastBeat time.Time
 		for {
 			select {
 			case <-ctx.Done():
@@ -279,11 +280,15 @@ func (s *Server) startDispatch(ctx context.Context, cfg *DispatchConfig, store *
 				continue
 			}
 			if result.Considered == 0 {
-				// An idle tick is logged too, at debug. Without it the "dispatch tick"
-				// lines only appear when something happened, so counting them to decide
-				// whether the loop is turning reads a silent, healthy loop as a stopped
-				// one (#437).
-				s.log.Debug("dispatch tick idle")
+				// An idle tick beats once a minute. The "dispatch tick" lines only appear
+				// when something happened, so counting them to decide whether the loop is
+				// turning reads a silent, healthy loop as a stopped one (#437). The beat is
+				// not every tick: a healthy Control Plane is idle almost all the time, and
+				// one line per second would bury the lines that matter.
+				if time.Since(lastBeat) >= idleBeat {
+					s.log.Info("dispatch tick idle", "since", time.Since(lastBeat).Round(time.Second).String())
+					lastBeat = time.Now()
+				}
 			}
 			if result.Dispatched != 0 || len(result.Deferred) != 0 {
 				// The reasons travel with the counts: a tick that considers a Task and
@@ -346,3 +351,6 @@ func deferredReasons(deferred []dispatch.DeferredTask) string {
 	}
 	return strings.Join(parts, "; ")
 }
+
+// idleBeat is how often an idle dispatch loop says it is still turning (#437).
+const idleBeat = time.Minute
