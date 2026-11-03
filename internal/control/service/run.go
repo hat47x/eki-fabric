@@ -180,6 +180,12 @@ func Start(ctx context.Context, cfg Config, log *slog.Logger) (*Server, error) {
 	s := &Server{http: httpServer, store: store, listener: listener, log: log, done: make(chan struct{}), counters: counters}
 	s.readyFlag = &readyState
 	s.refreshReady()
+	if cfg.LeaseRegistry == "" {
+		// Reclaim loses its memory without a registry: leases that expire while the
+		// process is down are not swept on the next start (#555). Say so at start-up
+		// rather than let a deployment assume it is reclaiming.
+		log.Warn("lease reclaim is disabled: no lease_registry is configured, so expired leases are only found by whoever looks")
+	}
 	if cfg.LeaseRegistry != "" {
 		registry, rerr := leaserecall.OpenFile(cfg.LeaseRegistry)
 		if rerr != nil {
