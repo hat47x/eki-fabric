@@ -17,10 +17,13 @@ var ErrTrustBundleConflict = errors.New("statestore: trust bundle version alread
 // bundle (ADR-0036). The signature travels with it so a Worker can verify the
 // version without asking the Control Plane again.
 type TrustBundleRecord struct {
-	Version   uint64
-	NotAfter  time.Time
-	KeyID     string
-	Signature []byte
+	Version  uint64
+	NotAfter time.Time
+	KeyID    string
+	// VerifiedKey is the fingerprint of the key that actually verified the signature
+	// (ADR-0038 §8). KeyID above is what the signer called it; this is what happened.
+	VerifiedKey string
+	Signature   []byte
 	// Digest is the value the signature covers. It is stored because it is the
 	// identity of the version: two records with the same number but different
 	// digests are a conflict, not an update.

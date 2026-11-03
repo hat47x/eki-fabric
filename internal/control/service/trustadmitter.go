@@ -108,7 +108,7 @@ func (a *trustAdmitter) AdmitSigned(version uint64, raw []byte) error {
 	// The version is admitted; now make it survive a restart. A failure here is
 	// reported rather than swallowed: an admission forgotten on the next start
 	// would let the same version through twice.
-	if err := trustbundle.Save(context.Background(), a.state, signed, approvals, at); err != nil {
+	if err := trustbundle.Save(context.Background(), a.state, signed, approvals, a.verifiedKey, at); err != nil {
 		return fmt.Errorf("trustadmitter: save version %d: %w", signed.Bundle.Version, err)
 	}
 	return nil
