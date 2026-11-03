@@ -1,6 +1,7 @@
 package service
 
 import (
+	"context"
 	"errors"
 	"io"
 	"time"
@@ -14,6 +15,9 @@ import (
 // packages, so neither has to import the other.
 type artifactSource struct {
 	store *artifactfile.Store
+	// tasks answers whether the Task was withdrawn; nil means no answer is
+	// available and the body is served as before.
+	tasks taskWithdrawal
 }
 
 func (a artifactSource) LoadMeta(digestHex string) (clientapi.ArtifactMeta, error) {
@@ -26,9 +30,11 @@ func (a artifactSource) LoadMeta(digestHex string) (clientapi.ArtifactMeta, erro
 	case err != nil:
 		return clientapi.ArtifactMeta{}, err
 	}
+	withdrawn, werr := a.withdrawnFor(context.Background(), meta)
 	return clientapi.ArtifactMeta{
 		Owner: meta.Owner, MediaType: meta.MediaType, Size: meta.Size, ExpiresAt: meta.ExpiresAt,
-	}, nil
+		Withdrawn: withdrawn,
+	}, werr
 }
 
 func (a artifactSource) Open(digestHex string) (io.ReadCloser, int64, error) {
