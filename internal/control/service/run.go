@@ -41,6 +41,8 @@ type Server struct {
 	counters *measurement.Counters
 	// recallDone closes when the lease reclaim loop has stopped (#555).
 	recallDone chan struct{}
+	// countersDone closes when the periodic write-out has stopped (#392).
+	countersDone chan struct{}
 	// operator is the Operator listener of ADR-0038, nil when the process has no
 	// Operator routes. approvals is the book those approvals are collected in,
 	// shared with whatever admits a new trust bundle version.
@@ -199,6 +201,26 @@ func Start(ctx context.Context, cfg Config, log *slog.Logger) (*Server, error) {
 			leaserecall.Run(ctx, recall, time.Minute, log)
 		}()
 	}
+
+	// The ADR-0039 numbers are written periodically, not only on the way out
+	// (#392). A deployment that runs for weeks would otherwise never see them: the
+	// shutdown line is a convenience, not the way the numbers reach anyone.
+	s.countersDone = make(chan struct{})
+	go func() {
+		defer close(s.countersDone)
+		ticker := time.NewTicker(counterWriteEvery)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-s.done:
+				// Shutdown closes done before it waits here, so the last write on
+				// the way out still happens after this returns.
+				return
+			case <-ticker.C:
+				counters.Log(log)
+			}
+		}
+	}()
 
 	if cfg.Operator != nil {
 		// The Operator listener is a second, separate door (ADR-0038): its own
@@ -465,6 +487,9 @@ func (s *Server) Shutdown(ctx context.Context) error {
 		if s.recallDone != nil {
 			<-s.recallDone
 		}
+		if s.countersDone != nil {
+			<-s.countersDone
+		}
 		if s.counters != nil {
 			s.counters.Log(s.log)
 		}
@@ -563,3 +588,8 @@ func currentTrustBundle(store any) func() (trustbundle.Signed, bool) {
 		return signed, true
 	}
 }
+
+// counterWriteEvery is how often the ADR-0039 numbers are written while the
+// process is running (#392). Five minutes keeps a long-running deployment's numbers
+// visible without turning the log into a stream of counters.
+const counterWriteEvery = 5 * time.Minute
