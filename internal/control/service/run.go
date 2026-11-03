@@ -240,6 +240,11 @@ func Start(ctx context.Context, cfg Config, log *slog.Logger) (*Server, error) {
 		}
 		s.approvals = approvals
 		oc.Approver = approvals
+		// The default record is the process log. ADR-0040 §2 asks for append-only
+		// storage that the process cannot delete from, and a log file is neither, so
+		// say at start-up that the promise is not met yet (the operator can plug a
+		// sink in).
+		log.Warn("operator audit goes to the process log: ADR-0040 §2 asks for append-only storage the process cannot rewrite")
 		oc.Audit = func(a operatorapi.Access) {
 			log.Info("operator access", "name", a.Name, "role", a.Role,
 				"operation", a.Operation, "target", a.Target, "outcome", a.Outcome)
