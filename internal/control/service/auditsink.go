@@ -32,10 +32,24 @@ func newAuditSink(url string) *auditSink {
 	return &auditSink{url: url, client: &http.Client{Timeout: auditSinkTimeout}}
 }
 
+// auditEnvelope is what goes on the wire: the schema names which shape the record
+// has, so a store can read two kinds of record without guessing (ADR-0040 §7).
+type auditEnvelope struct {
+	Schema string `json:"schema"`
+	Record any    `json:"record"`
+}
+
+// The two schemas. They are names, not versions to negotiate: a store that does not
+// know one refuses it rather than reading it as the other.
+const (
+	artifactAccessSchema = "eki.audit.artifact-access/v1"
+	operatorAccessSchema = "eki.audit.operator-access/v1"
+)
+
 // Send writes one record. Anything but 2xx is a failure, including a redirect: a
 // redirect means the record went somewhere the operator did not name.
-func (s *auditSink) Send(ctx context.Context, record any) error {
-	body, err := json.Marshal(record)
+func (s *auditSink) Send(ctx context.Context, schema string, record any) error {
+	body, err := json.Marshal(auditEnvelope{Schema: schema, Record: record})
 	if err != nil {
 		return fmt.Errorf("audit sink: encode record: %w", err)
 	}
@@ -64,7 +78,7 @@ func artifactAuditErr(cfg Config, log *slog.Logger, ctx context.Context) func(cl
 	sink := newAuditSink(cfg.AuditSinkURL)
 	log.Info("artifact audit goes to the configured sink", "url", cfg.AuditSinkURL)
 	return func(record clientapi.ArtifactAccess) error {
-		return sink.Send(ctx, record)
+		return sink.Send(ctx, artifactAccessSchema, record)
 	}
 }
 
@@ -76,6 +90,6 @@ func operatorAuditErr(cfg Config, log *slog.Logger, ctx context.Context) func(op
 	}
 	sink := newAuditSink(cfg.AuditSinkURL)
 	return func(record operatorapi.Access) error {
-		return sink.Send(ctx, record)
+		return sink.Send(ctx, operatorAccessSchema, record)
 	}
 }

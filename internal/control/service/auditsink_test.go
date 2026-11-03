@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -17,11 +18,26 @@ func TestTheSinkAcceptsA200(t *testing.T) {
 		if r.Header.Get("Content-Type") != "application/json" {
 			t.Errorf("content type = %q", r.Header.Get("Content-Type"))
 		}
+		var body struct {
+			Schema string          `json:"schema"`
+			Record json.RawMessage `json:"record"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+			t.Errorf("body: %v", err)
+			w.WriteHeader(http.StatusBadRequest)
+			return
+		}
+		if body.Schema != artifactAccessSchema {
+			t.Errorf("schema = %q, want %q", body.Schema, artifactAccessSchema)
+		}
+		if len(body.Record) == 0 {
+			t.Error("record is empty")
+		}
 		w.WriteHeader(http.StatusNoContent)
 	}))
 	defer server.Close()
 	sink := newAuditSink(server.URL)
-	if err := sink.Send(context.Background(), clientapi.ArtifactAccess{Principal: "alice"}); err != nil {
+	if err := sink.Send(context.Background(), artifactAccessSchema, clientapi.ArtifactAccess{Principal: "alice"}); err != nil {
 		t.Fatalf("Send() error = %v", err)
 	}
 }
@@ -32,7 +48,7 @@ func TestTheSinkReportsANonTwoHundredAnswer(t *testing.T) {
 	}))
 	defer server.Close()
 	sink := newAuditSink(server.URL)
-	if err := sink.Send(context.Background(), clientapi.ArtifactAccess{Principal: "alice"}); err == nil {
+	if err := sink.Send(context.Background(), artifactAccessSchema, clientapi.ArtifactAccess{Principal: "alice"}); err == nil {
 		t.Fatal("Send() hid a 500: a record nobody wrote must not look written")
 	}
 }
@@ -43,7 +59,7 @@ func TestTheSinkReportsARedirectAsAFailure(t *testing.T) {
 	}))
 	defer server.Close()
 	sink := newAuditSink(server.URL)
-	if err := sink.Send(context.Background(), clientapi.ArtifactAccess{Principal: "alice"}); err == nil {
+	if err := sink.Send(context.Background(), artifactAccessSchema, clientapi.ArtifactAccess{Principal: "alice"}); err == nil {
 		t.Fatal("Send() followed a redirect: the record went somewhere the operator did not name")
 	}
 }
