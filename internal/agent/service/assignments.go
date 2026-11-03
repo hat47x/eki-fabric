@@ -68,7 +68,12 @@ type ExecutorApprovalConfig struct {
 type MachineConfig struct {
 	CPUMillis   uint64 `json:"cpu_millis"`
 	MemoryBytes uint64 `json:"memory_bytes"`
-	GPUDevices  uint32 `json:"gpu_devices,omitempty"`
+	// DiskBytes is the total disk capacity, used as the denominator when a
+	// WorkOrder's temporary disk is judged (ADR-0037 §11.4). It is the total, not
+	// the free space: a moving denominator would decide the same request
+	// differently depending on what else runs here.
+	DiskBytes  uint64 `json:"disk_bytes,omitempty"`
+	GPUDevices uint32 `json:"gpu_devices,omitempty"`
 }
 
 // prepareAssignments validates the configuration and loads the trust anchor and
@@ -193,11 +198,16 @@ func runAssignments(ctx context.Context, c *AssignmentConfig, anchor *trustancho
 		// operator assume it is on (ADR-0037 §11.1).
 		log.Warn("assignment resource judgement is disabled: the machine profile has no CPU or memory totals")
 	}
+	if c.Machine.DiskBytes == 0 {
+		// Disk is judged separately: a host can report its CPU and memory and not its
+		// disk, and then temporary disk is the one request nobody checks.
+		log.Warn("disk judgement is disabled: the machine profile has no total disk capacity")
+	}
 	svc, err := assignment.New(assignment.Config{
 		Source: source, Principal: principal, Anchor: anchor, Replay: guard, Clock: systemClock{},
 		Executors: execs, Governor: assignment.StaticGovernor(c.CeilingPercent),
 		Machine: startgate.MachineProfile{CPUMillis: c.Machine.CPUMillis, MemoryBytes: c.Machine.MemoryBytes, GPUDevices: c.Machine.GPUDevices},
-		Host:    resourcemap.Host{CPUMillis: int64(c.Machine.CPUMillis), MemoryBytes: int64(c.Machine.MemoryBytes)},
+		Host:    resourcemap.Host{CPUMillis: int64(c.Machine.CPUMillis), MemoryBytes: int64(c.Machine.MemoryBytes), DiskBytes: int64(c.Machine.DiskBytes)},
 		Handler: handler,
 		Logger:  log,
 	})
