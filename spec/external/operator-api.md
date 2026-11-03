@@ -55,6 +55,7 @@ Operator と Administrator は、Client とは**別の入口**から入ります
 ```
 
 - `signed` は **署名つき版の base64**。
+- 本文が不正なら **400**（`INVALID_VERSION_DOCUMENT`：`version` と `signed` が要ります）。
 - 成功は **201**、受理できない場合は **409**（`ADMISSION_REFUSED`）。
 - **監査の記録を書けないときは 503**（`AUDIT_UNAVAILABLE`）で、**受理しません**。
 
