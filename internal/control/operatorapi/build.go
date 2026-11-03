@@ -28,6 +28,9 @@ type ServerConfig struct {
 	Admitter Admitter
 	// Audit receives one entry per request. Nil logs instead.
 	Audit func(Access)
+	// AuditErr is a sink that can refuse (ADR-0040 §5). When it is set, an
+	// approval or an admission is refused if the line cannot be written.
+	AuditErr func(Access) error
 	// Logger receives one line per request.
 	Logger *slog.Logger
 }
@@ -60,6 +63,7 @@ func Build(cfg ServerConfig) (*Handler, *tls.Config, error) {
 		Book:         cfg.Book,
 		Admitter:     cfg.Admitter,
 		Audit:        cfg.Audit,
+		AuditErr:     cfg.AuditErr,
 		Logger:       cfg.Logger,
 	})
 	// RequireAndVerifyClientCert is the point: a request that reaches the handler
