@@ -12,15 +12,15 @@ import (
 // log would lose.
 type ArtifactAccess struct {
 	// At is when the request was answered.
-	At time.Time
+	At time.Time `json:"at"`
 	// Principal is the authenticated caller, empty when authentication failed
 	// before the route was reached.
-	Principal string
+	Principal string `json:"principal"`
 	// Artifact is the digest the caller asked for.
-	Artifact string
+	Artifact string `json:"artifact"`
 	// Outcome is "served", "not_found" or "expired". It is a closed set so a
 	// log reader does not have to parse prose.
-	Outcome string
+	Outcome string `json:"outcome"`
 }
 
 // The outcomes an audit line can carry.
