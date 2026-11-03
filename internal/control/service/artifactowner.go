@@ -48,3 +48,13 @@ func (o attemptOwner) LoadAttemptOwner(ctx context.Context, attemptID string) (s
 	}
 	return admission.Principal, nil
 }
+
+// LoadAttemptTask names the Task an Attempt ran for, so a body can later be
+// checked against the Task's cancellation state (ADR-0037 §9, #592).
+func (o attemptOwner) LoadAttemptTask(ctx context.Context, attemptID string) (string, error) {
+	attempt, err := o.attempts.LoadAttempt(ctx, ids.AttemptID(attemptID))
+	if err != nil {
+		return "", fmt.Errorf("service: load attempt: %w", err)
+	}
+	return attempt.TaskID.String(), nil
+}

@@ -19,6 +19,7 @@ func (s stubOwners) LoadAttemptOwner(context.Context, string) (string, error) {
 type recordedMeta struct {
 	digest    string
 	owner     string
+	taskID    string
 	size      int64
 	mediaType string
 	expiresAt time.Time
@@ -26,8 +27,8 @@ type recordedMeta struct {
 
 type stubMeta struct{ recorded *recordedMeta }
 
-func (s stubMeta) PutMeta(digest, owner string, size int64, mediaType string, expiresAt time.Time) error {
-	*s.recorded = recordedMeta{digest, owner, size, mediaType, expiresAt}
+func (s stubMeta) PutMeta(digest, owner, taskID string, size int64, mediaType string, expiresAt time.Time) error {
+	*s.recorded = recordedMeta{digest, owner, taskID, size, mediaType, expiresAt}
 	return nil
 }
 
