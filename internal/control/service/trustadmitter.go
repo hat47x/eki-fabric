@@ -5,6 +5,7 @@ import (
 	"crypto/ed25519"
 	"encoding/base64"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"time"
 
@@ -21,8 +22,11 @@ import (
 // a version but cannot create one.
 type trustAdmitter struct {
 	store *trustbundle.Store
-	key   ed25519.PublicKey
-	book  *trustbundle.ApprovalBook
+	// keys are the Administrator's public keys. More than one during a handover
+	// (ADR-0038 §7): a signature that any of them verifies is accepted, so the
+	// change of person does not create a window where nothing verifies.
+	keys []ed25519.PublicKey
+	book *trustbundle.ApprovalBook
 	// state persists the version once it has been admitted. Nil keeps it in memory
 	// only, which a test may want but a deployment must not.
 	state statestore.TrustBundleStore
@@ -81,7 +85,7 @@ func (a *trustAdmitter) AdmitSigned(version uint64, raw []byte) error {
 	}
 	approvals := a.book.For(signed.Bundle.Version)
 	at := now().UTC()
-	if err := a.store.AdmitFromBook(signed, a.key, a.book, at); err != nil {
+	if err := a.admit(signed, at); err != nil {
 		return err
 	}
 	if a.state == nil {
@@ -94,4 +98,24 @@ func (a *trustAdmitter) AdmitSigned(version uint64, raw []byte) error {
 		return fmt.Errorf("trustadmitter: save version %d: %w", signed.Bundle.Version, err)
 	}
 	return nil
+}
+
+// admit lets the store check the version against each configured key and stops at
+// the first that verifies. A failed attempt changes nothing (the store releases
+// approvals only on success), so trying the next key is safe.
+func (a *trustAdmitter) admit(signed trustbundle.Signed, at time.Time) error {
+	var last error
+	for _, key := range a.keys {
+		err := a.store.AdmitFromBook(signed, key, a.book, at)
+		if err == nil {
+			return nil
+		}
+		last = err
+	}
+	if last == nil {
+		// No key at all means nothing can be checked. Say that rather than accept,
+		// and rather than return a nil error for a version nobody verified.
+		return errors.New("trustadmitter: no administrator key is configured")
+	}
+	return fmt.Errorf("trustadmitter: no configured key verifies version %d: %w", signed.Bundle.Version, last)
 }
