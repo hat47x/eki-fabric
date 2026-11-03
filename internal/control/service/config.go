@@ -13,6 +13,7 @@ import (
 	"log/slog"
 	"net"
 	"net/http"
+	"net/url"
 	"os"
 	"strings"
 	"time"
@@ -76,6 +77,10 @@ type Config struct {
 	// Both fields are read: an existing deployment keeps working, and a deployment
 	// in a handover names every key that should verify.
 	TrustBundleKeys []string `json:"trust_bundle_keys,omitempty"`
+
+	// AuditSinkURL is where audit records are POSTed (ADR-0040 §7). Empty keeps the
+	// process log, which does not meet §2 and says so at start-up.
+	AuditSinkURL string `json:"audit_sink_url,omitempty"`
 
 	// requester that could lower it would be grading its own data. Empty means the
 	// deployment declares nothing, and then no class is shown at all.
@@ -337,6 +342,12 @@ func (c Config) Validate() error {
 	}
 	if c.Worker != nil && !admission.ValidDataClass(c.Worker.DataClass) {
 		return fmt.Errorf("%w: worker.data_class must be public, internal or restricted", ErrInvalidConfig)
+	}
+	if c.AuditSinkURL != "" {
+		sink, err := url.Parse(c.AuditSinkURL)
+		if err != nil || (sink.Scheme != "http" && sink.Scheme != "https") || sink.Host == "" {
+			return fmt.Errorf("%w: audit_sink_url must be an http or https URL", ErrInvalidConfig)
+		}
 	}
 	if c.MaxBodyBytes < 0 {
 		return fmt.Errorf("%w: negative max_body_bytes", ErrInvalidConfig)
