@@ -64,6 +64,10 @@ type Config struct {
 	// because unconfigured" path to approving trust.
 	Operator *OperatorConfig `json:"operator,omitempty"`
 
+	// LeaseRegistry is the file that keeps the open leases so that the reclaim
+	// sweep survives a restart (#555). Empty means the sweep does not run.
+	LeaseRegistry string `json:"lease_registry,omitempty"`
+
 	// Dispatch enables the placement loop. Absent means the process accepts
 	// Tasks but does not move them.
 	Dispatch *DispatchConfig `json:"dispatch,omitempty"`

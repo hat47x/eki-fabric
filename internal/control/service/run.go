@@ -19,6 +19,7 @@ import (
 	"github.com/hat47x/eki-fabric/internal/control/claimbody"
 	"github.com/hat47x/eki-fabric/internal/control/claimplane"
 	"github.com/hat47x/eki-fabric/internal/control/clientapi"
+	"github.com/hat47x/eki-fabric/internal/control/leaserecall"
 	"github.com/hat47x/eki-fabric/internal/control/operatorapi"
 	"github.com/hat47x/eki-fabric/internal/control/workerplane"
 	"github.com/hat47x/eki-fabric/internal/core/admission"
@@ -38,6 +39,8 @@ type Server struct {
 
 	// counters holds the ADR-0039 numbers for the life of the process.
 	counters *measurement.Counters
+	// recallDone closes when the lease reclaim loop has stopped (#555).
+	recallDone chan struct{}
 	// operator is the Operator listener of ADR-0038, nil when the process has no
 	// Operator routes. approvals is the book those approvals are collected in,
 	// shared with whatever admits a new trust bundle version.
@@ -170,6 +173,27 @@ func Start(ctx context.Context, cfg Config, log *slog.Logger) (*Server, error) {
 	s := &Server{http: httpServer, store: store, listener: listener, log: log, done: make(chan struct{}), counters: counters}
 	s.readyFlag = &readyState
 	s.refreshReady()
+	if cfg.LeaseRegistry != "" {
+		registry, rerr := leaserecall.OpenFile(cfg.LeaseRegistry)
+		if rerr != nil {
+			_ = listener.Close()
+			_ = store.Close()
+			return nil, rerr
+		}
+		recall, rerr := leaserecall.New(leaserecall.Config{
+			Lister: registry, Reclaimer: registry, OnReclaim: recallCounter(counters),
+		})
+		if rerr != nil {
+			_ = listener.Close()
+			_ = store.Close()
+			return nil, rerr
+		}
+		s.recallDone = make(chan struct{})
+		go func() {
+			defer close(s.recallDone)
+			leaserecall.Run(ctx, recall, time.Minute, log)
+		}()
+	}
 
 	if cfg.Operator != nil {
 		// The Operator listener is a second, separate door (ADR-0038): its own
@@ -431,6 +455,9 @@ func (s *Server) Shutdown(ctx context.Context) error {
 		<-s.done
 		// Write the ADR-0039 numbers once, on the way out. They are not stored
 		// anywhere by EKI, so this line is what a deployment keeps.
+		if s.recallDone != nil {
+			<-s.recallDone
+		}
 		if s.counters != nil {
 			s.counters.Log(s.log)
 		}
