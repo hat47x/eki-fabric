@@ -14,6 +14,7 @@ import (
 	"github.com/hat47x/eki-fabric/internal/agent/startgate"
 	"github.com/hat47x/eki-fabric/internal/agent/trustanchor"
 	"github.com/hat47x/eki-fabric/internal/core/contract"
+	"github.com/hat47x/eki-fabric/internal/core/measurement"
 	"github.com/hat47x/eki-fabric/internal/spi/workerplane"
 )
 
@@ -152,6 +153,10 @@ func runAssignments(ctx context.Context, c *AssignmentConfig, anchor *trustancho
 		return fmt.Errorf("open replay guard: %w", err)
 	}
 	defer guard.Close()
+	// The Agent's ADR-0039 numbers. They are written when the poll loop stops;
+	// nothing is stored by EKI itself.
+	counters := measurement.New()
+	defer counters.Log(log)
 	var handler assignment.Handler = assignment.HandlerFunc(func(context.Context, assignment.Ready) error { return nil })
 	if c.Execution != nil {
 		execHandler, err := newExecutionHandler(c.Execution, events, log, claims, principal)
@@ -163,6 +168,7 @@ func runAssignments(ctx context.Context, c *AssignmentConfig, anchor *trustancho
 		// disk cannot keep this Attempt's output, the Attempt is not started.
 		if holds != nil && holds.spool != nil {
 			if budget, berr := openBudget(holds.spool, DefaultOutputLimit); berr == nil {
+				budget.SetRefusalHook(func() { counters.Add(measurement.LimitRefused, "host") })
 				execHandler.SetBudget(budget)
 			} else {
 				log.Warn("output budget disabled", "error", berr.Error())
