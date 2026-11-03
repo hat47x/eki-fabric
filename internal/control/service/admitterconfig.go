@@ -4,6 +4,7 @@ import (
 	"crypto/ed25519"
 	"encoding/hex"
 	"fmt"
+	"log/slog"
 	"strings"
 
 	"github.com/hat47x/eki-fabric/internal/core/trustbundle"
@@ -43,7 +44,7 @@ func sponsorKey(value string) (ed25519.PublicKey, error) {
 // A missing piece returns nil, which hides the route: an admission path without a
 // key or without a store would accept nothing, and a hidden route says that
 // plainly.
-func admitterFor(store *trustbundle.Store, book *trustbundle.ApprovalBook, values []string) (*trustAdmitter, error) {
+func admitterFor(store *trustbundle.Store, book *trustbundle.ApprovalBook, values []string, log *slog.Logger) (*trustAdmitter, error) {
 	if store == nil || book == nil {
 		return nil, nil
 	}
@@ -54,7 +55,7 @@ func admitterFor(store *trustbundle.Store, book *trustbundle.ApprovalBook, value
 	if len(keys) == 0 {
 		return nil, nil
 	}
-	return &trustAdmitter{store: store, keys: keys, book: book}, nil
+	return &trustAdmitter{store: store, keys: keys, book: book, log: log}, nil
 }
 
 // sponsorKeys reads every configured key. The list may hold more than one during

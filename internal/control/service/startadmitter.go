@@ -42,7 +42,7 @@ func startAdmitter(ctx context.Context, store any, book *trustbundle.ApprovalBoo
 		log.Warn("trust bundle admission disabled: the stored version is not usable", "error", err.Error())
 		return nil
 	}
-	admitter, err := admitterFor(store2, book, keys)
+	admitter, err := admitterFor(store2, book, keys, log)
 	if err != nil {
 		log.Warn("trust bundle admission disabled: the control key is not usable", "error", err.Error())
 		return nil
