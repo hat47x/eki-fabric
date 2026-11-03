@@ -1500,3 +1500,17 @@ ADR に書いた決定が、**実装と試験のどこまで届いているか**
 1. **「決めない」も決定として残す。** 空白のまま実装すると、**後から数字の意味を誰も説明できない**。
 2. **契約を書いたら実装から数える。** 書いた本人は抜けに気づかない。
 3. **編集は必ず作業ブランチで。** 本番の作業ツリーを直接触る事故を**2回**起こしました（どちらも `git checkout` で戻しました）。
+
+### 2026-11-04 Task の状態遷移（#381）を、実装と試験で突き合わせる
+
+#381 は「`active`→`verifying` と `active`→`ready` を実経路へ配線する」でした。**調べたところ、どちらも実装され、試験もありました**（この期間の #372 以降で入ったもの）。**確認の内容をここに残します。**
+
+| 遷移 | 実装 | 試験 |
+| --- | --- | --- |
+| `active`→`verifying`（完了の claim を受けたとき） | `claimaccept.markTaskVerifying`（`CompareAndSwapTask`、**キャンセルが競合したらキャンセルが勝つ**） | `TestCompletedClaimMovesTheTaskToVerifying` |
+| `active`→`ready`（再試行の余地がある close） | `claimaccept.markTaskReadyAfterClose`（**開いている Attempt が残っていれば動かさない**／**最後の1回なら exhausted**） | `TestAFailedClaimReturnsTheTaskToReady`・`TestARetryableCloseOnTheLastAttemptEndsTheTaskAsExhausted` |
+| `verifying` を読む側 | `control/converge` が `active`・`verifying`・`held` を同じ扱いで見る | 既存の収束試験 |
+
+**確認して分かったこと**: **`verifying` は「保存される phase」として扱われており**、**同じ受理の中で terminal まで進む**ため、**観測される期間は短い**。**外から見て `verifying` が残るのは、受理の途中で止まった場合**だけです。その場合は**収束が拾う**（`converge` が `verifying` を見る）。
+
+**この確認で直したもの**: なし（**実装は意図どおり**）。**Issue を閉じる根拠**として記録します。
