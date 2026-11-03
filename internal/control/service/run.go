@@ -128,7 +128,9 @@ func Start(ctx context.Context, cfg Config, log *slog.Logger) (*Server, error) {
 			_ = store.Close()
 			return nil, fmt.Errorf("open the artifact store: %w", aerr)
 		}
-		artifacts = artifactSource{store: bodies}
+		// The same state store answers whether a Task was withdrawn, so a body whose
+		// Task was cancelled stops being served (ADR-0037 §9, #592).
+		artifacts = artifactSource{store: bodies, tasks: taskWithdrawalFromState{tasks: store}}
 	}
 	counters := measurement.New()
 	// One book for the whole process: the Operator API writes into it and the
