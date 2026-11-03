@@ -6,6 +6,7 @@
 
 正本は次のとおりです。
 
+- `operator-api.md` — Operator と Administrator の入口（mTLS・別ポート）
 - `openapi.json` — OpenAPI 3.2.1
 - 設計上の判断: `../../plan/adr/0001-protocol-surfaces-and-canonical-encoding.md`
 
