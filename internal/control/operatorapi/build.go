@@ -4,6 +4,8 @@ import (
 	"crypto/tls"
 	"fmt"
 	"log/slog"
+
+	"github.com/hat47x/eki-fabric/internal/core/trustbundle"
 )
 
 // ServerConfig is what a process needs to serve the Operator routes (ADR-0038).
@@ -20,6 +22,8 @@ type ServerConfig struct {
 	TrustDomain string
 	// Approver records approvals. Required with CAPath.
 	Approver Approver
+	// Book is where those approvals land, so an Operator can read them back (#545).
+	Book *trustbundle.ApprovalBook
 	// Audit receives one entry per request. Nil logs instead.
 	Audit func(Access)
 	// Logger receives one line per request.
@@ -51,6 +55,7 @@ func Build(cfg ServerConfig) (*Handler, *tls.Config, error) {
 	handler := New(Config{
 		Authenticate: MTLSAuthenticator(pool, cfg.TrustDomain, nil),
 		Approver:     cfg.Approver,
+		Book:         cfg.Book,
 		Audit:        cfg.Audit,
 		Logger:       cfg.Logger,
 	})
