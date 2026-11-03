@@ -278,6 +278,13 @@ func (s *Server) startDispatch(ctx context.Context, cfg *DispatchConfig, store *
 				s.log.Error("dispatch tick failed", "error", err.Error())
 				continue
 			}
+			if result.Considered == 0 {
+				// An idle tick is logged too, at debug. Without it the "dispatch tick"
+				// lines only appear when something happened, so counting them to decide
+				// whether the loop is turning reads a silent, healthy loop as a stopped
+				// one (#437).
+				s.log.Debug("dispatch tick idle")
+			}
 			if result.Dispatched != 0 || len(result.Deferred) != 0 {
 				// The reasons travel with the counts: a tick that considers a Task and
 				// dispatches none is the case an operator has to explain, and the counts
