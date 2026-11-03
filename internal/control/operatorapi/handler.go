@@ -60,6 +60,8 @@ type Config struct {
 	Authenticate Authenticator
 	// Approver records the approval. Required with Authenticate.
 	Approver Approver
+	// Book is the ledger the approvals land in. Nil hides the read path.
+	Book *trustbundle.ApprovalBook
 	// Audit receives one entry per request. Nil logs instead.
 	Audit func(Access)
 	// Logger receives one line per request. Nil discards.
@@ -72,16 +74,18 @@ type Config struct {
 type Handler struct {
 	authenticate Authenticator
 	approver     Approver
-	audit        func(Access)
-	log          *slog.Logger
-	now          func() time.Time
+	// book is where the approvals are collected; nil hides the read path.
+	book  *trustbundle.ApprovalBook
+	audit func(Access)
+	log   *slog.Logger
+	now   func() time.Time
 }
 
 // New returns a Handler. Without both an authenticator and an approver it returns
 // a handler that answers 404 to everything, which is the same answer a process
 // that never had an Operator route would give.
 func New(cfg Config) *Handler {
-	h := &Handler{authenticate: cfg.Authenticate, approver: cfg.Approver, audit: cfg.Audit, log: cfg.Logger, now: cfg.Now}
+	h := &Handler{authenticate: cfg.Authenticate, approver: cfg.Approver, book: cfg.Book, audit: cfg.Audit, log: cfg.Logger, now: cfg.Now}
 	if h.log == nil {
 		h.log = slog.New(slog.NewTextHandler(io.Discard, nil))
 	}
@@ -100,7 +104,27 @@ func (h *Handler) Enabled() bool { return h != nil && h.authenticate != nil && h
 
 // ServeHTTP answers the Operator routes.
 func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	if !h.Enabled() || path.Clean(r.URL.Path) != Path || r.Method != http.MethodPost {
+	if !h.Enabled() {
+		writeError(w, http.StatusNotFound, "NOT_FOUND", "This operation is not available in this deployment")
+		return
+	}
+	cleaned := path.Clean(r.URL.Path)
+	if cleaned == PendingPath && r.Method == http.MethodGet {
+		identity, err := h.authenticate(r)
+		if err != nil {
+			h.record(identity, "", "", OutcomeRefused)
+			writeError(w, http.StatusUnauthorized, "AUTHENTICATION_REQUIRED", "Authentication is required")
+			return
+		}
+		if identity.Role != operatorcert.RoleOperator {
+			h.record(identity, "", "", OutcomeRefused)
+			writeError(w, http.StatusForbidden, "OPERATOR_ROLE_REQUIRED", "This credential cannot read trust bundle approvals")
+			return
+		}
+		h.pending(w, r, identity)
+		return
+	}
+	if cleaned != Path || r.Method != http.MethodPost {
 		writeError(w, http.StatusNotFound, "NOT_FOUND", "This operation is not available in this deployment")
 		return
 	}
