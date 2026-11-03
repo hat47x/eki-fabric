@@ -15,7 +15,14 @@ type Digest struct {
 }
 
 func SHA256(data []byte) Digest {
-	sum := sha256.Sum256(data)
+	return FromSHA256(sha256.Sum256(data))
+}
+
+// FromSHA256 wraps a digest that is already computed. It exists for values that are
+// a SHA-256 by definition, such as a certificate fingerprint: passing those bytes
+// through SHA256 would hash the digest again and print a value no other tool agrees
+// with (#466).
+func FromSHA256(sum [sha256.Size]byte) Digest {
 	return Digest{value: sum, set: true}
 }
 
