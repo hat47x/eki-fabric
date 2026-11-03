@@ -24,7 +24,15 @@ type versionEntry struct {
 	RecordedAt  time.Time `json:"recorded_at"`
 	KeyID       string    `json:"key_id,omitempty"`
 	VerifiedKey string    `json:"verified_key,omitempty"`
+	// ExpiringSoon and Expired say what to do about the version, so an operator does
+	// not have to compare dates in their head every time they look (ADR-0036 §10.2).
+	ExpiringSoon bool `json:"expiring_soon,omitempty"`
+	Expired      bool `json:"expired,omitempty"`
 }
+
+// expiryNotice is how long before NotAfter a version is called expiring: 30 days,
+// because that is the time a key handover needs (ADR-0036 §10.2).
+const expiryNotice = 30 * 24 * time.Hour
 
 const (
 	defaultVersionLimit = 20
@@ -52,14 +60,21 @@ func (h *Handler) versions(w http.ResponseWriter, r *http.Request, identity oper
 		writeError(w, http.StatusInternalServerError, "STORE_UNAVAILABLE", "The versions could not be read")
 		return
 	}
+	now := time.Now().UTC()
+	if h.now != nil {
+		now = h.now()
+	}
 	entries := make([]versionEntry, 0, len(records))
 	for _, record := range records {
+		remaining := record.NotAfter.Sub(now)
 		entries = append(entries, versionEntry{
-			Version:     record.Version,
-			NotAfter:    record.NotAfter.UTC(),
-			RecordedAt:  record.RecordedAt.UTC(),
-			KeyID:       record.KeyID,
-			VerifiedKey: record.VerifiedKey,
+			Version:      record.Version,
+			NotAfter:     record.NotAfter.UTC(),
+			RecordedAt:   record.RecordedAt.UTC(),
+			KeyID:        record.KeyID,
+			VerifiedKey:  record.VerifiedKey,
+			ExpiringSoon: remaining > 0 && remaining <= expiryNotice,
+			Expired:      remaining <= 0,
 		})
 	}
 	_ = h.record(identity, "", "", OutcomeApproved)
