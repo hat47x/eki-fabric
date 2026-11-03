@@ -215,6 +215,7 @@ func Start(ctx context.Context, cfg Config, log *slog.Logger) (*Server, error) {
 				"operation", a.Operation, "target", a.Target, "outcome", a.Outcome)
 		}
 		oc.Book = approvals
+		oc.Admitter = startAdmitter(ctx, store, approvals, cfg.TrustBundleKey, log)
 		oc.Logger = log
 		handler, tlsConfig, err := operatorapi.Build(oc)
 		if err != nil {
