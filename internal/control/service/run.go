@@ -324,6 +324,10 @@ func (s *Server) startWorker(ctx context.Context, w *WorkerConfig, store *sqlite
 	if err != nil {
 		return err
 	}
+	// ADR-0039 §2.1: count the refusals this boundary makes. The reason is a closed
+	// set ("identity", "invalid", "owner", "rejected"), so the number is readable
+	// without parsing prose.
+	plane.SetRefusalHook(func(reason string) { s.counters.Add(measurement.ClaimRefused, reason) })
 	api, err := workerplane.New(workerplane.Config{Claims: plane})
 	if err != nil {
 		return err

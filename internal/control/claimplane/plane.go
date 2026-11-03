@@ -75,7 +75,14 @@ func (s *Service) Submit(ctx context.Context, principal Principal, claim resultc
 		return claimaccept.Result{}, fmt.Errorf("%w: authenticated %q, claim names %q",
 			ErrNotClaimOwner, principal.WorkerIdentity, claim.WorkerIdentity())
 	}
-	return s.acceptor.Accept(ctx, claim)
+	// A claim the acceptor refuses is a refusal this path made visible: it is counted
+	// here rather than in claimaccept so one refusal is one number, and the reason
+	// comes from a closed set the log reader can rely on (ADR-0039 §2.1).
+	result, err := s.acceptor.Accept(ctx, claim)
+	if err != nil {
+		s.recordRefusal("rejected")
+	}
+	return result, err
 }
 
 func validIdentity(value string) bool {
