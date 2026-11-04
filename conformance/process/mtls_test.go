@@ -439,10 +439,13 @@ func TestMTLSRevokedWorkerIsRefusedOnItsNextRequest(t *testing.T) {
 }
 
 func TestMTLSAgentRenewsItsCertificateAndExpiredCertificatesAreRefused(t *testing.T) {
-	// A short lifetime, so renewal and expiry can be observed. The margin
-	// between renewal (two thirds in) and expiry has to survive a slow or
-	// stepped clock on a busy test machine, so it is not the 10 s minimum.
-	const validity = 30 // seconds
+	// A short lifetime, so renewal and expiry can be observed. The renewal
+	// window (the last third of the lifetime) has to be wider than the wall
+	// clock steps of a busy test machine (about 10 s on WSL), or one forward
+	// step carries the renewal loop from before the window to after expiry and
+	// it never renews. A third of 60 s is 20 s, about twice the step; the
+	// 10 s minimum or 30 s (a window of 10 s) is not enough.
+	const validity = 60 // seconds
 	e := newMTLSEnv(t, validity)
 	e.seedPolicyNow(t)
 	e.writeConfig(t)
@@ -494,9 +497,11 @@ func TestMTLSAgentRenewsItsCertificateAndExpiredCertificatesAreRefused(t *testin
 		status, _ := e.post(t, c, e.workerURL, testprofile.Path, testprofile.ContentType, "", staleClaim)
 		return status == http.StatusUnauthorized, http.StatusText(status)
 	})
-	if status, _ := e.post(t, c, e.workerURL, enrollwire.RenewPath, enrollwire.CSRContentType, "", csrPEMFor(t, newKey(t), &x509.CertificateRequest{})); status != http.StatusUnauthorized {
-		t.Fatalf("an expired certificate renewed: %d", status)
-	}
+	renewCSR := csrPEMFor(t, newKey(t), &x509.CertificateRequest{})
+	waitFor(t, "the expired certificate to be refused for renewal", func() (bool, string) {
+		status, _ := e.post(t, c, e.workerURL, enrollwire.RenewPath, enrollwire.CSRContentType, "", renewCSR)
+		return status == http.StatusUnauthorized, http.StatusText(status)
+	})
 }
 
 func TestMTLSRefusesCertificatesOfOtherCAsAndTrustDomains(t *testing.T) {

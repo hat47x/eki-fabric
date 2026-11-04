@@ -40,6 +40,23 @@ var (
 // CABackdate is how far before its creation a new CA certificate starts.
 const CABackdate = 5 * time.Minute
 
+// LeafBackdateMax is the most that a Worker certificate's NotBefore precedes
+// the moment of issue. The certificate is checked against another clock, or
+// against the same clock after it was stepped back (an NTP step, a resumed
+// virtual machine, a replica whose clock runs behind). Without the margin, a
+// certificate that was just issued is "not yet valid" and the Worker is
+// refused with 401 until that clock catches up.
+const LeafBackdateMax = 5 * time.Minute
+
+// LeafBackdate is how far before issue a certificate of the given validity
+// starts: a tenth of the validity, at most LeafBackdateMax. The fraction keeps
+// a short test lifetime from starting much earlier than it is long, and it
+// keeps the renewal point (a third of the lifetime before NotAfter) close to
+// where it would be without the margin.
+func LeafBackdate(validity time.Duration) time.Duration {
+	return min(LeafBackdateMax, validity/10)
+}
+
 // DefaultCAValidity is the lifetime GenerateCA gives a new CA certificate. A
 // provisional default; CA rotation is an open question (ADR-0027 section 5).
 const DefaultCAValidity = 5 * 365 * 24 * time.Hour
@@ -195,6 +212,12 @@ func (c *CA) IssueCertificate(req workerenrollment.CertificateRequest) (workeren
 	if truncated {
 		notAfter = c.cert.NotAfter
 	}
+	// Only the start moves. The certificate still ends validity after issue,
+	// and it never starts before the CA that signs it.
+	notBefore := now.Add(-LeafBackdate(c.validity))
+	if notBefore.Before(c.cert.NotBefore) {
+		notBefore = c.cert.NotBefore
+	}
 	serial, err := newSerial()
 	if err != nil {
 		return workerenrollment.IssuedCertificate{}, err
@@ -204,7 +227,7 @@ func (c *CA) IssueCertificate(req workerenrollment.CertificateRequest) (workeren
 		// The subject is a label for humans reading a certificate. It is the
 		// registry identity, and nothing in verification reads it.
 		Subject:               pkix.Name{CommonName: string(req.Identity)},
-		NotBefore:             now,
+		NotBefore:             notBefore,
 		NotAfter:              notAfter,
 		KeyUsage:              x509.KeyUsageDigitalSignature,
 		ExtKeyUsage:           []x509.ExtKeyUsage{x509.ExtKeyUsageClientAuth},
@@ -219,7 +242,7 @@ func (c *CA) IssueCertificate(req workerenrollment.CertificateRequest) (workeren
 	return workerenrollment.IssuedCertificate{
 		DER:       der,
 		Serial:    fmt.Sprintf("%x", serial),
-		NotBefore: now,
+		NotBefore: notBefore,
 		NotAfter:  notAfter,
 		Truncated: truncated,
 	}, nil

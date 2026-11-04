@@ -76,8 +76,8 @@ func TestIssuedCertificateShape(t *testing.T) {
 	if cert.IsCA {
 		t.Fatal("a Worker certificate is a CA")
 	}
-	if cert.NotAfter.Sub(cert.NotBefore) != workercert.DefaultValidity || !cert.NotBefore.Equal(t0) {
-		t.Fatalf("validity %v..%v, want %v from now", cert.NotBefore, cert.NotAfter, workercert.DefaultValidity)
+	if !cert.NotAfter.Equal(t0.Add(workercert.DefaultValidity)) || !cert.NotBefore.Equal(t0.Add(-workerca.LeafBackdateMax)) {
+		t.Fatalf("validity %v..%v, want %v back to %v from now", cert.NotBefore, cert.NotAfter, workerca.LeafBackdateMax, workercert.DefaultValidity)
 	}
 	if got.Serial == "" || got.Serial != cert.SerialNumber.Text(16) || !got.NotAfter.Equal(cert.NotAfter) {
 		t.Fatalf("issued record %+v disagrees with the certificate", got)
@@ -114,8 +114,8 @@ func TestValidityFollowsConfigurationAndIsClampedToTheCA(t *testing.T) {
 	ca, _, _ := newCA(t, "example.org", time.Minute)
 	id, _ := ids.NewWorkerIdentity()
 	cert, _ := issue(t, ca, id, newKey(t), t0)
-	if cert.NotAfter.Sub(cert.NotBefore) != time.Minute {
-		t.Fatalf("validity = %v, want 1m", cert.NotAfter.Sub(cert.NotBefore))
+	if !cert.NotAfter.Equal(t0.Add(time.Minute)) {
+		t.Fatalf("NotAfter = %v, want 1m after issue", cert.NotAfter)
 	}
 	// Near the end of the CA's life, the certificate does not outlive the CA.
 	near := ca.Certificate().NotAfter.Add(-time.Second)
@@ -383,5 +383,44 @@ func TestIssueCertificateReportsTruncation(t *testing.T) {
 	}
 	if untruncated.Truncated {
 		t.Fatal("a certificate inside the CA validity was reported as truncated")
+	}
+}
+
+func TestLeafBackdateIsBoundedAndNeverPrecedesTheCA(t *testing.T) {
+	for validity, want := range map[time.Duration]time.Duration{
+		10 * time.Second:           time.Second,
+		time.Minute:                6 * time.Second,
+		workercert.DefaultValidity: workerca.LeafBackdateMax,
+		workercert.MaxValidity:     workerca.LeafBackdateMax,
+	} {
+		if got := workerca.LeafBackdate(validity); got != want {
+			t.Fatalf("LeafBackdate(%v) = %v, want %v", validity, got, want)
+		}
+	}
+
+	ca, _, _ := newCA(t, "example.org", 0)
+	id, _ := ids.NewWorkerIdentity()
+	// Issued the second the CA starts: the margin would reach before the CA.
+	cert, _ := issue(t, ca, id, newKey(t), ca.Certificate().NotBefore)
+	if cert.NotBefore.Before(ca.Certificate().NotBefore) {
+		t.Fatalf("certificate starts %v, before its CA %v", cert.NotBefore, ca.Certificate().NotBefore)
+	}
+
+	// The margin does not extend the end of the certificate, and a certificate
+	// is still not valid before its start.
+	cert, _ = issue(t, ca, id, newKey(t), t0)
+	roots := x509.NewCertPool()
+	roots.AddCert(ca.Certificate())
+	opts := x509.VerifyOptions{Roots: roots, KeyUsages: []x509.ExtKeyUsage{x509.ExtKeyUsageClientAuth}}
+	for at, valid := range map[time.Time]bool{
+		t0.Add(-workerca.LeafBackdateMax + time.Second):  true,
+		t0.Add(-workerca.LeafBackdateMax - time.Second):  false,
+		t0.Add(workercert.DefaultValidity - time.Second): true,
+		t0.Add(workercert.DefaultValidity + time.Second): false,
+	} {
+		opts.CurrentTime = at
+		if _, err := cert.Verify(opts); (err == nil) != valid {
+			t.Fatalf("verify at %v: err=%v, want valid=%v", at, err, valid)
+		}
 	}
 }
