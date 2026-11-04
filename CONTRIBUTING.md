@@ -33,6 +33,7 @@ EKI Fabricは初期開発中です。変更は小さく、Requirement・Architec
 - Markdownの相対リンクの先が存在することは、`conformance/doclinks`の`go test`が確かめる（ルートの`go test ./...`に含まれ、`--quick`では走らない）。文書を移したり名前を変えたりしたときは、リンクを直してから実行する。コード書式（`` `...` ``）で書いたパスの言及や、`http(s)`のリンク、見出しの存在は対象外。
 - `spikes/`の下は、`go.mod`を持つ独立したmoduleで、ルートの`go vet`・`go test`の対象に含まれない。ルートmoduleを`replace`で取り込む（`internal`をimportする）Spikeだけは、`scripts/verify.sh`・`scripts/verify.ps1`が`go vet ./...`を実行し、ルートの変更でコンパイルできなくなっていないかを確かめる。Spikeの`go test`は、そのSpikeのREADMEに従って各自で実行する。
 - `spec/`・`conformance/`の契約変更は、対応するCDDL・OpenAPI・testを同時に更新する。
+- 決定境界（[ADR-0033 §6](plan/adr/0033-three-element-realignment.md)）を増やす・変えるときは、**ADR の対応表と `conformance/actorboundary` を同じ PR で更新する**。境界は「誰が決めるか」の単位なので、**表だけ・型だけ**を直すと、次の読者が対応を追えなくなる。
 
 ## 文書
 
