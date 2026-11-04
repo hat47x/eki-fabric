@@ -1581,4 +1581,28 @@ ADR に書いた決定が、**実装と試験のどこまで届いているか**
 - ネットワーク資源の上限に必要な時間窓・分母・観測主体を、既存ADR-0037の保留判断と整合させてどう決めるか。
 - ローカルと遠隔の試験を比較するためのハーネス。VRクマのheadless再生やTEI Providerの実Readと、EKIのTransport・権限試験を混ぜない。
 
+#### 第5次照合：Suitability・現在資格・実入力のEvidenceを結び直す（#700）
+
+[Workload Suitability #58](https://github.com/hat47x/eki-fabric/issues/58)は、そもそもFabricへ委任する利益の有無を扱う。RQ-064のTransport適合はそれとは別問題である。認可された経路が高速に通信できても、ローカルの軽量認知ループがより適切ならFabricへ流さない。#58には当初の4状態案と後続の3状態案があり、正式な外部状態・実装への対応は同Issueで判断する。本節は状態名や新たなAuthorityを追加しない。
+
+**混同してはいけない二つの独立系列**：
+
+- **選択・権限系列**：Requested → Supported → Permitted → Selected → Observed（上表）。能力宣言や以前の選択は現在のGrant／Lease／Policyを代替しない。Sourceの内容がA→B→Aと戻っても、その間に権限やProviderが変わっていれば古い判断をそのまま再利用しない。
+- **入力・効果のEvidence系列**：Declared → Discovered → Loaded → Consumed → Claimed → Verified → Accepted → （利用側で）Effect／Consumer観測。これらを単一のEKI状態機械にしない。EKIが直接観測できないLoaded・Consumed・Effectの事実は、出所を識別した外部Evidence／Claimとして表す。Source/Revisionの参照、適用範囲、欠落・部分・非開示・取得不能、時刻と観測主体が不明なら、存在確認や全体完了を推定しない。
+
+特に、未購読・空Workspace・Providerの`0 rows`・空トラックは、`対象に事実が存在しない`という結果と同義ではない。評価対象の母集団と取得範囲、認可・時間条件、Sourceの世代を区別する。EKIはアプリ固有のQueryやModel Meaningを解釈せず、利用側がSourceのRead CohortとCompletenessを検証する機会を奪わない。
+
+**D0向け独立Oracleの追加票（設計Fixture。未実行）**
+
+| Fixture | 独立Expected | 必ず分ける証拠 | Status |
+| --- | --- | --- | --- |
+| D0-E1：Adapterはライブ通信に対応するが、ローカル実行の方が短い／低コスト | TransportはSupportedでも、Fabricに委任する利益なし。#58の判断に従いPlacementへ進めない | Transport適合、Policy、Suitability、ローカル対Fabricの実測 | NOT RUN |
+| D0-E2：三つのTrackを宣言、二つのみ購読・読込成功、残りは未接続 | 受理済みの部分入力は示せるが、完全同期・「三つ目は空」を証明できない | Declared、Loaded、Consumed、観測範囲、clock/sequence | NOT RUN |
+| D0-E3：Source A→B→A、古いGrant失効、通信は再接続 | byteが以前と一致しても現行資格の再確認は必要。旧権限の結果は確定できない | Source Revision、現在のGrant/Lease/FenceEpoch、選択したTransport、受理記録 | NOT RUN |
+| D0-E4：Providerから`ack`が届いたがCommit Receiptは不達、read-only照会だけは成功 | 保存成功・失敗のどちらにも確定しない。外部作用の自動再送は不可、Provider側の独立照合が必要 | Operation Identity、Ackの種類、Receipt、独立Read、利用側Consumer | NOT RUN |
+
+**運用原則**：独立ExpectedはAdapterの現在の実装結果から逆算せず、Scenarioが参照する外部Source／Provider／Grantの対象と版を固定してから比較する。別モデル／エージェントに再確認を任せても、同じ資料から作ったExpectedを独立Oracleと呼ばない。検証主体が実際に何を読んだか、何をテストしなかったかを表示する。ローカルの合成テストPASSをProvider実機／VRクマGodot実行／EKIネットワークE2E成功へ昇格させない。
+
+**#700の追加Stop Gate**：D0は必要なデータ源・Grant・比較基準・期待結果のどれかが不明なまま全体PASSとしない。D1は実際のライブ配送Adapterを確認してから対象を測り、存在しない経路はNOT RUN／NOT SUPPORTEDとして分類する。D2ではデータ様式とDeliveryだけでなく、#58のSuitability、#133の外部AI経路のData Class、利用側の実際の効果検証まで含め、追加方式の必要性を判断する。M0/MVPのmainlineを遮らない。
+
 これらはM0/MVPの優先順位を変更しない後続作業であり、`WorkerPlaneService`や既存Sessionの実装変更を先取りしない。
