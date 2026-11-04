@@ -260,3 +260,25 @@ func free(capacity uint64, percent int, inUse, granted uint64, resource string) 
 	}
 	return available, nil
 }
+
+// UsageOf adds up what the given Plans reserved. It is how a caller builds the
+// InUse a start is judged against: the gate compares one request with the sum of
+// the running ones, not with the machine's whole capacity (#354, ADR-0031 §2.3).
+//
+// A zero Plan contributes nothing, so a caller does not have to filter empty slots.
+func UsageOf(plans ...Plan) Usage {
+	var total Usage
+	for _, plan := range plans {
+		if plan.IsZero() {
+			continue
+		}
+		total.Running++
+		limits := plan.limits
+		total.CPUMillis += uint64(limits.CPUMillis)
+		total.MemoryBytes += uint64(limits.MemoryBytes)
+		if plan.sandbox.GPU != nil {
+			total.GPUDevices++
+		}
+	}
+	return total
+}
