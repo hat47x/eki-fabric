@@ -223,6 +223,10 @@ func New(cfg Config) (*Service, error) {
 // returned; a refused assignment is a Result, not an error. An Attempt that was
 // already handed over or already spent is reported once and then skipped.
 func (s *Service) Poll(ctx context.Context) ([]Result, error) {
+	// A completion that never arrived must not keep the endpoint busy until a
+	// restart, so the poll that asks for new work first returns the reservations
+	// whose Lease has certainly ended (ADR-0031 §6.2, #354).
+	s.sweepReservations(s.cfg.Clock.Now())
 	list, err := s.cfg.Source.ListAssignments(ctx, s.cfg.Principal)
 	if err != nil {
 		return nil, err
@@ -510,4 +514,11 @@ func completionOf(handler Handler, attemptID ids.AttemptID) <-chan struct{} {
 func isFinisher(handler Handler) bool {
 	_, ok := handler.(Finisher)
 	return ok
+}
+
+// sweepReservations drops the reservations whose deadline has passed and returns how
+// many it dropped. It runs on each poll: the poll is the only periodic thing the
+// service already does, so the sweep needs no timer of its own.
+func (s *Service) sweepReservations(now time.Time) int {
+	return s.reservations.SweepExpired(now)
 }
