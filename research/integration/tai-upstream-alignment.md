@@ -8,11 +8,11 @@ EKI Fabricは、TAI Pleromaから見て「範囲や権限を定めた処理の�
 
 | # | TAI側の要求 | 出典 |
 | --- | --- | --- |
-| T1 | **受付は実行の完了ではない。** `queued`はWorkerによる実行完了を意味しない | `tai-pleroma/README.md`（「特に、EKIでの`queued`はWorkerによる実行完了を意味しません」）、`docs/yi-constellation/05-要件候補.md` RQ-YI-008 |
+| T1 | **受付は実行の完了ではない。** `queued`はWorkerによる実行完了を意味しない | `tai-pleroma/README.md`（「特に、EKIでの`queued`はWorkerによる実行完了を意味しません」）、`docs/yi-constellation/analysis/05-要件候補.md` RQ-YI-008 |
 | T2 | **委任の実行・結果・委任完了を確認できること。** 現状のEKIはCLI起動・Control API認証・合成Taskの`queued`受理・cancel・result API 501・冪等再送までで、実行と結果は未検証 | `tai-pleroma/docs/critical-path-2026-10.md`、`integrations/capability-inventory.md` |
 | T3 | **EKIをadmission/cancelから次の段階へ進める。** 実行結果は実際に実行した範囲だけを記録する | `tai-pleroma/evaluations/SCN-002-003-owner-decision-2026-10-30.md` |
-| T4 | **改過（結果の検証で誤りを改めるループ）** を、価値として測れる形にする | `docs/yi-constellation/05-要件候補.md` RQ-YI-013 |
-| T5 | **反哺の記録（提供と受益の対応）。** 一方的に取り、返さない状態を検出できるようにする | 同上 RQ-YI-014、`docs/yi-constellation/04-価値モデル.md`（受益の偏り） |
+| T4 | **改過（結果の検証で誤りを改めるループ）** を、価値として測れる形にする | `docs/yi-constellation/analysis/05-要件候補.md` RQ-YI-013 |
+| T5 | **反哺の記録（提供と受益の対応）。** 一方的に取り、返さない状態を検出できるようにする | 同上 RQ-YI-014、`docs/yi-constellation/analysis/04-価値モデル.md`（受益の偏り） |
 | T6 | **損の設計（停止・取消・上限の効果）** を、安全の制約ではなく価値として測る | 同上 RQ-YI-015 |
 
 ## 2. 三視点への引き直し
