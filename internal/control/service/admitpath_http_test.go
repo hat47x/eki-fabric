@@ -40,7 +40,9 @@ func TestTheOperatorAndAdministratorRoutesCarryAnApprovalIntoAVersion(t *testing
 		t.Fatal(err)
 	}
 	log := slog.New(slog.NewTextHandler(io.Discard, nil))
-	now := time.Date(2026, 11, 4, 0, 0, 0, 0, time.UTC)
+	// startAdmitter judges currentness with the real clock, so the fixture must be
+	// relative to it. A fixed date made these tests fail once the date passed.
+	now := time.Now().UTC().Truncate(time.Second)
 
 	first := bundleFor(1, now, contract.SHA256([]byte("ca-1")))
 	if err := trustbundle.Save(ctx, state, sign(t, first, private), nil, "", now); err != nil {
