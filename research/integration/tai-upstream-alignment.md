@@ -30,7 +30,7 @@ TAI側の要求を、EKIの三要素（データ・機能・業務）に引き�
 | TAI側 | EKIの現状 | 差 |
 | --- | --- | --- |
 | T1 受付≠完了 | 公開状態は`queued`で受付、終端は`terminal_code`で区別（#281で契約化）。`admitted`と`ready`はどちらも`queued`（#249） | 「実行中」「検証中」が公開状態に現れるかが未決（#249）。完了の境界は未整備（#365） |
-| T2 実行・結果・委任完了 | 実行と結果受理の経路は実装済み（`conformance/process`、`internal/control/resultacceptance`）。ただし`active`→`verifying`の配線が無く、`verifying`は現実に現れない（#381） | 状態の遷移が設計と一致していない |
+| T2 実行・結果・委任完了 | 実行と結果受理の部品は実装済み（`conformance/process`、`internal/control/resultacceptance`）。`active`→`verifying`の第一の主体は`internal/control/claimaccept`で、`eki-control`の起動経路が配線している（ADR-0032 §2.4、#381）。`verifying`→`terminal/completed`を書く受理のcommitは`resultacceptance`にしか無く、`eki-control`に未配線（#242） | `eki-control`で、Taskを`terminal/completed`まで進める経路が無い（#242） |
 | T3 実行した範囲だけを記録 | AcceptedResultは受理済みの結果だけを持つ。実行しなかったTaskは`terminal_code`で区別（#281） | 実行の有無と結果の有無を、依頼元が照合する手段が弱い（#315） |
 | T4 改過 | RQ-019（結果は検証までclaimしない）、RQ-021、RQ-044（検証の権限）が素材 | 「改められたこと」を測る観点が無い（TAI側で測る想定） |
 | T5 反哺 | RQ-036（Contribution accounting）、RQ-037 | 受益者の分布を測る観点が中心に無い（TAI 04-価値モデルが指摘） |
