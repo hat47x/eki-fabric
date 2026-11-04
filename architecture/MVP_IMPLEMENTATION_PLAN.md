@@ -1007,6 +1007,8 @@ MVPの完成は、単に、Taskが別のPCで動くことではありません�
 
 現状、GitHub Actionsの残量によるCIのerrorは、Project側で既知の条件として扱います。
 
+上の「現状」は、2026-10-07（`fec95aa`）時点の記述です。2026-11-04時点では、このリポジトリにCIのworkflowは無く、検証はローカルで実行してその出力をEvidenceにします（[docs/development.md「ローカルでの検証（CIは未導入）」](../docs/development.md)）。CIを置くかどうかは#244で扱います。
+
 実装を開始するときは、localでのtestと、再現できるcommandを、必ず文書化します。CIが使えることだけを、Evidenceにしません。
 
 CIが利用できるようになった段階で、conformance suiteを、段階的にworkflowに接続します。
