@@ -57,7 +57,7 @@ Spikeでは、backoffとjitterだけでは「その時間窓に何件まで、�
 
 - Pending、予算、Permitを、どのState Storeの表へ、どのtransaction境界で保存するか。
 - 回収イベントを確定する権限と、Workerの申告をどこまで材料にするか。
-- 窓をまたいだ公平性（aging、fair share、Principal / Beneficiaryごとのquota、reserved recovery capacity）。
+- 窓をまたいだ公平性（aging、fair share、Principal / Beneficiaryごとのquota、reserved recovery capacity）。Issue [#155](https://github.com/hat47x/eki-fabric/issues/155)で扱う。
 - 一つのTaskが窓の予算を超える場合の扱い（Taskの分割、予算の見直し、明示的な拒否の返し方）。
 - planned reclaim noticeを使った事前の再配置を、回復の境界を弱めずにどう滑らかにするか。
 - 回復のPermitを、Worker側の受入やArtifact Grantの再発行とどう結び付けるか。
