@@ -49,7 +49,7 @@ func TestSaveThenLoadRebuildsTheChainAndApprovals(t *testing.T) {
 		t.Fatal(err)
 	}
 	store := memory.NewTrustBundles()
-	if err := Save(ctx, store, first, nil, base); err != nil {
+	if err := Save(ctx, store, first, nil, "fp", base); err != nil {
 		t.Fatalf("Save(first) error = %v", err)
 	}
 	next := validBundle()
@@ -60,7 +60,7 @@ func TestSaveThenLoadRebuildsTheChainAndApprovals(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := Save(ctx, store, second, []Approval{approvalForBundle(2, OperationAdd, 9)}, base.Add(time.Hour)); err != nil {
+	if err := Save(ctx, store, second, []Approval{approvalForBundle(2, OperationAdd, 9)}, "fp", base.Add(time.Hour)); err != nil {
 		t.Fatalf("Save(second) error = %v", err)
 	}
 	loaded, err := Load(ctx, store)

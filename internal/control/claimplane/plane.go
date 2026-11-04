@@ -38,6 +38,8 @@ type Acceptor interface {
 
 type Service struct {
 	acceptor Acceptor
+	// onRefusal counts this boundary's own refusals for ADR-0039.
+	onRefusal func(reason string)
 }
 
 func New(acceptor Acceptor) (*Service, error) {
@@ -58,19 +60,29 @@ func (s *Service) Submit(ctx context.Context, principal Principal, claim resultc
 		return claimaccept.Result{}, fmt.Errorf("%w: context is required", ErrInvalidConfig)
 	}
 	if !validIdentity(principal.WorkerIdentity) {
+		s.recordRefusal("identity")
 		return claimaccept.Result{}, fmt.Errorf("%w: Worker identity is required", ErrInvalidPrincipal)
 	}
 	if principal.TrustDomain != "" && !validIdentity(principal.TrustDomain) {
 		return claimaccept.Result{}, fmt.Errorf("%w: Trust Domain is invalid", ErrInvalidPrincipal)
 	}
 	if !claim.Valid() {
+		s.recordRefusal("invalid")
 		return claimaccept.Result{}, resultclaim.ErrInvalidClaim
 	}
 	if claim.WorkerIdentity() != principal.WorkerIdentity {
+		s.recordRefusal("owner")
 		return claimaccept.Result{}, fmt.Errorf("%w: authenticated %q, claim names %q",
 			ErrNotClaimOwner, principal.WorkerIdentity, claim.WorkerIdentity())
 	}
-	return s.acceptor.Accept(ctx, claim)
+	// A claim the acceptor refuses is a refusal this path made visible: it is counted
+	// here rather than in claimaccept so one refusal is one number, and the reason
+	// comes from a closed set the log reader can rely on (ADR-0039 §2.1).
+	result, err := s.acceptor.Accept(ctx, claim)
+	if err != nil {
+		s.recordRefusal("rejected")
+	}
+	return result, err
 }
 
 func validIdentity(value string) bool {

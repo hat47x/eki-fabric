@@ -87,6 +87,10 @@ type TaskRequest struct {
 	Deadline      string               `json:"deadline,omitempty"`
 	ResultProfile string               `json:"result_profile,omitempty"`
 	Extensions    []extensionEnvelope  `json:"extensions,omitempty"`
+	// ClientRequestID is the requester's own identifier for this request. EKI
+	// never interprets it; it is echoed so the requester can match an answer
+	// with the request it sent (#315).
+	ClientRequestID string `json:"client_request_id,omitempty"`
 }
 
 // NormalizedRequest is a validated request with defaults applied. It contains
@@ -103,6 +107,8 @@ type NormalizedRequest struct {
 	// ExtensionCount is carried only so policy can fail closed: M0 registers no
 	// extension.
 	ExtensionCount int
+	// ClientRequestID is the requester's own identifier, unchanged (#315).
+	ClientRequestID string
 }
 
 type NormalizedResources struct {
@@ -141,11 +147,33 @@ func ParseTaskRequest(raw []byte) (NormalizedRequest, error) {
 	return req.normalize()
 }
 
+// validClientRequestID bounds the identifier to what a log line and a URL can
+// carry without escaping. The requester owns the meaning; EKI only keeps the
+// shape, so the value stays a key rather than a payload (#315). An empty value
+// means the requester did not send one.
+func validClientRequestID(id string) bool {
+	if len(id) > 64 {
+		return false
+	}
+	for _, r := range id {
+		switch {
+		case r >= 'a' && r <= 'z', r >= 'A' && r <= 'Z', r >= '0' && r <= '9':
+		case r == '.', r == '_', r == ':', r == '-':
+		default:
+			return false
+		}
+	}
+	return true
+}
+
 func (r TaskRequest) normalize() (NormalizedRequest, error) {
 	bad := func(format string, args ...any) (NormalizedRequest, error) {
 		return NormalizedRequest{}, badRequest("INVALID_TASK_REQUEST", fmt.Sprintf(format, args...))
 	}
 
+	if !validClientRequestID(r.ClientRequestID) {
+		return bad("client_request_id must be 1-64 characters of [A-Za-z0-9._:-]")
+	}
 	if r.Schema == nil || *r.Schema != TaskRequestSchema {
 		return bad("schema must be %q", TaskRequestSchema)
 	}
@@ -261,10 +289,11 @@ func (r TaskRequest) normalize() (NormalizedRequest, error) {
 			MaxAttempts:    uint32(*rel.MaxAttempts),
 			EffectMode:     *rel.EffectMode,
 		},
-		Priority:       priority,
-		Deadline:       deadline,
-		ResultProfile:  r.ResultProfile,
-		ExtensionCount: len(r.Extensions),
+		Priority:        priority,
+		Deadline:        deadline,
+		ResultProfile:   r.ResultProfile,
+		ExtensionCount:  len(r.Extensions),
+		ClientRequestID: r.ClientRequestID,
 	}, nil
 }
 

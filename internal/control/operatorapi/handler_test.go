@@ -1,0 +1,237 @@
+package operatorapi
+
+import (
+	"encoding/base64"
+	"encoding/json"
+	"io"
+	"log/slog"
+	"net/http"
+	"net/http/httptest"
+	"strings"
+	"testing"
+	"time"
+
+	"github.com/hat47x/eki-fabric/internal/core/contract"
+	"github.com/hat47x/eki-fabric/internal/core/operatorcert"
+	"github.com/hat47x/eki-fabric/internal/core/trustbundle"
+)
+
+type fakeApprover struct {
+	got trustbundle.Approval
+	err error
+}
+
+func (f *fakeApprover) Approve(a trustbundle.Approval) error {
+	f.got = a
+	return f.err
+}
+
+func operatorHandler(t *testing.T, id operatorcert.Identity, approver *fakeApprover, audit *[]Access) *Handler {
+	t.Helper()
+	return New(Config{
+		Authenticate: func(*http.Request) (operatorcert.Identity, error) { return id, nil },
+		Approver:     approver,
+		Audit:        func(a Access) { *audit = append(*audit, a) },
+		Logger:       slog.New(slog.NewTextHandler(io.Discard, nil)),
+	})
+}
+
+func approvalBody(t *testing.T, approvedBy string) string {
+	t.Helper()
+	issuer := contract.SHA256([]byte("ca")).Hex()
+	raw, err := json.Marshal(map[string]any{
+		"version": 2, "operation": "add", "issuer": issuer,
+		"approved_by": approvedBy, "justification": "new authority",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	return string(raw)
+}
+
+func post(h *Handler, body string) *httptest.ResponseRecorder {
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPost, Path, strings.NewReader(body))
+	h.ServeHTTP(rec, req)
+	return rec
+}
+
+func TestAnOperatorApprovesWithTheCertificateName(t *testing.T) {
+	approver := &fakeApprover{}
+	var audit []Access
+	h := operatorHandler(t, operatorcert.Identity{Name: "alice", Role: operatorcert.RoleOperator}, approver, &audit)
+	rec := post(h, approvalBody(t, "alice"))
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("status = %d, body = %s", rec.Code, rec.Body.String())
+	}
+	if approver.got.ApprovedBy != "alice" || approver.got.Version != 2 {
+		t.Fatalf("approval = %+v", approver.got)
+	}
+	if len(audit) != 1 || audit[0].Outcome != OutcomeApproved {
+		t.Fatalf("audit = %+v", audit)
+	}
+}
+
+func TestAnAdministratorCannotApprove(t *testing.T) {
+	var audit []Access
+	h := operatorHandler(t, operatorcert.Identity{Name: "bob", Role: operatorcert.RoleAdministrator}, &fakeApprover{}, &audit)
+	if rec := post(h, approvalBody(t, "bob")); rec.Code != http.StatusForbidden {
+		t.Fatalf("status = %d, want 403", rec.Code)
+	}
+	if len(audit) != 1 || audit[0].Outcome != OutcomeRefused {
+		t.Fatalf("audit = %+v", audit)
+	}
+}
+
+func TestABodyThatNamesAnotherOperatorIsRefused(t *testing.T) {
+	var audit []Access
+	h := operatorHandler(t, operatorcert.Identity{Name: "alice", Role: operatorcert.RoleOperator}, &fakeApprover{}, &audit)
+	if rec := post(h, approvalBody(t, "mallory")); rec.Code != http.StatusBadRequest {
+		t.Fatalf("status = %d, want 400", rec.Code)
+	}
+}
+
+func TestWithoutAnOperatorCATheRouteDoesNotExist(t *testing.T) {
+	h := New(Config{})
+	if rec := post(h, approvalBody(t, "alice")); rec.Code != http.StatusNotFound {
+		t.Fatalf("status = %d, want 404", rec.Code)
+	}
+	if h.Enabled() {
+		t.Fatal("the handler reports itself enabled")
+	}
+}
+
+func TestAnApprovalTheGuardRefusesIsReported(t *testing.T) {
+	approver := &fakeApprover{err: trustbundle.ErrUnapproved}
+	var audit []Access
+	h := operatorHandler(t, operatorcert.Identity{Name: "alice", Role: operatorcert.RoleOperator}, approver, &audit)
+	if rec := post(h, approvalBody(t, "alice")); rec.Code != http.StatusConflict {
+		t.Fatalf("status = %d, want 409", rec.Code)
+	}
+	if len(audit) != 1 || audit[0].Outcome != OutcomeRefused {
+		t.Fatalf("audit = %+v", audit)
+	}
+}
+
+func TestPendingListsTheApprovalsForAVersion(t *testing.T) {
+	book := trustbundle.NewApprovalBook()
+	issuer := contract.SHA256([]byte("ca"))
+	if err := book.Add(trustbundle.Approval{
+		Version: 2, Operation: trustbundle.OperationAdd, Issuer: issuer, ApprovedBy: "alice",
+		ApprovedAt: time.Date(2026, 11, 3, 0, 0, 0, 0, time.UTC), Justification: "new",
+	}); err != nil {
+		t.Fatal(err)
+	}
+	h := New(Config{
+		Authenticate: func(*http.Request) (operatorcert.Identity, error) {
+			return operatorcert.Identity{Name: "alice", Role: operatorcert.RoleOperator}, nil
+		},
+		Approver: book, Book: book, Logger: slog.New(slog.NewTextHandler(io.Discard, nil)),
+	})
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, PendingPath+"?version=2", nil))
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, body = %s", rec.Code, rec.Body.String())
+	}
+	var out struct {
+		Approvals []struct {
+			ApprovedBy string `json:"approved_by"`
+			Issuer     string `json:"issuer"`
+		} `json:"approvals"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &out); err != nil {
+		t.Fatal(err)
+	}
+	if len(out.Approvals) != 1 || out.Approvals[0].ApprovedBy != "alice" || out.Approvals[0].Issuer != issuer.String() {
+		t.Fatalf("approvals = %+v", out.Approvals)
+	}
+}
+
+func TestPendingRefusesAMissingVersion(t *testing.T) {
+	book := trustbundle.NewApprovalBook()
+	h := New(Config{
+		Authenticate: func(*http.Request) (operatorcert.Identity, error) {
+			return operatorcert.Identity{Name: "alice", Role: operatorcert.RoleOperator}, nil
+		},
+		Approver: book, Book: book, Logger: slog.New(slog.NewTextHandler(io.Discard, nil)),
+	})
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, PendingPath, nil))
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("status = %d, want 400", rec.Code)
+	}
+}
+
+func TestPendingIsHiddenWithoutABook(t *testing.T) {
+	h := New(Config{
+		Authenticate: func(*http.Request) (operatorcert.Identity, error) {
+			return operatorcert.Identity{Name: "alice", Role: operatorcert.RoleOperator}, nil
+		},
+		Approver: trustBundleApprover{}, Logger: slog.New(slog.NewTextHandler(io.Discard, nil)),
+	})
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, PendingPath+"?version=2", nil))
+	if rec.Code != http.StatusNotFound {
+		t.Fatalf("status = %d, want 404", rec.Code)
+	}
+}
+
+type fakeAdmitter struct {
+	version uint64
+	err     error
+}
+
+func (f *fakeAdmitter) AdmitSigned(version uint64, _ []byte) error {
+	f.version = version
+	return f.err
+}
+
+func TestAnAdministratorAdmitsASignedVersion(t *testing.T) {
+	admitter := &fakeAdmitter{}
+	h := New(Config{
+		Authenticate: func(*http.Request) (operatorcert.Identity, error) {
+			return operatorcert.Identity{Name: "bob", Role: operatorcert.RoleAdministrator}, nil
+		},
+		Approver: trustBundleApprover{}, Admitter: admitter,
+		Logger: slog.New(slog.NewTextHandler(io.Discard, nil)),
+	})
+	body := `{"version":2,"signed":"` + base64.StdEncoding.EncodeToString([]byte("signed")) + `"}`
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, httptest.NewRequest(http.MethodPost, AdmitPath, strings.NewReader(body)))
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("status = %d, body = %s", rec.Code, rec.Body.String())
+	}
+	if admitter.version != 2 {
+		t.Fatalf("admitted version = %d, want 2", admitter.version)
+	}
+}
+
+func TestAnOperatorCannotAdmit(t *testing.T) {
+	h := New(Config{
+		Authenticate: func(*http.Request) (operatorcert.Identity, error) {
+			return operatorcert.Identity{Name: "alice", Role: operatorcert.RoleOperator}, nil
+		},
+		Approver: trustBundleApprover{}, Admitter: &fakeAdmitter{},
+		Logger: slog.New(slog.NewTextHandler(io.Discard, nil)),
+	})
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, httptest.NewRequest(http.MethodPost, AdmitPath, strings.NewReader(`{"version":2,"signed":"eA=="}`)))
+	if rec.Code != http.StatusForbidden {
+		t.Fatalf("status = %d, want 403", rec.Code)
+	}
+}
+
+func TestAdmittingWithoutASignatureIsRefused(t *testing.T) {
+	h := New(Config{
+		Authenticate: func(*http.Request) (operatorcert.Identity, error) {
+			return operatorcert.Identity{Name: "bob", Role: operatorcert.RoleAdministrator}, nil
+		},
+		Approver: trustBundleApprover{}, Admitter: &fakeAdmitter{},
+		Logger: slog.New(slog.NewTextHandler(io.Discard, nil)),
+	})
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, httptest.NewRequest(http.MethodPost, AdmitPath, strings.NewReader(`{"version":2}`)))
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("status = %d, want 400", rec.Code)
+	}
+}

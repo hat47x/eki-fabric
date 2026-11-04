@@ -778,3 +778,28 @@ func TestRejectionsDoNotLeakPolicyInternals(t *testing.T) {
 		}
 	}
 }
+
+// The requester's own identifier comes back unchanged, on a first submission and
+// on a replay (#315).
+func TestSubmitEchoesTheClientRequestID(t *testing.T) {
+	e := newEnv(t)
+	body := strings.TrimSuffix(strings.TrimSpace(validRequest), "}") + `, "client_request_id": "order-4711"}`
+	first := decode(t, e.submit(aliceToken, "key-client-id-0001", body))
+	if first["client_request_id"] != "order-4711" {
+		t.Fatalf("client_request_id = %v, want order-4711", first["client_request_id"])
+	}
+	again := decode(t, e.submit(aliceToken, "key-client-id-0001", body))
+	if again["client_request_id"] != "order-4711" {
+		t.Fatalf("replay client_request_id = %v, want order-4711", again["client_request_id"])
+	}
+}
+
+// A request without the identifier does not gain one in the answer: an empty
+// value would read as if the requester had sent it (#315).
+func TestSubmitOmitsTheClientRequestIDWhenTheRequestHadNone(t *testing.T) {
+	e := newEnv(t)
+	body := decode(t, e.submit(aliceToken, "key-client-id-0002", validRequest))
+	if _, ok := body["client_request_id"]; ok {
+		t.Fatalf("client_request_id = %v, want absent", body["client_request_id"])
+	}
+}

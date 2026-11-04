@@ -21,7 +21,6 @@ import (
 	"github.com/hat47x/eki-fabric/internal/agent/claimclient"
 	"github.com/hat47x/eki-fabric/internal/agent/claimqueue"
 	"github.com/hat47x/eki-fabric/internal/agent/enroll"
-	"github.com/hat47x/eki-fabric/internal/agent/nativerunner"
 	"github.com/hat47x/eki-fabric/internal/agent/trustanchor"
 	"github.com/hat47x/eki-fabric/internal/spi/workerplane"
 )
@@ -178,12 +177,18 @@ func Run(ctx context.Context, cfg Config, token string, log *slog.Logger) error 
 	}
 	defer store.Close()
 	var sender claimqueue.Sender = client
+	var holds *bodyHold
 	if cfg.Assignments != nil {
 		if bodyer, ok := any(api).(bodySender); ok {
 			if execCfg := cfg.Assignments.Execution; execCfg != nil && execCfg.Command != "" {
+				// One hold, shared by the execution handler (which puts each
+				// Attempt's output in) and the sender (which takes it out), so the
+				// bytes that are sent are the bytes the Attempt actually produced.
+				// The body is kept on disk when the Agent has a state directory, so a crash
+				// between the claim and the send does not lose the output (#508).
+				holds = openHold(cfg.StateDir, DefaultOutputLimit, log)
 				sender = sendingBodies{
-					next: client, bodies: bodyer,
-					runner: nativerunner.Runner{Command: execCfg.Command, Args: execCfg.Args, Env: execCfg.Env, AllowedArgs: execCfg.AllowedArgs, ExecutableSHA256: execCfg.ExecutableSHA256},
+					next: client, bodies: holds, sender: bodyer,
 					events: events, log: log,
 				}
 			}
@@ -210,7 +215,7 @@ func Run(ctx context.Context, cfg Config, token string, log *slog.Logger) error 
 		assignDone := make(chan struct{})
 		go func() {
 			defer close(assignDone)
-			if err := runAssignments(assignCtx, cfg.Assignments, anchor, execs, api, queue, events, principal, interval, log); err != nil {
+			if err := runAssignments(assignCtx, cfg.Assignments, anchor, execs, api, queue, events, holds, principal, interval, log); err != nil {
 				log.Error("assignment loop stopped", "error", err.Error())
 			}
 		}()

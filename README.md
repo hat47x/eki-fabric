@@ -99,9 +99,11 @@ EKIは特定のOSSや組織に専属する基盤ではなく、SEI Cognition、T
 
 要求やArchitecture Baselineの確定した部分と、研究・将来の構想は別に読んでください。[Upstream Plan](plan/UPSTREAM_PLAN.md)には初期の検討順序が、[ADR-0014](plan/adr/0014-authorities-for-delegation-budget-capacity.md)と[ADR-0018](plan/adr/0018-single-machine-delegation-profile.md)〜[ADR-0021](plan/adr/0021-observation-plane-and-disclosure-tiers.md)には設計判断の経緯が残されています。文書の正本と開発時の作業規則は[AGENTS.md](AGENTS.md)にあります。脆弱性の報告は[SECURITY.md](SECURITY.md)、変更の進め方は[CONTRIBUTING.md](CONTRIBUTING.md)を参照してください。
 
-## 成果物の取得経路は、まだありません
+## 成果物の取得経路
 
-この版では、Taskの出力はダイジェストとbyte数としてだけ結果に現れ、本体はどこにも保存されません。`GET /v1/artifacts/{artifact_id}`は契約上存在しますが、どの配備でも`501 NOT_IMPLEMENTED`を返します。依頼元が受け取れるのは「何かのダイジェスト」だけで、出力そのものは取り出せません。保管・転送・取得の経路は、#320が判断単位へ切って追います。
+依頼元は、成果物の本体を`GET /v1/artifacts/{artifact_id}`から受け取れます。名前はダイジェスト（SHA-256）で、応答には同じダイジェストの`Digest`ヘッダが付くので、受け取った側がもう一度計算して確かめられます。保持の期間と、取り出せなくなるときの扱いは、`410`（期限切れ・取り下げ）と`404`（存在しない・他人のもの）で返ります。
+
+本体を保持するよう構成した配備だけがこの経路を持ちます。成果物を保持しない配備は`501 NOT_IMPLEMENTED`を返します。保持しない配備は、保持できないものの目録を語りません（`artifacts`は空配列になります）。
 
 ## ライセンス
 

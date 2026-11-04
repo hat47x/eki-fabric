@@ -11,9 +11,11 @@ import (
 
 	replaysqlite "github.com/hat47x/eki-fabric/internal/adapters/reference/replayguard/sqlite"
 	"github.com/hat47x/eki-fabric/internal/agent/assignment"
+	"github.com/hat47x/eki-fabric/internal/agent/resourcemap"
 	"github.com/hat47x/eki-fabric/internal/agent/startgate"
 	"github.com/hat47x/eki-fabric/internal/agent/trustanchor"
 	"github.com/hat47x/eki-fabric/internal/core/contract"
+	"github.com/hat47x/eki-fabric/internal/core/measurement"
 	"github.com/hat47x/eki-fabric/internal/spi/workerplane"
 )
 
@@ -66,7 +68,12 @@ type ExecutorApprovalConfig struct {
 type MachineConfig struct {
 	CPUMillis   uint64 `json:"cpu_millis"`
 	MemoryBytes uint64 `json:"memory_bytes"`
-	GPUDevices  uint32 `json:"gpu_devices,omitempty"`
+	// DiskBytes is the total disk capacity, used as the denominator when a
+	// WorkOrder's temporary disk is judged (ADR-0037 §11.4). It is the total, not
+	// the free space: a moving denominator would decide the same request
+	// differently depending on what else runs here.
+	DiskBytes  uint64 `json:"disk_bytes,omitempty"`
+	GPUDevices uint32 `json:"gpu_devices,omitempty"`
 }
 
 // prepareAssignments validates the configuration and loads the trust anchor and
@@ -146,17 +153,32 @@ func (l *eventLog) write(e event) error {
 
 // runAssignments polls until ctx ends. It returns when the loop has stopped.
 func runAssignments(ctx context.Context, c *AssignmentConfig, anchor *trustanchor.Anchor, execs []assignment.ExecutorApproval,
-	source workerplane.AssignmentSource, claims claimEnqueuer, events *eventLog, principal workerplane.Principal, interval time.Duration, log *slog.Logger) error {
+	source workerplane.AssignmentSource, claims claimEnqueuer, events *eventLog, holds *bodyHold, principal workerplane.Principal, interval time.Duration, log *slog.Logger) error {
 	guard, err := replaysqlite.Open(ctx, c.ReplayDB, systemClock{}, 4096)
 	if err != nil {
 		return fmt.Errorf("open replay guard: %w", err)
 	}
 	defer guard.Close()
+	// The Agent's ADR-0039 numbers. They are written when the poll loop stops;
+	// nothing is stored by EKI itself.
+	counters := measurement.New()
+	defer counters.Log(log)
 	var handler assignment.Handler = assignment.HandlerFunc(func(context.Context, assignment.Ready) error { return nil })
 	if c.Execution != nil {
 		execHandler, err := newExecutionHandler(c.Execution, events, log, claims, principal)
 		if err != nil {
 			return err
+		}
+		execHandler.bodies = holds
+		// The budget answers with the same spool the bodies go into (#559): if the
+		// disk cannot keep this Attempt's output, the Attempt is not started.
+		if holds != nil && holds.spool != nil {
+			if budget, berr := openBudget(holds.spool, DefaultOutputLimit); berr == nil {
+				budget.SetRefusalHook(func() { counters.Add(measurement.LimitRefused, "host") })
+				execHandler.SetBudget(budget)
+			} else {
+				log.Warn("output budget disabled", "error", berr.Error())
+			}
 		}
 		handler = execHandler
 	}
@@ -170,10 +192,22 @@ func runAssignments(ctx context.Context, c *AssignmentConfig, anchor *trustancho
 		beats.client = reporter
 		handler = beats.wrapped(handler)
 	}
+	if c.Machine.CPUMillis == 0 || c.Machine.MemoryBytes == 0 {
+		// A WorkOrder that asks for more than the machine can give is only caught
+		// when the totals are known. Say the judgement is off rather than let an
+		// operator assume it is on (ADR-0037 §11.1).
+		log.Warn("assignment resource judgement is disabled: the machine profile has no CPU or memory totals")
+	}
+	if c.Machine.DiskBytes == 0 {
+		// Disk is judged separately: a host can report its CPU and memory and not its
+		// disk, and then temporary disk is the one request nobody checks.
+		log.Warn("disk judgement is disabled: the machine profile has no total disk capacity")
+	}
 	svc, err := assignment.New(assignment.Config{
 		Source: source, Principal: principal, Anchor: anchor, Replay: guard, Clock: systemClock{},
 		Executors: execs, Governor: assignment.StaticGovernor(c.CeilingPercent),
 		Machine: startgate.MachineProfile{CPUMillis: c.Machine.CPUMillis, MemoryBytes: c.Machine.MemoryBytes, GPUDevices: c.Machine.GPUDevices},
+		Host:    resourcemap.Host{CPUMillis: int64(c.Machine.CPUMillis), MemoryBytes: int64(c.Machine.MemoryBytes), DiskBytes: int64(c.Machine.DiskBytes)},
 		Handler: handler,
 		Logger:  log,
 	})
@@ -196,7 +230,7 @@ func runAssignments(ctx context.Context, c *AssignmentConfig, anchor *trustancho
 			log.Error("assignment poll failed", "error", err.Error())
 		}
 		for _, r := range results {
-			ev := event{Time: time.Now().UTC(), AttemptID: r.AttemptID, LeaseID: r.LeaseID, Outcome: string(r.Outcome), Reason: r.Reason, FenceEpoch: r.FenceEpoch}
+			ev := event{Time: time.Now().UTC(), AttemptID: r.AttemptID, LeaseID: r.LeaseID, Outcome: string(r.Outcome), Reason: r.Reason, Failure: r.Detail, FenceEpoch: r.FenceEpoch}
 			if r.Outcome == assignment.OutcomeReady {
 				ev.CPUMillis, ev.MemBytes, ev.Deadline = r.Plan.Limits().CPUMillis, r.Plan.Limits().MemoryBytes, r.Plan.Deadline()
 			}

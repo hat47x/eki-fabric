@@ -16,8 +16,9 @@ func IssuerFingerprint(cert *x509.Certificate) contract.Digest {
 	if cert == nil {
 		return contract.Digest{}
 	}
-	sum := sha256.Sum256(cert.Raw)
-	return contract.SHA256(sum[:])
+	// The digest of the DER form, not the digest of the digest: this is the value
+	// `openssl x509 -fingerprint -sha256` prints and the one a bundle lists (#466).
+	return contract.FromSHA256(sha256.Sum256(cert.Raw))
 }
 
 // CheckPeerChains applies the bundle to the chains a TLS handshake verified. The

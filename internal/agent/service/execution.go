@@ -26,6 +26,13 @@ type executionHandler struct {
 	log        *slog.Logger
 	claims     claimEnqueuer
 	principal  workerplane.Principal
+	// bodies keeps the output of each completed Attempt, keyed by Attempt, for
+	// the claim sender to send after the claim is acknowledged. Nil means the
+	// Agent has no body route.
+	bodies *bodyHold
+	// budget answers whether the host can keep this Attempt's output (#559).
+	// Nil means the check is off.
+	budget *governor.OutputBudget
 }
 
 // claimEnqueuer records a ResultClaim durably. Delivery to the Control Plane is
@@ -66,7 +73,18 @@ func newExecutionHandler(c *ExecutionConfig, events *eventLog, log *slog.Logger,
 }
 
 func (h *executionHandler) Start(ctx context.Context, ready assignment.Ready) error {
-	outcome, err := h.supervisor.Execute(ctx, executor.SpecFromPlan(ready.Plan), h.runner, noStopSource{})
+	spec := executor.SpecFromPlan(ready.Plan)
+	// The host's output budget is asked before the runner starts (#559, ADR-0037
+	// §5): a Task whose output cannot be kept should not run at all, because the
+	// work would be spent and the result thrown away.
+	if h.budget != nil {
+		if err := h.budget.Admit(int64(spec.Limits.OutputBytesMaximum)); err != nil {
+			h.log.Warn("attempt refused: the host cannot keep the output",
+				"attempt", string(ready.AttemptID), "error", err.Error())
+			return nil
+		}
+	}
+	outcome, err := h.supervisor.Execute(ctx, spec, h.runner, noStopSource{})
 	ev := event{
 		Time:            time.Now().UTC(),
 		AttemptID:       string(ready.AttemptID),
@@ -100,12 +118,17 @@ func (h *executionHandler) Start(ctx context.Context, ready assignment.Ready) er
 	if err != nil {
 		return fmt.Errorf("build result claim for %s: %w", ready.AttemptID, err)
 	}
+	// The body is kept under this Attempt before the claim is queued, so a
+	// delivery that runs right away finds it. Only the Attempt that produced
+	// the bytes can take them.
+	h.bodies.Put(ready.AttemptID, outcome.Body)
 	// The claim reaches the queue before any send is tried. The queue's
 	// delivery pass sends it and retries after a Control Plane outage or an
 	// Agent restart.
 	alreadyQueued, err := h.claims.Enqueue(ctx, claim)
 	if err != nil {
 		h.log.Error("result claim not queued", "attempt", ready.AttemptID, "error", err.Error())
+		h.bodies.Take(ready.AttemptID)
 		return fmt.Errorf("queue result claim for %s: %w", ready.AttemptID, err)
 	}
 	queuedEvent := event{
@@ -139,6 +162,7 @@ func isNilEnqueuer(c claimEnqueuer) bool {
 const (
 	eventClaimQueued         = "result_claim_queued"
 	eventBodySent            = "claim_body_sent"
+	eventBodySendFailed      = "claim_body_send_failed"
 	eventClaimSubmitted      = "result_claim_submitted"
 	eventClaimDeliveryFailed = "result_claim_delivery_failed"
 )
@@ -177,7 +201,7 @@ type bodySender interface {
 type claimSender = claimqueue.Sender
 
 // sendingBodies wraps the claim queue's Sender. After a claim is
-// acknowledged, it sends the body the Runner kept, so the Control Plane can
+// acknowledged, it sends the body kept for that claim's Attempt (bodyHold), so the Control Plane can
 // verify the digest against the claim it just accepted. A body that does not
 // arrive is not a claim failure: the claim is already acknowledged, the
 // queue must not resend it, and the body's absence is visible on the Control
@@ -185,8 +209,8 @@ type claimSender = claimqueue.Sender
 // the same Task retries nothing here; a retry is a new Attempt.
 type sendingBodies struct {
 	next   claimSender
-	bodies bodySender
-	runner executor.Runner
+	sender bodySender
+	bodies *bodyHold
 	events *eventLog
 	log    *slog.Logger
 }
@@ -195,19 +219,19 @@ func (s sendingBodies) Send(ctx context.Context, claim resultclaim.Claim) error 
 	if err := s.next.Send(ctx, claim); err != nil {
 		return err
 	}
-	if s.bodies == nil {
+	if s.sender == nil {
 		return nil
 	}
-	body, ok := executor.BodyOf(s.runner)
+	body, ok := s.bodies.Take(claim.AttemptID())
 	if !ok || len(body) == 0 {
 		return nil
 	}
 	sendCtx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
-	err := s.bodies.SendBody(sendCtx, claim.AttemptID(), body, "")
+	err := s.sender.SendBody(sendCtx, claim.AttemptID(), body, "")
 	ev := event{Time: time.Now().UTC(), AttemptID: string(claim.AttemptID()), LeaseID: string(claim.LeaseID())}
 	if err != nil {
-		ev.Outcome, ev.Failure = eventClaimQueued, err.Error()
+		ev.Outcome, ev.Failure = eventBodySendFailed, err.Error()
 	} else {
 		ev.Outcome = eventBodySent
 	}
@@ -284,3 +308,7 @@ func (noStopSource) Next(ctx context.Context) (governor.Decision, error) {
 	<-ctx.Done()
 	return governor.Decision{}, ctx.Err()
 }
+
+// SetBudget connects the host's output budget (#559). Nil leaves the check off,
+// which is what an Agent without a state directory gets.
+func (h *executionHandler) SetBudget(b *governor.OutputBudget) { h.budget = b }

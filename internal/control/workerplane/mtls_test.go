@@ -687,11 +687,11 @@ func TestMTLSAWorkerWhoseRootTheVersionDroppedIsRefused(t *testing.T) {
 		NotAfter: time.Now().UTC().Add(24 * time.Hour),
 	}
 	f := newMTLSFixture(t, func(cfg *server.MTLSConfig) {
-		cfg.TrustBundle = func() (trustbundle.Signed, bool) {
+		cfg.TrustBundle = func() (trustbundle.Signed, bool, error) {
 			if !refuse {
-				return trustbundle.Signed{}, false
+				return trustbundle.Signed{}, false, nil
 			}
-			return trustbundle.Signed{Bundle: other}, true
+			return trustbundle.Signed{Bundle: other}, true, nil
 		}
 	})
 	w := f.enroll(t, nil)

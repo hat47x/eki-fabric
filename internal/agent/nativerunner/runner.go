@@ -38,18 +38,6 @@ type Runner struct {
 	AllowedArgs      []string
 	Env              []string
 	ExecutableSHA256 string
-
-	lastOutput []byte
-}
-
-// BodyOf returns the output bytes of the last Run on this Runner. ADR-0034
-// keeps the body on the Worker until the claim is queued and the body sent;
-// the bytes live behind the Runner that produced them.
-func (r Runner) BodyOf() ([]byte, bool) {
-	if r.lastOutput == nil {
-		return nil, false
-	}
-	return r.lastOutput, true
 }
 
 func (r Runner) Run(ctx context.Context, spec executor.Spec) (executor.Result, error) {
@@ -127,7 +115,11 @@ func (r Runner) Run(ctx context.Context, spec executor.Spec) (executor.Result, e
 	}
 	cmd := exec.CommandContext(runCtx, executable, execArgs...)
 	prepareProcess(cmd)
-	cmd.Cancel = func() error { return cancelProcess(cmd) }
+	// killer stops the process tree. On Windows it owns a kill-on-close Job
+	// Object assigned right after start; on unix the process group is enough
+	// and the killer carries no state.
+	killer := &processKiller{}
+	cmd.Cancel = func() error { return cancelProcess(killer, cmd) }
 	// An empty non-nil Env means the child receives no inherited environment.
 	cmd.Env = append([]string{}, r.Env...)
 	if tempDir != "" {
@@ -142,9 +134,14 @@ func (r Runner) Run(ctx context.Context, spec executor.Spec) (executor.Result, e
 	if err = cmd.Start(); err != nil {
 		return result, err
 	}
+	// Put the started process into its kill-on-close job (Windows) so a later
+	// cancellation stops the whole tree without an enumeration race. A failure
+	// here only downgrades Windows cancellation to taskkill; unix is a no-op.
+	_ = killer.assign(cmd.Process.Pid)
+	defer killer.release()
 	cleanupSandbox, err := applySandbox(cmd, spec)
 	if err != nil {
-		_ = cancelProcess(cmd)
+		_ = cancelProcess(killer, cmd)
 		_ = cmd.Wait()
 		return result, err
 	}
@@ -153,7 +150,7 @@ func (r Runner) Run(ctx context.Context, spec executor.Spec) (executor.Result, e
 	}
 	var watch *resourceWatch
 	if spec.Limits.MemoryBytes != 0 || spec.Limits.CPUMillis != 0 || spec.Limits.TemporaryDiskBytes != 0 {
-		watch = watchResources(cmd.Process.Pid, spec.Limits.MemoryBytes, spec.Limits.CPUMillis, spec.Limits.TemporaryDiskBytes, tempDir, func() { _ = cancelProcess(cmd) })
+		watch = watchResources(cmd.Process.Pid, spec.Limits.MemoryBytes, spec.Limits.CPUMillis, spec.Limits.TemporaryDiskBytes, tempDir, func() { _ = cancelProcess(killer, cmd) })
 	}
 	err = cmd.Wait()
 	watch.stop()
@@ -187,7 +184,7 @@ func (r Runner) Run(ctx context.Context, spec executor.Spec) (executor.Result, e
 		return result, fmt.Errorf("native runner memory %d exceeds %d bytes", maxRSSBytes, spec.Limits.MemoryBytes)
 	}
 	result.OutputDigest = contract.SHA256(output.Bytes())
-	r.lastOutput = append([]byte(nil), output.Bytes()...)
+	result.Body = append([]byte(nil), output.Bytes()...)
 	return result, nil
 }
 

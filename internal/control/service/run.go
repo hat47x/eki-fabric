@@ -19,9 +19,12 @@ import (
 	"github.com/hat47x/eki-fabric/internal/control/claimbody"
 	"github.com/hat47x/eki-fabric/internal/control/claimplane"
 	"github.com/hat47x/eki-fabric/internal/control/clientapi"
+	"github.com/hat47x/eki-fabric/internal/control/leaserecall"
+	"github.com/hat47x/eki-fabric/internal/control/operatorapi"
 	"github.com/hat47x/eki-fabric/internal/control/workerplane"
 	"github.com/hat47x/eki-fabric/internal/core/admission"
 	"github.com/hat47x/eki-fabric/internal/core/ids"
+	"github.com/hat47x/eki-fabric/internal/core/measurement"
 	"github.com/hat47x/eki-fabric/internal/core/trustbundle"
 	"github.com/hat47x/eki-fabric/internal/core/workerenrollment"
 	"github.com/hat47x/eki-fabric/internal/spi/statestore"
@@ -33,6 +36,18 @@ type Server struct {
 	store    *sqlite.Store
 	listener net.Listener
 	log      *slog.Logger
+
+	// counters holds the ADR-0039 numbers for the life of the process.
+	counters *measurement.Counters
+	// recallDone closes when the lease reclaim loop has stopped (#555).
+	recallDone chan struct{}
+	// countersDone closes when the periodic write-out has stopped (#392).
+	countersDone chan struct{}
+	// operator is the Operator listener of ADR-0038, nil when the process has no
+	// Operator routes. approvals is the book those approvals are collected in,
+	// shared with whatever admits a new trust bundle version.
+	operator  *operatorapi.Server
+	approvals *trustbundle.ApprovalBook
 
 	done     chan struct{}
 	serveErr error
@@ -105,17 +120,40 @@ func Start(ctx context.Context, cfg Config, log *slog.Logger) (*Server, error) {
 	// (#289). Until then the probe refuses: the process is not serving for
 	// real yet.
 	var readyState atomic.Bool
+	// The retrieval route reads the same directory the Worker listener writes to.
+	// Two Store values over one directory are fine: the store keeps no state in
+	// memory, and a body is one file named after its digest (#494).
+	var artifacts clientapi.ArtifactSource
+	if cfg.Worker != nil && cfg.Worker.ArtifactsDir != "" {
+		bodies, aerr := artifactfile.New(cfg.Worker.ArtifactsDir)
+		if aerr != nil {
+			_ = store.Close()
+			return nil, fmt.Errorf("open the artifact store: %w", aerr)
+		}
+		// The same state store answers whether a Task was withdrawn, so a body whose
+		// Task was cancelled stops being served (ADR-0037 §9, #592).
+		artifacts = artifactSource{store: bodies, tasks: taskWithdrawalFromState{tasks: store}}
+	}
+	counters := measurement.New()
+	// One book for the whole process: the Operator API writes into it and the
+	// version admission path reads from it (#545).
+	approvals := trustbundle.NewApprovalBook()
 	handler, err := clientapi.NewHandler(clientapi.Config{
-		Service:       svc,
-		Authenticator: auth,
-		MaxBodyBytes:  cfg.MaxBodyBytes,
-		Logger:        log,
-		Ready:         readyState.Load,
+		Service:          svc,
+		Authenticator:    auth,
+		MaxBodyBytes:     cfg.MaxBodyBytes,
+		Logger:           log,
+		Ready:            readyState.Load,
+		Artifacts:        artifacts,
+		ArtifactAuditErr: artifactAuditErr(cfg, log, ctx),
 	})
 	if err != nil {
 		_ = store.Close()
 		return nil, err
 	}
+	// The counters of ADR-0039 are counted by the handler and written out when the
+	// process stops; nothing here is stored.
+	handler.SetCounters(counters)
 
 	var lc net.ListenConfig
 	listener, err := lc.Listen(ctx, "tcp", cfg.Listen)
@@ -140,9 +178,99 @@ func Start(ctx context.Context, cfg Config, log *slog.Logger) (*Server, error) {
 		listener = tls.NewListener(listener, httpServer.TLSConfig)
 	}
 
-	s := &Server{http: httpServer, store: store, listener: listener, log: log, done: make(chan struct{})}
+	s := &Server{http: httpServer, store: store, listener: listener, log: log, done: make(chan struct{}), counters: counters}
 	s.readyFlag = &readyState
 	s.refreshReady()
+	if cfg.LeaseRegistry == "" {
+		// Reclaim loses its memory without a registry: leases that expire while the
+		// process is down are not swept on the next start (#555). Say so at start-up
+		// rather than let a deployment assume it is reclaiming.
+		log.Warn("lease reclaim is disabled: no lease_registry is configured, so expired leases are only found by whoever looks")
+	}
+	if cfg.LeaseRegistry != "" {
+		registry, rerr := leaserecall.OpenFile(cfg.LeaseRegistry)
+		if rerr != nil {
+			_ = listener.Close()
+			_ = store.Close()
+			return nil, rerr
+		}
+		recall, rerr := leaserecall.New(leaserecall.Config{
+			Lister: registry, Reclaimer: registry, OnReclaim: recallCounter(counters),
+		})
+		if rerr != nil {
+			_ = listener.Close()
+			_ = store.Close()
+			return nil, rerr
+		}
+		s.recallDone = make(chan struct{})
+		go func() {
+			defer close(s.recallDone)
+			leaserecall.Run(ctx, recall, time.Minute, log)
+		}()
+	}
+
+	// The ADR-0039 numbers are written periodically, not only on the way out
+	// (#392). A deployment that runs for weeks would otherwise never see them: the
+	// shutdown line is a convenience, not the way the numbers reach anyone.
+	s.countersDone = make(chan struct{})
+	go func() {
+		defer close(s.countersDone)
+		ticker := time.NewTicker(counterWriteEvery)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-s.done:
+				// Shutdown closes done before it waits here, so the last write on
+				// the way out still happens after this returns.
+				return
+			case <-ticker.C:
+				counters.Log(log)
+			}
+		}
+	}()
+
+	if cfg.Operator != nil {
+		// The Operator listener is a second, separate door (ADR-0038): its own
+		// port, its own CA, and a client certificate required before any request
+		// reaches the handler.
+		oc, err := cfg.Operator.ServerConfig()
+		if err != nil {
+			_ = listener.Close()
+			_ = store.Close()
+			return nil, err
+		}
+		s.approvals = approvals
+		oc.Approver = approvals
+		// The default record is the process log. ADR-0040 §2 asks for append-only
+		// storage that the process cannot delete from, and a log file is neither, so
+		// say at start-up that the promise is not met yet (the operator can plug a
+		// sink in).
+		if cfg.AuditSinkURL == "" {
+			log.Warn("operator audit goes to the process log: ADR-0040 §2 asks for append-only storage the process cannot rewrite")
+		}
+		oc.Audit = func(a operatorapi.Access) {
+			log.Info("operator access", "name", a.Name, "role", a.Role,
+				"operation", a.Operation, "target", a.Target, "outcome", a.Outcome)
+		}
+		oc.AuditErr = operatorAuditErr(cfg, log, ctx)
+		oc.Book = approvals
+		oc.Bundles = store
+		oc.Admitter = startAdmitter(ctx, store, approvals, append([]string{cfg.TrustBundleKey}, cfg.TrustBundleKeys...), log)
+		oc.Logger = log
+		handler, tlsConfig, err := operatorapi.Build(oc)
+		if err != nil {
+			_ = listener.Close()
+			_ = store.Close()
+			return nil, err
+		}
+		s.operator, err = operatorapi.Serve(cfg.Operator.Listen, handler, tlsConfig, log)
+		if err != nil {
+			_ = listener.Close()
+			_ = store.Close()
+			return nil, err
+		}
+		log.Info("operator listener started", "address", s.operator.Addr())
+	}
 
 	if cfg.Worker != nil {
 		s.workerConfigured = true
@@ -196,6 +324,10 @@ func (s *Server) startWorker(ctx context.Context, w *WorkerConfig, store *sqlite
 	if err != nil {
 		return err
 	}
+	// ADR-0039 §2.1: count the refusals this boundary makes. The reason is a closed
+	// set ("identity", "invalid", "owner", "rejected"), so the number is readable
+	// without parsing prose.
+	plane.SetRefusalHook(func(reason string) { s.counters.Add(measurement.ClaimRefused, reason) })
 	api, err := workerplane.New(workerplane.Config{Claims: plane})
 	if err != nil {
 		return err
@@ -295,6 +427,14 @@ func (s *Server) mtlsHandler(w *WorkerConfig, store *sqlite.Store, plane *claimp
 	if err != nil {
 		return nil, fmt.Errorf("%w: %v", ErrInvalidConfig, err)
 	}
+	// Keeping a body without recording who may read it would fill the disk with
+	// bytes nobody can fetch, so the metadata is written as part of receiving
+	// (#514). The retention matches the Worker's own spool default, so a body a
+	// Worker still holds is not already expired here.
+	receiver, err = receiver.WithMeta(attemptOwner{attempts: store, admissions: store}, metaSink{store: bodies, dataClass: w.DataClass}, artifactRetention)
+	if err != nil {
+		return nil, fmt.Errorf("%w: %v", ErrInvalidConfig, err)
+	}
 	handler, err := workerplane.NewMTLSHandler(workerplane.MTLSConfig{
 		Claims: api, Assignments: assignments, Heartbeats: store, BodyReceiver: bodyReceiver{receiver}, Registry: registry, WorkerCA: ca.Certificate(), TrustDomain: w.MTLS.TrustDomain,
 		MaxBodyBytes: w.MaxBodyBytes, Logger: s.log,
@@ -339,6 +479,11 @@ func (s *Server) Err() error { return errors.Join(s.serveErr, s.workerErr) }
 func (s *Server) Shutdown(ctx context.Context) error {
 	var result error
 	s.closing.Do(func() {
+		if s.operator != nil {
+			if err := s.operator.Close(ctx); err != nil {
+				result = errors.Join(result, fmt.Errorf("shutdown operator: %w", err))
+			}
+		}
 		if err := s.http.Shutdown(ctx); err != nil {
 			result = errors.Join(result, fmt.Errorf("shutdown http: %w", err))
 			_ = s.http.Close()
@@ -357,6 +502,17 @@ func (s *Server) Shutdown(ctx context.Context) error {
 			close(s.caExpiry)
 		}
 		<-s.done
+		// Write the ADR-0039 numbers once, on the way out. They are not stored
+		// anywhere by EKI, so this line is what a deployment keeps.
+		if s.recallDone != nil {
+			<-s.recallDone
+		}
+		if s.countersDone != nil {
+			<-s.countersDone
+		}
+		if s.counters != nil {
+			s.counters.Log(s.log)
+		}
 		if err := s.store.Close(); err != nil {
 			result = errors.Join(result, fmt.Errorf("close state store: %w", err))
 		}
@@ -433,22 +589,34 @@ func (l leaseWorker) LoadLeaseWorker(ctx context.Context, id ids.LeaseID) (strin
 // currentTrustBundle reports the newest stored version, or false when the store
 // keeps none. It reads on each call so a version admitted at runtime is used by
 // the next request without a restart; the read is one row plus its issuers.
-func currentTrustBundle(store any) func() (trustbundle.Signed, bool) {
+func currentTrustBundle(store any) func() (trustbundle.Signed, bool, error) {
 	bundles, ok := store.(statestore.TrustBundleStore)
 	if !ok {
 		return nil
 	}
-	return func() (trustbundle.Signed, bool) {
+	return func() (trustbundle.Signed, bool, error) {
 		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 		defer cancel()
 		record, err := bundles.LatestTrustBundle(ctx)
+		if errors.Is(err, statestore.ErrNotFound) {
+			// No version stored is the compatibility mode the operator chose, not a
+			// fault: the certificate check alone applies (ADR-0036 §2.3).
+			return trustbundle.Signed{}, false, nil
+		}
 		if err != nil {
-			return trustbundle.Signed{}, false
+			// A version may exist and be unreadable. Saying "none" here would skip the
+			// version check while the operator believes it is on (#467).
+			return trustbundle.Signed{}, false, fmt.Errorf("trust bundle: read latest: %w", err)
 		}
 		signed, err := trustbundle.FromRecord(record)
 		if err != nil {
-			return trustbundle.Signed{}, false
+			return trustbundle.Signed{}, false, fmt.Errorf("trust bundle: decode version %d: %w", record.Version, err)
 		}
-		return signed, true
+		return signed, true, nil
 	}
 }
+
+// counterWriteEvery is how often the ADR-0039 numbers are written while the
+// process is running (#392). Five minutes keeps a long-running deployment's numbers
+// visible without turning the log into a stream of counters.
+const counterWriteEvery = 5 * time.Minute

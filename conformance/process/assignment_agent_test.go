@@ -78,7 +78,14 @@ func (e *mtlsEnv) assignmentAgent(t *testing.T, name string, auth *signedchain.A
 		stateDir: stateDir, worker: worker, cfgPath: filepath.Join(e.dir, name+"-agent.json"),
 		events: filepath.Join(e.dir, name+"-events.jsonl"), replayDB: filepath.Join(e.dir, name+"-replay.db"),
 	}
-	anchor, err := json.Marshal(auth.TrustAnchor(validatedAt, "policy-1"))
+	// The anchor is validated before the test starts, not at the test's now:
+	// the Agent verifies with its own realtime clock, and a machine whose clock
+	// steps backwards (a VM clock correction under load) would read validatedAt
+	// as still in its future-skew window and refuse every delivery with
+	// TRUST_BUNDLE_INVALID until the clock caught up (#472). A real anchor was
+	// validated some time before the Agent started, so an anchor 30s old is the
+	// realistic shape, and a backwards step of up to 30s cannot trip the skew.
+	anchor, err := json.Marshal(auth.TrustAnchor(validatedAt.Add(-30*time.Second), "policy-1"))
 	must(t, err)
 	anchorPath := filepath.Join(e.dir, name+"-trust-anchor.json")
 	must(t, os.WriteFile(anchorPath, anchor, 0o600))
@@ -261,4 +268,31 @@ func TestAgentRefusesToStartWithoutATrustAnchor(t *testing.T) {
 	if agent.cmd.ProcessState == nil || agent.cmd.ProcessState.ExitCode() == 0 || !strings.Contains(agent.out.String(), "trust anchor") {
 		t.Fatalf("exit %v, output:\n%s", agent.cmd.ProcessState, agent.out.String())
 	}
+}
+
+// readyEventFor reports whether the Agent has recorded that it started the
+// Attempt. Unlike eventFor, it does not stop at the first event: an Agent may
+// reject a delivery on an early poll and start it on a later one, and the
+// rejections before the start are logged with their reason and detail so that
+// a transient refusal stays visible.
+func readyEventFor(t *testing.T, events []assignmentEvent, attempt string) bool {
+	t.Helper()
+	ready := false
+	for _, ev := range events {
+		if ev.AttemptID != attempt {
+			continue
+		}
+		if ev.Outcome == "ready" {
+			ready = true
+		}
+	}
+	if ready {
+		for _, ev := range events {
+			if ev.AttemptID == attempt && ev.Outcome == "rejected" {
+				t.Logf("before it started, the Agent rejected the delivery once: reason=%s detail=%s", ev.Reason, ev.Failure)
+				break
+			}
+		}
+	}
+	return ready
 }

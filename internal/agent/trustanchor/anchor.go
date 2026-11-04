@@ -25,6 +25,8 @@ import (
 
 	"github.com/hat47x/eki-fabric/internal/core/authority"
 	"github.com/hat47x/eki-fabric/internal/core/decisiontrust"
+	"github.com/hat47x/eki-fabric/internal/core/trustbundle"
+	"github.com/hat47x/eki-fabric/internal/spi/workerplane/enrollwire"
 )
 
 // ErrInvalid means the trust anchor file is missing, unreadable or unusable.
@@ -44,6 +46,15 @@ type File struct {
 	MaxBundleStalenessSeconds  int64     `json:"max_bundle_staleness_seconds"`
 	MaxDecisionLifetimeSeconds int64     `json:"max_decision_lifetime_seconds"`
 	Keys                       []Key     `json:"keys"`
+	// ControlPublicKey is the Control Plane's signing key, in the out-of-band
+	// spelling the deployment chose (hex or base64). It is what the Agent verifies
+	// a delivered bundle version with; without it the Agent cannot accept one
+	// (ADR-0036 §5, #478).
+	ControlPublicKey string `json:"control_public_key,omitempty"`
+	// TrustBundleVersions is the history of bundle versions this Agent accepted,
+	// oldest first. It is optional so an anchor written before versions existed
+	// still loads (ADR-0036, #478).
+	TrustBundleVersions []enrollwire.Bundle `json:"trust_bundle_versions"`
 }
 
 // Key is one Authority public key.
@@ -64,6 +75,17 @@ type Anchor struct {
 	TrustDomain    string
 	PolicyRevision string
 	bundle         decisiontrust.TrustBundleMetadata
+	// version is the newest accepted trust bundle version, when the file holds
+	// one (ADR-0036, #478). Nil means the anchor predates versions.
+	version *trustbundle.Signed
+}
+
+// BundleVersion returns the newest accepted version, if the anchor holds one.
+func (a *Anchor) BundleVersion() (trustbundle.Signed, bool) {
+	if a == nil || a.version == nil {
+		return trustbundle.Signed{}, false
+	}
+	return *a.version, true
 }
 
 // TrustBundle returns the bundle metadata the verifiers check for freshness.
@@ -109,6 +131,9 @@ func Build(doc File) (*Anchor, error) {
 		return nil, fmt.Errorf("%w: the clock skew, bundle staleness and decision lifetime limits are required", ErrInvalid)
 	case len(doc.Keys) == 0:
 		return nil, fmt.Errorf("%w: no keys", ErrInvalid)
+	}
+	if err := checkVersions(doc); err != nil {
+		return nil, err
 	}
 	keyTime := doc.Keys[0].SigningNotBefore
 	for _, k := range doc.Keys {
@@ -164,8 +189,36 @@ func Build(doc File) (*Anchor, error) {
 	if err != nil {
 		return nil, fmt.Errorf("%w: %v", ErrInvalid, err)
 	}
-	return &Anchor{
+	anchor := &Anchor{
 		Boundary: boundary, TrustDomain: doc.TrustDomain, PolicyRevision: doc.PolicyRevision,
 		bundle: decisiontrust.TrustBundleMetadata{Revision: doc.BundleRevision, ValidatedAt: doc.ValidatedAt.UTC()},
-	}, nil
+	}
+	if len(doc.TrustBundleVersions) > 0 {
+		newest, err := enrollwire.DecodeBundle(doc.TrustBundleVersions[len(doc.TrustBundleVersions)-1])
+		if err != nil {
+			return nil, fmt.Errorf("%w: %v", ErrInvalid, err)
+		}
+		anchor.version = &newest
+	}
+	return anchor, nil
+}
+
+// checkVersions keeps bundle_revision and the stored history from drifting. The
+// history is optional so an anchor written before versions existed still loads;
+// when it is present, its newest version is what bundle_revision must name
+// (ADR-0036, #478).
+func checkVersions(doc File) error {
+	if len(doc.TrustBundleVersions) == 0 {
+		return nil
+	}
+	newest := doc.TrustBundleVersions[len(doc.TrustBundleVersions)-1]
+	if newest.Version != doc.BundleRevision {
+		return fmt.Errorf("%w: bundle_revision %d, newest stored version %d", ErrInvalid, doc.BundleRevision, newest.Version)
+	}
+	for i, wire := range doc.TrustBundleVersions {
+		if _, err := enrollwire.DecodeBundle(wire); err != nil {
+			return fmt.Errorf("%w: version %d: %v", ErrInvalid, i, err)
+		}
+	}
+	return nil
 }

@@ -13,6 +13,7 @@ import (
 	"log/slog"
 	"net"
 	"net/http"
+	"net/url"
 	"os"
 	"strings"
 	"time"
@@ -58,6 +59,31 @@ type Config struct {
 	// Worker enables the optional Worker listener of the process-level test
 	// profile. Absent means no Worker listener is opened.
 	Worker *WorkerConfig `json:"worker,omitempty"`
+
+	// Operator enables the Operator listener of ADR-0038. Absent means this
+	// process has no Operator routes at all: there is no "unauthenticated
+	// because unconfigured" path to approving trust.
+	Operator *OperatorConfig `json:"operator,omitempty"`
+
+	// LeaseRegistry is the file that keeps the open leases so that the reclaim
+	// sweep survives a restart (#555). Empty means the sweep does not run.
+	LeaseRegistry string `json:"lease_registry,omitempty"`
+
+	// TrustBundleKey is the Administrator's public key, hex or with a prefix. It
+	// is the only half the Control Plane holds (ADR-0038 §6): with it the process
+	// can refuse a signed version, never create one. Empty hides the route.
+	TrustBundleKey string `json:"trust_bundle_key,omitempty"`
+	// TrustBundleKeys is the same key, plus the ones a handover adds (ADR-0038 §7).
+	// Both fields are read: an existing deployment keeps working, and a deployment
+	// in a handover names every key that should verify.
+	TrustBundleKeys []string `json:"trust_bundle_keys,omitempty"`
+
+	// AuditSinkURL is where audit records are POSTed (ADR-0040 §7). Empty keeps the
+	// process log, which does not meet §2 and says so at start-up.
+	AuditSinkURL string `json:"audit_sink_url,omitempty"`
+
+	// requester that could lower it would be grading its own data. Empty means the
+	// deployment declares nothing, and then no class is shown at all.
 
 	// Dispatch enables the placement loop. Absent means the process accepts
 	// Tasks but does not move them.
@@ -109,6 +135,11 @@ type WorkerConfig struct {
 	// ArtifactsDir keeps the bodies of accepted outputs, one file per
 	// digest (ADR-0034 §2.3). Required with auth "mtls".
 	ArtifactsDir string `json:"artifacts_dir,omitempty"`
+	// DataClass is what this deployment says about the data in the bodies it
+	// keeps (ADR-0034 §10.2). It is a deployment fact, not a Client claim: a
+	// requester that could lower it would be grading its own data. Empty means
+	// nothing is declared, and then no class is shown at all.
+	DataClass string `json:"data_class,omitempty"`
 	// Sessions maps token hashes to the Worker they authenticate. Test profile
 	// only; it must be empty with auth "mtls".
 	Sessions []WorkerSessionConfig `json:"sessions"`
@@ -308,6 +339,15 @@ func (c Config) Validate() error {
 	}
 	if c.TLS == nil && !isLoopback(host) && !c.AllowInsecureListen {
 		return fmt.Errorf("%w: plaintext HTTP on %q is refused; configure tls, listen on a loopback address, or set allow_insecure_listen when a trusted proxy terminates TLS", ErrInvalidConfig, c.Listen)
+	}
+	if c.Worker != nil && !admission.ValidDataClass(c.Worker.DataClass) {
+		return fmt.Errorf("%w: worker.data_class must be public, internal or restricted", ErrInvalidConfig)
+	}
+	if c.AuditSinkURL != "" {
+		sink, err := url.Parse(c.AuditSinkURL)
+		if err != nil || (sink.Scheme != "http" && sink.Scheme != "https") || sink.Host == "" {
+			return fmt.Errorf("%w: audit_sink_url must be an http or https URL", ErrInvalidConfig)
+		}
 	}
 	if c.MaxBodyBytes < 0 {
 		return fmt.Errorf("%w: negative max_body_bytes", ErrInvalidConfig)

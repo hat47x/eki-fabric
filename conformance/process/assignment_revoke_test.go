@@ -10,6 +10,8 @@ package process
 
 import (
 	"context"
+	"strconv"
+	"strings"
 	"testing"
 	"time"
 
@@ -40,8 +42,11 @@ func TestAgentStopsOnARevokedAssignment(t *testing.T) {
 	// Before the revocation the Agent starts the assignment.
 	agent := a.start(t)
 	waitFor(t, "the Agent starts the live assignment", func() (bool, string) {
-		ev, ok := eventFor(readEvents(t, a.events), placed.AttemptID.String())
-		return ok && ev.Outcome == "ready", agent.out.String()
+		events := readEvents(t, a.events)
+		// #472: when this wait times out, the events are the half of the story the
+		// agent log does not carry. Printing them shows whether the Agent emitted
+		// "ready" for another Attempt, or never emitted it at all.
+		return readyEventFor(t, events, placed.AttemptID.String()), agent.out.String() + "`n" + eventsSummary(events, placed.AttemptID.String())
 	})
 	agent.kill()
 
@@ -80,4 +85,28 @@ func TestAgentStopsOnARevokedAssignment(t *testing.T) {
 			t.Fatalf("the revoked assignment was treated as fresh: %+v", ev)
 		}
 	}
+}
+
+// eventsSummary describes what the Agent recorded, so a timed-out wait says which
+// half of the exchange went missing (#472). It names the Attempt each event is for
+// rather than dumping the file: the question is "did it start another Attempt",
+// and a list of attempts answers that at a glance.
+func eventsSummary(events []assignmentEvent, want string) string {
+	var b strings.Builder
+	b.WriteString("events=")
+	b.WriteString(strconv.Itoa(len(events)))
+	for _, ev := range events {
+		b.WriteString(" [")
+		b.WriteString(ev.AttemptID)
+		b.WriteString(" ")
+		b.WriteString(ev.Outcome)
+		if ev.Reason != "" {
+			b.WriteString(" ")
+			b.WriteString(ev.Reason)
+		}
+		b.WriteString("]")
+	}
+	b.WriteString(" want=")
+	b.WriteString(want)
+	return b.String()
 }
