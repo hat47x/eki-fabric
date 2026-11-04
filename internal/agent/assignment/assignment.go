@@ -125,6 +125,11 @@ type Config struct {
 	// Governor returns the Local Governor's current decision.
 	Governor func() governor.Decision
 	Machine  startgate.MachineProfile
+	// MaxConcurrent is how many Attempts may run at once. Above one, the Handler must
+	// be able to say when an Attempt ended (Finisher): without it the service cannot
+	// hold or release reservations, and a start could be admitted on capacity that is
+	// already in use (ADR-0031 §6.2, #354).
+	MaxConcurrent int
 	// Host is what this machine offers, used to turn a WorkOrder's absolute request
 	// into the percentages the Governor judges (ADR-0037 §11.1). Unknown means the
 	// Agent does not judge the request, and says so at start-up rather than guessing.
@@ -156,6 +161,10 @@ type Service struct {
 
 func New(cfg Config) (*Service, error) {
 	switch {
+	// The concurrency guard comes first so the configuration is refused for the
+	// reason that matters, not for the first missing field (#354).
+	case cfg.MaxConcurrent > 1 && !isFinisher(cfg.Handler):
+		return nil, fmt.Errorf("%w: running %d Attempts at once needs a Handler that reports when one ends", ErrInvalidConfig, cfg.MaxConcurrent)
 	case cfg.Source == nil:
 		return nil, fmt.Errorf("%w: assignment source is required", ErrInvalidConfig)
 	case cfg.Principal.WorkerIdentity == "":
@@ -199,7 +208,7 @@ func New(cfg Config) (*Service, error) {
 	if err != nil {
 		return nil, fmt.Errorf("%w: %v", ErrInvalidConfig, err)
 	}
-	gate, err := startgate.New(startgate.Config{Clock: cfg.Clock})
+	gate, err := startgate.New(startgate.Config{Clock: cfg.Clock, MaxConcurrent: cfg.MaxConcurrent})
 	if err != nil {
 		return nil, fmt.Errorf("%w: %v", ErrInvalidConfig, err)
 	}
@@ -494,4 +503,11 @@ func completionOf(handler Handler, attemptID ids.AttemptID) <-chan struct{} {
 		return nil
 	}
 	return finisher.Finished(attemptID)
+}
+
+// isFinisher reports whether the handler can say when an Attempt ended. A nil
+// handler is not one: the missing handler is the other error.
+func isFinisher(handler Handler) bool {
+	_, ok := handler.(Finisher)
+	return ok
 }
