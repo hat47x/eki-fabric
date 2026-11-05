@@ -359,7 +359,11 @@ func (a *Authorities) TrustAnchor(validatedAt time.Time, policyRevision string) 
 	doc := trustanchor.File{
 		TrustDomain: TrustDomain, PolicyRevision: policyRevision,
 		BundleRevision: BundleRevision, ValidatedAt: validatedAt,
-		MaxClockSkewSeconds: 5, MaxBundleStalenessSeconds: 3600, MaxDecisionLifetimeSeconds: 600,
+		// 30 rather than 5: this is the fixture, not the product default. The WSL clock
+		// jumps by about 10 seconds every few seconds under load (#475), and a 5 second
+		// window turns that into a random "issued in the future" rejection (#697). The
+		// product's own tolerance is a separate decision about production clocks.
+		MaxClockSkewSeconds: 30, MaxBundleStalenessSeconds: 3600, MaxDecisionLifetimeSeconds: 600,
 	}
 	for _, k := range a.PublicKeys {
 		doc.Keys = append(doc.Keys, trustanchor.Key{
