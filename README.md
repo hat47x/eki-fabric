@@ -77,7 +77,7 @@ EKIは特定のOSSや組織に専属する基盤ではなく、SEI Cognition、T
 
 外部Client向けにはHTTPS・JSON・OpenAPI、Worker／Adapterとの接続にはProtobuf IDL・Connect、署名付きAuthority Decisionにはdeterministic CBOR・CDDL・COSE_Sign1を設計基準として採用しています。P0の機械可読な契約は[OpenAPI仕様](spec/external/openapi.json)で確認できます。
 
-現在、M0の実行可能な最小構成を検証しています。Control APIで合成Taskを受け付け、`queued`状態を観測する参照試験があります。一方で、**Workerによる実処理、結果の独立検証、本番環境での安全な委任までが完成したという意味ではありません。**
+現在、M0の実行可能な最小構成を検証しています。何が動き、何が動かないかは、[docs/development.md「現在の実装段階」](docs/development.md#現在の実装段階)を正本とし、ここでは繰り返しません。**Workerによる実処理、結果の独立検証、本番環境での安全な委任までが完成したという意味ではありません。**
 
 初回MVPでは、悪意のあるClientも考慮したTask受理から、2台以上のNative Workerへの配置、仕事の回収、再試行、結果検証までを一続きで確認することを目標にしています。Federation、Browser Worker、TEE、zkVM、学習型Schedulerなどは将来の拡張候補で、初回MVPの成立条件には含めません。
 

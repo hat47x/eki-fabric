@@ -221,8 +221,8 @@ T-ACTIVEと、内部的に重なり得るため、実装では、substateやderi
 
 重要なのは、ExecutionとVerificationを区別することです。
 
-**この実装では、T-VERIFYINGを保存するphaseとして扱います**（ADR-0032 §2.4、ADR-0033の仮定A3）。完了のResultClaimを受理する経路が、Taskを`active`から`verifying`へCASし（`internal/control/resultacceptance`）、受理のcommitが`verifying`から`terminal/completed`へ進めます。実行中と検証中を、依頼元への説明と監査で区別するためです。`verifying`のTaskは、配置ループが新しいAttemptを作らない対象です。
-**結果が拒否された場合の戻り先。** 結果の拒否（検証で不合格、Claimの不整合）では、Taskを`verifying`のままにしません。受理の経路は`verifying`→`active`へ戻し（`internal/control/resultacceptance`）、Attemptをcloseした後に、再試行の余地があれば`active`→`ready`（配置ループが次のAttemptを作れる）、余地が無ければ`terminal`（`failed`・`abandoned`）へ進みます。`ready`へ戻す判断はAttemptのcloseと同じ流れで行い、Taskだけが`active`に残る状態を作りません。
+**この実装では、T-VERIFYINGを保存するphaseとして扱います**（ADR-0032 §2.4、ADR-0033の仮定A3）。完了のResultClaimを受理する経路が、Taskを`active`から`verifying`へCASし、受理のcommitが`verifying`から`terminal/completed`へ進めます。実行中と検証中を、依頼元への説明と監査で区別するためです。`active`→`verifying`の第一の主体は`internal/control/claimaccept`（Claimの受理と同じ流れで書く）で、`internal/control/resultacceptance`の遷移は、Taskがまだ`active`のときだけ動く代替の主体です（ADR-0032 §2.4）。`eki-control`の起動経路が配線しているのは`claimaccept`だけです（`internal/control/service/run.go`）。`verifying`→`terminal/completed`を書く受理のcommitは`resultacceptance`にしか無く、`resultacceptance`は`eki-control`に未配線です（#242、`docs/development.md`「現在の実装段階」）。したがって現在の`eki-control`では、Taskは`verifying`まで進みますが、`terminal/completed`まで進める経路はありません。`verifying`のTaskは、配置ループが新しいAttemptを作らない対象です。
+**結果が拒否された場合の戻り先。** 結果の拒否（検証で不合格、Claimの不整合）では、Taskを`verifying`のままにしません。受理の経路は`verifying`→`active`へ戻し（`internal/control/resultacceptance`。この遷移も`eki-control`に未配線で、配線済みの`claimaccept`には`verifying`→`active`の遷移がありません）、Attemptをcloseした後に、再試行の余地があれば`active`→`ready`（配置ループが次のAttemptを作れる）、余地が無ければ`terminal`（`failed`・`abandoned`）へ進みます。`ready`へ戻す判断はAttemptのcloseと同じ流れで行い、Taskだけが`active`に残る状態を作りません。
 
 **完了の書き込み。** `terminal/completed`を書けるのは受理のcommit（`CommitAcceptedResult`）だけで、汎用のTask書き込みは`ErrInvalidTaskTransition`で拒否します（#365）。受理のcommitは、AcceptedResult・閉じたAttempt・完了したTaskを同じtransactionで書きます。
 
