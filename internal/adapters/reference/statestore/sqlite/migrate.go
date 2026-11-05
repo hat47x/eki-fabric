@@ -951,6 +951,12 @@ CREATE TABLE trust_bundle_approvals (
 	approved_at_ns INTEGER NOT NULL,
 	justification  TEXT    NOT NULL DEFAULT ''
 ) STRICT`,
+	// 19: Held artifacts (ADR-0029 §5.1). What a Worker claims to have already,
+	// for the placement hint only. NULL means it claimed nothing; a stored value
+	// is comma-joined hex digests, so an old row reads as "no claim" without a
+	// default that would have to be interpreted as one.
+	`ALTER TABLE workers ADD COLUMN held_artifacts TEXT
+	CHECK (held_artifacts IS NULL OR length(held_artifacts) BETWEEN 64 AND 4159);`,
 }
 
 // migrate brings the database to the latest version. It is idempotent, rejects
