@@ -30,3 +30,21 @@
 証明書の有効期間（`NotBefore`と`NotAfter`）は壁時計で判定し、`RenewLoop`の待ち時間はタイマーで測ります。この二つを同じ`Clock`インターフェースの背後に置いたので、Agentは`Params.Clock`と`WithClock`で受け取った時計だけを読みます。指定しなければ`SystemClock`（ホストの時計）を使い、本番の挙動は変わりません。
 
 試験は、Control Planeの発行・検証とAgentの判定と待ち時間のすべてを一つの偽の時計に載せ、時計を試験が進めます。WSLのようにホストの壁時計が数秒単位で飛ぶ環境でも、発行直後の証明書が「まだ有効でない」と判定されたり、期限内の証明書が期限切れと判定されたりしません。実時間の経過を待つ試験は書かないでください。経緯は[#293](https://github.com/hat47x/eki-fabric/issues/293)にあります。
+
+## Windows での鍵の保護（#271）
+
+**Unix では**、状態ディレクトリを `0700`、`identity.pem` を `0600` で作り、**読み込み時に所有者以外が読める場合は拒否**します。
+
+**Windows では、その3つが効きません**（Go の `os` は Windows で読み取り専用ビットしか扱わず、**アクセスは親ディレクトリから継承した ACL** に任されます）。このため、**次の方針**にしています（[ADR-0027 §6](../../../plan/adr/0027-worker-authentication-and-enrollment.md)）。
+
+- **状態ディレクトリと `identity.pem` の ACL を、現在のユーザーと `SYSTEM` だけに限る。**
+- **限れない場合は enroll を失敗させる**（**広い ACL のまま鍵を置かない**）。
+- **読み込み時も、ACL が広ければ拒否**する。**エラーに直し方（`icacls` の例）を含める。**
+
+**直し方の例**（管理者の PowerShell）:
+
+```powershell
+icacls "$env:LOCALAPPDATA\eki-agent" /inheritance:r /grant:r "$($env:USERNAME):(OI)(CI)F" "SYSTEM:(OI)(CI)F"
+```
+
+**何を守らないか**: **同じユーザーで動く他のプロセス**（マルウェア・別のツール）からは守れません。**管理者権限**を持つ者からも守れません。**DPAPI や TPM への移行は未決**です（ADR-0027 §6）。
