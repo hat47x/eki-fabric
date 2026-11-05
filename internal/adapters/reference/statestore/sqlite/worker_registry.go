@@ -2,7 +2,9 @@ package sqlite
 
 import (
 	"context"
+	"crypto/sha256"
 	"database/sql"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"strings"
@@ -21,7 +23,7 @@ FROM enrollment_credentials`
 
 const selectWorker = `
 SELECT worker_identity, trust_domain, state, revision, credential_id, state_changed_by,
-       cert_serial, cert_not_after_ns, created_at_ns, updated_at_ns
+       cert_serial, cert_not_after_ns, created_at_ns, updated_at_ns, held_artifacts
 FROM workers`
 
 func (s *Store) IssueEnrollmentCredential(ctx context.Context, c workerregistry.Credential) error {
@@ -262,9 +264,10 @@ func scanWorker(row rowScanner) (workerregistry.Worker, error) {
 		revision, createdNS, updatedNS                 int64
 		serial                                         sql.NullString
 		notAfterNS                                     sql.NullInt64
+		heldArtifacts                                  sql.NullString
 	)
 	if err := row.Scan(&identity, &domain, &state, &revision, &credential, &changedBy,
-		&serial, &notAfterNS, &createdNS, &updatedNS); err != nil {
+		&serial, &notAfterNS, &createdNS, &updatedNS, &heldArtifacts); err != nil {
 		return workerregistry.Worker{}, err
 	}
 	if revision < 1 {
@@ -283,6 +286,11 @@ func scanWorker(row rowScanner) (workerregistry.Worker, error) {
 	if serial.Valid {
 		w.Certificate = workerregistry.Certificate{Serial: serial.String, NotAfter: time.Unix(0, notAfterNS.Int64).UTC()}
 	}
+	held, err := decodeHeldArtifacts(heldArtifacts)
+	if err != nil {
+		return workerregistry.Worker{}, fmt.Errorf("%w: worker %s: %v", ErrCorruptRecord, identity, err)
+	}
+	w.HeldArtifacts = held
 	if err := w.Validate(); err != nil {
 		return workerregistry.Worker{}, fmt.Errorf("%w: worker %s: %v", ErrCorruptRecord, identity, err)
 	}
@@ -298,3 +306,39 @@ func isUniqueViolation(err error) bool {
 }
 
 var _ statestore.WorkerRegistryStore = (*Store)(nil)
+
+// decodeHeldArtifacts reads the stored claim. NULL is a Worker that claimed
+// nothing: rows written before the claim existed are exactly that, so an old
+// database needs no backfill (ADR-0029 §5.1).
+func decodeHeldArtifacts(value sql.NullString) (workerregistry.HeldArtifacts, error) {
+	if !value.Valid || value.String == "" {
+		return nil, nil
+	}
+	parts := strings.Split(value.String, ",")
+	held := make(workerregistry.HeldArtifacts, 0, len(parts))
+	for _, part := range parts {
+		raw, err := hex.DecodeString(part)
+		if err != nil || len(raw) != sha256.Size {
+			return nil, fmt.Errorf("held artifact %q is not a digest", part)
+		}
+		var sum [sha256.Size]byte
+		copy(sum[:], raw)
+		held = append(held, contract.FromSHA256(sum))
+	}
+	if err := held.Validate(); err != nil {
+		return nil, err
+	}
+	return held, nil
+}
+
+// encodeHeldArtifacts writes the claim, or NULL when there is none.
+func encodeHeldArtifacts(held workerregistry.HeldArtifacts) any {
+	if len(held) == 0 {
+		return nil
+	}
+	parts := make([]string, 0, len(held))
+	for _, digest := range held {
+		parts = append(parts, digest.Hex())
+	}
+	return strings.Join(parts, ",")
+}
