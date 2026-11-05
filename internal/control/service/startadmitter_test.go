@@ -45,20 +45,25 @@ func (s trailStore) ListTrustBundleApprovals(context.Context, uint64) ([]statest
 	return nil, nil
 }
 
-func TestWithoutAStoredVersionTheRouteStaysHidden(t *testing.T) {
-	_, private, err := ed25519.GenerateKey(rand.Reader)
-	if err != nil {
-		t.Fatal(err)
-	}
+// A fresh deployment has no version yet, and the first one is admitted through the
+// API: the route opens without one to succeed (ADR-0036 §9.1).
+func TestWithoutAStoredVersionTheRouteOpensForTheFirstVersion(t *testing.T) {
 	public, _, err := ed25519.GenerateKey(rand.Reader)
 	if err != nil {
 		t.Fatal(err)
 	}
 	admitter := startAdmitter(context.Background(), trailStore{err: statestore.ErrNotFound}, trustbundle.NewApprovalBook(), []string{hex.EncodeToString(public)}, slog.New(slog.NewTextHandler(io.Discard, nil)))
-	if admitter != nil {
-		t.Fatal("startAdmitter returned an admitter without a version to succeed")
+	if admitter == nil {
+		t.Fatal("startAdmitter hid the route: the first version could then only be written by hand")
 	}
-	_ = private
+}
+
+// No key is still no route: without one nothing can be verified.
+func TestWithoutAKeyTheRouteStaysHidden(t *testing.T) {
+	admitter := startAdmitter(context.Background(), trailStore{err: statestore.ErrNotFound}, trustbundle.NewApprovalBook(), nil, slog.New(slog.NewTextHandler(io.Discard, nil)))
+	if admitter != nil {
+		t.Fatal("startAdmitter opened the route without a key")
+	}
 }
 
 func TestWithAStoredVersionAndAKeyTheRouteOpens(t *testing.T) {
