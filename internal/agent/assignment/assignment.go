@@ -100,6 +100,9 @@ type Ready struct {
 	FenceEpoch uint64
 	Admission  workorderaccept.Admission
 	Plan       startgate.Plan
+	// InputDigests is what the Task declared to read, resolved by the Control
+	// Plane (ADR-0029 §5.3). Empty when the Task declared no inputs.
+	InputDigests []contract.Digest
 }
 
 // Handler is the executor interface: it receives only assignments that passed
@@ -130,6 +133,10 @@ type Config struct {
 	// hold or release reservations, and a start could be admitted on capacity that is
 	// already in use (ADR-0031 §6.2, #354).
 	MaxConcurrent int
+	// Inputs fetches a Task's declared inputs before the handler starts. Nil
+	// refuses Attempts that declare inputs: starting without reading them would
+	// produce a result about different data (ADR-0029 §5.7).
+	Inputs Fetcher
 	// Host is what this machine offers, used to turn a WorkOrder's absolute request
 	// into the percentages the Governor judges (ADR-0037 §11.1). Unknown means the
 	// Agent does not judge the request, and says so at start-up rather than guessing.
@@ -398,7 +405,12 @@ func (s *Service) check(ctx context.Context, a workerplane.Assignment) Result {
 	if err != nil {
 		return reject("start_gate_" + gateReason(err))
 	}
-	ready := Ready{AttemptID: lease.AttemptID(), LeaseID: lease.LeaseID(), FenceEpoch: lease.FenceEpoch(), Admission: admission, Plan: plan}
+	ready := Ready{AttemptID: lease.AttemptID(), LeaseID: lease.LeaseID(), FenceEpoch: lease.FenceEpoch(), Admission: admission, Plan: plan, InputDigests: a.InputDigests}
+	// The inputs are fetched before the handler starts: a Task that ran without
+	// reading its inputs would produce a result about different data (ADR-0029 §5.7).
+	if err := s.fetchInputs(ctx, ready.InputDigests); err != nil {
+		return reject("input_unavailable")
+	}
 	if err := s.cfg.Handler.Start(ctx, ready); err != nil {
 		return reject("handler_failed")
 	}
@@ -521,4 +533,29 @@ func isFinisher(handler Handler) bool {
 // service already does, so the sweep needs no timer of its own.
 func (s *Service) sweepReservations(now time.Time) int {
 	return s.reservations.SweepExpired(now)
+}
+
+// Fetcher makes one input available locally by its digest. A deployment supplies
+// one when it serves artifacts to Workers; without one, an Attempt that declares
+// inputs is refused rather than started unread (ADR-0029 §5.7).
+type Fetcher interface {
+	Fetch(ctx context.Context, digest contract.Digest) error
+}
+
+// fetchInputs fetches every declared input, in order. A Task with no inputs needs
+// nothing, and a deployment without a Fetcher keeps the old behaviour: a Task that
+// declares inputs cannot be started until one is configured.
+func (s *Service) fetchInputs(ctx context.Context, digests []contract.Digest) error {
+	if len(digests) == 0 {
+		return nil
+	}
+	if s.cfg.Inputs == nil {
+		return errors.New("no input fetcher is configured")
+	}
+	for _, digest := range digests {
+		if err := s.cfg.Inputs.Fetch(ctx, digest); err != nil {
+			return err
+		}
+	}
+	return nil
 }
