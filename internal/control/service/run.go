@@ -127,6 +127,9 @@ func Start(ctx context.Context, cfg Config, log *slog.Logger) (*Server, error) {
 	// Two Store values over one directory are fine: the store keeps no state in
 	// memory, and a body is one file named after its digest (#494).
 	var artifacts clientapi.ArtifactSource
+	// sink is the same directory seen from the write side: a body a Client
+	// uploads is fetched by the retrieval route (#245).
+	var sink clientapi.ArtifactSink
 	if cfg.Worker != nil && cfg.Worker.ArtifactsDir != "" {
 		bodies, aerr := artifactfile.New(cfg.Worker.ArtifactsDir)
 		if aerr != nil {
@@ -136,6 +139,7 @@ func Start(ctx context.Context, cfg Config, log *slog.Logger) (*Server, error) {
 		// The same state store answers whether a Task was withdrawn, so a body whose
 		// Task was cancelled stops being served (ADR-0037 §9, #592).
 		artifacts = artifactSource{store: bodies, tasks: taskWithdrawalFromState{tasks: store}}
+		sink = artifactSink{store: bodies}
 	}
 	counters := measurement.New()
 	// One book for the whole process: the Operator API writes into it and the
@@ -148,6 +152,7 @@ func Start(ctx context.Context, cfg Config, log *slog.Logger) (*Server, error) {
 		Logger:           log,
 		Ready:            readyState.Load,
 		Artifacts:        artifacts,
+		Sink:             sink,
 		ArtifactAuditErr: artifactAuditErr(cfg, log, ctx),
 	})
 	if err != nil {
