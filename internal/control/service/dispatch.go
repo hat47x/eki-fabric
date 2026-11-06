@@ -37,6 +37,10 @@ type DispatchConfig struct {
 	// PlacementPrincipal, LeasePrincipal, and WorkOrderPrincipal name the
 	// three Authority instances this process signs as.
 	PlacementPrincipal string `json:"placement_principal"`
+	// PublicInputs is the deployment's declaration that its input artifacts are
+	// public. Only then may placement prefer a Worker that already holds an input
+	// (ADR-0029 §5.9). Absent keeps the hint off.
+	PublicInputs       bool   `json:"public_inputs,omitempty"`
 	LeasePrincipal     string `json:"lease_principal"`
 	WorkOrderPrincipal string `json:"work_order_principal"`
 	// KeyPolicyRevision is the key-management policy revision the signing
@@ -218,6 +222,10 @@ func (s *Server) startDispatch(ctx context.Context, cfg *DispatchConfig, store *
 
 	loop, err := dispatch.New(dispatch.Config{
 		Tasks: store, Attempts: store, Workers: store, Policies: store,
+		// The hint reads the Task's recorded inputs and the deployment's
+		// declaration. With PublicInputs false it is inert, which is the safe
+		// default (ADR-0029 §5.9).
+		Hints: dispatch.InputHints{Inputs: store, PublicInputs: cfg.PublicInputs},
 		IssuePlacement: func(ctx context.Context, req placementissue.IssueRequest) ([]byte, error) {
 			result, err := placement.Issue(ctx, req)
 			if err != nil {
