@@ -73,11 +73,11 @@ func TestEveryResponseTheHandlerReturnsIsDeclaredInTheSpec(t *testing.T) {
 			code:     "METHOD_NOT_ALLOWED",
 		},
 		{
-			name:     "artifact ingest is not implemented",
+			name:     "artifact ingest without a body store",
 			declared: http.MethodPost,
 			template: "/v1/artifacts/ingest-intents",
 			res: e.do(http.MethodPost, "/v1/artifacts/ingest-intents", aliceToken,
-				map[string]string{"Content-Type": jsonContentType}, "{}"),
+				map[string]string{"Content-Type": jsonContentType, "Idempotency-Key": "key-declared-005"}, validIntent),
 			code: "NOT_IMPLEMENTED",
 		},
 		{
@@ -146,5 +146,26 @@ func TestResultConflictDescribesBothCases(t *testing.T) {
 		if !strings.Contains(description, want) {
 			t.Errorf("the 409 description does not mention %q: %s", want, description)
 		}
+	}
+}
+
+// The 201 the ingest route now answers must be declared under the same operation
+// (#245): a Client that reads the document has to find the answer it receives.
+func TestTheIngestAnswerIsDeclaredInTheSpec(t *testing.T) {
+	operation := specOperation(t, http.MethodPost, "/v1/artifacts/ingest-intents")
+	responses := operation["responses"].(map[string]any)
+	created, ok := responses["201"].(map[string]any)
+	if !ok {
+		t.Fatal("the ingest operation declares no 201")
+	}
+	want := "#/components/schemas/ArtifactIngestIntentResponse"
+	content := created["content"].(map[string]any)["application/json"].(map[string]any)
+	if got := content["schema"].(map[string]any)["$ref"]; got != want {
+		t.Fatalf("201 schema = %v, want %s", got, want)
+	}
+	e := newEnvWithBodyStore(t)
+	res := postIngest(e, "key-declared-010", validIntent)
+	if res.status != http.StatusCreated {
+		t.Fatalf("status = %d, want the declared 201", res.status)
 	}
 }
