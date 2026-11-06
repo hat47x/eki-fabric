@@ -16,6 +16,21 @@ M0 executable skeletonのうち、Client API、永続State Store、Worker CA・e
 - 実行はsandboxではなく、Workerの信頼済み設定にある固定コマンドです。Task入力からコマンドは組み立てません。CPU・メモリ・一時ディスクは実行中に20ms間隔で監視し、上限超過時はプロセスツリーを停止します（Linux/Windows）。networkの上限は強制せず、GPUも未対応です。
 - Workerが送る`ResultClaim`は、受理された結果（AcceptedResult）ではありません。Result Acceptanceの部品（`internal/control/resultacceptance`）はありますが、`eki-control`の起動経路には接続されておらず、Client APIのTaskが実行結果によって`completed`になる経路はありません。
 
+段階ごとの状態は、次のとおりです。
+
+| 段階 | 状態 | 確かめている場所 |
+| --- | --- | --- |
+| Client APIの受理・照会・取消と、冪等性・未完了数の上限 | 動く | `internal/control/clientapi`、`internal/core/admission` |
+| 永続State Store（Task、Attempt、Lease reservation、FenceEpoch、Policy Epoch） | 動く | `internal/adapters/reference/statestore/sqlite`、`conformance/statestoretest` |
+| Worker CA、enrollment、mTLS | 動く | `internal/control/workerplane`、`conformance/process` |
+| WorkerからControl Planeへの申告の配送 | 動く | `internal/adapters/reference/claimqueue`、`conformance/process` |
+| 試験用profileの割当の窓口から、Workerの検証・開始の関門・固定コマンドの実行まで | 動く（試験用profileに限る） | `conformance/process` |
+| 受理したTaskがPlacement・Lease発行・WorkOrder発行を経て配送へ流れる配線 | 未達 | [#242](https://github.com/hat47x/eki-fabric/issues/242) |
+| Control PlaneからWorkerへのLease・WorkOrderの配送（本番のWorker Protocol） | 未達 | [#243](https://github.com/hat47x/eki-fabric/issues/243) |
+| `ResultClaim`からAcceptedResultを経てTaskが完了するまで | 未達 | [#242](https://github.com/hat47x/eki-fabric/issues/242) |
+| 入力Artifactの受理 | 解決できる配備に限る（ADR-0029 §5.6） | `internal/core/admission` |
+| 同じ端末での複数同時実行 | 実装済み、既定は無効（ADR-0031 §6） | `internal/agent/assignment` |
+
 上の作業は、次のIssueで管理しています。
 
 - [#242](https://github.com/hat47x/eki-fabric/issues/242): `eki-control`の起動経路に、Lease発行・WorkOrder発行・結果受理の実行系を配線する
