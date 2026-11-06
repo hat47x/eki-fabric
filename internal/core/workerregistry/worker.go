@@ -81,6 +81,10 @@ type Worker struct {
 	// "admin:<id>", or "worker:<identity>" for a Worker revoking its own identity. Empty until the first
 	// change.
 	StateChangedBy string
+	// HeldArtifacts is what the Worker says it already has (ADR-0029 §5.1). It is a
+	// hint for placement, never a fact: it is only used to order Workers that are
+	// already equally suitable, and only for inputs the deployment called public.
+	HeldArtifacts HeldArtifacts
 	// Certificate is the zero value until stage 2 records one.
 	Certificate Certificate
 	CreatedAt   time.Time
@@ -117,6 +121,11 @@ func (w Worker) Validate() error {
 	}
 	if (w.Certificate.Serial == "") != w.Certificate.NotAfter.IsZero() {
 		return fmt.Errorf("%w: certificate serial and not-after are set together", ErrInvalidWorker)
+	}
+	// A claim that does not validate is refused at the boundary rather than stored:
+	// a half-trusted list would steer placement with unknown parts (ADR-0029 §5.1).
+	if err := w.HeldArtifacts.Validate(); err != nil {
+		return fmt.Errorf("%w: %v", ErrInvalidWorker, err)
 	}
 	if len(w.Certificate.Serial) > MaxCertificateSerialBytes {
 		return fmt.Errorf("%w: certificate serial is longer than %d bytes", ErrInvalidWorker, MaxCertificateSerialBytes)

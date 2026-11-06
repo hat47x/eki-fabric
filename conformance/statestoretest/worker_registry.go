@@ -6,6 +6,7 @@ import (
 	"encoding/hex"
 	"errors"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"sync"
 	"testing"
@@ -129,7 +130,7 @@ func RunWorkerRegistryContract(t *testing.T, newStore WorkerRegistryFactory) {
 			t.Fatalf("worker times/certificate = %+v", w)
 		}
 		loaded, err := f.svc.LookupWorker(ctx, w.Identity)
-		if err != nil || loaded != w {
+		if err != nil || !sameWorker(loaded, w) {
 			t.Fatalf("LookupWorker() = %+v, %v; want %+v", loaded, err, w)
 		}
 		stored, err := f.store.LoadEnrollmentCredential(ctx, cred.ID)
@@ -434,7 +435,7 @@ func RunWorkerRegistryContract(t *testing.T, newStore WorkerRegistryFactory) {
 			}
 		}
 		got, err := f.svc.LookupWorker(ctx, w.Identity)
-		if err != nil || got != revoked {
+		if err != nil || !sameWorker(got, revoked) {
 			t.Fatalf("revoked worker changed: %+v, %v", got, err)
 		}
 
@@ -645,11 +646,11 @@ func RunWorkerRegistryDurabilityContract(t *testing.T, factory DurableWorkerRegi
 		g := newRegistryFixture(t, reopened)
 
 		got, err := g.svc.LookupWorker(ctx, worker.Identity)
-		if err != nil || got != worker {
+		if err != nil || !sameWorker(got, worker) {
 			t.Fatalf("worker after restart = %+v, %v; want %+v", got, err, worker)
 		}
 		got, err = g.svc.LookupWorker(ctx, gone.Identity)
-		if err != nil || got != revokedWorker {
+		if err != nil || !sameWorker(got, revokedWorker) {
 			t.Fatalf("revoked worker after restart = %+v, %v", got, err)
 		}
 		if _, err := g.svc.SetWorkerState(ctx, g.admin, gone.Identity, workerregistry.StateRegistered); !errors.Is(err, workerregistry.ErrWorkerRevoked) {
@@ -678,3 +679,8 @@ func RunWorkerRegistryDurabilityContract(t *testing.T, factory DurableWorkerRegi
 		}
 	})
 }
+
+// sameWorker compares two records by value. A plain == stopped working when the
+// record gained the held-artifacts claim, a slice (ADR-0029 §5.1); the adapter check
+// is about the record, not about Go's comparability.
+func sameWorker(a, b workerregistry.Worker) bool { return reflect.DeepEqual(a, b) }

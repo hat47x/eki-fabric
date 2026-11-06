@@ -196,6 +196,11 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	start := time.Now()
 	rec := &statusRecorder{ResponseWriter: w, status: http.StatusOK}
 	principal := "-"
+	// clientRequestID is the caller's own name for this request, when the body
+	// carries one. It goes in the log line so an error report can be matched to the
+	// line that describes it (#288); a response field would change the contract, so
+	// only the log carries it.
+	clientRequestID := ""
 
 	defer func() {
 		if p := recover(); p != nil {
@@ -208,7 +213,8 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 		h.log.Info("request", "method", r.Method, "path", r.URL.Path, "status", rec.status,
-			"principal", principal, "duration_ms", time.Since(start).Milliseconds())
+			"principal", principal, "duration_ms", time.Since(start).Milliseconds(),
+			"client_request_id", clientRequestID)
 	}()
 
 	setSecurityHeaders(rec)
@@ -238,7 +244,7 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 	switch m.route {
 	case routeSubmitTask:
-		h.submit(rec, r, identity)
+		h.submit(rec, r, identity, &clientRequestID)
 	case routeGetTask:
 		h.status(rec, r, identity, m.taskID)
 	case routeCancelTask:
@@ -292,7 +298,7 @@ type taskAccepted struct {
 	ClientRequestID string `json:"client_request_id,omitempty"`
 }
 
-func (h *Handler) submit(w http.ResponseWriter, r *http.Request, id Identity) {
+func (h *Handler) submit(w http.ResponseWriter, r *http.Request, id Identity, clientRequestID *string) {
 	key, kerr := idempotencyKey(r)
 	if kerr != nil {
 		writeProblem(w, statusFor(kerr), kerr)
@@ -313,6 +319,15 @@ func (h *Handler) submit(w http.ResponseWriter, r *http.Request, id Identity) {
 		}
 		writeProblem(w, http.StatusBadRequest, &admission.Error{Kind: admission.KindBadRequest, Code: "BODY_UNREADABLE", Title: "The request body could not be read"})
 		return
+	}
+
+	// A best-effort read for the log only: the service decides whether the value is
+	// acceptable, and a body that does not parse is reported as a 400 by the service.
+	var hint struct {
+		ClientRequestID string `json:"client_request_id"`
+	}
+	if json.Unmarshal(body, &hint) == nil {
+		*clientRequestID = hint.ClientRequestID
 	}
 
 	accepted, err := h.svc.Submit(r.Context(), id.Principal, key, body)

@@ -21,7 +21,6 @@ M0 executable skeletonのうち、Client API、永続State Store、Worker CA・e
 - [#242](https://github.com/hat47x/eki-fabric/issues/242): `eki-control`の起動経路に、Lease発行・WorkOrder発行・結果受理の実行系を配線する
 - [#243](https://github.com/hat47x/eki-fabric/issues/243): Control PlaneからWorkerへLease・WorkOrderを配る経路を、Worker Planeに定める
 - [#245](https://github.com/hat47x/eki-fabric/issues/245): Clientの入力Artifactの取り込み経路を実装する単位に分ける
-- [#267](https://github.com/hat47x/eki-fabric/issues/267): Taskのphaseを`admitted`から`ready`・`active`へ進める遷移の主体を決める
 
 上の一覧は作業の例です。最新の状況は、GitHub Issueで確かめてください。
 

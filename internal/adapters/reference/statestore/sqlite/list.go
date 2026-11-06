@@ -92,7 +92,7 @@ func (s *Store) ListWorkers(ctx context.Context) ([]workerregistry.Worker, error
 	}
 	rows, err := s.db.QueryContext(ctx, `
 SELECT worker_identity, trust_domain, state, revision, credential_id, state_changed_by,
-       cert_serial, cert_not_after_ns, created_at_ns, updated_at_ns
+       cert_serial, cert_not_after_ns, created_at_ns, updated_at_ns, held_artifacts
 FROM workers ORDER BY worker_identity`)
 	if err != nil {
 		return nil, fmt.Errorf("list workers: %w", err)

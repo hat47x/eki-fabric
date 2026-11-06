@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"errors"
 	"log/slog"
 
 	"github.com/hat47x/eki-fabric/internal/control/operatorapi"
@@ -26,10 +27,24 @@ func startAdmitter(ctx context.Context, store any, book *trustbundle.ApprovalBoo
 		return nil
 	}
 	latest, err := bundles.LatestTrustBundle(ctx)
+	var store2 *trustbundle.Store
+	if errors.Is(err, statestore.ErrNotFound) {
+		// A fresh deployment has no version yet. The route still opens: the first
+		// version is admitted through it, without approvals, because the Operator
+		// certificate it would need is issued by a CA the version itself lists
+		// (ADR-0036 §9.2). The configured key is what makes it trusted.
+		log.Info("trust bundle admission enabled for the first version")
+		store2 = &trustbundle.Store{}
+		admitter, err := admitterFor(store2, book, keys, log)
+		if err != nil || admitter == nil {
+			log.Warn("trust bundle admission disabled: the control key is not usable")
+			return nil
+		}
+		admitter.state = bundles
+		return admitter
+	}
 	if err != nil {
-		// A fresh deployment has no version yet, and that is not a failure: the
-		// first version is written by hand, not admitted.
-		log.Info("trust bundle admission disabled: no version stored yet", "error", err.Error())
+		log.Warn("trust bundle admission disabled: the versions could not be read", "error", err.Error())
 		return nil
 	}
 	signed, err := trustbundle.FromRecord(latest)
@@ -37,7 +52,7 @@ func startAdmitter(ctx context.Context, store any, book *trustbundle.ApprovalBoo
 		log.Warn("trust bundle admission disabled: the stored version is not usable", "error", err.Error())
 		return nil
 	}
-	store2, err := trustbundle.NewStore(signed)
+	store2, err = trustbundle.NewStore(signed)
 	if err != nil {
 		log.Warn("trust bundle admission disabled: the stored version is not usable", "error", err.Error())
 		return nil

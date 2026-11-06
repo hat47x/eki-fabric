@@ -125,6 +125,11 @@ type Config struct {
 	// Governor returns the Local Governor's current decision.
 	Governor func() governor.Decision
 	Machine  startgate.MachineProfile
+	// MaxConcurrent is how many Attempts may run at once. Above one, the Handler must
+	// be able to say when an Attempt ended (Finisher): without it the service cannot
+	// hold or release reservations, and a start could be admitted on capacity that is
+	// already in use (ADR-0031 §6.2, #354).
+	MaxConcurrent int
 	// Host is what this machine offers, used to turn a WorkOrder's absolute request
 	// into the percentages the Governor judges (ADR-0037 §11.1). Unknown means the
 	// Agent does not judge the request, and says so at start-up rather than guessing.
@@ -142,6 +147,9 @@ type Service struct {
 	accept *workorderaccept.Service
 	gate   *startgate.Gate
 	log    *slog.Logger
+	// reservations is what the running Attempts have claimed on this endpoint
+	// (ADR-0031 §6.2). The gate is judged against its total (#354).
+	reservations *reservations
 
 	mu   sync.Mutex
 	done map[string]struct{} // Attempts already handed over or already spent
@@ -153,6 +161,10 @@ type Service struct {
 
 func New(cfg Config) (*Service, error) {
 	switch {
+	// The concurrency guard comes first so the configuration is refused for the
+	// reason that matters, not for the first missing field (#354).
+	case cfg.MaxConcurrent > 1 && !isFinisher(cfg.Handler):
+		return nil, fmt.Errorf("%w: running %d Attempts at once needs a Handler that reports when one ends", ErrInvalidConfig, cfg.MaxConcurrent)
 	case cfg.Source == nil:
 		return nil, fmt.Errorf("%w: assignment source is required", ErrInvalidConfig)
 	case cfg.Principal.WorkerIdentity == "":
@@ -196,7 +208,7 @@ func New(cfg Config) (*Service, error) {
 	if err != nil {
 		return nil, fmt.Errorf("%w: %v", ErrInvalidConfig, err)
 	}
-	gate, err := startgate.New(startgate.Config{Clock: cfg.Clock})
+	gate, err := startgate.New(startgate.Config{Clock: cfg.Clock, MaxConcurrent: cfg.MaxConcurrent})
 	if err != nil {
 		return nil, fmt.Errorf("%w: %v", ErrInvalidConfig, err)
 	}
@@ -204,13 +216,17 @@ func New(cfg Config) (*Service, error) {
 	if log == nil {
 		log = slog.Default()
 	}
-	return &Service{cfg: cfg, codec: codec, lease: lease, order: order, accept: accept, gate: gate, log: log, done: map[string]struct{}{}}, nil
+	return &Service{cfg: cfg, codec: codec, lease: lease, order: order, accept: accept, gate: gate, log: log, done: map[string]struct{}{}, reservations: newReservations()}, nil
 }
 
 // Poll fetches the assignments once and checks each. A transport error is
 // returned; a refused assignment is a Result, not an error. An Attempt that was
 // already handed over or already spent is reported once and then skipped.
 func (s *Service) Poll(ctx context.Context) ([]Result, error) {
+	// A completion that never arrived must not keep the endpoint busy until a
+	// restart, so the poll that asks for new work first returns the reservations
+	// whose Lease has certainly ended (ADR-0031 §6.2, #354).
+	s.sweepReservations(s.cfg.Clock.Now())
 	list, err := s.cfg.Source.ListAssignments(ctx, s.cfg.Principal)
 	if err != nil {
 		return nil, err
@@ -340,7 +356,9 @@ func (s *Service) check(ctx context.Context, a workerplane.Assignment) Result {
 			return reject(err.Error())
 		}
 	}
-	if _, err := s.gate.Check(startgate.Request{Admission: preliminary, Governor: gov, Machine: s.cfg.Machine}); err != nil {
+	// The gate judges this start against what the running Attempts already claimed,
+	// not against the whole machine (ADR-0031 §2.3, #354).
+	if _, err := s.gate.Check(startgate.Request{Admission: preliminary, Governor: gov, Machine: s.cfg.Machine, InUse: s.reservations.Usage()}); err != nil {
 		if errors.Is(err, startgate.ErrNoCapacity) || errors.Is(err, startgate.ErrNoSlot) {
 			r.Outcome, r.Reason = OutcomeDeferred, "start_gate_"+gateReason(err)
 			return r
@@ -383,6 +401,18 @@ func (s *Service) check(ctx context.Context, a workerplane.Assignment) Result {
 	ready := Ready{AttemptID: lease.AttemptID(), LeaseID: lease.LeaseID(), FenceEpoch: lease.FenceEpoch(), Admission: admission, Plan: plan}
 	if err := s.cfg.Handler.Start(ctx, ready); err != nil {
 		return reject("handler_failed")
+	}
+	// An Attempt that reports its end holds a reservation until then, so the next
+	// start is judged against it. A Handler that cannot say when it finished keeps
+	// the serial behaviour: holding a reservation nobody releases would shrink the
+	// endpoint for good (ADR-0031 §6.2).
+	if done := completionOf(s.cfg.Handler, ready.AttemptID); done != nil {
+		attemptID := ready.AttemptID
+		s.reservations.Hold(attemptID, startgate.UsageOf(plan), plan.Deadline())
+		go func() {
+			<-done
+			s.reservations.Release(attemptID)
+		}()
 	}
 	r.Outcome, r.Plan = OutcomeReady, plan
 	return r
@@ -458,4 +488,37 @@ func StaticGovernor(percent int) func() governor.Decision {
 			governor.ResourceGPU: percent,
 		}}
 	}
+}
+
+// Finisher is implemented by a Handler that can say when an Attempt has ended. The
+// service holds that Attempt's reservation until the channel closes, so the next
+// start is judged against what is really running (ADR-0031 §6.2).
+//
+// It is optional on purpose: a Handler that cannot say when it finished keeps the
+// serial behaviour, where no reservation is held because none is needed.
+type Finisher interface {
+	Finished(attemptID ids.AttemptID) <-chan struct{}
+}
+
+// completionOf asks the handler for the channel, or nil when it cannot answer.
+func completionOf(handler Handler, attemptID ids.AttemptID) <-chan struct{} {
+	finisher, ok := handler.(Finisher)
+	if !ok {
+		return nil
+	}
+	return finisher.Finished(attemptID)
+}
+
+// isFinisher reports whether the handler can say when an Attempt ended. A nil
+// handler is not one: the missing handler is the other error.
+func isFinisher(handler Handler) bool {
+	_, ok := handler.(Finisher)
+	return ok
+}
+
+// sweepReservations drops the reservations whose deadline has passed and returns how
+// many it dropped. It runs on each poll: the poll is the only periodic thing the
+// service already does, so the sweep needs no timer of its own.
+func (s *Service) sweepReservations(now time.Time) int {
+	return s.reservations.SweepExpired(now)
 }

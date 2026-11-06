@@ -72,7 +72,7 @@ policyが変わった後に古い`Permit`を使おうとすると、期限より
 ## まだ決めていないこと
 
 - 回収イベントを誰が確定するか。Workerの自己申告ではなく、Leaseの失効とAttemptのcloseから導く必要があります。
-- 窓をまたいだ公平性。urgentなTaskが続くとbest-effortが飢える可能性があり、aging、fair share、reserved recovery capacityの比較が要ります。
+- 窓をまたいだ公平性。urgentなTaskが続くとbest-effortが飢える可能性があり、aging、fair share、reserved recovery capacityの比較が要ります（#155）。
 - 一つのTaskが窓の予算を超える場合の扱い。現在は`single_item_exceeds_window_budget`としてdeferし、暗黙に予算を上げません。
 - planned reclaim noticeを使った事前の再配置。回復の境界を弱めずに滑らかにする最適化として、別に扱います。
 
