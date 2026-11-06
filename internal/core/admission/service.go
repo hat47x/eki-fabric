@@ -196,6 +196,7 @@ func (s *Service) Submit(ctx context.Context, p Principal, idempotencyKey string
 		IdempotencyKey:     idempotencyKey,
 		RequestFingerprint: fingerprint,
 		MaxAttempts:        req.Reliability.MaxAttempts,
+		InputDigests:       inputDigests,
 		// The validated request body, kept verbatim: WorkOrder issuance and
 		// deadline decisions must be able to read the parameters and deadline
 		// the Task was admitted with, not only the digest of them.

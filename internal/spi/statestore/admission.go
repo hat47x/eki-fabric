@@ -53,6 +53,9 @@ type Admission struct {
 	RequestFingerprint contract.Digest
 	// MaxAttempts is the retry budget fixed at admission.
 	MaxAttempts uint32
+	// InputDigests is each declared input resolved to its digest, in declaration
+	// order (ADR-0029 §5.3). Empty when the deployment recorded none.
+	InputDigests []contract.Digest
 	// Content is the request body the Task was admitted from, kept verbatim.
 	// WorkOrder issuance and deadline decisions read it instead of the digest,
 	// which cannot be reversed. Rows written before the content was kept have
