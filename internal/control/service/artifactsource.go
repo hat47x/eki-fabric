@@ -68,3 +68,35 @@ func (m metaSink) PutMeta(digestHex, owner, taskID string, size int64, mediaType
 // Worker's spool default (ADR-0037 §2): a body the Worker still holds must not be
 // expired here, or the two sides disagree about whether it can be sent.
 const artifactRetention = 24 * time.Hour
+
+// artifactSink adapts the artifact file store to the client API's upload route
+// (#245). It is separate from artifactSource because the write path needs the
+// store”s measuring Put, while the read path needs the metadata view.
+type artifactSink struct {
+	store *artifactfile.Store
+	// dataClass is what this deployment declares about the bodies it keeps
+	// (ADR-0034 §10.2). Empty means nothing is declared and nothing is shown.
+	dataClass string
+}
+
+func (s artifactSink) Put(r io.Reader, claimedHex string, maxBytes int64) (string, int64, error) {
+	digest, size, err := s.store.Put(r, claimedHex, maxBytes)
+	if errors.Is(err, artifactfile.ErrDigestMismatch) {
+		return "", 0, clientapi.ErrDigestMismatch
+	}
+	return digest, size, err
+}
+
+func (s artifactSink) PutMeta(digestHex string, record clientapi.UploadRecord) error {
+	dataClass := s.dataClass
+	if dataClass == "" {
+		// The Client declared a class for this body; a deployment that
+		// declares none for Worker-produced bodies still records what the
+		// Client asked for (ADR-0034 §9). It is a request, not a judgement.
+		dataClass = record.DataClass
+	}
+	return s.store.PutMeta(digestHex, artifactfile.Meta{
+		Owner: record.Owner, MediaType: record.MediaType, Size: record.Size,
+		ExpiresAt: record.ExpiresAt, DataClass: dataClass,
+	})
+}
