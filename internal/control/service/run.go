@@ -198,8 +198,20 @@ func Start(ctx context.Context, cfg Config, log *slog.Logger) (*Server, error) {
 			return nil, rerr
 		}
 		s.leaseRegistry = registry
+		// The reclaimer closes the Attempt of an expired Lease before removing
+		// it from the registry, so an Attempt without a ResultClaim does not
+		// stay open forever (ADR-0037, #745).
+		closer := recallCloser{
+			attempts: store, claims: store, reclaimer: registry,
+			grace: RecallGrace, now: time.Now,
+		}
+		if cerr := closer.validate(); cerr != nil {
+			_ = listener.Close()
+			_ = store.Close()
+			return nil, cerr
+		}
 		recall, rerr := leaserecall.New(leaserecall.Config{
-			Lister: registry, Reclaimer: registry, OnReclaim: recallCounter(counters),
+			Lister: registry, Reclaimer: closer, OnReclaim: recallCounter(counters),
 		})
 		if rerr != nil {
 			_ = listener.Close()
