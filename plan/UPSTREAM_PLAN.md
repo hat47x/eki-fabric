@@ -1514,6 +1514,99 @@ ADR に書いた決定が、**実装と試験のどこまで届いているか**
 **確認して分かったこと**: **`verifying` は「保存される phase」として扱われており**、**同じ受理の中で terminal まで進む**ため、**観測される期間は短い**。**外から見て `verifying` が残るのは、受理の途中で止まった場合**だけです。その場合は**収束が拾う**（`converge` が `verifying` を見る）。
 
 **この確認で直したもの**: なし（**実装は意図どおり**）。**Issue を閉じる根拠**として記録します。
+
+
+### 2026-11-04 データ様式と配送品質による通信方式の選択（#700）
+
+軽量認知の即応処理、逐次推論、音声・映像・センサー等のマルチモーダル入出力について、データの形と配送に求める性質を分けて扱う要求を、[RQ-064](../requirements/PRODUCT_REQUIREMENTS.md)として追加した。遅延と鮮度・同期を測る観点を[QA-13](../requirements/QUALITY_ATTRIBUTES.md)に加えた。**これは要求と評価軸の確定であり、低遅延の達成や各プロトコルの実装を確認したものではない。**
+
+- 既存の仕事の型（RQ-055: Task/Session/Sandbox/Resident）を増やさない。SessionとInvocationはADR-0020の契約を再利用し、高頻度のフレームをTask/Artifactとして逐一永続化しない。EKIが認知的・業務的な意味の正本を持つこともない。
+- **Data Contract**は形式・トラック・時間軸、**Delivery Contract**は期限・鮮度・順序・欠落許容・部分応答・同期、**Transport Profile**は配備が対応する通信方式とその制約を扱う。選択は権限、Data Class、ネットワーク制約と両立させる。使えない場合の拒否や合意された劣化を明示し、黙って条件を弱めない。
+- ADR-0001のExternal HTTPS/JSON、Worker/Adapter Connect+Protobuf、署名用CBOR/COSEを当面維持する。Connectの継続通信とローカル実行/IPCを最初の比較対象にし、WebSocket/WebRTC/WebTransport等の追加採用は**未決**とする。ローカルで足りる場合は、余計なネットワーク往復を作らない（RQ-014、RQ-063）。
+- 試験候補: VRクマの「捨てられる古い映像」と「捨てられない停止指示」、SEI・TEIの未検証な部分応答、複数トラックの再同期、回収・期限切れ・古いFenceEpoch・企業プロキシ拒否・バックプレッシャー。応答のp50/p95/p99、締切超過、陳腐化、CPU/転送負荷を同条件で測定する。
+- 先に#700で最小契約例と反証Fixtureを整理し、既存の#106（継続Session）、#130（常駐）、#133（推論統治）と境界を確かめる。後続Spikeで必要な品質水準と経路を測り、選択をADRへ起こす。**M0/MVPのmainline priority guardは変えない。**
+
+#### 追補：Worker接続、処理Session、連続データの配送を区別する
+
+既存Worker Protocolの`OpenSession`はWorkerの接続・通信方式の選択に関するもの。一方、ADR-0020の`SessionRecord`は依頼元が予算と期限を与える**仕事の枠**である。この二つを同じSessionとみなさない。配送中の系列は、既存Session/Invocationと有効なLease・FenceEpochに関連づく**論理的なデータ系列**として検討し、新しい権限の正本や第二のSession Registryを作らない。
+
+- **時刻と鮮度**：観測時刻、発生源の時計、受信側の観測、系列番号、使用期限を区別する。時計の同期が確かでない相手に対し、正確な一方向遅延や系列間の同期を主張しない。
+- **配送と検証**：複数の系列を束ねても、届いたフレームや部分応答をAccepted Resultにはしない。Artifactの完全性を示すdigestと、未完成の連続データを混同しない。どの粒度で結果をClaimとして記録するかは#106/ADR-0020との整合で決める。
+- **権限と継続**：接続が生きていてもLeaseの失効を上書きできない。古いFenceEpochの結果を確定しない。既に外部へ伝わった内容や起きた作用を取り消せると約束しない。
+- **安全と資源**：古い観測の間引きと欠落不可の制御指示は別に扱う。通信による停止指示だけを危険時の最後の安全装置にせず、物理的安全は利用側のローカル機構で担う。系列数・キュー・継続時間・帯域の上限を、管理者権限とLocal Governorの範囲で強制する。
+- **適合試験**：PAS-CAND-31〜37を、Data/Deliveryの同じ期待結果でローカルとConnectの候補実装に流す。通信方式ごとに別の正解を作らない。合否を推測せず、未対応・未測定は明示する。既存conformanceの構造を使い、新しいHostや汎用オーケストレータは導入しない。
+
+#### 次の判断ゲート（#700）
+
+1. **Gate D0（契約の反証）**：観測と受信の時刻、系列番号、欠落可否、権限の失効、部分結果の状態が、相矛盾なく表せる。PAS-CAND-31〜37の負例がすべて、拒否・欠落・不明・失効のいずれかとして正しく観測できる。
+2. **Gate D1（最小比較Spike）**：同一シナリオをローカルとConnectの可能な構成で評価し、測定環境・時計・p50/p95/p99・転送量・待ち行列・回収後の振る舞いを記録する。測れない指標をゼロとして扱わない。
+3. **Gate D2（技術選定）**：既存経路では必要な性質を満たせないことをFixtureで示せた場合に限り、WebSocket/WebRTC/WebTransport等の追加をADRで比較する。導入のためのネットワーク例外、認証・接続先、運用費も判定対象にする。
+
+#### 追加の契約条件：不可能な保証を受理しない（#700）
+
+「失わない」「必ず期限に間に合わせる」「保持量には上限がある」「通信断は無期限」の四条件は、一般には同時に保証できない。データの様式から配送品質を自動推測せず、要求同士と配備の制約を先に照合し、**実現不能な組合せは受理前に拒否**する。継続処理においても、送信、相手の受信確認、業務Providerの実行・Commit Receipt、EKIのResult Acceptanceを混ぜず、未確認は不明として残す（TEIの保存・外部効果の反例）。
+
+既存の`WorkerPlaneService`が提供する`OpenSession`、`PostEvents`、`WatchCommands`は、Workerを制御する通信契約である。一般の音声・映像・センサー配送のAPIが実装されたことは意味しない。これを無理に拡張してWorkerの所在や内部Queueを外へ露出させない。既存のData PlaneとData Access Transport SPIの**権限を強制する考え方**は再利用できるが、保存されるArtifactと、保存を前提にしない連続データを同じものとして扱うことは未決である。長時間の通信権限については、既存の短命Credential・更新・失効遅延の制約を引き継ぎ、「即時失効」を無条件に約束しない（Control/Data Plane §25〜27）。
+
+| Gate | 今回追加する合否基準 | 明示する未決 |
+| --- | --- | --- |
+| D0 | PAS-CAND-36で実現不能な要求を拒否。PAS-CAND-37で途中応答・Receipt欠落・結果不明を別の状態に保つ。利用者のService Classが安全の上限を広げない | 正式な外部schema、配送確認の粒度、結果の観測・照合の責務 |
+| D1 | Worker制御通信を既存の実装として計測する一方、データ配送は専用Adapterが存在する場合のみ実測する。「Connectあり」を即ち「Media streamingあり」と数えない | 既存の経路で可能な通信形態、必要なGateway、ローカルと遠隔の条件 |
+| D2 | プロトコル候補を機能名ではなく、データ様式×配送条件×権限×運用環境の適合試験で選ぶ。合意なき劣化や直接Worker接続の権限増幅を拒否 | 新しいTransport Adapterを足す必要性、そのAPIと運用費 |
+
+#### 第4次照合：要求・権限・実装証拠を分ける（#700）
+
+他の製品の設計で重要になった「候補の提示」と「利用できる資格」、「応答」と「効果が確認できたこと」の区別を、通信方式の選択にも適用する。選択できると表示した通信方式は、実際に利用を認可された経路であるとは限らず、通信路が確立したこともアプリケーションの実行成功を意味しない。
+
+| 段階 | 説明 | 誤って代替しないもの |
+| --- | --- | --- |
+| Requested | 利用側が望んだData/Delivery条件。仕事の型と意味は利用側が持つ | 使用資格、達成保証 |
+| Supported | Adapter/配備が宣言した機能。版を持つ候補情報 | 権限や機密性の根拠、実測結果 |
+| Permitted | Principal、Data Class、Lease、接続相手、予算、契約版などが現在のPolicyに適合 | 実際に通信が成立したという観測 |
+| Selected | 対応能力・権限・ネットワーク条件の交差で選ばれた方式と実効配送条件 | 配送完了、業務効果、意味受理 |
+| Observed | 実際の欠落、遅延、Ack、検証済みの範囲、回収の観測 | 未来の性能保証、Provider Commit、Accepted Result |
+
+**系列の世代と権限の世代を独立させる。** 接続が再開して映像の系列番号が1へ戻ることと、Lease/FenceEpochが更新されることは別の出来事である。系列内の重複排除には系列識別子＋その系列の世代＋番号を、結果の確定には別途Lease/FenceEpochと受理条件を使う。両者のIDを単一の「セッション番号」に統合しない。
+
+**ネットワーク強制の正しさを先取りしない。** RQ-009はネットワークを含む資源上限を要求するが、2026-11-03の実装整理（上の「資源の判定」）では現行Governorはネットワークを判定しない。転送総量、帯域の時間窓、保持キュー、同時系列数は別の制約である。新しい測定窓やネットワーク資源の分母をこの文書から暗黙に決めない。必須の上限を強制できない配備に「対応済み」やD1 PASSを与えず、未実装・不適合を分けて示す。
+
+**製品間の検証を混ぜない。** VRクマの身体・認知ループはGodot側の同じseed/tickによる再生で時系列の期待結果を独立に固定できるが、EKIのContract適合は別票とする。最初からEKIを介在させる必然性を置かず、ローカルで十分ならローカルを採用する。TEIのProvider連携はread-onlyの照会と、書き込みを伴うCommitを分ける。照会の一往復が通っても、保存Intent、Operation Identity、Provider Receipt、独立したRead、Host認可を確認しないまま外部効果のE2Eと呼ばない。PAS-CAND-37は**反証候補**であり、Provider Commitの実装証拠ではない。
+
+**Gate D0の最小評価票（実施前）**：Fixture ID／独立Expected／入力条件とWorld・モデル版／接続系列の世代と順序／PermissionとLease/FenceEpoch／要求されたDeliveryとEffective Delivery／実際のReceipt種別／観測と不明／適合性結果（PASS・FAIL・NOT RUN・NOT SUPPORTED）を保持する。版と期待値を固定してからローカル・Connect・将来のTransportへ同一の試験を適用する。**Adapterがまだ無い場合はNOT RUN**であり、仕様上の整合性確認を実装済みの証拠へ昇格させない。
+
+#### 第4次照合後の残る判断
+
+- 系列生成の世代識別子を、どのAdapter／SDKが発行・維持するか（Workerの接続Session、仕事のSession、Leaseとは別）。
+- 実効Delivery条件を、どの外部契約・版へ公開するか。互換性と未知の必須要素はADR-0001の拒否原則を適用する。
+- ネットワーク資源の上限に必要な時間窓・分母・観測主体を、既存ADR-0037の保留判断と整合させてどう決めるか。
+- ローカルと遠隔の試験を比較するためのハーネス。VRクマのheadless再生やTEI Providerの実Readと、EKIのTransport・権限試験を混ぜない。
+
+#### 第5次照合：Suitability・現在資格・実入力のEvidenceを結び直す（#700）
+
+[Workload Suitability #58](https://github.com/hat47x/eki-fabric/issues/58)は、そもそもFabricへ委任する利益の有無を扱う。RQ-064のTransport適合はそれとは別問題である。認可された経路が高速に通信できても、ローカルの軽量認知ループがより適切ならFabricへ流さない。#58には当初の4状態案と後続の3状態案があり、正式な外部状態・実装への対応は同Issueで判断する。本節は状態名や新たなAuthorityを追加しない。
+
+**混同してはいけない二つの独立系列**：
+
+- **選択・権限系列**：Requested → Supported → Permitted → Selected → Observed（上表）。能力宣言や以前の選択は現在のGrant／Lease／Policyを代替しない。Sourceの内容がA→B→Aと戻っても、その間に権限やProviderが変わっていれば古い判断をそのまま再利用しない。
+- **入力・効果のEvidence系列**：Declared → Discovered → Loaded → Consumed → Claimed → Verified → Accepted → （利用側で）Effect／Consumer観測。これらを単一のEKI状態機械にしない。EKIが直接観測できないLoaded・Consumed・Effectの事実は、出所を識別した外部Evidence／Claimとして表す。Source/Revisionの参照、適用範囲、欠落・部分・非開示・取得不能、時刻と観測主体が不明なら、存在確認や全体完了を推定しない。
+
+特に、未購読・空Workspace・Providerの`0 rows`・空トラックは、`対象に事実が存在しない`という結果と同義ではない。評価対象の母集団と取得範囲、認可・時間条件、Sourceの世代を区別する。EKIはアプリ固有のQueryやModel Meaningを解釈せず、利用側がSourceのRead CohortとCompletenessを検証する機会を奪わない。
+
+**D0向け独立Oracleの追加票（設計Fixture。未実行）**
+
+| Fixture | 独立Expected | 必ず分ける証拠 | Status |
+| --- | --- | --- | --- |
+| D0-E1：Adapterはライブ通信に対応するが、ローカル実行の方が短い／低コスト | TransportはSupportedでも、Fabricに委任する利益なし。#58の判断に従いPlacementへ進めない | Transport適合、Policy、Suitability、ローカル対Fabricの実測 | NOT RUN |
+| D0-E2：三つのTrackを宣言、二つのみ購読・読込成功、残りは未接続 | 受理済みの部分入力は示せるが、完全同期・「三つ目は空」を証明できない | Declared、Loaded、Consumed、観測範囲、clock/sequence | NOT RUN |
+| D0-E3：Source A→B→A、古いGrant失効、通信は再接続 | byteが以前と一致しても現行資格の再確認は必要。旧権限の結果は確定できない | Source Revision、現在のGrant/Lease/FenceEpoch、選択したTransport、受理記録 | NOT RUN |
+| D0-E4：Providerから`ack`が届いたがCommit Receiptは不達、read-only照会だけは成功 | 保存成功・失敗のどちらにも確定しない。外部作用の自動再送は不可、Provider側の独立照合が必要 | Operation Identity、Ackの種類、Receipt、独立Read、利用側Consumer | NOT RUN |
+
+**運用原則**：独立ExpectedはAdapterの現在の実装結果から逆算せず、Scenarioが参照する外部Source／Provider／Grantの対象と版を固定してから比較する。別モデル／エージェントに再確認を任せても、同じ資料から作ったExpectedを独立Oracleと呼ばない。検証主体が実際に何を読んだか、何をテストしなかったかを表示する。ローカルの合成テストPASSをProvider実機／VRクマGodot実行／EKIネットワークE2E成功へ昇格させない。
+
+**#700の追加Stop Gate**：D0は必要なデータ源・Grant・比較基準・期待結果のどれかが不明なまま全体PASSとしない。D1は実際のライブ配送Adapterを確認してから対象を測り、存在しない経路はNOT RUN／NOT SUPPORTEDとして分類する。D2ではデータ様式とDeliveryだけでなく、#58のSuitability、#133の外部AI経路のData Class、利用側の実際の効果検証まで含め、追加方式の必要性を判断する。M0/MVPのmainlineを遮らない。
+
+これらはM0/MVPの優先順位を変更しない後続作業であり、`WorkerPlaneService`や既存Sessionの実装変更を先取りしない。
+
 ### 2026-11-04 Issue の棚卸し（#478・#468）
 
 **#478（Agent の `anchor.json` に版の履歴を統合）は、未決が解消したので閉じます。**
