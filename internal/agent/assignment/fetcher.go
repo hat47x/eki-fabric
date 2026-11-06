@@ -7,6 +7,8 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"os"
+	"path/filepath"
 	"strings"
 
 	"github.com/hat47x/eki-fabric/internal/core/contract"
@@ -87,3 +89,43 @@ func (f HTTPFetcher) Fetch(ctx context.Context, digest contract.Digest) error {
 }
 
 var _ Fetcher = HTTPFetcher{}
+
+// DirSaver stores a fetched input under its digest in one directory.
+//
+// The name is the digest, so a second fetch of the same input overwrites the same
+// file and nothing has to be looked up to find it again. The file is written with
+// 0600 and replaced atomically, so a reader never sees a half-written input.
+type DirSaver struct {
+	Dir string
+}
+
+// Save implements the Save hook of HTTPFetcher.
+func (d DirSaver) Save(digest contract.Digest, body []byte) error {
+	if d.Dir == "" {
+		return errors.New("assignment: the inputs directory is not configured")
+	}
+	if err := os.MkdirAll(d.Dir, 0o700); err != nil {
+		return fmt.Errorf("assignment: create inputs directory: %w", err)
+	}
+	path := filepath.Join(d.Dir, digest.Hex())
+	tmp, err := os.CreateTemp(d.Dir, ".input-*")
+	if err != nil {
+		return fmt.Errorf("assignment: write input: %w", err)
+	}
+	name := tmp.Name()
+	defer func() { _ = os.Remove(name) }()
+	if _, err := tmp.Write(body); err != nil {
+		_ = tmp.Close()
+		return fmt.Errorf("assignment: write input: %w", err)
+	}
+	if err := tmp.Close(); err != nil {
+		return fmt.Errorf("assignment: write input: %w", err)
+	}
+	if err := os.Chmod(name, 0o600); err != nil {
+		return fmt.Errorf("assignment: write input: %w", err)
+	}
+	if err := os.Rename(name, path); err != nil {
+		return fmt.Errorf("assignment: write input: %w", err)
+	}
+	return nil
+}

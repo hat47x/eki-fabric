@@ -45,6 +45,13 @@ type AssignmentConfig struct {
 	// Execution turns on local execution of a ready assignment with one fixed
 	// command. Nil keeps the Agent record-only.
 	Execution *ExecutionConfig `json:"execution,omitempty"`
+	// ArtifactBaseURL is the Worker Plane origin that serves inputs by digest
+	// (ADR-0029 §5.10). Empty leaves the Agent without a fetcher, so an
+	// assignment that declares inputs is refused rather than started unread.
+	ArtifactBaseURL string `json:"artifact_base_url,omitempty"`
+	// InputsDir is where fetched inputs are written. Required when
+	// ArtifactBaseURL is set; each input is stored under its digest.
+	InputsDir string `json:"inputs_dir,omitempty"`
 }
 
 // ExecutionConfig is a fixed command the Agent runs for every ready
@@ -210,6 +217,7 @@ func runAssignments(ctx context.Context, c *AssignmentConfig, anchor *trustancho
 		Host:    resourcemap.Host{CPUMillis: int64(c.Machine.CPUMillis), MemoryBytes: int64(c.Machine.MemoryBytes), DiskBytes: int64(c.Machine.DiskBytes)},
 		Handler: handler,
 		Logger:  log,
+		Inputs:  inputFetcher(c.ArtifactBaseURL, c.InputsDir),
 	})
 	if err != nil {
 		return err
@@ -269,4 +277,18 @@ func (r *leaseReporter) report(leaseID string) {
 	if r.client != nil {
 		r.client.ReportRunning(leaseID)
 	}
+}
+
+// inputFetcher builds the input fetcher a deployment asked for, or nil when it did
+// not ask. An empty directory with a base URL is a configuration error, not a
+// silent discard: the handler needs the bytes on disk.
+func inputFetcher(baseURL, dir string) assignment.Fetcher {
+	if baseURL == "" {
+		return nil
+	}
+	if dir == "" {
+		return nil
+	}
+	saver := assignment.DirSaver{Dir: dir}
+	return assignment.HTTPFetcher{BaseURL: baseURL, Save: saver.Save}
 }
