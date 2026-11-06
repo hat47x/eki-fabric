@@ -41,6 +41,9 @@ type Server struct {
 	counters *measurement.Counters
 	// recallDone closes when the lease reclaim loop has stopped (#555).
 	recallDone chan struct{}
+	// leaseRegistry is the file the recall loop reads. The placement loop writes
+	// every Lease it reserves into it (#745). Nil when no lease_registry is set.
+	leaseRegistry *leaserecall.File
 	// countersDone closes when the periodic write-out has stopped (#392).
 	countersDone chan struct{}
 	// operator is the Operator listener of ADR-0038, nil when the process has no
@@ -194,6 +197,7 @@ func Start(ctx context.Context, cfg Config, log *slog.Logger) (*Server, error) {
 			_ = store.Close()
 			return nil, rerr
 		}
+		s.leaseRegistry = registry
 		recall, rerr := leaserecall.New(leaserecall.Config{
 			Lister: registry, Reclaimer: registry, OnReclaim: recallCounter(counters),
 		})
