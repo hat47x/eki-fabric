@@ -14,6 +14,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"time"
 
 	"github.com/hat47x/eki-fabric/internal/core/admission"
 	"github.com/hat47x/eki-fabric/internal/core/contract"
@@ -135,4 +136,48 @@ func (s Store) Resolve(ctx context.Context, artifactID string) (contract.Digest,
 	}
 	_ = body.Close()
 	return digest, nil
+}
+
+// SweepOlderThan removes bodies last written before cutoff and returns how many it
+// removed.
+//
+// The caller supplies the cutoff: this store does not know when an artifact expires,
+// because expiry is a fact about the record, not about the bytes (ADR-0029 §5.11).
+// Removal is by modification time, which is when the body was last stored; a body
+// stored again keeps its content by definition, so its age starts over.
+func (s Store) SweepOlderThan(ctx context.Context, cutoff time.Time) (int, error) {
+	if s.Dir == "" {
+		return 0, errors.New("fs: the artifact directory is not configured")
+	}
+	entries, err := os.ReadDir(s.Dir)
+	if err != nil {
+		if errors.Is(err, os.ErrNotExist) {
+			return 0, nil
+		}
+		return 0, fmt.Errorf("fs: sweep artifacts: %w", err)
+	}
+	removed := 0
+	for _, entry := range entries {
+		if err := ctx.Err(); err != nil {
+			return removed, err
+		}
+		if entry.IsDir() {
+			continue
+		}
+		info, err := entry.Info()
+		if err != nil {
+			if errors.Is(err, os.ErrNotExist) {
+				continue
+			}
+			return removed, fmt.Errorf("fs: sweep artifacts: %w", err)
+		}
+		if !info.ModTime().Before(cutoff) {
+			continue
+		}
+		if err := os.Remove(filepath.Join(s.Dir, entry.Name())); err != nil && !errors.Is(err, os.ErrNotExist) {
+			return removed, fmt.Errorf("fs: sweep artifacts: %w", err)
+		}
+		removed++
+	}
+	return removed, nil
 }
