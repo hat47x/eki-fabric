@@ -1,4 +1,4 @@
-﻿<#
+<#
 .SYNOPSIS
   EKI Fabric のローカル検証を、ひとつのコマンドで再現する。
 
@@ -116,8 +116,25 @@ try {
 	if (-not $Quick -and -not $Race) {
 		Write-Output ''
 		Write-Output '== go test =='
-		& go test ./... -count=1
-		if ($LASTEXITCODE -ne 0) { $status = 1 }
+		& go test ./... -count=1 -v > (Join-Path $env:TEMP 'eki-verify-test.log') 2>&1
+		if ($LASTEXITCODE -ne 0) {
+			$status = 1
+			Select-String -LiteralPath (Join-Path $env:TEMP 'eki-verify-test.log') -Pattern '--- FAIL|^FAIL' |
+				ForEach-Object { Write-Output $_.Line }
+		}
+		# skip された試験は、環境の都合で一度も走っていない。件数と理由を示さないと、
+		# VERIFY: PASS が何を確かめたのかを出力から読めない（#746）。
+		$logPath = Join-Path $env:TEMP 'eki-verify-test.log'
+		$ranCount = @(Select-String -LiteralPath $logPath -Pattern '=== RUN').Count
+		$skipLines = @(Select-String -LiteralPath $logPath -Pattern '--- SKIP')
+		Write-Output ("実行した試験の行数: " + $ranCount)
+		Write-Output ("skip した試験の行数: " + $skipLines.Count)
+		if ($skipLines.Count -gt 0) {
+			Write-Output '環境により実行していない試験（VERIFY の範囲に含まれない）:'
+			foreach ($line in $skipLines) { Write-Output ('  ' + $line.Line.Trim()) }
+			Write-Output '※ これらは通ったのではなく、走っていません。'
+		}
+		Remove-Item -LiteralPath $logPath -Force -ErrorAction SilentlyContinue
 	}
 
 	if ($Race) {
