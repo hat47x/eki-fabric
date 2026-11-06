@@ -23,6 +23,12 @@ lease reclaim is disabled: no lease_registry is configured, so expired leases ar
 
 **止まるのは回収だけで、貸与の発行や実行は続きます。** つまり、**期限切れの貸与が残ったまま**になり、資源の解放が遅れます。開発中は問題ありませんが、**本番では設定してください**。
 
+## 台帳へ書き込む主体
+
+配置ループ（`dispatch`）が Lease を予約した直後に、同じ `lease_registry` のファイルへその Lease を書きます（#745）。書き込みに失敗したときは、その Lease を Worker へ渡さず、そのTaskの配置を失敗として扱います。台帳に載らない Lease は、誰にも回収されないためです。予約済みの Lease は状態ストアに残り、期限が来れば失効します。
+
+**回収が台帳から消すだけの点は変わっていません。** `Reclaim` は台帳の項目を消し、`lease.reclaimed` を数えますが、Lease・Attempt・Task の状態は変えません。結果（ResultClaim）が届かないまま期限が切れた Attempt を閉じる経路（`claimreconcile` の配線）は未実装で、#745 の残りです。
+
 ## 未決
 
 - 一覧を**状態ストアへ移すか**。移すと**パスが1つ減ります**が、掃除と状態更新が同じ取引空間に入るため、**競合の設計**が要ります。
