@@ -15,6 +15,7 @@ import (
 	"os"
 	"path/filepath"
 
+	"github.com/hat47x/eki-fabric/internal/core/admission"
 	"github.com/hat47x/eki-fabric/internal/core/contract"
 )
 
@@ -114,3 +115,24 @@ func (s Store) Remove(ctx context.Context, digest contract.Digest) error {
 }
 
 var _ = 0 // kept for the package comment above; no exported sentinel is needed.
+
+// Resolve implements admission.ArtifactResolver: an input reference is accepted when
+// it is the digest of a body this deployment holds (ADR-0029 §5.12).
+//
+// The identifier is not parsed as anything but digest hex. A deployment that issues
+// other identifiers needs a registry; until then, refusing is the honest answer.
+func (s Store) Resolve(ctx context.Context, artifactID string) (contract.Digest, error) {
+	digest, err := contract.ParseSHA256(artifactID)
+	if err != nil {
+		return contract.Digest{}, fmt.Errorf("%w: %q is not a digest", admission.ErrUnresolvableArtifact, artifactID)
+	}
+	body, _, err := s.Open(ctx, digest)
+	if err != nil {
+		if errors.Is(err, ErrNotFound) {
+			return contract.Digest{}, fmt.Errorf("%w: no body for %s", admission.ErrUnresolvableArtifact, digest.Hex())
+		}
+		return contract.Digest{}, err
+	}
+	_ = body.Close()
+	return digest, nil
+}
