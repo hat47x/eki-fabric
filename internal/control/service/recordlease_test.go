@@ -14,7 +14,7 @@ import (
 
 func testLease(t *testing.T) leasestate.LeaseRecord {
 	t.Helper()
-	leaseID, err := ids.ParseLeaseID("lse_00000000000000000000000000000001")
+	leaseID, err := ids.ParseLeaseID("les_00000000000000000000000000000001")
 	if err != nil {
 		t.Fatal(err)
 	}
