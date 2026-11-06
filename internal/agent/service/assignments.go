@@ -97,6 +97,20 @@ func prepareAssignments(c *AssignmentConfig) (*trustanchor.Anchor, []assignment.
 		return nil, nil, fmt.Errorf("%w: ceiling_percent must be 1..100", ErrInvalidConfig)
 	case c.Execution != nil && c.Execution.Command == "":
 		return nil, nil, fmt.Errorf("%w: execution.command is required when execution is enabled", ErrInvalidConfig)
+	case c.ArtifactBaseURL != "" && c.InputsDir == "":
+		// The fetch needs somewhere to put the bytes. Returning no fetcher
+		// would look like "this Agent does not fetch inputs", and every
+		// assignment that declares them would then be refused at run time
+		// instead of at start (#763, ADR-0029 §5.10).
+		return nil, nil, fmt.Errorf("%w: inputs_dir is required when artifact_base_url is set", ErrInvalidConfig)
+	case c.InputsDir != "" && c.ArtifactBaseURL == "":
+		// A directory nothing writes to would keep an operator waiting for
+		// files that never appear.
+		return nil, nil, fmt.Errorf("%w: artifact_base_url is required when inputs_dir is set", ErrInvalidConfig)
+	case c.InputsDir != "":
+		if _, err := os.Stat(c.InputsDir); err != nil {
+			return nil, nil, fmt.Errorf("%w: inputs_dir: %v", ErrInvalidConfig, err)
+		}
 	}
 	anchor, err := trustanchor.Load(c.TrustAnchorFile)
 	if err != nil {
