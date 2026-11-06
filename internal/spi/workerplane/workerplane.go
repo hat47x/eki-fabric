@@ -14,7 +14,9 @@ import (
 	"context"
 	"time"
 
+	"github.com/hat47x/eki-fabric/internal/core/ids"
 	"github.com/hat47x/eki-fabric/internal/core/resultclaim"
+	"github.com/hat47x/eki-fabric/internal/core/workerregistry"
 )
 
 // Principal is the authenticated Worker. The transport produces it; no field
@@ -85,3 +87,15 @@ type HeartbeatRecorder interface {
 type RunningReporter interface {
 	ReportRunning(leaseID string)
 }
+
+// HeldArtifactStore records what the authenticated Worker says it already has
+// (ADR-0029 §5.1). The claim is a hint for placement, so an error here must not be
+// reported as a failed Task: the Worker still holds whatever it held.
+type HeldArtifactStore interface {
+	SetHeldArtifacts(ctx context.Context, identity ids.WorkerIdentity, held workerregistry.HeldArtifacts, at time.Time) error
+}
+
+// HeldArtifactsPath is the URL path of the held-artifacts endpoint. It is separate
+// from the assignments request because that body is capped at 1024 bytes for the
+// running-Lease report (ADR-0030 §2.2); a claim of digests does not fit there.
+const HeldArtifactsPath = "/test-profile/v1/held-artifacts"
