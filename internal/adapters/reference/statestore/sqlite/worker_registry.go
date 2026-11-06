@@ -342,3 +342,37 @@ func encodeHeldArtifacts(held workerregistry.HeldArtifacts) any {
 	}
 	return strings.Join(parts, ",")
 }
+
+// SetHeldArtifacts records what a Worker says it already has (ADR-0029 §5.1).
+//
+// It is an update of the claim only: the identity, the trust domain, the
+// credential and the creation time stay as they were, and the revision grows by
+// one so a reader can tell one claim from the next. A revoked Worker is final, so
+// its claim is not changed either; a caller that needs to know whether the claim
+// was stored checks the returned error rather than assuming it was.
+func (s *Store) SetHeldArtifacts(ctx context.Context, identity ids.WorkerIdentity, held workerregistry.HeldArtifacts, now time.Time) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	if err := held.Validate(); err != nil {
+		return err
+	}
+	result, err := s.db.ExecContext(ctx, `
+UPDATE workers SET held_artifacts = ?, revision = revision + 1, updated_at_ns = ?
+WHERE worker_identity = ? AND state = 'registered' AND updated_at_ns <= ?`,
+		encodeHeldArtifacts(held), now.UnixNano(), string(identity), now.UnixNano())
+	if err != nil {
+		return fmt.Errorf("set held artifacts for %s: %w", identity, err)
+	}
+	changed, err := result.RowsAffected()
+	if err != nil {
+		return fmt.Errorf("set held artifacts for %s: %w", identity, err)
+	}
+	if changed == 0 {
+		// Either the Worker is unknown or it is no longer registered. Both are
+		// reported the same way: the claim is a hint, and a hint about a Worker
+		// that cannot take work is not worth distinguishing.
+		return fmt.Errorf("%w: worker %s", statestore.ErrNotFound, identity)
+	}
+	return nil
+}

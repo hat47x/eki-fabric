@@ -153,3 +153,27 @@ func (s *Store) RecordWorkerCertificate(ctx context.Context, identity ids.Worker
 }
 
 var _ statestore.WorkerRegistryStore = (*Store)(nil)
+
+// SetHeldArtifacts records what a Worker says it already has (ADR-0029 §5.1). It
+// changes the claim, the revision and the update time, and nothing else; a revoked
+// Worker is final, so its claim is left alone.
+func (s *Store) SetHeldArtifacts(ctx context.Context, identity ids.WorkerIdentity, held workerregistry.HeldArtifacts, now time.Time) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	if err := held.Validate(); err != nil {
+		return err
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	w, ok := s.workers[identity]
+	if !ok || w.State != workerregistry.StateRegistered {
+		return fmt.Errorf("%w: worker %s", statestore.ErrNotFound, identity)
+	}
+	w.HeldArtifacts = held
+	w.Revision++
+	w.UpdatedAt = now.UTC()
+	s.workers[identity] = w
+	return nil
+}
