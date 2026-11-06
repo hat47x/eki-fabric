@@ -80,6 +80,10 @@ type Handler struct {
 	// artifactAuditErr is a sink that can refuse (ADR-0040 §5). It takes
 	// precedence over artifactAudit when set.
 	artifactAuditErr func(ArtifactAccess) error
+	// ingests holds the open upload sessions of POST /v1/artifacts/ingest-intents
+	// (#245). It is created with the handler; a deployment that keeps no bodies
+	// refuses the route before this is reached.
+	ingests *ingestSessions
 }
 
 var ErrInvalidConfig = errors.New("invalid client API configuration")
@@ -95,6 +99,7 @@ func NewHandler(cfg Config) (*Handler, error) {
 		return nil, fmt.Errorf("%w: negative body limit", ErrInvalidConfig)
 	}
 	h := &Handler{svc: cfg.Service, auth: cfg.Authenticator, maxBody: cfg.MaxBodyBytes, log: cfg.Logger, ready: cfg.Ready, artifacts: cfg.Artifacts, artifactAudit: cfg.ArtifactAudit, artifactAuditErr: cfg.ArtifactAuditErr}
+	h.ingests = newIngestSessions(time.Now)
 	if h.maxBody == 0 {
 		h.maxBody = DefaultMaxBodyBytes
 	}
@@ -113,6 +118,7 @@ const (
 	routeCancelTask
 	routeGetResult
 	routeGetArtifact
+	routeIngestIntents
 	routeNotImplemented
 )
 
@@ -128,7 +134,7 @@ func match(path string) matched {
 	case path == "/v1/tasks":
 		return matched{route: routeSubmitTask, allow: http.MethodPost}
 	case path == "/v1/artifacts/ingest-intents":
-		return matched{route: routeNotImplemented, allow: http.MethodPost}
+		return matched{route: routeIngestIntents, allow: http.MethodPost}
 	}
 	if rest, ok := strings.CutPrefix(path, "/v1/tasks/"); ok && rest != "" {
 		id, tail, hasTail := strings.Cut(rest, "/")
@@ -255,6 +261,8 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		h.artifact(rec, r, identity, m.artifactID)
+	case routeIngestIntents:
+		h.ingest(rec, r, identity)
 	case routeGetResult:
 		if !h.svc.ResultsEnabled() {
 			writeProblem(rec, http.StatusNotImplemented, &admission.Error{Kind: admission.KindInternal, Code: "NOT_IMPLEMENTED", Title: "This operation is not available in this deployment"})
