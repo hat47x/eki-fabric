@@ -14,6 +14,7 @@ import (
 	"context"
 	"time"
 
+	"github.com/hat47x/eki-fabric/internal/core/contract"
 	"github.com/hat47x/eki-fabric/internal/core/ids"
 	"github.com/hat47x/eki-fabric/internal/core/resultclaim"
 	"github.com/hat47x/eki-fabric/internal/core/workerregistry"
@@ -56,6 +57,10 @@ type Assignment struct {
 	LeaseState        workerplaneLeaseState
 	LeaseEnvelope     []byte
 	WorkOrderEnvelope []byte
+	// InputDigests is each of the Task's inputs resolved to its digest, in
+	// declaration order (ADR-0029 §5.3). The Worker fetches them; the Control
+	// Plane does not carry the bytes.
+	InputDigests []contract.Digest
 }
 
 // workerplaneLeaseState mirrors statestore.LeaseDeliveryState without the SPI

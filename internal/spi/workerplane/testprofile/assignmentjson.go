@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 
+	"github.com/hat47x/eki-fabric/internal/core/contract"
 	"github.com/hat47x/eki-fabric/internal/spi/statestore"
 	"github.com/hat47x/eki-fabric/internal/spi/workerplane"
 )
@@ -30,6 +31,9 @@ type wireAssignment struct {
 	LeaseState        string `json:"lease_state"`
 	LeaseEnvelope     []byte `json:"lease_envelope"`
 	WorkOrderEnvelope []byte `json:"work_order_envelope"`
+	// InputDigests are hex, the same spelling the rest of the API uses. Omitted
+	// when the Task declared no inputs (ADR-0029 §5.3).
+	InputDigests []string `json:"input_digests,omitempty"`
 }
 
 type wireAssignments struct {
@@ -106,6 +110,7 @@ func EncodeAssignments(list []workerplane.Assignment) ([]byte, error) {
 		out.Assignments = append(out.Assignments, wireAssignment{
 			AttemptID: a.AttemptID, LeaseID: a.LeaseID, LeaseState: a.LeaseState,
 			LeaseEnvelope: a.LeaseEnvelope, WorkOrderEnvelope: a.WorkOrderEnvelope,
+			InputDigests: digestHexes(a.InputDigests),
 		})
 	}
 	return json.Marshal(out)
@@ -133,10 +138,45 @@ func DecodeAssignments(raw []byte) ([]workerplane.Assignment, error) {
 		default:
 			return nil, fmt.Errorf("%w: lease_state %q", ErrInvalidMessage, a.LeaseState)
 		}
+		digests, err := parseDigestHexes(a.InputDigests)
+		if err != nil {
+			return nil, err
+		}
 		out = append(out, workerplane.Assignment{
 			AttemptID: a.AttemptID, LeaseID: a.LeaseID, LeaseState: a.LeaseState,
 			LeaseEnvelope: a.LeaseEnvelope, WorkOrderEnvelope: a.WorkOrderEnvelope,
+			InputDigests: digests,
 		})
+	}
+	return out, nil
+}
+
+// digestHexes renders digests for the wire. Nil stays nil, so a Task without inputs
+// carries no field at all rather than an empty list.
+func digestHexes(digests []contract.Digest) []string {
+	if len(digests) == 0 {
+		return nil
+	}
+	out := make([]string, 0, len(digests))
+	for _, digest := range digests {
+		out = append(out, digest.Hex())
+	}
+	return out
+}
+
+// parseDigestHexes reads the wire form. A value that is not a digest is an invalid
+// message, not a Task without inputs.
+func parseDigestHexes(values []string) ([]contract.Digest, error) {
+	if len(values) == 0 {
+		return nil, nil
+	}
+	out := make([]contract.Digest, 0, len(values))
+	for _, value := range values {
+		digest, err := contract.ParseSHA256(value)
+		if err != nil {
+			return nil, fmt.Errorf("%w: input digest %q: %v", ErrInvalidMessage, value, err)
+		}
+		out = append(out, digest)
 	}
 	return out, nil
 }
