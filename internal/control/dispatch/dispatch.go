@@ -79,6 +79,9 @@ type Config struct {
 	AttemptLists AttemptSource
 	Workers      WorkerSource
 	Policies     PolicySource
+	// Hints answers what the placement decision may know about a Task's inputs
+	// (ADR-0029 §5.3). Nil keeps placement on resources alone.
+	Hints PlacementHintSource
 
 	// IssuePlacement signs one approved placement (PLC-1).
 	IssuePlacement func(ctx context.Context, req placementissue.IssueRequest) ([]byte, error)
@@ -266,7 +269,7 @@ func (l *Loop) dispatchOne(ctx context.Context, task taskstate.TaskRecord) error
 	if policy.Status != policystate.StatusActive {
 		return fmt.Errorf("policy %s is %s, not active", policy.Revision, policy.Status)
 	}
-	worker, err := l.pickWorker(ctx)
+	worker, err := l.pickWorker(ctx, task.ID)
 	if err != nil {
 		return err
 	}
@@ -367,12 +370,13 @@ func (l *Loop) reloadAttempt(ctx context.Context, taskID ids.TaskID, id ids.Atte
 // pickWorker returns the first usable Worker, or an error naming the gap. The
 // fixed heuristic of this loop takes the first; the Scheduler still ranks the
 // one-element candidate list it produces.
-func (l *Loop) pickWorker(ctx context.Context) (string, error) {
+func (l *Loop) pickWorker(ctx context.Context, taskID ids.TaskID) (string, error) {
 	workers, err := l.cfg.Workers.ListWorkers(ctx)
 	if err != nil {
 		return "", fmt.Errorf("list workers: %w", err)
 	}
-	for _, w := range workers {
+	usable := l.pickWorkerWithHint(ctx, taskID, workers)
+	for _, w := range usable {
 		if w.Usable() {
 			return w.Identity.String(), nil
 		}
