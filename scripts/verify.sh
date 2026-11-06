@@ -113,8 +113,14 @@ run_go_test() {
 	echo "skip した試験の行数: ${skipped}"
 	if [ "$skipped" -gt 0 ]; then
 		echo "環境により実行していない試験（VERIFY の範囲に含まれない）:"
-		# 理由は次の行に出るため、1行後ろまで見せる。
-		grep -E '^[[:space:]]*--- SKIP' -A1 "$log" | sed -e 's/^/  /'
+		# SKIP 行と、その直後の理由（インデントされた行）を対にして出す。
+		# 空行や次の === RUN は理由ではないので飛ばす。
+		awk '
+			/^[ \t]*--- SKIP/ { print "  " $0; want = 1; next }
+			want && /^[ \t]+[^ \t]/ && $0 !~ /^(===|---)/ { print "  " $0; want = 0; next }
+			want && /^[ \t]*$/ { next }
+			{ want = 0 }
+		' "$log"
 		echo "※ これらは通ったのではなく、走っていません。"
 	fi
 	rm -f "$log"
