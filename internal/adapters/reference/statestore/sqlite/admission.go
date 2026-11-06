@@ -79,6 +79,15 @@ VALUES (?, ?, ?, ?, ?, ?)`,
 		admission.RequestFingerprint.Hex(), int64(admission.MaxAttempts), admission.Content); err != nil {
 		return statestore.AdmitResult{}, fmt.Errorf("admit task %s: insert admission: %w", record.ID, err)
 	}
+	// The input digests are written in the same transaction as the Task: a Task
+	// whose rows are missing would be placed as if it read nothing (ADR-0029 §5.8).
+	for ordinal, digest := range admission.InputDigests {
+		if _, err := tx.ExecContext(ctx, `
+INSERT INTO task_inputs (task_id, ordinal, digest) VALUES (?, ?, ?)`,
+			string(record.ID), ordinal, digest.Hex()); err != nil {
+			return statestore.AdmitResult{}, fmt.Errorf("admit task %s: insert input %d: %w", record.ID, ordinal, err)
+		}
+	}
 	if err := tx.Commit(); err != nil {
 		return statestore.AdmitResult{}, fmt.Errorf("admit task %s: commit: %w", record.ID, err)
 	}
@@ -156,4 +165,35 @@ func (s *Store) LoadAdmissionByIdempotencyKey(ctx context.Context, principal, ke
 		return statestore.Admission{}, err
 	}
 	return admission, nil
+}
+
+// LoadTaskInputs returns the Task's input digests in declaration order. A Task
+// with no inputs, and a Task admitted before the column existed, both return none
+// (ADR-0029 §5.8).
+func (s *Store) LoadTaskInputs(ctx context.Context, id ids.TaskID) ([]contract.Digest, error) {
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+	rows, err := s.db.QueryContext(ctx, `
+SELECT digest FROM task_inputs WHERE task_id = ? ORDER BY ordinal`, string(id))
+	if err != nil {
+		return nil, fmt.Errorf("load task inputs %s: %w", id, err)
+	}
+	defer rows.Close()
+	digests := []contract.Digest{}
+	for rows.Next() {
+		var hexValue string
+		if err := rows.Scan(&hexValue); err != nil {
+			return nil, fmt.Errorf("load task inputs %s: %w", id, err)
+		}
+		digest, err := contract.ParseSHA256(hexValue)
+		if err != nil {
+			return nil, fmt.Errorf("%w: task %s: input digest: %v", ErrCorruptRecord, id, err)
+		}
+		digests = append(digests, digest)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("load task inputs %s: %w", id, err)
+	}
+	return digests, nil
 }
