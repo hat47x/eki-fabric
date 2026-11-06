@@ -61,6 +61,10 @@ type MTLSConfig struct {
 	// Heartbeats records the running-Lease reports the assignments requests
 	// carry (ADR-0030 §2.2). Nil means reports are accepted and dropped.
 	Heartbeats workerplane.HeartbeatRecorder
+	// HeldArtifacts records what a Worker says it holds (ADR-0029 §5.1). Nil
+	// keeps the route closed: a deployment that does not place by locality has
+	// no reason to collect the claim.
+	HeldArtifacts workerplane.HeldArtifactStore
 	// Registry authorizes every request and runs enrollment and renewal. It
 	// must have a certificate issuer.
 	Registry *workerenrollment.Service
@@ -86,6 +90,7 @@ type mtlsHandler struct {
 	// dropped, which keeps the route usable for a Control Plane that does
 	// not track liveness yet.
 	heartbeats workerplane.HeartbeatRecorder
+	heldClaims workerplane.HeldArtifactStore
 	registry   *workerenrollment.Service
 	roots      *x509.CertPool
 	// trustBundle is the version the Control Plane holds, when one is
@@ -119,6 +124,7 @@ func NewMTLSHandler(cfg MTLSConfig) (http.Handler, error) {
 		bodies:        cfg.BodyReceiver,
 		assignments:   cfg.Assignments,
 		heartbeats:    cfg.Heartbeats,
+		heldClaims:    cfg.HeldArtifacts,
 		registry:      cfg.Registry,
 		roots:         x509.NewCertPool(),
 		trustBundle:   cfg.TrustBundle,
@@ -152,6 +158,11 @@ func (h *mtlsHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			reply(w, http.StatusNotFound, "not_found")
 			return
 		}
+	case workerplane.HeldArtifactsPath:
+		if h.heldClaims == nil {
+			reply(w, http.StatusNotFound, "not_found")
+			return
+		}
 	default:
 		reply(w, http.StatusNotFound, "not_found")
 		return
@@ -178,6 +189,10 @@ func (h *mtlsHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	caller := workerplane.Principal{WorkerIdentity: string(principal.Identity), TrustDomain: principal.TrustDomain}
 	if r.URL.Path == testprofile.AssignmentsPath {
 		h.serveAssignments(w, r, caller)
+		return
+	}
+	if r.URL.Path == workerplane.HeldArtifactsPath {
+		h.serveHeldArtifacts(w, r, principal)
 		return
 	}
 	if r.URL.Path == testprofile.BodyPath {
