@@ -65,6 +65,9 @@ type MTLSConfig struct {
 	// keeps the route closed: a deployment that does not place by locality has
 	// no reason to collect the claim.
 	HeldArtifacts workerplane.HeldArtifactStore
+	// Artifacts produces the bytes of an Attempt's declared inputs (ADR-0029
+	// §5.10). Nil answers 501 for the route: this deployment serves no bodies.
+	Artifacts ArtifactSource
 	// Registry authorizes every request and runs enrollment and renewal. It
 	// must have a certificate issuer.
 	Registry *workerenrollment.Service
@@ -91,8 +94,11 @@ type mtlsHandler struct {
 	// not track liveness yet.
 	heartbeats workerplane.HeartbeatRecorder
 	heldClaims workerplane.HeldArtifactStore
-	registry   *workerenrollment.Service
-	roots      *x509.CertPool
+	// artifacts serves an Attempt's declared inputs to the Worker that holds it
+	// (ADR-0029 §5.10). Nil answers 501: this deployment does not serve bodies.
+	artifacts ArtifactSource
+	registry  *workerenrollment.Service
+	roots     *x509.CertPool
 	// trustBundle is the version the Control Plane holds, when one is
 	// configured. Nil keeps the certificate check alone (ADR-0036 §2.3).
 	trustBundle func() (trustbundle.Signed, bool, error)
@@ -125,6 +131,7 @@ func NewMTLSHandler(cfg MTLSConfig) (http.Handler, error) {
 		assignments:   cfg.Assignments,
 		heartbeats:    cfg.Heartbeats,
 		heldClaims:    cfg.HeldArtifacts,
+		artifacts:     cfg.Artifacts,
 		registry:      cfg.Registry,
 		roots:         x509.NewCertPool(),
 		trustBundle:   cfg.TrustBundle,
@@ -146,6 +153,12 @@ func NewMTLSHandler(cfg MTLSConfig) (http.Handler, error) {
 }
 
 func (h *mtlsHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	// The artifact route takes GET, because the Worker asks for content it already
+	// knows the digest of (ADR-0029 §5.10).
+	if strings.HasPrefix(r.URL.Path, artifactPathPrefix) {
+		h.serveArtifactRoute(w, r)
+		return
+	}
 	switch r.URL.Path {
 	case testprofile.Path, enrollwire.RenewPath, enrollwire.EnrollPath:
 	case testprofile.AssignmentsPath:
