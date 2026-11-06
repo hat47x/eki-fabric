@@ -244,7 +244,10 @@ func TestMTLSForgedCSRSubjectStillGetsTheRegistryIdentity(t *testing.T) {
 		t.Fatalf("certificate carries requester names: %v %v", forged.leaf.URIs, forged.leaf.DNSNames)
 	}
 	if resp, body := f.claim(t, forged, nil); resp.StatusCode != http.StatusOK {
-		t.Fatalf("claim = %d %s", resp.StatusCode, body)
+		// A 401 here has been seen once under heavy load (#300). The server log is
+		// the only place the reason is written down, so print it with the failure
+		// rather than leaving the next occurrence as unexplained as the first.
+		t.Fatalf("claim = %d %s; server log:\n%s", resp.StatusCode, body, f.serverLog())
 	}
 	if f.claims.principal.WorkerIdentity != string(forged.id) {
 		t.Fatalf("principal = %q, want the registry identity %q", f.claims.principal.WorkerIdentity, forged.id)
@@ -727,4 +730,12 @@ func TestMTLSJustIssuedCertificateSurvivesAClockStepBack(t *testing.T) {
 	if resp, _ := f.claim(t, w, nil); resp.StatusCode != http.StatusUnauthorized {
 		t.Fatalf("verifier beyond the margin behind the issuer = %d, want 401", resp.StatusCode)
 	}
+}
+
+// serverLog returns what the handler wrote, so a failure that only happens under
+// load can be read from the test output (#300).
+func (f *mtlsFixture) serverLog() string {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return f.logs.String()
 }
