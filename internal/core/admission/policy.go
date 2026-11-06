@@ -68,7 +68,7 @@ func (p Policy) validate() error {
 }
 
 // check applies policy to a validated request. It returns the first violation.
-func (p Policy) check(r NormalizedRequest, now time.Time) *Error {
+func (p Policy) check(r NormalizedRequest, now time.Time, artifactInputs bool) *Error {
 	if r.ExtensionCount > 0 {
 		return unprocessable("EXTENSION_NOT_SUPPORTED", "EXTENSION", "no extension is registered")
 	}
@@ -84,9 +84,10 @@ func (p Policy) check(r NormalizedRequest, now time.Time) *Error {
 		return unprocessable("EXECUTOR_NOT_APPROVED", "EXECUTOR", "the requested executor is not approved")
 	}
 
-	// There is no Artifact Store yet, so no input can be authorized. Failing
-	// closed is the only safe answer; an Artifact is never trusted by name.
-	if len(r.Inputs) > 0 {
+	// An input can only be authorized when the deployment can resolve it to a
+	// digest (ADR-0029 §5.6). Without that, failing closed is the only safe
+	// answer: an Artifact is never trusted by name.
+	if len(r.Inputs) > 0 && !artifactInputs {
 		return unprocessable("ARTIFACT_NOT_AVAILABLE", "ARTIFACT", "artifact inputs are not available in this deployment")
 	}
 	if r.Resources.GPURequested {

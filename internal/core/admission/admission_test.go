@@ -993,7 +993,7 @@ func TestParametersAndVersionConstraintAreNotEvaluated(t *testing.T) {
 	if err != nil {
 		t.Fatalf("ParseTaskRequest() error = %v", err)
 	}
-	if err := svc.policy.check(req, testNow); err != nil {
+	if err := svc.policy.check(req, testNow, false); err != nil {
 		t.Fatalf("policy.check() error = %v", err)
 	}
 	got, err := svc.Submit(ctx, alice, "key-00000011", raw)

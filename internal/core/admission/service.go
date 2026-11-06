@@ -43,6 +43,10 @@ type Config struct {
 	// can: otherwise waiting changes nothing and the Client must cancel a Task
 	// to free capacity (#282).
 	QuotaDrainsAutomatically bool
+	// Inputs resolves a Task's input references to digests (ADR-0029 §5.6).
+	// Non-nil also means inputs may be admitted: without a way to resolve a
+	// reference, an input cannot be authorized, so it is refused as before.
+	Inputs ArtifactResolver
 }
 
 type Service struct {
@@ -53,6 +57,7 @@ type Service struct {
 	newTaskID   func() (ids.TaskID, error)
 	onError     func(string, error)
 	quotaDrains bool
+	inputs      ArtifactResolver
 }
 
 func New(cfg Config) (*Service, error) {
@@ -65,7 +70,7 @@ func New(cfg Config) (*Service, error) {
 	s := &Service{
 		store: cfg.Store, results: cfg.Results, policy: cfg.Policy,
 		now: cfg.Now, newTaskID: cfg.NewTaskID, onError: cfg.OnInternalError,
-		quotaDrains: cfg.QuotaDrainsAutomatically,
+		quotaDrains: cfg.QuotaDrainsAutomatically, inputs: cfg.Inputs,
 	}
 	if s.now == nil {
 		s.now = time.Now
@@ -91,6 +96,9 @@ type Accepted struct {
 	// ClientRequestID is the requester's own identifier, echoed back unchanged
 	// (#315). Empty when the request carried none.
 	ClientRequestID string
+	// InputDigests is each declared input resolved to its digest, in declaration
+	// order (ADR-0029 §5.3). Empty when no resolver is configured.
+	InputDigests []contract.Digest
 }
 
 // Submit admits a Task for principal. idempotencyKey scopes to the principal.
@@ -150,8 +158,23 @@ func (s *Service) Submit(ctx context.Context, p Principal, idempotencyKey string
 		}
 	}
 
-	if perr := s.policy.check(req, now); perr != nil {
+	if perr := s.policy.check(req, now, s.inputs != nil); perr != nil {
 		return Accepted{}, perr
+	}
+
+	// The inputs are resolved before the Task exists, so a Task whose inputs
+	// cannot be resolved is never admitted (ADR-0029 §5.3, fail closed).
+	var inputDigests []contract.Digest
+	if s.inputs != nil {
+		inputDigests, err = InputDigests(ctx, req.Inputs, s.inputs)
+		if err != nil {
+			return Accepted{}, &Error{
+				Kind:   KindUnprocessable,
+				Code:   "INPUT_ARTIFACT_UNRESOLVABLE",
+				Title:  "An input artifact could not be resolved",
+				Detail: "Every input must name an artifact this deployment can resolve.",
+			}
+		}
 	}
 
 	irDigest, err := req.TaskIRDigest()
@@ -187,6 +210,7 @@ func (s *Service) Submit(ctx context.Context, p Principal, idempotencyKey string
 			Replayed:           result.Replayed,
 			RequestFingerprint: result.Admission.RequestFingerprint,
 			ClientRequestID:    req.ClientRequestID,
+			InputDigests:       inputDigests,
 		}, nil
 	case errors.Is(err, statestore.ErrIdempotencyConflict):
 		return Accepted{}, &Error{
