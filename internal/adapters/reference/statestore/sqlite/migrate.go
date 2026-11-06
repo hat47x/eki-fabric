@@ -957,6 +957,15 @@ CREATE TABLE trust_bundle_approvals (
 	// default that would have to be interpreted as one.
 	`ALTER TABLE workers ADD COLUMN held_artifacts TEXT
 	CHECK (held_artifacts IS NULL OR length(held_artifacts) BETWEEN 64 AND 4159);`,
+	// 20: The Task's input digests, in declaration order (ADR-0029 §5.8). A child
+	// table rather than a column on tasks: only placement reads them, and adding
+	// a column would touch every place that reads a tasks row.
+	`CREATE TABLE task_inputs (
+	task_id  TEXT    NOT NULL REFERENCES tasks (task_id),
+	ordinal  INTEGER NOT NULL CHECK (ordinal >= 0),
+	digest   TEXT    NOT NULL CHECK (length(digest) = 64),
+	PRIMARY KEY (task_id, ordinal)
+) STRICT`,
 }
 
 // migrate brings the database to the latest version. It is idempotent, rejects

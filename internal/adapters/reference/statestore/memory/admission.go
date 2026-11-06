@@ -3,6 +3,7 @@ package memory
 import (
 	"context"
 	"fmt"
+	"github.com/hat47x/eki-fabric/internal/core/contract"
 
 	"github.com/hat47x/eki-fabric/internal/core/ids"
 	"github.com/hat47x/eki-fabric/internal/core/taskstate"
@@ -89,4 +90,22 @@ func (s *Store) LoadAdmissionByIdempotencyKey(ctx context.Context, principal, ke
 	admission := s.admissions[id]
 	admission.Task = s.tasks[id]
 	return admission, nil
+}
+
+// LoadTaskInputs returns the Task's input digests in declaration order
+// (ADR-0029 §5.8). A Task with no inputs returns none.
+func (s *Store) LoadTaskInputs(ctx context.Context, id ids.TaskID) ([]contract.Digest, error) {
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	admission, ok := s.admissions[id]
+	if !ok {
+		return nil, fmt.Errorf("%w: task %s", statestore.ErrNotFound, id)
+	}
+	if len(admission.InputDigests) == 0 {
+		return []contract.Digest{}, nil
+	}
+	return append([]contract.Digest(nil), admission.InputDigests...), nil
 }
