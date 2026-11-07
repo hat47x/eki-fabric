@@ -111,12 +111,18 @@ go run ./cmd/eki-control --version
 go run ./cmd/eki-agent --version
 ~~~
 
-出力されるバージョンは、次のとおりです。
+`--version`は、実行ファイルに埋め込まれたビルド情報を1行で出力します。
 
 ~~~text
-eki-control dev
-eki-agent dev
+eki-control revision=<vcs.revision> modified=<true|false|unknown> go=<Goの版>
+eki-agent revision=<vcs.revision> modified=<true|false|unknown> go=<Goの版>
 ~~~
+
+- `revision`は`vcs.revision`（コミット）です。`modified=true`は、ビルド時に未コミットの変更があったことを示します。
+- `go run`や`go build -buildvcs=false`のようにVCS情報が入らないビルドでは、`revision=unknown modified=unknown`と出力します。「不明」を`dev`のような名前で代用しません。
+- 版の確認には、コミットしたチェックアウトで`go build ./cmd/...`したバイナリを使います。`go test`が生成するバイナリにはVCS情報が入りません。
+- この出力は実行ファイルの自己申告です。改ざんされていないことの証明ではありません。署名やビルドの来歴は別の判断として扱います。
+- Client APIが版を返す口と、対応するWorker Protocolのrevisionの申告は、この出力の対象外です（#248の未決）。
 
 `eki-control`は`--config`なしでは、`eki-agent`は`--control-url`や`--queue-db`なしでは、何も起動せずに表示して終了します。`eki-agent`の試験用の起動は、`conformance/process/README.md`を参照してください。
 

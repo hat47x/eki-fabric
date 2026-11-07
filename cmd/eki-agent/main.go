@@ -25,6 +25,7 @@ import (
 	"syscall"
 
 	"github.com/hat47x/eki-fabric/internal/agent/service"
+	"github.com/hat47x/eki-fabric/internal/buildinfo"
 )
 
 const tokenEnv = "EKI_AGENT_TOKEN"
@@ -39,7 +40,7 @@ func run(args []string, stdout, stderr io.Writer) int {
 	}
 	fs := flag.NewFlagSet("eki-agent", flag.ContinueOnError)
 	fs.SetOutput(stderr)
-	showVersion := fs.Bool("version", false, "print the development version and exit")
+	showVersion := fs.Bool("version", false, "print the build revision, modified flag and Go version, then exit")
 	configPath := fs.String("config", "", "path to a JSON configuration file; flags override its values")
 	controlURL := fs.String("control-url", "", "base URL of the Control Plane Worker listener, https://host:port")
 	queueDB := fs.String("queue-db", "", "path of the Agent's local claim queue database")
@@ -56,7 +57,7 @@ func run(args []string, stdout, stderr io.Writer) int {
 		return 2
 	}
 	if *showVersion {
-		fmt.Fprintln(stdout, "eki-agent dev")
+		fmt.Fprintln(stdout, buildinfo.Version("eki-agent"))
 		return 0
 	}
 

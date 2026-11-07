@@ -16,6 +16,7 @@ import (
 	"os/signal"
 	"syscall"
 
+	"github.com/hat47x/eki-fabric/internal/buildinfo"
 	"github.com/hat47x/eki-fabric/internal/control/clientapi"
 	"github.com/hat47x/eki-fabric/internal/control/service"
 )
@@ -36,14 +37,14 @@ func run(args []string, stdout, stderr io.Writer) int {
 
 	fs := flag.NewFlagSet("eki-control", flag.ContinueOnError)
 	fs.SetOutput(stderr)
-	showVersion := fs.Bool("version", false, "print the development version and exit")
+	showVersion := fs.Bool("version", false, "print the build revision, modified flag and Go version, then exit")
 	configPath := fs.String("config", "", "path to the control plane configuration file; without it the process starts nothing")
 	if err := fs.Parse(args); err != nil {
 		return 2
 	}
 
 	if *showVersion {
-		fmt.Fprintln(stdout, "eki-control dev")
+		fmt.Fprintln(stdout, buildinfo.Version("eki-control"))
 		return 0
 	}
 	if *configPath == "" {
