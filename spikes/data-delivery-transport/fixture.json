@@ -1,0 +1,108 @@
+{
+  "fixture_version": "D0-1",
+  "case_id": "EKI-TX-01",
+  "purpose": "一つの期限付き仕事で、ストリーム世代・鮮度・Lease失効後の未確定Claimを、通信方式に依存しない意味として照合する",
+  "authority_boundary": {
+    "workload_kind": "single-task",
+    "principal": "fixture-principal",
+    "lease_epoch": "e7",
+    "data_class": "fixture-non-sensitive",
+    "external_effect": false
+  },
+  "data_contract": {
+    "kind": "structured-event-series",
+    "schema_id": "eki.fixture.observation.v1",
+    "media_type": "application/json",
+    "track_id": "sensor-1",
+    "stream_generation_scope": "generation+track+sequence",
+    "content_semantics_owned_by": "caller"
+  },
+  "delivery_contract": {
+    "ordering": "within-stream-generation",
+    "stale_policy": "reject-lower-sequence-in-same-generation",
+    "partial_result": "claim-only",
+    "on_revocation": "no-acceptance-of-old-epoch",
+    "memory_bound": "finite",
+    "no_automatic_downgrade": true
+  },
+  "transport_profiles": [
+    {
+      "name": "local-ipc-candidate",
+      "role": "data-delivery",
+      "implementation_status": "NOT_RUN"
+    },
+    {
+      "name": "connect-data-adapter-candidate",
+      "role": "data-delivery",
+      "implementation_status": "NOT_RUN"
+    }
+  ],
+  "events": [
+    {
+      "id": "E1",
+      "kind": "observation",
+      "generation": "gA",
+      "sequence": 40,
+      "epoch": "e7",
+      "payload": "frame-40"
+    },
+    {
+      "id": "E2",
+      "kind": "observation",
+      "generation": "gA",
+      "sequence": 39,
+      "epoch": "e7",
+      "payload": "frame-39"
+    },
+    {
+      "id": "E3",
+      "kind": "reconnect",
+      "generation": "gB",
+      "epoch": "e7"
+    },
+    {
+      "id": "E4",
+      "kind": "observation",
+      "generation": "gB",
+      "sequence": 1,
+      "epoch": "e7",
+      "payload": "frame-1"
+    },
+    {
+      "id": "E5",
+      "kind": "lease_revoked",
+      "epoch": "e7"
+    },
+    {
+      "id": "E6",
+      "kind": "result_claim",
+      "generation": "gB",
+      "sequence": 1,
+      "epoch": "e7",
+      "payload": "claim-1"
+    }
+  ],
+  "independent_expected": {
+    "E1": "fresh-candidate-not-consumption-proof",
+    "E2": "stale-rejected",
+    "E3": "new-stream-generation-not-new-authority",
+    "E4": "fresh-candidate-not-consumption-proof",
+    "E5": "lease-revoked",
+    "E6": "claim-not-accepted"
+  },
+  "forbidden_inferences": [
+    "fresh-candidate-does-not-prove-application-consumption",
+    "transport-ack-does-not-prove-provider-commit",
+    "reconnect-does-not-renew-lease",
+    "same-sequence-across-generations-is-not-duplicate",
+    "worker-watchcommands-is-not-general-media-streaming",
+    "no-physical-emergency-stop-assurance"
+  ],
+  "execution_evidence": {
+    "contract_fixture": "DEFINED",
+    "local_ipc": "NOT_RUN",
+    "connect_data_adapter": "NOT_RUN",
+    "end_to_end": "NOT_RUN",
+    "latency_measurement": "NOT_RUN"
+  }
+}
