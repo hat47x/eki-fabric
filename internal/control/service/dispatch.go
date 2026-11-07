@@ -12,6 +12,7 @@ import (
 	"github.com/hat47x/eki-fabric/internal/core/contract"
 	"github.com/hat47x/eki-fabric/internal/core/decisionpayload"
 	"github.com/hat47x/eki-fabric/internal/core/ids"
+	"github.com/hat47x/eki-fabric/internal/core/leasestate"
 
 	cosecbor "github.com/hat47x/eki-fabric/internal/adapters/reference/cosedecoder/cbor"
 	payloadcbor "github.com/hat47x/eki-fabric/internal/adapters/reference/decisiondecoder/cbor"
@@ -240,6 +241,13 @@ func (s *Server) startDispatch(ctx context.Context, cfg *DispatchConfig, store *
 			if err != nil {
 				return dispatch.ReservedLease{}, err
 			}
+			// The recall loop only sees leases that are in the registry. A Lease the
+			// registry cannot hold is not handed on: a Worker would run under a Lease
+			// nobody will ever reclaim (#745). The reserved Lease stays in the state
+			// store and lapses at its expiry.
+			if err := s.recordLease(reserved.Lease); err != nil {
+				return dispatch.ReservedLease{}, err
+			}
 			return dispatch.ReservedLease{LeaseID: reserved.Lease.ID, FenceEpoch: reserved.Lease.FenceEpoch}, nil
 		},
 		EmitLease: func(ctx context.Context, leaseID ids.LeaseID) ([]byte, error) {
@@ -362,3 +370,16 @@ func deferredReasons(deferred []dispatch.DeferredTask) string {
 
 // idleBeat is how often an idle dispatch loop says it is still turning (#437).
 const idleBeat = time.Minute
+
+// recordLease writes a reserved Lease into the registry the recall loop reads.
+// Without a registry there is nothing to record and the call succeeds: the
+// start-up warning already says that reclaim is off.
+func (s *Server) recordLease(lease leasestate.LeaseRecord) error {
+	if s.leaseRegistry == nil {
+		return nil
+	}
+	if err := s.leaseRegistry.Open(lease); err != nil {
+		return fmt.Errorf("record lease %s in the registry: %w", lease.ID, err)
+	}
+	return nil
+}

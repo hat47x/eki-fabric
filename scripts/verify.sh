@@ -88,10 +88,49 @@ done)
 EOF
 echo "対象のSpike: ${spike_count}"
 
+# go test を -v で走らせ、失敗と「skip の要約」だけを標準出力へ出す。
+#
+# skip された試験は、環境の都合（Windows専用、Linux専用、Docker必須など）で
+# 一度も走っていない。これを出さないと、VERIFY: PASS が何を確かめたのかを
+# 出力から読めない。件数と理由を必ず示す（#746）。
+run_go_test() {
+	log=$(mktemp) || {
+		echo "一時ファイルを作れません。" >&2
+		return 1
+	}
+	rc=0
+	# 引数は -race などの追加フラグとして渡す。
+	if ! go test ./... -count=1 -v "$@" >"$log" 2>&1; then
+		rc=1
+		# 失敗はそのままの形で見せる。原因の行を探しやすくするため。
+		grep -E '^[[:space:]]*--- FAIL|^FAIL' "$log" || true
+	fi
+
+	ran=$(grep -cE '^[[:space:]]*=== RUN' "$log" || true)
+	skipped=$(grep -cE '^[[:space:]]*--- SKIP' "$log" || true)
+	: "${ran:=0}" "${skipped:=0}"
+	echo "実行した試験の行数: ${ran}"
+	echo "skip した試験の行数: ${skipped}"
+	if [ "$skipped" -gt 0 ]; then
+		echo "環境により実行していない試験（VERIFY の範囲に含まれない）:"
+		# SKIP 行と、その直後の理由（インデントされた行）を対にして出す。
+		# 空行や次の === RUN は理由ではないので飛ばす。
+		awk '
+			/^[ \t]*--- SKIP/ { print "  " $0; want = 1; next }
+			want && /^[ \t]+[^ \t]/ && $0 !~ /^(===|---)/ { print "  " $0; want = 0; next }
+			want && /^[ \t]*$/ { next }
+			{ want = 0 }
+		' "$log"
+		echo "※ これらは通ったのではなく、走っていません。"
+	fi
+	rm -f "$log"
+	return "$rc"
+}
+
 if [ "$quick" -eq 0 ] && [ "$race" -eq 0 ]; then
 	echo
 	echo "== go test =="
-	if ! go test ./... -count=1; then
+	if ! run_go_test; then
 		status=1
 	fi
 fi
@@ -108,7 +147,7 @@ if [ "$race" -eq 1 ]; then
 	else
 		# -raceは実行が数倍遅くなる。既定の10分では、SQLiteを使う
 		# packageが途中で打ち切られる場合があるため、時間の上限を広げる。
-		if ! go test -race ./... -count=1 -timeout 30m; then
+		if ! run_go_test -race -timeout 30m; then
 			status=1
 		fi
 	fi

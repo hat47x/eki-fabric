@@ -41,6 +41,9 @@ type Server struct {
 	counters *measurement.Counters
 	// recallDone closes when the lease reclaim loop has stopped (#555).
 	recallDone chan struct{}
+	// leaseRegistry is the file the recall loop reads. The placement loop writes
+	// every Lease it reserves into it (#745). Nil when no lease_registry is set.
+	leaseRegistry *leaserecall.File
 	// countersDone closes when the periodic write-out has stopped (#392).
 	countersDone chan struct{}
 	// operator is the Operator listener of ADR-0038, nil when the process has no
@@ -99,10 +102,38 @@ func Start(ctx context.Context, cfg Config, log *slog.Logger) (*Server, error) {
 		return nil, fmt.Errorf("open state store: %w", err)
 	}
 
+	// The retrieval route reads the same directory the Worker listener writes to.
+	// Two Store values over one directory are fine: the store keeps no state in
+	// memory, and a body is one file named after its digest (#494).
+	var artifacts clientapi.ArtifactSource
+	// sink is the same directory seen from the write side: a body a Client
+	// uploads is fetched by the retrieval route (#245).
+	var sink clientapi.ArtifactSink
+	// inputs resolves an input reference for admission. Nil means this
+	// deployment keeps no bodies, so a Task may not name any input: the
+	// reference could never be checked and the Worker could never fetch it
+	// (ADR-0029 §5.7).
+	var inputs admission.ArtifactResolver
+	if cfg.Worker != nil && cfg.Worker.ArtifactsDir != "" {
+		bodies, aerr := artifactfile.New(cfg.Worker.ArtifactsDir)
+		if aerr != nil {
+			_ = store.Close()
+			return nil, fmt.Errorf("open the artifact store: %w", aerr)
+		}
+		// The same state store answers whether a Task was withdrawn, so a body whose
+		// Task was cancelled stops being served (ADR-0037 §9, #592).
+		artifacts = artifactSource{store: bodies, tasks: taskWithdrawalFromState{tasks: store}}
+		sink = artifactSink{store: bodies}
+		inputs = artifactResolver{store: bodies}
+	}
+
 	svc, err := admission.New(admission.Config{
 		Store:   store,
 		Results: store,
 		Policy:  policy,
+		// A Task that names an input is admitted only when the body exists, so
+		// the Worker is never told to fetch something no one kept (#763).
+		Inputs: inputs,
 		// A quota rejection is retryable only when this deployment can finish a
 		// Task without the Client: that is what the placement loop starts. A
 		// process without it must tell the Client to cancel instead (#282).
@@ -120,20 +151,6 @@ func Start(ctx context.Context, cfg Config, log *slog.Logger) (*Server, error) {
 	// (#289). Until then the probe refuses: the process is not serving for
 	// real yet.
 	var readyState atomic.Bool
-	// The retrieval route reads the same directory the Worker listener writes to.
-	// Two Store values over one directory are fine: the store keeps no state in
-	// memory, and a body is one file named after its digest (#494).
-	var artifacts clientapi.ArtifactSource
-	if cfg.Worker != nil && cfg.Worker.ArtifactsDir != "" {
-		bodies, aerr := artifactfile.New(cfg.Worker.ArtifactsDir)
-		if aerr != nil {
-			_ = store.Close()
-			return nil, fmt.Errorf("open the artifact store: %w", aerr)
-		}
-		// The same state store answers whether a Task was withdrawn, so a body whose
-		// Task was cancelled stops being served (ADR-0037 §9, #592).
-		artifacts = artifactSource{store: bodies, tasks: taskWithdrawalFromState{tasks: store}}
-	}
 	counters := measurement.New()
 	// One book for the whole process: the Operator API writes into it and the
 	// version admission path reads from it (#545).
@@ -145,6 +162,7 @@ func Start(ctx context.Context, cfg Config, log *slog.Logger) (*Server, error) {
 		Logger:           log,
 		Ready:            readyState.Load,
 		Artifacts:        artifacts,
+		Sink:             sink,
 		ArtifactAuditErr: artifactAuditErr(cfg, log, ctx),
 	})
 	if err != nil {
@@ -194,8 +212,21 @@ func Start(ctx context.Context, cfg Config, log *slog.Logger) (*Server, error) {
 			_ = store.Close()
 			return nil, rerr
 		}
+		s.leaseRegistry = registry
+		// The reclaimer closes the Attempt of an expired Lease before removing
+		// it from the registry, so an Attempt without a ResultClaim does not
+		// stay open forever (ADR-0037, #745).
+		closer := recallCloser{
+			attempts: store, claims: store, reclaimer: registry,
+			grace: RecallGrace, now: time.Now,
+		}
+		if cerr := closer.validate(); cerr != nil {
+			_ = listener.Close()
+			_ = store.Close()
+			return nil, cerr
+		}
 		recall, rerr := leaserecall.New(leaserecall.Config{
-			Lister: registry, Reclaimer: registry, OnReclaim: recallCounter(counters),
+			Lister: registry, Reclaimer: closer, OnReclaim: recallCounter(counters),
 		})
 		if rerr != nil {
 			_ = listener.Close()

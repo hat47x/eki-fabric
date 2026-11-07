@@ -53,6 +53,10 @@ type Config struct {
 	// ArtifactAudit receives one entry per retrieval. Nil means the entry goes to
 	// the logger, so an audit trail exists without extra setup.
 	ArtifactAudit func(ArtifactAccess)
+	// Sink is where an uploaded body is kept (#245). Nil means the upload route
+	// answers 501, which is what a deployment without writable body storage
+	// has always done.
+	Sink ArtifactSink
 	// ArtifactAuditErr is a sink that can refuse (ADR-0040 §5). It takes precedence
 	// over ArtifactAudit: a deployment that hands the record to a store needs to know
 	// when the store did not take it.
@@ -80,6 +84,12 @@ type Handler struct {
 	// artifactAuditErr is a sink that can refuse (ADR-0040 §5). It takes
 	// precedence over artifactAudit when set.
 	artifactAuditErr func(ArtifactAccess) error
+	// sink is where an uploaded body is kept; nil means no upload route (#245).
+	sink ArtifactSink
+	// ingests holds the open upload sessions of POST /v1/artifacts/ingest-intents
+	// (#245). It is created with the handler; a deployment that keeps no bodies
+	// refuses the route before this is reached.
+	ingests *ingestSessions
 }
 
 var ErrInvalidConfig = errors.New("invalid client API configuration")
@@ -94,7 +104,8 @@ func NewHandler(cfg Config) (*Handler, error) {
 	if cfg.MaxBodyBytes < 0 {
 		return nil, fmt.Errorf("%w: negative body limit", ErrInvalidConfig)
 	}
-	h := &Handler{svc: cfg.Service, auth: cfg.Authenticator, maxBody: cfg.MaxBodyBytes, log: cfg.Logger, ready: cfg.Ready, artifacts: cfg.Artifacts, artifactAudit: cfg.ArtifactAudit, artifactAuditErr: cfg.ArtifactAuditErr}
+	h := &Handler{svc: cfg.Service, auth: cfg.Authenticator, maxBody: cfg.MaxBodyBytes, log: cfg.Logger, ready: cfg.Ready, artifacts: cfg.Artifacts, artifactAudit: cfg.ArtifactAudit, artifactAuditErr: cfg.ArtifactAuditErr, sink: cfg.Sink}
+	h.ingests = newIngestSessions(time.Now)
 	if h.maxBody == 0 {
 		h.maxBody = DefaultMaxBodyBytes
 	}
@@ -113,6 +124,8 @@ const (
 	routeCancelTask
 	routeGetResult
 	routeGetArtifact
+	routeIngestIntents
+	routeUploadArtifact
 	routeNotImplemented
 )
 
@@ -120,6 +133,7 @@ type matched struct {
 	route      route
 	taskID     string
 	artifactID string
+	uploadID   string
 	allow      string
 }
 
@@ -128,7 +142,7 @@ func match(path string) matched {
 	case path == "/v1/tasks":
 		return matched{route: routeSubmitTask, allow: http.MethodPost}
 	case path == "/v1/artifacts/ingest-intents":
-		return matched{route: routeNotImplemented, allow: http.MethodPost}
+		return matched{route: routeIngestIntents, allow: http.MethodPost}
 	}
 	if rest, ok := strings.CutPrefix(path, "/v1/tasks/"); ok && rest != "" {
 		id, tail, hasTail := strings.Cut(rest, "/")
@@ -146,7 +160,7 @@ func match(path string) matched {
 		return matched{route: routeGetArtifact, artifactID: rest, allow: http.MethodGet}
 	}
 	if rest, ok := strings.CutPrefix(path, "/v1/artifact-uploads/"); ok && rest != "" && !strings.Contains(rest, "/") {
-		return matched{route: routeNotImplemented, allow: http.MethodPut}
+		return matched{route: routeUploadArtifact, uploadID: rest, allow: http.MethodPut}
 	}
 	return matched{}
 }
@@ -255,6 +269,10 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		h.artifact(rec, r, identity, m.artifactID)
+	case routeIngestIntents:
+		h.ingest(rec, r, identity)
+	case routeUploadArtifact:
+		h.upload(rec, r, identity, m.uploadID)
 	case routeGetResult:
 		if !h.svc.ResultsEnabled() {
 			writeProblem(rec, http.StatusNotImplemented, &admission.Error{Kind: admission.KindInternal, Code: "NOT_IMPLEMENTED", Title: "This operation is not available in this deployment"})
