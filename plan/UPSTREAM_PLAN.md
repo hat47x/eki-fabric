@@ -1709,3 +1709,14 @@ ADR に書いた決定が、**実装と試験のどこまで届いているか**
 
 - **どちらも「起動経路に繋ぐ」作業**で、**#242（`eki-control` の起動経路に実行系を配線する）と同じ場所**です。**別々の Issue にすると、同じ配線を2回書く**ことになります。
 - **入力の経路そのものは、部品として動いています**（**試験で端から端まで確かめられる**）。**繋がっていないのは起動経路だけ**です。
+
+
+### 2026-11-08 #753: 最小配送契約の固定Fixtureを先に置く
+
+[#700](https://github.com/hat47x/eki-fabric/issues/700)の要件は[#701](https://github.com/hat47x/eki-fabric/pull/701)でmainへ入り、残りは[#753](https://github.com/hat47x/eki-fabric/issues/753)（比較Spike）と[#754](https://github.com/hat47x/eki-fabric/issues/754)（実測後の方式選定）へ分離された。新しい要求・仕事の型・権限機構は追加しない。
+
+[#753の固定Fixture](../spikes/data-delivery-transport/README.md)は、観測の世代と系列番号、再接続、Leaseの失効、旧epochのClaimを含む一つのTaskの例を用い、Data Contract／Delivery Contract／Transport Profileを独立に定義する。予想結果は`fixture.json`に先に記録する。テストでFixtureの形式が正しくても、実際のLocal IPC／Connectデータ配送の成功やパフォーマンスの証拠にはならない。
+
+次は、実在するデータ配送Adapterを確認するところから始める。現在のWorker制御用`WatchCommands`を汎用データstreamingの実装済み証拠とはしない。両経路で同一のExpected・現在のLease/FenceEpoch・実際の配送の観測を比較し、実測できた指標だけを`RESULTS_YYYY-MM-DD.md`へ記録する。存在しないAdapterや未配線経路は`NOT RUN`とし、M0/MVPの本線を中断しない。
+
+判断の境界は従来どおり維持する。通信できることは分散の利益（#58）を意味せず、センサーの受信は認知的な意味の正しさを意味せず、AckはTEI ProviderのCommitを意味しない。WebRTC等の追加選定は#753の測定後に#754で扱う。
