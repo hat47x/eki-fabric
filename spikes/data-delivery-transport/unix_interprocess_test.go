@@ -25,6 +25,9 @@ func TestUnixFixtureChildSender(t *testing.T) {
 		t.Fatal("missing socket")
 	}
 	events := readWireFixture(t)
+	if os.Getenv("EKI_FIXTURE_DROP_LAST") == "1" {
+		events = events[:len(events)-1]
+	}
 	conn, err := net.DialTimeout("unix", socket, 4*time.Second)
 	if err != nil {
 		t.Fatal(err)
@@ -41,7 +44,8 @@ func TestUnixFixtureChildSender(t *testing.T) {
 	}
 }
 
-func TestUnixFixtureAcrossProcesses(t *testing.T) {
+func runFixtureAcrossProcesses(t *testing.T, dropLast bool) ([]json.RawMessage, []json.RawMessage) {
+	t.Helper()
 	if runtime.GOOS == "windows" {
 		t.Skip("Unix-domain sockets not supported")
 	}
@@ -58,6 +62,9 @@ func TestUnixFixtureAcrossProcesses(t *testing.T) {
 	}
 	child := exec.Command(self, "-test.run=^TestUnixFixtureChildSender$", "-test.v")
 	child.Env = append(os.Environ(), "EKI_FIXTURE_CHILD=1", "EKI_FIXTURE_SOCKET="+socket)
+	if dropLast {
+		child.Env = append(child.Env, "EKI_FIXTURE_DROP_LAST=1")
+	}
 	child.Dir = "."
 	var output bytes.Buffer
 	child.Stdout, child.Stderr = &output, &output
@@ -106,8 +113,23 @@ func TestUnixFixtureAcrossProcesses(t *testing.T) {
 	if err := child.Wait(); err != nil {
 		t.Fatalf("child failed: %v; output: %s", err, output.String())
 	}
-	if err := sameWireEvents(wanted, got); err != nil {
+	t.Logf("separate process PID=%d sent %d JSON events over Unix-domain socket; no EKI adapter or authority checked", child.Process.Pid, len(got))
+	return wanted, got
+}
+
+func TestUnixFixtureAcrossProcesses(t *testing.T) {
+	want, got := runFixtureAcrossProcesses(t, false)
+	if err := sameWireEvents(want, got); err != nil {
 		t.Fatal(err)
 	}
-	t.Logf("separate process PID=%d sent %d JSON events over Unix-domain socket; no EKI adapter or authority checked", child.Process.Pid, len(got))
+}
+
+func TestUnixFixtureAcrossProcessesRejectsPartial(t *testing.T) {
+	want, got := runFixtureAcrossProcesses(t, true)
+	if len(got) != len(want)-1 {
+		t.Fatalf("missing frame injection did not happen: got=%d want=%d", len(got), len(want)-1)
+	}
+	if sameWireEvents(want, got) == nil {
+		t.Fatal("incomplete delivery trace incorrectly accepted")
+	}
 }
