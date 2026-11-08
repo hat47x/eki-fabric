@@ -1752,3 +1752,14 @@ ADR に書いた決定が、**実装と試験のどこまで届いているか**
 **Gateの進捗は局所的**：OSのソケット配送が成立したことは、EKIのLocal IPC Adapter、Connectデータ配送、Lease失効の認可、外部Provider効果を証明しない。実Adapterがまだ無い場合には`NOT SUPPORTED`、実環境で試していない場合は`NOT RUN`と記録し、参照判定・Trace自己申告・実配送の区別を維持する。
 
 次の工程は、Go 1.27系の正本リポジトリで同一commitのFixture・参照・Trace・Unixソケットの全試験を実行し、その後、別プロセスの実Adapterに接続すること。その際、SUI/TEI/SEI側の意味の正本、VRクマのローカル安全停止をこの検証の依存条件に増やさない。#754の通信方式採用は#753の実Adapter比較を経てから判定し、M0/MVPの優先順位を変えない。
+
+### 2026-11-08 #753: OSのプロセス境界を越えた配送と、実Adapterへの残距離
+
+[Spikeの追加結果](../spikes/data-delivery-transport/RESULTS_2026-11-08.md)として、固定6イベントが**異なるPIDの試験用プロセス間**でUnixドメインソケットを通過したこと、最後の1イベントが欠けた場合には不一致を検出することを記録した。Linux／Go 1.23.2の隔離ミラーで正常・負例とrace付き5回がPASS。正本のGo 1.27モジュールを取得した試験、EKI本番Adapter、権限・性能の試験は未実施とする。
+
+ソース上の境界も再確認した。`spec/worker/v1/worker.proto`の`WatchCommands`は制御命令のserver stream。`internal/control/workerplane/`はWorkerの認証済みClaim・割当・入力ArtifactのHTTP取得を扱う。`architecture/EXTENSION_SPI.md` §26のData Access Transport SPIはArtifactGrantのscope/TTLを保持してデータ取得資格へ変換するもので、一般的な連続メディア配送が実装された証拠ではない。
+
+**順序を固定する**：①正本Go 1.27のテスト実行と証拠保存、②現在のWorker制御経路と別のData Adapterの存在・起動経路を確認、③実Adapterに同じ独立Expectedを与えLocal IPCとConnectの観測を比較、④実権限を伴う結果確認、⑤D1実測後に[#754](https://github.com/hat47x/eki-fabric/issues/754)で方式採否。現在の実装で②が未対応なら、無理に`WatchCommands`を汎用ストリーミングへ解釈せず、必要な最小Adapterの設計判断を#753に残す。
+
+**横断制約**：TEIのSource/Provider、SEIの意思決定、VRクマのローカル即応と安全停止は、EKIの契約試験をPASSしただけでは保証されない。新たな中央Host／Session Registry／意味の正本を増やさず、M0/MVPの優先順位を維持する。
+
