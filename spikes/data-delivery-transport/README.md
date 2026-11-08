@@ -80,3 +80,42 @@ M0/MVPの実装順は変更しない。
 4. [#58](https://github.com/hat47x/eki-fabric/issues/58)の分散適性、TEIのLoaded/Consumed/Provider Receipt、SEIのモデル・意味の判断、VRクマのローカル安全停止は**別の証拠**を必要とする。通信の参照テストPASSから横断的なE2E成功を推測しない。
 
 共通データ基盤の独立製品化や、新たなRegistry／Host／Policy EngineをこのSpikeの依存条件にはしない。マルチモーダルなデータの保持・検索・共同編集は、利用側と既存Providerの責務として扱い、EKIは権限と配送の契約を検証する。
+
+## 2026-11-08 観測Traceを独立Expectedに照合する入口
+
+前段の`reference_semantics_test.go`は**シミュレーションされた意味**の検査であり、Adapterによる配送の証拠ではない。次の段階で結果を比較できるように、`trace_compare_test.go`に**観測記録の照合だけを担当するテスト入口**を追加した。参照意味判定器の結果を流用せず、`fixture.json`の独立Expectedに直接比較する。
+
+Adapterが観測結果を取得できた場合にだけ、以下の例と同じ構造のJSONを、**実行したリポジトリの外部出力から**保存する。これは試験入力形式であり、EKIの本番Wire schemaでも権限Receiptでもない。
+
+~~~json
+{
+  "case_id": "EKI-TX-01",
+  "fixture_sha256": "<fixture.jsonの原byte列をSHA-256で計算した64桁の小文字16進数>",
+  "transport_profile": "local-ipc-candidate",
+  "run_id": "<当該実行を特定できるID>",
+  "adapter_revision": "<動かしたAdapterのcommit/版>",
+  "capture_method": "<実際に観測した方法>",
+  "observations": [
+    {"event_id": "E1", "observed_disposition": "fresh-candidate-not-consumption-proof"},
+    {"event_id": "E2", "observed_disposition": "stale-rejected"},
+    {"event_id": "E3", "observed_disposition": "new-stream-generation-not-new-authority"},
+    {"event_id": "E4", "observed_disposition": "fresh-candidate-not-consumption-proof"},
+    {"event_id": "E5", "observed_disposition": "lease-revoked"},
+    {"event_id": "E6", "observed_disposition": "claim-not-accepted"}
+  ]
+}
+~~~
+
+**このJSONは構造例であり、観測された実測結果ではない。** 実行例：
+
+~~~sh
+EKI_TRANSPORT_TRACE_FILE=/path/to/observed-trace.json go test ./spikes/data-delivery-transport -run TestProvidedAdapterObservedTrace -count=1 -v
+~~~
+
+環境変数`EKI_TRANSPORT_TRACE_FILE`を指定しないと、実Adapter照合テストは明示的に**SKIP（NOT RUN）**になる。テスト全体がPASSになっても、SKIPした試験が通ったとは記録しない。`TestTraceComparatorRejectsInvalidEvidence`は、欠落・重複・誤判定・未知イベント・異なるFixture digest・未知Profile・来歴欠損・別Case IDの8ケースを拒否できるかの**合成入力による単体テスト**である。正しい形式・期待文字列を報告するだけの偽造Traceを見抜くことはできない。
+
+実AdapterのPASSに進むには、記録に対応する**実際のプロセス、接続方式、入力イベント、捕捉方法、版、ログ、時刻基準**を別途照合する。さらに、EKIのLease/Grantの有効性、利用側によるConsumed、TEIのProvider Commit、SEIの認知判断、VRクマのローカル安全停止は独立の実証が必要である。`fixture_sha256`の一致は同じ入力Fixtureを参照したことしか示さず、現在の権限やSourceの意味受理を保証しない。
+
+### 次の実装候補と限界
+
+まずLocal IPCで**実Data Adapterが存在するか／実際にイベントを処理できるか**を調査し、見つからなければその事実を`NOT SUPPORTED`として記録する。既存のWorker制御用`WatchCommands`をData Planeへ自動的に拡張しない。Connect側も同じ手順とする。KON Dataspaceのような共通データ基盤は別のProviderとして接続可能な設計にとどめ、#753を進める必須条件にはしない。局所応答とSEIへの判断委譲の分担も利用側が決め、EKIが新しい判断Hostを持たない。
