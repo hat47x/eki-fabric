@@ -91,10 +91,18 @@ func seedTLSClaim(t *testing.T, s *statesqlite.Store, now time.Time, status resu
 	if err != nil {
 		t.Fatal(err)
 	}
-	task.Phase = taskstate.TaskPhaseReady
+	// Taskはadmittedで作られ、readyは別の書き込みで遷移する（#365）。
 	if err := s.CreateTask(ctx, task); err != nil {
 		t.Fatal(err)
 	}
+	ready := task
+	ready.Phase = taskstate.TaskPhaseReady
+	ready.Revision++
+	ready.UpdatedAt = task.CreatedAt.Add(time.Second)
+	if err := s.CompareAndSwapTask(ctx, task.ID, task.Revision, ready); err != nil {
+		t.Fatal(err)
+	}
+	task = ready
 	attempt, err := attemptstate.New(ids.AttemptID(fmt.Sprintf("atm_%032d", n)), task.ID, task.TaskIRDigest, 1, task.CreatedAt)
 	if err != nil {
 		t.Fatal(err)
