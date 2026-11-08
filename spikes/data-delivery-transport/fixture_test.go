@@ -23,8 +23,8 @@ func TestFixtureIsWellFormed(t *testing.T) {
 			TrackID  string `json:"track_id"`
 		} `json:"data_contract"`
 		DeliveryContract struct {
-			Ordering     string `json:"ordering"`
-			StalePolicy  string `json:"stale_policy"`
+			Ordering      string `json:"ordering"`
+			StalePolicy   string `json:"stale_policy"`
 			PartialResult string `json:"partial_result"`
 		} `json:"delivery_contract"`
 		TransportProfiles []struct {

@@ -146,3 +146,9 @@ EKI_TRANSPORT_TRACE_FILE=/path/to/observed-trace.json go test ./spikes/data-deli
 
 検証工程は、①正本Go 1.27環境で全Spikeテスト、②実際のEKI Producer/ConsumerとPrincipal・Lease/Grantを結ぶAdapterの確認、③Local IPCとConnectの同一Fixture観測、④実測を伴うD1、⑤#754の方式選定の順とする。通信の選択・実行資格・データの利用・外部効果を別票で観測し、既存Control Planeの権限を新たなTransportへ暗黙に広げない。新Hostや第二のRegistryを前提とせず、M0/MVPの優先順位を変えない。
 
+
+## 2026-11-09 実リポジトリのGo 1.27.0での形式チェック
+
+mainのこのパッケージを、`go.mod`が要求するGo 1.27.0（Linux x86_64、WSL）で実行した。`go test -count=1 -v`はPASS 26件・SKIP 2件、`go test -race -count=5 -v`もともに終了コード0だった。SKIPは、実Adapterの観測が無い`TestProvidedAdapterObservedTrace`（`NOT RUN`）と、別プロセス試験の補助プロセスである`TestUnixFixtureChildSender`である。実行条件、生ログ、一般化できる範囲は[RESULTS_2026-11-09.md](RESULTS_2026-11-09.md)を参照する。
+
+これで、2026-11-08の記録で未実行としていた「正本リポジトリのGo 1.27系での全試験」は埋まった。一方、実Adapterへの同一Fixture投入、実Lease・Grantによる認可、性能測定は今回も確認しておらず、#753は未完了のままである。

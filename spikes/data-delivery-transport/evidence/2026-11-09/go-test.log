@@ -1,0 +1,65 @@
+go version go1.27.0 linux/amd64
+Linux x86_64
+=== RUN   TestFixtureIsWellFormed
+--- PASS: TestFixtureIsWellFormed (0.00s)
+=== RUN   TestReferenceSemanticsMatchFrozenOracle
+--- PASS: TestReferenceSemanticsMatchFrozenOracle (0.00s)
+=== RUN   TestFrozenOracleRejectsMutations
+=== RUN   TestFrozenOracleRejectsMutations/reorder-stale-as-fresh
+=== RUN   TestFrozenOracleRejectsMutations/reuse-old-generation
+=== RUN   TestFrozenOracleRejectsMutations/result-before-revocation
+=== RUN   TestFrozenOracleRejectsMutations/unrecognized-result-epoch
+=== RUN   TestFrozenOracleRejectsMutations/missing-generation
+=== RUN   TestFrozenOracleRejectsMutations/unknown-event-kind
+--- PASS: TestFrozenOracleRejectsMutations (0.00s)
+    --- PASS: TestFrozenOracleRejectsMutations/reorder-stale-as-fresh (0.00s)
+    --- PASS: TestFrozenOracleRejectsMutations/reuse-old-generation (0.00s)
+    --- PASS: TestFrozenOracleRejectsMutations/result-before-revocation (0.00s)
+    --- PASS: TestFrozenOracleRejectsMutations/unrecognized-result-epoch (0.00s)
+    --- PASS: TestFrozenOracleRejectsMutations/missing-generation (0.00s)
+    --- PASS: TestFrozenOracleRejectsMutations/unknown-event-kind (0.00s)
+=== RUN   TestTraceComparatorRejectsInvalidEvidence
+=== RUN   TestTraceComparatorRejectsInvalidEvidence/missing-event
+=== RUN   TestTraceComparatorRejectsInvalidEvidence/duplicate-event
+=== RUN   TestTraceComparatorRejectsInvalidEvidence/wrong-disposition
+=== RUN   TestTraceComparatorRejectsInvalidEvidence/unknown-event
+=== RUN   TestTraceComparatorRejectsInvalidEvidence/wrong-fixture-digest
+=== RUN   TestTraceComparatorRejectsInvalidEvidence/unknown-transport-profile
+=== RUN   TestTraceComparatorRejectsInvalidEvidence/missing-capture-provenance
+=== RUN   TestTraceComparatorRejectsInvalidEvidence/wrong-case-id
+--- PASS: TestTraceComparatorRejectsInvalidEvidence (0.00s)
+    --- PASS: TestTraceComparatorRejectsInvalidEvidence/missing-event (0.00s)
+    --- PASS: TestTraceComparatorRejectsInvalidEvidence/duplicate-event (0.00s)
+    --- PASS: TestTraceComparatorRejectsInvalidEvidence/wrong-disposition (0.00s)
+    --- PASS: TestTraceComparatorRejectsInvalidEvidence/unknown-event (0.00s)
+    --- PASS: TestTraceComparatorRejectsInvalidEvidence/wrong-fixture-digest (0.00s)
+    --- PASS: TestTraceComparatorRejectsInvalidEvidence/unknown-transport-profile (0.00s)
+    --- PASS: TestTraceComparatorRejectsInvalidEvidence/missing-capture-provenance (0.00s)
+    --- PASS: TestTraceComparatorRejectsInvalidEvidence/wrong-case-id (0.00s)
+=== RUN   TestProvidedAdapterObservedTrace
+    trace_compare_test.go:155: NOT RUN: EKI_TRANSPORT_TRACE_FILE not set; no adapter observations provided
+--- SKIP: TestProvidedAdapterObservedTrace (0.00s)
+=== RUN   TestUnixSocketFixtureWireDelivery
+--- PASS: TestUnixSocketFixtureWireDelivery (0.00s)
+=== RUN   TestUnixSocketWireComparisonRejectsMutations
+=== RUN   TestUnixSocketWireComparisonRejectsMutations/missing
+=== RUN   TestUnixSocketWireComparisonRejectsMutations/duplicate
+=== RUN   TestUnixSocketWireComparisonRejectsMutations/reordered
+=== RUN   TestUnixSocketWireComparisonRejectsMutations/modified-payload
+--- PASS: TestUnixSocketWireComparisonRejectsMutations (0.00s)
+    --- PASS: TestUnixSocketWireComparisonRejectsMutations/missing (0.00s)
+    --- PASS: TestUnixSocketWireComparisonRejectsMutations/duplicate (0.00s)
+    --- PASS: TestUnixSocketWireComparisonRejectsMutations/reordered (0.00s)
+    --- PASS: TestUnixSocketWireComparisonRejectsMutations/modified-payload (0.00s)
+=== RUN   TestUnixFixtureChildSender
+    unix_interprocess_test.go:21: helper process only
+--- SKIP: TestUnixFixtureChildSender (0.00s)
+=== RUN   TestUnixFixtureAcrossProcesses
+    unix_interprocess_test.go:121: separate process PID=16949 sent 6 JSON events over Unix-domain socket; no EKI adapter or authority checked
+--- PASS: TestUnixFixtureAcrossProcesses (0.01s)
+=== RUN   TestUnixFixtureAcrossProcessesRejectsPartial
+    unix_interprocess_test.go:128: separate process PID=16955 sent 5 JSON events over Unix-domain socket; no EKI adapter or authority checked
+--- PASS: TestUnixFixtureAcrossProcessesRejectsPartial (0.01s)
+PASS
+ok  	github.com/hat47x/eki-fabric/spikes/data-delivery-transport	0.085s
+exit=0
