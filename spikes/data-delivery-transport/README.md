@@ -119,3 +119,11 @@ EKI_TRANSPORT_TRACE_FILE=/path/to/observed-trace.json go test ./spikes/data-deli
 ### 次の実装候補と限界
 
 まずLocal IPCで**実Data Adapterが存在するか／実際にイベントを処理できるか**を調査し、見つからなければその事実を`NOT SUPPORTED`として記録する。既存のWorker制御用`WatchCommands`をData Planeへ自動的に拡張しない。Connect側も同じ手順とする。KON Dataspaceのような共通データ基盤は別のProviderとして接続可能な設計にとどめ、#753を進める必須条件にはしない。局所応答とSEIへの判断委譲の分担も利用側が決め、EKIが新しい判断Hostを持たない。
+
+## 2026-11-08 Unixドメインソケットでの最初の物理配送確認
+
+[試験用コード](unix_fixture_test.go)を追加し、固定Fixtureの6イベントをOSのUnixドメインソケットで送受信する試験を実施した。ローカル隔離環境（Linux／Go 1.23.2）で、実ソケットの配送1件と、欠落・重複・順序変更・内容改変を検出する4負例がPASSし、race付き5回の繰返しもPASSした。実行条件・生ログと一般化できる範囲は[RESULTS_2026-11-08.md](RESULTS_2026-11-08.md)を参照する。
+
+**これはEKIの実Local IPC Adapterの試験ではない。** 送受信を行ったのは同一テストプロセスのgoroutineであり、権限管理を通した別プロセスの送受信やConnectデータ配送は未実施。Lease失効等は単なるJSONのイベント内容として配送しただけで、実際の認可・回収・結果受理は検証していない。
+
+したがって#753は未完了である。次は、実リポジトリのGo 1.27系で全パッケージテストを実行した後、**別プロセスの実Adapterと実権限の経路**を対象にする。共通Dataspaceや新しい独自Hostを前提条件にはせず、TEIの意味・外部副作用やSEIの判断、VRクマの安全停止は別の検証票で扱う。

@@ -1,0 +1,14 @@
+=== RUN   TestUnixSocketFixtureWireDelivery
+--- PASS: TestUnixSocketFixtureWireDelivery (0.00s)
+=== RUN   TestUnixSocketWireComparisonRejectsMutations
+=== RUN   TestUnixSocketWireComparisonRejectsMutations/missing
+=== RUN   TestUnixSocketWireComparisonRejectsMutations/duplicate
+=== RUN   TestUnixSocketWireComparisonRejectsMutations/reordered
+=== RUN   TestUnixSocketWireComparisonRejectsMutations/modified-payload
+--- PASS: TestUnixSocketWireComparisonRejectsMutations (0.00s)
+    --- PASS: TestUnixSocketWireComparisonRejectsMutations/missing (0.00s)
+    --- PASS: TestUnixSocketWireComparisonRejectsMutations/duplicate (0.00s)
+    --- PASS: TestUnixSocketWireComparisonRejectsMutations/reordered (0.00s)
+    --- PASS: TestUnixSocketWireComparisonRejectsMutations/modified-payload (0.00s)
+PASS
+ok  	_/mnt/data/eki-transport-check	0.004s

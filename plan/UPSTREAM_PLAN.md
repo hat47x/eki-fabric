@@ -1744,3 +1744,11 @@ ADR に書いた決定が、**実装と試験のどこまで届いているか**
 [#753](https://github.com/hat47x/eki-fabric/issues/753)では次に**実Adapterの存在・起動経路・観測ログの出所**を検証し、記録を比較器へ渡す。`capture_method`や`adapter_revision`は記録側の申告であって、真実性を自動証明するものではない。#754の方式選定に進むには、独立Expectedへの一致だけでなく実接続・測定環境・現在のAuthorityを追跡できる必要がある。TEIのSourceのLoaded/ConsumedやSEIの意味受理、KON Dataspaceの提供するDataの来歴は利用側の正本とし、EKIへ第二の意味モデルや共通データRegistryを置かない。
 
 この作業でM0/MVPの優先順位や認可仕様・Transportの採否を変更しない。
+
+### 2026-11-08 #753: 試験用Unixソケットによる物理配送と、本番Adapter未達の分離
+
+[Spike実測記録](../spikes/data-delivery-transport/RESULTS_2026-11-08.md)に、**同じGoテストプロセス内のgoroutine間**でUnixドメインソケットを介して固定Fixtureの6イベントを実際に送受信し、順序・内容が一致した観測と4つの改変負例を記録した。Linux／Go 1.23.2の隔離環境では`GO111MODULE=off go test -count=1 -v`と`go test -race -count=5`がPASS。生ログはSpikeの`evidence/2026-11-08/`を参照する。
+
+**Gateの進捗は局所的**：OSのソケット配送が成立したことは、EKIのLocal IPC Adapter、Connectデータ配送、Lease失効の認可、外部Provider効果を証明しない。実Adapterがまだ無い場合には`NOT SUPPORTED`、実環境で試していない場合は`NOT RUN`と記録し、参照判定・Trace自己申告・実配送の区別を維持する。
+
+次の工程は、Go 1.27系の正本リポジトリで同一commitのFixture・参照・Trace・Unixソケットの全試験を実行し、その後、別プロセスの実Adapterに接続すること。その際、SUI/TEI/SEI側の意味の正本、KON Dataspaceの独立化判断、VRクマのローカル安全停止をこの検証の依存条件に増やさない。#754の通信方式採用は#753の実Adapter比較を経てから判定し、M0/MVPの優先順位を変えない。
