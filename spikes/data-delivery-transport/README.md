@@ -60,3 +60,23 @@ D0-AのPASSはD0-B/CやD1のPASSを意味しない。存在しないAdapter、�
 5. 条件付きの成否と未確認を[#753](https://github.com/hat47x/eki-fabric/issues/753)へ戻し、方式選定が必要な場合だけ[#754](https://github.com/hat47x/eki-fabric/issues/754)へ渡す。
 
 M0/MVPの実装順は変更しない。
+
+## 2026-11-08 参照意味テストと負例（D0-Aの補強）
+
+既存の形式検査`fixture_test.go`は、イベントとExpectedの対応を検査するが、イベントを**順に解釈したときの意味**を確認しない。そこで`reference_semantics_test.go`に、通信方式に依存しないテスト専用の小さな判定器を追加した。これはEKI本番の認可エンジンやTransport Adapterではない。
+
+- `fixture.json`に**既に固定されているExpectedは変更しない**。参照判定器はExpectedを読まず、観測の系列世代ごとの最大番号と、失効したLease epochからイベントを判定する。最後にExpectedと比較する。
+- E1〜E6が一つずつ対応することを検証する。観測が新鮮でも、利用側の消費が証明されたとは扱わない。再接続は新しい系列世代であって新しい権限ではない。失効後の旧epochのClaimは受理済みにならない。
+- **改変した6負例**を追加する。古い観測を新しい番号にする／新しい系列を旧系列に混ぜる／Claimと失効の順を入れ替える／不明なepochを持つ／世代識別子が無い／未知のイベント種別。どれも固定Expectedに一致してはならない。
+- 結果の「未確認」と「未受理」、通信ACKとProvider Commit、選択したTransportと現在のGrantを混同しない。参照判定器は`accepted`や`consumed`を成功として作り出さない。
+
+**ローカルでの限定試験**：Go 1.23.2（linux/amd64）の隔離ディレクトリに、このGoテストとFixtureの同一の6イベント・Expectedを再現し、`GO111MODULE=off go test -count=1 -v`を実行。参照一致テスト1件と改変負例6件がPASSした。これはGitHubのリポジトリ全体を取得した試験でも、既存の`fixture_test.go`を含めた試験でもない。main上のGoバージョン・実経路での試験は引き続き未実施として記録する。
+
+### ここから先で必要な実証
+
+1. GitHubの同一commit上で`go test ./spikes/data-delivery-transport`を実行し、元の形式検査と参照テストの共存を確認する。
+2. Local IPCとConnectの**実在するデータ配送Adapter**へ固定イベントを投入し、Adapter独自の観測ログをExpectedへ比較する。参照判定器の出力をAdapter実測の代わりに使わない。
+3. 別途、実際のLease/Grantを発行・失効させて旧epochの結果受理を拒否できることを確認する。これは模擬的な`revoked`真偽値で置き換えられない。
+4. [#58](https://github.com/hat47x/eki-fabric/issues/58)の分散適性、TEIのLoaded/Consumed/Provider Receipt、SEIのモデル・意味の判断、VRクマのローカル安全停止は**別の証拠**を必要とする。通信の参照テストPASSから横断的なE2E成功を推測しない。
+
+共通データ基盤の独立製品化や、新たなRegistry／Host／Policy EngineをこのSpikeの依存条件にはしない。マルチモーダルなデータの保持・検索・共同編集は、利用側と既存Providerの責務として扱い、EKIは権限と配送の契約を検証する。
