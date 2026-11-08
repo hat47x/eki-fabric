@@ -1741,7 +1741,7 @@ ADR に書いた決定が、**実装と試験のどこまで届いているか**
 - **実Adapterの未実施を維持**：`EKI_TRANSPORT_TRACE_FILE`未指定時は観測Traceテストを`SKIP`し、CIやGoパッケージの単体テストPASSを通信適合PASSへ昇格させない。実際に接続・配送したか、Lease/Grantが有効だったか、ProviderがCommitしたかは別に観測する。
 - **限定的なローカル実行**：Go 1.23.2の隔離ディレクトリにmainで参照した同じ6イベントとExpected、既存の検査ロジックと新しい比較器を再構成し、`GO111MODULE=off go test -count=1 -v`で形式・意味・8負例の試験がPASS、実Adapter入力試験はSKIPした。これはmainのGo 1.27系モジュールや実通信を使った試験結果ではない。
 
-[#753](https://github.com/hat47x/eki-fabric/issues/753)では次に**実Adapterの存在・起動経路・観測ログの出所**を検証し、記録を比較器へ渡す。`capture_method`や`adapter_revision`は記録側の申告であって、真実性を自動証明するものではない。#754の方式選定に進むには、独立Expectedへの一致だけでなく実接続・測定環境・現在のAuthorityを追跡できる必要がある。TEIのSourceのLoaded/ConsumedやSEIの意味受理、KON Dataspaceの提供するDataの来歴は利用側の正本とし、EKIへ第二の意味モデルや共通データRegistryを置かない。
+[#753](https://github.com/hat47x/eki-fabric/issues/753)では次に**実Adapterの存在・起動経路・観測ログの出所**を検証し、記録を比較器へ渡す。`capture_method`や`adapter_revision`は記録側の申告であって、真実性を自動証明するものではない。#754の方式選定に進むには、独立Expectedへの一致だけでなく実接続・測定環境・現在のAuthorityを追跡できる必要がある。TEIのSourceのLoaded/ConsumedやSEIの意味受理、外部データの来歴は利用側・Providerの正本とし、EKIへ第二の意味モデルや共通データRegistryを置かない。
 
 この作業でM0/MVPの優先順位や認可仕様・Transportの採否を変更しない。
 
@@ -1751,4 +1751,4 @@ ADR に書いた決定が、**実装と試験のどこまで届いているか**
 
 **Gateの進捗は局所的**：OSのソケット配送が成立したことは、EKIのLocal IPC Adapter、Connectデータ配送、Lease失効の認可、外部Provider効果を証明しない。実Adapterがまだ無い場合には`NOT SUPPORTED`、実環境で試していない場合は`NOT RUN`と記録し、参照判定・Trace自己申告・実配送の区別を維持する。
 
-次の工程は、Go 1.27系の正本リポジトリで同一commitのFixture・参照・Trace・Unixソケットの全試験を実行し、その後、別プロセスの実Adapterに接続すること。その際、SUI/TEI/SEI側の意味の正本、KON Dataspaceの独立化判断、VRクマのローカル安全停止をこの検証の依存条件に増やさない。#754の通信方式採用は#753の実Adapter比較を経てから判定し、M0/MVPの優先順位を変えない。
+次の工程は、Go 1.27系の正本リポジトリで同一commitのFixture・参照・Trace・Unixソケットの全試験を実行し、その後、別プロセスの実Adapterに接続すること。その際、SUI/TEI/SEI側の意味の正本、VRクマのローカル安全停止をこの検証の依存条件に増やさない。#754の通信方式採用は#753の実Adapter比較を経てから判定し、M0/MVPの優先順位を変えない。
