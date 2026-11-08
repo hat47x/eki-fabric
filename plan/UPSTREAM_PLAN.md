@@ -1731,3 +1731,16 @@ ADR に書いた決定が、**実装と試験のどこまで届いているか**
 - **D1/D2（実測と採否）**：p50/p95/p99、古い結果の採用、欠落、資源利用を実Adapterで測定した後、[#754](https://github.com/hat47x/eki-fabric/issues/754)で追加方式の採否を判断する。データ基盤の分離や追加Registry／Hostを前提にせず、M0/MVPの優先順位は変更しない。
 
 結果の分類は「Fixture形式確認」「参照意味の限定テスト」「実Adapterの配送試験」「権限と利用側のEnd-to-End」を別に維持する。最初の二つのPASSを後二つへ昇格させない。
+
+### 2026-11-08 #753: 実Adapter観測と独立Expectedを照合する入口
+
+前段の固定Fixture・参照意味テストは**本物の配送の観測ではない**。そこで、[#753のSpike](../spikes/data-delivery-transport/README.md)へ`trace_compare_test.go`を追加し、今後のLocal IPC／Connectデータ配送Adapterから取得した観測記録と、既存`fixture.json`の独立Expectedを照合できるようにした。
+
+- **比較の固定条件**：Case ID、Fixture原byte列のSHA-256、候補Transport Profile、Run ID、Adapter版、観測方法、各Event IDと観測された判定。過去のFixtureや未知Profileの出力を黙って同じ結果として扱わない。
+- **先に追加した単体負例**：イベント欠損／重複／誤判定／未知Event、Fixture digest不一致、未知Profile、観測元の来歴欠損、Case ID不一致。合成Traceから作った比較成功は**比較器の単体PASSだけ**。実行されたAdapterの証拠ではない。
+- **実Adapterの未実施を維持**：`EKI_TRANSPORT_TRACE_FILE`未指定時は観測Traceテストを`SKIP`し、CIやGoパッケージの単体テストPASSを通信適合PASSへ昇格させない。実際に接続・配送したか、Lease/Grantが有効だったか、ProviderがCommitしたかは別に観測する。
+- **限定的なローカル実行**：Go 1.23.2の隔離ディレクトリにmainで参照した同じ6イベントとExpected、既存の検査ロジックと新しい比較器を再構成し、`GO111MODULE=off go test -count=1 -v`で形式・意味・8負例の試験がPASS、実Adapter入力試験はSKIPした。これはmainのGo 1.27系モジュールや実通信を使った試験結果ではない。
+
+[#753](https://github.com/hat47x/eki-fabric/issues/753)では次に**実Adapterの存在・起動経路・観測ログの出所**を検証し、記録を比較器へ渡す。`capture_method`や`adapter_revision`は記録側の申告であって、真実性を自動証明するものではない。#754の方式選定に進むには、独立Expectedへの一致だけでなく実接続・測定環境・現在のAuthorityを追跡できる必要がある。TEIのSourceのLoaded/ConsumedやSEIの意味受理、KON Dataspaceの提供するDataの来歴は利用側の正本とし、EKIへ第二の意味モデルや共通データRegistryを置かない。
+
+この作業でM0/MVPの優先順位や認可仕様・Transportの採否を変更しない。
