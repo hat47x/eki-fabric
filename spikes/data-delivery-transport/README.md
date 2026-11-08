@@ -127,3 +127,22 @@ EKI_TRANSPORT_TRACE_FILE=/path/to/observed-trace.json go test ./spikes/data-deli
 **これはEKIの実Local IPC Adapterの試験ではない。** 送受信を行ったのは同一テストプロセスのgoroutineであり、権限管理を通した別プロセスの送受信やConnectデータ配送は未実施。Lease失効等は単なるJSONのイベント内容として配送しただけで、実際の認可・回収・結果受理は検証していない。
 
 したがって#753は未完了である。次は、実リポジトリのGo 1.27系で全パッケージテストを実行した後、**別プロセスの実Adapterと実権限の経路**を対象にする。新しい共通基盤や独自Hostを前提条件にはせず、TEIの意味・外部副作用やSEIの判断、VRクマの安全停止は別の検証票で扱う。
+
+## 2026-11-08 別プロセスでの配送確認と実Adapterの棚卸し
+
+[試験用の別プロセス送受信テスト](unix_interprocess_test.go)を追加した。Goテストバイナリから子プロセスを起動し、親子の異なるPIDの間でUnixドメインソケットを介して固定6イベントを配送できた。最後の1件を欠落させた負例も検出できた。Linux／Go 1.23.2の隔離環境で実行し、race付き5回の繰返しもPASSした。環境、採用したソースのSHA、実ログは[RESULTS_2026-11-08.md](RESULTS_2026-11-08.md)に分離して記録した。
+
+**ただし、この結果はEKI本番AdapterのPASSではない。** 子は`eki-agent`ではなく試験用の子プロセスで、送った内容の`lease_revoked`は実際のLease失効ではない。採用済みのData/Delivery Contract、Transport Profile、現在の認可を実装したという主張も含まない。
+
+現行実装の境界はソースから次のように把握できる。
+
+| 領域 | 確認できたこと | 実際のデータ配送との距離 |
+| --- | --- | --- |
+| Worker Protocol | `spec/worker/v1/worker.proto`の`WatchCommands`はWorker制御用server stream | 任意の観測・画像フレームを配送するData Planeではない |
+| Workerの実HTTP入口 | `internal/control/workerplane/`の認証済みClaim、割当、Artifact取得 | 一般用途の連続データ配送Adapterではない |
+| 既存SPI | `architecture/EXTENSION_SPI.md` §26のData Access Transport SPIはArtifactGrantのscope/TTLを保つ | 権限制限の原則は参考になるが、メディアストリームの成立証拠ではない |
+
+これらの**確認したファイルの範囲では**一般用途のLocal IPC／Connectデータ配送Adapterの実装・配線を確認できなかった。リポジトリ全体に無いと断定せず、まず現在の実行経路の調査と既存実装の再利用可能性を確認する。
+
+検証工程は、①正本Go 1.27環境で全Spikeテスト、②実際のEKI Producer/ConsumerとPrincipal・Lease/Grantを結ぶAdapterの確認、③Local IPCとConnectの同一Fixture観測、④実測を伴うD1、⑤#754の方式選定の順とする。通信の選択・実行資格・データの利用・外部効果を別票で観測し、既存Control Planeの権限を新たなTransportへ暗黙に広げない。新Hostや第二のRegistryを前提とせず、M0/MVPの優先順位を変えない。
+
