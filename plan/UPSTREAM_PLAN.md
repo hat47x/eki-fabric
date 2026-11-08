@@ -1720,3 +1720,14 @@ ADR に書いた決定が、**実装と試験のどこまで届いているか**
 次は、実在するデータ配送Adapterを確認するところから始める。現在のWorker制御用`WatchCommands`を汎用データstreamingの実装済み証拠とはしない。両経路で同一のExpected・現在のLease/FenceEpoch・実際の配送の観測を比較し、実測できた指標だけを`RESULTS_YYYY-MM-DD.md`へ記録する。存在しないAdapterや未配線経路は`NOT RUN`とし、M0/MVPの本線を中断しない。
 
 判断の境界は従来どおり維持する。通信できることは分散の利益（#58）を意味せず、センサーの受信は認知的な意味の正しさを意味せず、AckはTEI ProviderのCommitを意味しない。WebRTC等の追加選定は#753の測定後に#754で扱う。
+
+
+### 2026-11-08 #753: 固定Expectedに対する参照意味テスト
+
+[#784](https://github.com/hat47x/eki-fabric/pull/784)で固定した6イベントの独立Expectedを変更せず、[比較Spike](../spikes/data-delivery-transport/README.md)にテスト専用の参照意味判定と6件の改変負例を追加した。世代ごとに古い観測を区別し、再接続でLeaseが更新されたと誤認せず、失効したepochのClaimを確定しないことを静的な試験として確かめる。
+
+- **D0-A（参照テスト）**：Go 1.23.2のローカル隔離環境でFixtureの同一6イベントとExpectedを再現し、参照判定と6負例に対する`GO111MODULE=off go test -count=1 -v`がPASSした。リポジトリ全体や実Transportを試験した結果ではない。正本main上で既存の形式検査も含めた`go test ./spikes/data-delivery-transport`を再実行する課題は残す。
+- **D0-B/C（実Adapter）**：Local IPCとConnectのデータ配送を測定した証拠はない。`WatchCommands`のWorker制御ストリームや模擬判定を、汎用データ配送・本番Lease資格の試験済みと読み替えない。データ取得、消費、Result Claim、受理を別々に観測する。
+- **D1/D2（実測と採否）**：p50/p95/p99、古い結果の採用、欠落、資源利用を実Adapterで測定した後、[#754](https://github.com/hat47x/eki-fabric/issues/754)で追加方式の採否を判断する。データ基盤の分離や追加Registry／Hostを前提にせず、M0/MVPの優先順位は変更しない。
+
+結果の分類は「Fixture形式確認」「参照意味の限定テスト」「実Adapterの配送試験」「権限と利用側のEnd-to-End」を別に維持する。最初の二つのPASSを後二つへ昇格させない。
