@@ -29,13 +29,14 @@ func validSpec(now time.Time) executor.Spec {
 		AttemptID:       ids.AttemptID("atm_00000000000000000000000000000001"),
 		OrderDecisionID: "order-1",
 		ExecutorDigest:  contract.SHA256([]byte("executor")),
+		// wall timeはrace計測付きの子プロセス起動（1秒超のことがある）に耐える値にする（#794）。
 		Limits: decisionpayload.ResourceLimits{
 			// Generous on purpose: this spec asserts completion. The Windows
 			// CPU-time rejection has its own test and a 1ms ceiling here only
 			// flaked under a loaded machine (a Go helper starts in ~15ms of
 			// CPU).
 			CPUMillis:          5000,
-			WallTimeMillis:     1000,
+			WallTimeMillis:     10000,
 			OutputBytesMaximum: 100,
 		},
 		Sandbox:  decisionpayload.SandboxPolicy{Profile: SandboxProfile},
