@@ -10,9 +10,11 @@
 
 M0 executable skeletonのうち、Client API、永続State Store、Worker CA・enrollment・mTLS、Worker→Control Planeの申告の配送までが動きます。加えて、試験用profileに限り、Workerが署名済みのLeaseとWorkOrderを受け取って検証し、開始の関門を通した固定コマンドを実行し、観測した`ResultClaim`をControl Planeへ送るところまでが、`conformance/process`で別プロセスとして確かめられています（`POST /test-profile/v1/assignments`。通信の本文は#198の決定ではありません）。
 
+加えて、`eki-control`の設定に`dispatch`を足したときに限り、配置ループが起動し、Client APIで受理したTaskに署名済みのLeaseとWorkOrderを発行して、Agentへ配送します（`conformance/process`の`TestDispatchLoopAssignsAReadyTaskAndTheWorkerFetchesItsLease`と`TestHTTPTaskSubmissionIsExecutedByTheAgent`が、HTTPでの受理からAgentの固定コマンドの実行と`ResultClaim`の送信までを確かめます）。`dispatch`は既定で無効です。これも試験用profileの範囲で、本番のWorker Protocol、本番のAuthority、結果の受理を示すものではありません。
+
 動かないものは、次の三点です。
 
-- Client APIで受理したTaskが、Placement・Lease発行・WorkOrder発行を経て、上の割当の配送へ流れる配線はありません。`eki-control`の割当の窓口は、State Storeに発行済みとして残るbytesを返すだけで、発行はしません。
+- `dispatch`設定を足さない`eki-control`は、受理したTaskにLease・WorkOrderを発行しません。割当の窓口は、State Storeに発行済みとして残るbytesを返すだけです。`dispatch`設定を足した場合の配置ループは、試験用profileに限った動作で、本番のWorker Protocol（#243・#198）は未達です。
 - 実行はsandboxではなく、Workerの信頼済み設定にある固定コマンドです。Task入力からコマンドは組み立てません。CPU・メモリ・一時ディスクは実行中に20ms間隔で監視し、上限超過時はプロセスツリーを停止します（Linux/Windows）。networkの上限は強制せず、GPUも未対応です。
 - Workerが送る`ResultClaim`は、受理された結果（AcceptedResult）ではありません。Result Acceptanceの部品（`internal/control/resultacceptance`）はありますが、`eki-control`の起動経路には接続されておらず、Client APIのTaskが実行結果によって`completed`になる経路はありません。
 
@@ -25,7 +27,8 @@ M0 executable skeletonのうち、Client API、永続State Store、Worker CA・e
 | Worker CA、enrollment、mTLS | 動く | `internal/control/workerplane`、`conformance/process` |
 | WorkerからControl Planeへの申告の配送 | 動く | `internal/adapters/reference/claimqueue`、`conformance/process` |
 | 試験用profileの割当の窓口から、Workerの検証・開始の関門・固定コマンドの実行まで | 動く（試験用profileに限る） | `conformance/process` |
-| 受理したTaskがPlacement・Lease発行・WorkOrder発行を経て配送へ流れる配線 | 未達 | [#242](https://github.com/hat47x/eki-fabric/issues/242) |
+| 受理したTaskがPlacement・Lease発行・WorkOrder発行を経て配送へ流れる配線（`dispatch`設定を足した場合） | 動く（試験用profileに限る。既定は無効） | `internal/control/dispatch`、`conformance/process` |
+| 受理したTaskの配置ループを、既定で有効にする・本番の配備へ載せること | 未達 | [#242](https://github.com/hat47x/eki-fabric/issues/242)、[#243](https://github.com/hat47x/eki-fabric/issues/243) |
 | Control PlaneからWorkerへのLease・WorkOrderの配送（本番のWorker Protocol） | 未達 | [#243](https://github.com/hat47x/eki-fabric/issues/243) |
 | `ResultClaim`からAcceptedResultを経てTaskが完了するまで | 未達 | [#242](https://github.com/hat47x/eki-fabric/issues/242) |
 | 入力Artifactの受理 | 解決できる配備に限る（ADR-0029 §5.6） | `internal/core/admission` |
