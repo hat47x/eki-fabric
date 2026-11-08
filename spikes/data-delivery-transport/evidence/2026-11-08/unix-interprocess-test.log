@@ -1,0 +1,11 @@
+=== RUN   TestUnixFixtureChildSender
+    interprocess_fixture_test.go:21: helper process only
+--- SKIP: TestUnixFixtureChildSender (0.00s)
+=== RUN   TestUnixFixtureAcrossProcesses
+    interprocess_fixture_test.go:121: separate process PID=3936 sent 6 JSON events over Unix-domain socket; no EKI adapter or authority checked
+--- PASS: TestUnixFixtureAcrossProcesses (0.00s)
+=== RUN   TestUnixFixtureAcrossProcessesRejectsPartial
+    interprocess_fixture_test.go:128: separate process PID=3942 sent 5 JSON events over Unix-domain socket; no EKI adapter or authority checked
+--- PASS: TestUnixFixtureAcrossProcessesRejectsPartial (0.00s)
+PASS
+ok  	_/mnt/data/eki_transport_probe	0.008s
