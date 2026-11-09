@@ -1,41 +1,33 @@
 package startgate
 
 import (
-	"bytes"
 	"context"
-	"crypto/ed25519"
 	"errors"
 	"testing"
 	"time"
 
-	fxcbor "github.com/fxamacker/cbor/v2"
-
-	cosecbor "github.com/hat47x/eki-fabric/internal/adapters/reference/cosedecoder/cbor"
-	payloadcbor "github.com/hat47x/eki-fabric/internal/adapters/reference/decisiondecoder/cbor"
 	"github.com/hat47x/eki-fabric/internal/agent/governor"
-	"github.com/hat47x/eki-fabric/internal/core/authority"
-	"github.com/hat47x/eki-fabric/internal/core/contract"
 	"github.com/hat47x/eki-fabric/internal/core/decisionpayload"
 	"github.com/hat47x/eki-fabric/internal/core/decisiontrust"
-	"github.com/hat47x/eki-fabric/internal/core/ids"
 	"github.com/hat47x/eki-fabric/internal/core/workorderaccept"
 	"github.com/hat47x/eki-fabric/internal/core/workorderverify"
+	wo "github.com/hat47x/eki-fabric/internal/testfixtures/workorder"
 )
 
 const (
-	testTrustDomain = "example.org"
-	testWorker      = "worker-a"
-	testPrincipal   = "control-plane/wor-1"
+	testTrustDomain = wo.TrustDomain
+	testWorker      = wo.Worker
+	testPrincipal   = wo.Principal
 )
 
 var (
-	testIssuedAt = time.UnixMilli(1_780_000_000_000).UTC()
-	testExpires  = testIssuedAt.Add(2 * time.Minute)
-	testNow      = testIssuedAt.Add(10 * time.Second)
-	testKeyID    = decisiontrust.KeyID("wor-key-1")
-	testTask     = ids.TaskID("tsk_00000000000000000000000000000001")
-	testAttempt  = ids.AttemptID("atm_00000000000000000000000000000001")
-	testTaskIR   = contract.SHA256([]byte("taskir"))
+	testIssuedAt = wo.IssuedAt
+	testExpires  = wo.Expires
+	testNow      = wo.Now
+	testKeyID    = wo.KeyID
+	testTask     = wo.Task
+	testAttempt  = wo.Attempt
+	testTaskIR   = wo.TaskIR
 )
 
 type fakeClock struct{ now time.Time }
@@ -60,67 +52,14 @@ func (g *fakeGuard) Fence(context.Context, string, uint64, time.Time) (bool, err
 	return true, nil
 }
 
+// admission accepts a signed WorkOrder through the real verifier and returns the
+// Admission it yields. The default WorkOrder's limits are raised so that the
+// Governor ceiling, not the grant, is what the tests scale.
 func admission(t *testing.T, now time.Time, mutate func(*decisionpayload.WorkOrderConfig)) workorderaccept.Admission {
 	t.Helper()
-	codec, err := cosecbor.New()
-	if err != nil {
-		t.Fatal(err)
-	}
-	payload, err := payloadcbor.New()
-	if err != nil {
-		t.Fatal(err)
-	}
-	enc, err := fxcbor.CoreDetEncOptions().EncMode()
-	if err != nil {
-		t.Fatal(err)
-	}
-	registry := decisiontrust.NewRegistry(testIssuedAt.Add(-time.Hour))
-	seed := make([]byte, ed25519.SeedSize)
-	seed[0] = 41
-	private := ed25519.NewKeyFromSeed(seed)
-	record, err := decisiontrust.NewKeyRecord(decisiontrust.KeyConfig{
-		ID: testKeyID, AuthorityRole: authority.RoleWorkOrder, AuthorityPrincipal: testPrincipal,
-		TrustDomain: testTrustDomain, Algorithm: decisiontrust.AlgorithmEdDSA,
-		KeyType: decisiontrust.KeyTypeOKP, Curve: decisiontrust.CurveEd25519, PublicKey: private.Public(),
-		SigningNotBefore: testIssuedAt.Add(-time.Hour), SigningNotAfter: testIssuedAt.Add(24 * time.Hour),
-		PolicyRevision: "key-policy-1",
-	}, testIssuedAt.Add(-time.Hour))
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := registry.Register(record, testIssuedAt.Add(-time.Hour)); err != nil {
-		t.Fatal(err)
-	}
-	if err := registry.Activate(record.ID(), testIssuedAt.Add(-time.Hour)); err != nil {
-		t.Fatal(err)
-	}
-	if err := registry.SetPrimary(record.ID(), testIssuedAt.Add(-time.Hour)); err != nil {
-		t.Fatal(err)
-	}
-	signer, err := decisiontrust.NewReferenceSoftwareSigner(registry)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := signer.RegisterPrivateKey(record.ID(), private); err != nil {
-		t.Fatal(err)
-	}
-	policy, err := decisiontrust.NewVerificationPolicy(decisiontrust.VerificationPolicyConfig{
-		MaxClockSkew:            5 * time.Second,
-		MaxTrustBundleStaleness: time.Hour,
-		AllowedAlgorithms:       []decisiontrust.Algorithm{decisiontrust.AlgorithmEdDSA},
-		MaxDecisionLifetime: map[authority.DecisionKind]time.Duration{
-			authority.DecisionWorkOrder: 5 * time.Minute,
-		},
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
-	boundary, err := decisiontrust.NewVerifierBoundary(registry, policy)
-	if err != nil {
-		t.Fatal(err)
-	}
+	signing := wo.NewSigning(t, 41)
 	verifier, err := workorderverify.New(workorderverify.Config{
-		Codec: codec, Payload: payload, Boundary: boundary,
+		Codec: signing.Codec, Payload: signing.Payload, Boundary: signing.Boundary,
 		TrustDomain: testTrustDomain, WorkerIdentity: testWorker,
 	})
 	if err != nil {
@@ -132,98 +71,29 @@ func admission(t *testing.T, now time.Time, mutate func(*decisionpayload.WorkOrd
 	if err != nil {
 		t.Fatal(err)
 	}
-	lease := workorderaccept.LeaseEvidence{
-		DecisionID: "lease-decision-001", PayloadDigest: contract.SHA256([]byte("lease")),
-		TaskID: testTask, TaskIRDigest: testTaskIR, AttemptID: testAttempt,
-		WorkerIdentity: testWorker, FenceEpoch: 7,
-		ExpiresAt: testIssuedAt.Add(time.Minute),
-	}
-	ref := func(kind authority.DecisionKind, id string, digest contract.Digest) decisionpayload.DecisionRef {
-		r, err := decisionpayload.NewDecisionRef(decisionpayload.DecisionRefConfig{Kind: kind, DecisionID: id, PayloadDigest: digest})
-		if err != nil {
-			t.Fatal(err)
-		}
-		return r
-	}
-	cfg := decisionpayload.WorkOrderConfig{
-		SchemaVersion: decisionpayload.WorkOrderSchemaVersion, DecisionKind: authority.DecisionWorkOrder,
-		DecisionID: "wor-decision-001", AuthorityRole: authority.RoleWorkOrder, AuthorityPrincipal: testPrincipal,
-		IssuedAt: testIssuedAt, ExpiresAt: testExpires, PolicyRevision: "policy-42",
-		WorkOrderID: "work-order-001", TaskID: testTask, TaskIRDigest: testTaskIR, AttemptID: testAttempt,
-		WorkerIdentity:   testWorker,
-		PlacementRef:     ref(authority.DecisionPlacementApproval, "placement-001", contract.SHA256([]byte("placement"))),
-		LeaseRef:         ref(authority.DecisionLease, lease.DecisionID, lease.PayloadDigest),
-		ExecutorApproval: ref(authority.DecisionExecutorApproval, "executor-001", contract.SHA256([]byte("executor"))),
-		ExecutorDigest:   contract.SHA256([]byte("executable")),
-		ReadGrants:       []decisionpayload.DecisionRef{ref(authority.DecisionArtifactReadGrant, "read-001", contract.SHA256([]byte("read")))},
-		WriteGrants:      []decisionpayload.DecisionRef{ref(authority.DecisionArtifactWriteGrant, "write-001", contract.SHA256([]byte("write")))},
-		Limits: decisionpayload.ResourceLimits{
+	raw := signing.SignedWorkOrder(func(cfg *decisionpayload.WorkOrderConfig) {
+		cfg.Limits = decisionpayload.ResourceLimits{
 			CPUMillis: 6000, MemoryBytes: 6 << 30, TemporaryDiskBytes: 1 << 30, WallTimeMillis: 600_000,
-		},
-		Sandbox: decisionpayload.SandboxPolicy{Profile: "sandbox/container/v1"},
-		Nonce:   bytes.Repeat([]byte{0x5a}, 16),
-	}
-	if mutate != nil {
-		mutate(&cfg)
-	}
-	order, err := decisionpayload.NewWorkOrder(cfg)
-	if err != nil {
-		t.Fatal(err)
-	}
-	payloadBytes, err := payload.EncodeWorkOrder(order)
-	if err != nil {
-		t.Fatal(err)
-	}
-	protected, err := enc.Marshal(map[int64]any{
-		1: int64(-8), 2: []int64{decisiontrust.COSEHeaderLabelEKIProfile}, 4: []byte(testKeyID),
-		-70000: decisiontrust.SignedDecisionProfileV1,
+		}
+		if mutate != nil {
+			mutate(cfg)
+		}
 	})
-	if err != nil {
-		t.Fatal(err)
-	}
-	sigStructure, err := codec.EncodeSignature1(protected, payloadBytes)
-	if err != nil {
-		t.Fatal(err)
-	}
-	signed, err := signer.SignCOSESigStructure(decisiontrust.COSESigningRequest{
-		Key: decisiontrust.SigningRequest{
-			TrustDomain: testTrustDomain, AuthorityRole: authority.RoleWorkOrder,
-			AuthorityPrincipal: testPrincipal, DecisionKind: authority.DecisionWorkOrder,
-			Algorithm: decisiontrust.AlgorithmEdDSA,
-		},
-		PolicyRevision: "key-policy-1", SigStructure: sigStructure,
-	}, testIssuedAt)
-	if err != nil {
-		t.Fatal(err)
-	}
-	protectedBytes, err := enc.Marshal(protected)
-	if err != nil {
-		t.Fatal(err)
-	}
-	payloadWire, err := enc.Marshal(payloadBytes)
-	if err != nil {
-		t.Fatal(err)
-	}
-	sig, err := enc.Marshal(signed.Signature)
-	if err != nil {
-		t.Fatal(err)
-	}
-	raw := []byte{0xd2, 0x84}
-	raw = append(raw, protectedBytes...)
-	raw = append(raw, 0xa0)
-	raw = append(raw, payloadWire...)
-	raw = append(raw, sig...)
-
 	admitted, err := accept.Accept(context.Background(), workorderaccept.Request{
 		Raw: raw, TrustBundle: decisiontrust.TrustBundleMetadata{Revision: 3, ValidatedAt: now.Add(-time.Minute)},
-		Lease: lease,
+		Lease: workorderaccept.LeaseEvidence{
+			DecisionID: wo.LeaseDecisionID, PayloadDigest: wo.LeaseDigest,
+			TaskID: testTask, TaskIRDigest: testTaskIR, AttemptID: testAttempt,
+			WorkerIdentity: testWorker, FenceEpoch: 7,
+			ExpiresAt: testIssuedAt.Add(time.Minute),
+		},
 		Placement: workorderaccept.PlacementEvidence{
-			DecisionID: "placement-001", PayloadDigest: contract.SHA256([]byte("placement")),
+			DecisionID: "placement-001", PayloadDigest: wo.PlacementDigest,
 			TaskID: testTask, TaskIRDigest: testTaskIR, AttemptID: testAttempt, WorkerIdentity: testWorker,
 		},
 		Executor: workorderaccept.ExecutorEvidence{
-			DecisionID: "executor-001", PayloadDigest: contract.SHA256([]byte("executor")),
-			ExecutorDigest: contract.SHA256([]byte("executable")),
+			DecisionID: "executor-001", PayloadDigest: wo.ExecutorDigest,
+			ExecutorDigest: wo.ExecutableDigest,
 		},
 	})
 	if err != nil {
