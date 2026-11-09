@@ -190,11 +190,36 @@ func runLeaseVerificationContract(t *testing.T, newStore LeaseEmissionFactory) {
 			}
 			got, err := verifier.Verify(req)
 			reason, ok := decisiontrust.FailureReason(err)
-			if !got.IsZero() || !ok || reason != want {
+			// IsZero only inspects the Lease. Compare every field so a failure
+			// cannot leak a key ID, Trust Bundle revision, or VerifiedAt.
+			if !reflect.DeepEqual(got, leaseverify.Verified{}) || !got.IsZero() || !got.VerifiedAt().IsZero() || !ok || reason != want {
 				t.Fatalf("Verify = %#v, %v; want zero and %s", got, err, want)
 			}
 		})
 	}
+
+	t.Run("verified-at-is-the-callers-clock-in-utc", func(t *testing.T) {
+		fx := newSigningFixture(t, newStore(t))
+		reserved := fx.reserve("worker-verify-clock-zone")
+		emitted, err := fx.emitter.Emit(context.Background(), leaseissue.EmitRequest{LeaseID: reserved.ID})
+		if err != nil {
+			t.Fatal(err)
+		}
+		verifier, err := leaseverify.New(fx.workerVerifierConfig(reserved.WorkerIdentity))
+		if err != nil {
+			t.Fatal(err)
+		}
+		// The same instant expressed in a non-UTC zone must be recorded as
+		// that instant, not as the Lease's IssuedAt or the wall clock.
+		now := fx.clock.now.In(time.FixedZone("JST", 9*60*60))
+		got, err := verifier.Verify(leaseverify.Request{Raw: emitted.SignedLease, Now: now, TrustBundle: fx.bundle.get()})
+		if err != nil || got.IsZero() {
+			t.Fatalf("Verify = %#v, %v", got, err)
+		}
+		if !got.VerifiedAt().Equal(fx.clock.now) || got.VerifiedAt().Location() != time.UTC {
+			t.Fatalf("VerifiedAt = %v; want %v in UTC", got.VerifiedAt(), fx.clock.now.UTC())
+		}
+	})
 
 	t.Run("verify-only-replay-is-an-observation-not-a-new-grant", func(t *testing.T) {
 		fx := newSigningFixture(t, newStore(t))
