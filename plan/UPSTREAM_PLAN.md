@@ -1778,4 +1778,4 @@ ADR に書いた決定が、**実装と試験のどこまで届いているか**
 
 次の順序は①Go 1.27が利用できる実リポジトリでFixture・Trace・`conformance/process`の対象試験を実行してcommit／観測を保存、②#242の既存起動経路から実Principal・Lease・Claimを取得できる範囲を確認、③#753に必要なData Adapterがあれば同じ独立ExpectedでLocal IPC/Connectを測定、無ければData/Delivery/Transport/Authorityの最小境界を設計、④D1の実測が揃った場合のみ[#754](https://github.com/hat47x/eki-fabric/issues/754)へ方式採否を渡す。試験用Unixソケットの複製はこれ以上増やさず、実行系の証拠へ進む。
 
-横断設計では、外部Sourceの宣言・実取得・Consumer消費と、EKIの配送・Claim・Accepted Resultを一つの「成功」としない。TEIの意味受理やProvider Commit、SEIの判断、ローカル安全停止は利用側に残す。**新たな中央Host/RegistryやKON固有の設計をEKIへ移さず、M0/MVPの優先順位を維持する。**
+横断設計では、外部Sourceの宣言・実取得・Consumer消費と、EKIの配送・Claim・Accepted Resultを一つの「成功」としない。TEIの意味受理やProvider Commit、SEIの判断、ローカル安全停止は利用側に残す。**新たな中央Host/Registryや他製品固有の設計をEKIへ移さず、M0/MVPの優先順位を維持する。**
