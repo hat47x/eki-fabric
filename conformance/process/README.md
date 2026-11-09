@@ -71,4 +71,19 @@ Attemptを閉じたあとのTaskの扱いと、外部作用がありうるTask�
 
 ## 確かめないこと
 
-TLSを終端するプロキシを挟んだ構成、CA鍵のKMS・HSM保管、実時間の長い運用（72時間の更新）、実ネットワークの障害、複数のAgent、Verificationの結果、Executorの実行は対象外です。Control Planeを強制終了しても、再起動後に同じClaimが届くことまでを確かめます。電源断は対象外です。seedのTask・Attempt・Leaseは、State Storeの公開APIで作った合成の入力で、署名の検証を経たものではありません。
+この節までに説明した**基本的な申告配送試験**では、TLSを終端するプロキシ、CA鍵のKMS・HSM保管、実時間の長い運用（72時間の更新）、実ネットワークの障害、複数のAgent、Executorの実行とResult Verificationを対象外としています。後続の別テストで進んだ内容は次節に分けて記録します。Control Planeを強制終了しても、再起動後に同じClaimが届くことまでを確かめます。電源断は対象外です。seedのTask・Attempt・Leaseは、State Storeの公開APIで作った合成の入力で、署名の検証を経たものではありません。
+
+## 2026-11-09 実装済み部品と一貫した実行経路を分けた確認
+
+本節は現在のmainの**ソースと試験コードを照合した範囲**である。今回、Go 1.27を要求する正本リポジトリで試験を再実行したという意味ではない。
+
+| 実装・試験 | 確認できる段階 | まだ証明しない段階 |
+| --- | --- | --- |
+| `internal/control/service/run.go`／`dispatch.go` | `dispatch`を設定した場合、Control Planeの起動時に配置ループを組み立て、Placement→Lease発行→WorkOrder発行へ進む経路がある。必要な設定や署名鍵が欠ければ起動を拒否する | 既定配備で有効になっていること、認可済みWorkerへの任意の連続Data配送 |
+| [`dispatch_loop_test.go`](dispatch_loop_test.go) | **合成的にREADYへ進めたTask**から、起動済み`eki-control`が署名付きLease・WorkOrderを発行し、登録したWorkerがmTLSの試験用割当経路で受け取るケースを記述 | 外部Clientの申請から同じTaskを連続して実行する完全なE2E、正式なConnect Worker Protocol |
+| [`assignment_agent_test.go`](assignment_agent_test.go) | `eki-agent`が試験用割当経路から署名付きLeaseを受けて確認し、開始の関門を通すケースを記述 | 任意のData/Delivery契約を使った媒体ストリーム |
+| [`execution_agent_test.go`](execution_agent_test.go) | テストが別途用意した署名付き割当をAgentが受け、信頼済みの固定コマンドを実行し、ResultClaimを送る。テスト内で再実行のdigestを確認し、`resultacceptance.New`で作ったServiceに**合成Verificationを渡して明示的に`Accept`を呼ぶ** | 起動済みControl Planeが自動的にResult Verification／Acceptanceまで接続していること、実Providerの副作用 |
+
+このため、以前の説明にある「起動経路に配置・Lease発行が全く存在しない」という状態は、現行mainのコードには当てはまらない。一方、**各段階に試験コードがあることと、Client APIから同一TaskのAccepted Resultまで実プロセスを通して連続完了できることは別**である。[#242](https://github.com/hat47x/eki-fabric/issues/242)は、この未証明の連続経路と失敗時の復旧を残課題として追う。
+
+別件の[#753](https://github.com/hat47x/eki-fabric/issues/753)では、OSのUnixソケットで固定イベントを送受信したが、上記Worker制御／割当経路を新しいメディアData Adapterとして解釈しない。現行Worker listenerとData Adapterの権限・時刻・出力の証拠を分け、既存のプロセス試験の足場を再利用する。新しいHostや独自の権限管理を増やさず、利用側の意味受理や外部効果をEKIのClaim受理から推定しない。
