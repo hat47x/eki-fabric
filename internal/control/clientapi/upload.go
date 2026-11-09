@@ -139,7 +139,16 @@ func (h *Handler) upload(w http.ResponseWriter, r *http.Request, id Identity, up
 		// A body without its record has no owner and no retention: it could be
 		// served to nobody and retired by nobody. Removing it keeps the store
 		// honest rather than leaving a body this deployment cannot describe.
-		// A sink that can drop the body does so: a body with no record is\n\t\t// served to nobody. A sink that cannot has already kept bytes it will\n\t\t// not describe, and that is reported rather than hidden.\n\t\tif remover, ok := h.sink.(interface{ Remove(string) error }); ok {\n\t\t\t_ = remover.Remove(kept)\n\t\t}
+		// A sink that can drop the body does so. A sink that cannot has already
+		// kept bytes it will not describe; that is reported in the log rather
+		// than hidden.
+		if remover, ok := h.sink.(interface{ Remove(string) error }); ok {
+			if rerr := remover.Remove(kept); rerr != nil {
+				h.log.Error("upload body could not be removed after a metadata failure", "error", rerr.Error())
+			}
+		} else {
+			h.log.Error("upload body kept without a record: the sink cannot remove it", "digest", kept)
+		}
 		h.log.Error("upload metadata not recorded", "error", merr.Error())
 		writeProblem(w, http.StatusInternalServerError, &admission.Error{Kind: admission.KindInternal, Code: "UPLOAD_FAILED", Title: "The body could not be recorded"})
 		return
