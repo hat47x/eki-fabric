@@ -1763,3 +1763,19 @@ ADR に書いた決定が、**実装と試験のどこまで届いているか**
 
 **横断制約**：TEIのSource/Provider、SEIの意思決定、VRクマのローカル即応と安全停止は、EKIの契約試験をPASSしただけでは保証されない。新たな中央Host／Session Registry／意味の正本を増やさず、M0/MVPの優先順位を維持する。
 
+### 2026-11-09 #753・#242: 試験Traceの順序と実行系の現状を再照合
+
+最新mainのソースとテストを照合し、従来の未達を二種類に分けて整理した。**実装が存在すること**と**同一Taskが利用側から結果受理まで連続完了したこと**は別である。
+
+| 根拠 | 今回確認したこと | 到達していないこと／次の担当 |
+| --- | --- | --- |
+| `internal/control/service/run.go`、`dispatch.go` | 設定`dispatch`があれば配置ループを起動し、署名鍵・Placement・Lease・WorkOrderの発行を組み立てる | 既定構成で有効との保証はない。#242で起動条件と実プロセスE2Eを確認 |
+| `conformance/process/dispatch_loop_test.go` | READYに固定したTaskからControl Planeのループが署名付き割当を生成し、登録済みWorkerがmTLS試験用経路で受領するテストがある | API受理から同一Taskを流した実証ではない。正式Connect Worker Protocolでもない |
+| `conformance/process/execution_agent_test.go` | Test用署名付き割当→Agentの固定コマンド実行→ResultClaim送信。Acceptanceはテスト内の合成Verificationで明示的に呼び出す | 起動済みControl Planeによる自動のResult Verification/Acceptanceは未証明 |
+| `spikes/data-delivery-transport/trace_compare_test.go` | 固定6イベントの判定が一致する自己申告Traceを比較 | **イベントの報告順を見ていなかった**ため、順序入替でも一致し得た |
+
+今回#753では、固定された**単一Task・単一Trackの再生順序**とTraceの順序を比較し、判定が同じでも順序が変わる負例を追加。Fixtureと独立Expectedは変更しない。複数Track間の全順序を要求するものではなく、配送時刻・Source実消費・Leaseの実効性も証明しない。
+
+次の順序は①Go 1.27が利用できる実リポジトリでFixture・Trace・`conformance/process`の対象試験を実行してcommit／観測を保存、②#242の既存起動経路から実Principal・Lease・Claimを取得できる範囲を確認、③#753に必要なData Adapterがあれば同じ独立ExpectedでLocal IPC/Connectを測定、無ければData/Delivery/Transport/Authorityの最小境界を設計、④D1の実測が揃った場合のみ[#754](https://github.com/hat47x/eki-fabric/issues/754)へ方式採否を渡す。試験用Unixソケットの複製はこれ以上増やさず、実行系の証拠へ進む。
+
+横断設計では、外部Sourceの宣言・実取得・Consumer消費と、EKIの配送・Claim・Accepted Resultを一つの「成功」としない。TEIの意味受理やProvider Commit、SEIの判断、ローカル安全停止は利用側に残す。**新たな中央Host/RegistryやKON固有の設計をEKIへ移さず、M0/MVPの優先順位を維持する。**
