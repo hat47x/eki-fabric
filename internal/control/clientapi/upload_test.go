@@ -114,6 +114,24 @@ func TestAnUploadIsKeptUnderItsDigest(t *testing.T) {
 	}
 }
 
+// A body whose record could not be written is dropped: nobody could be served
+// it and nobody could retire it (#805).
+func TestABodyWithoutItsRecordIsRemoved(t *testing.T) {
+	e, sink := newEnvWithSink(t)
+	sink.failMeta = true
+	answer := decode(t, postIngest(e, "key-upload-805", validIntent))
+	uploadID := answer["upload"].(map[string]any)["upload_id"].(string)
+	body := "hello ingest"
+	res := putUpload(e, aliceToken, uploadID, body)
+	if res.status != http.StatusInternalServerError {
+		t.Fatalf("status = %d %s, want 500", res.status, res.body)
+	}
+	digest := contract.FromSHA256(sha256.Sum256([]byte(body))).Hex()
+	if _, kept := sink.bodies[digest]; kept {
+		t.Fatal("the body stayed in the store although its record was never written")
+	}
+}
+
 // A session is one upload: a second PUT finds nothing.
 func TestASessionIsConsumedByOneUpload(t *testing.T) {
 	e, _ := newEnvWithSink(t)

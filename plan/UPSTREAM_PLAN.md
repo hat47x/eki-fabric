@@ -1783,3 +1783,9 @@ ADR に書いた決定が、**実装と試験のどこまで届いているか**
 ### 2026-11-09 #242・#745・#753: 同一TaskのEvidenceとEffect Fenceを最小ゲートへ統合
 
 [conformance/process/EXECUTION_EVIDENCE_PLAN.md](../conformance/process/EXECUTION_EVIDENCE_PLAN.md)に、Client APIの実Task→現在のPlacement/Lease/WorkOrder→Agent実行→Claim→検証／受理→外部Effect/Consumerを一つの相関キーで追う最小計画（ES-01〜ES-07）を置いた。主な新規反例は、現行`internal/control/service/recall.go`が`PossibleExternalEffect: false`を固定しており、Effect情報が未取得でもgrace後に`CloseLeaseExpired`へ進み得ること。これはAttemptの終了と自動再投入を同一視するものではない。#745で権威あるContractSource／UNKNOWN時の停止条件を決めるまで、回収後に副作用無しと推定して安全なretryを主張しない。#242が同一Taskの実プロセス縦断E2E、#753が実Data Adapterの配送・Consumedを所有し、#754は実測後の方式選定とする。[#753のD0-A](../spikes/data-delivery-transport/RESULTS_2026-11-09.md)は**commit `972bc57`のGo 1.27.0パッケージ試験PASS（26 PASS／2 SKIP）**まで確認済み。ただしPR #810のTrace順序負例や#242/#745の縦断／外部Effect負例は、その実行commitの対象外として再実行・実装待ちに残す。現行`admission.ParseTaskRequest`は`effect_mode=none`のみ受理するため、ES-02/04は将来契約・合成負例であり、M0で非冪等Taskを正式に受理済みとは扱わない。古い合成Taskや受理本文欠損を`none`へ推定せず、`LoadAdmission(Content)`の正本とTaskIR digestを照合する最小のEffect出典境界を#745で受け入れる。新Host／Registryは追加せず、M0/MVP優先順位は維持する。
+
+### 2026-11-10 #745: 保存されたM0のEffect区分を実行資格から分離して検証する
+
+[`claimreconcile.ProvenM0EffectNone`](../internal/control/claimreconcile/effect_evidence.go)に、Admission Content再解析・Fingerprint・TaskIR digest・Task/Attempt/Lease/Workerの束縛を確認する**純粋な検査関数**と正常系／11負例のテストを追加。Go 1.27の正本テストは未実施。通信Spikeの旧revision Go1.27 D0-A PASS（#813）は、この新関数・回収ロジックへの合格証拠ではない。
+
+次の#745では、現在の`recallCloser`に`LoadAdmission`を配線し、信頼済みM0 EffectNoneの検証が成立した場合にだけ`claimreconcile.CloseLeaseExpired`の候補とする。欠損・不一致・取得エラーは`none`に推定せず保留＋診断とし、既存の合成Task回収テストは正例／負例に分ける。**検査関数の導入でruntimeの`PossibleExternalEffect:false`が修正されたとは主張しない。** Task/Attemptの状態、Recovery Permit、外部Provider Receiptは別の受入対象として残す。#242同一Task縦断と#753実Data Adapter比較を先行して混ぜず、M0/MVPの優先順位・Everything is Plugin／新Host無しの方針は維持する。
