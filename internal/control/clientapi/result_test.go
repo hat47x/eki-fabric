@@ -2,6 +2,7 @@ package clientapi
 
 import (
 	"context"
+	"fmt"
 	"net/http"
 	"strings"
 	"testing"
@@ -482,7 +483,7 @@ func TestResultListsTheArtifactWhenBodiesAreKept(t *testing.T) {
 	}
 	art := arts[0].(map[string]any)
 	want := results.records[ids.TaskID(id)].OutputDigest().Hex()
-	if art["available"] != true || art["artifact_id"] != want || art["size_bytes"] != float64(6) || art["media_type"] != "text/plain" || art["data_class"] != "internal" {
-		t.Fatalf("artifact = %v", art)
+	if art["available"] != true || art["artifact_id"] != want || fmt.Sprint(art["size_bytes"]) != "6" || art["media_type"] != "text/plain" || art["data_class"] != "internal" {
+		t.Fatalf("artifact = %v, want id %s", art, want)
 	}
 }
