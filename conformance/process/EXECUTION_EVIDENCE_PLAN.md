@@ -25,16 +25,29 @@ Client APIで受理された**一つのTask**について、配置・署名・�
 
 現行`internal/control/service/recall.go`の`CloseDecision`は、`claimreconcile.Decide`に`PossibleExternalEffect: false`を**定数で渡している**。`TaskRecord`はTaskIRのdigestを持つが外部効果の確定情報は持たず、現行コードのコメントにも「Task model carries no external-effect marker yet」とある。したがって、外部効果の有無を信頼できる正本から解決していないAttemptまで、grace後に`CloseLeaseExpired`へ進み得る。回収台帳の記録、期限切れAttemptの終了、回収後の自動再投入は**別の判断**であり、Attempt終了だけでは後者の実行を証明しない。
 
-この問題を解く際は、新しい汎用Effect Registryの導入を先行しない。**保存されたTask要求の確定内容とdigestを照合するContractSource**など、既存の正本を用いて`none / idempotent / non-idempotent / unknown`相当を読み取れるか確認する。ここで`unknown`は「効果が無い」の意味に変換してはならない。再投入の許可は`recoveryadmission`の独立した判定とBudgetに委ねる。
+### 現在のM0で「既に受理できるEffect」の範囲
+
+`internal/core/admission/request.go`の`ParseTaskRequest`は現行`eki.task-request/v1`について`reliability.effect_mode == "none"`**だけを受理する**。`idempotent`や`non-idempotent`を持つTaskを、現行Client APIが通常の受付経路でAdmitできるわけではない。したがってES-02／ES-04は、将来の契約拡張・移行・敵対的／合成入力向けの**先行負例**であり、現行M0の正式に受理済みの非冪等Taskが既に実行されているという主張ではない。
+
+一方、`statestore.Admission`は`Content`（受理した要求の原本文）、`RequestFingerprint`、`Task.TaskIRDigest`を保持し、`AdmissionStore.LoadAdmission`で取得可能。古い行・合成Taskには`Content == nil`が許容される。`TaskRecord`自身はEffect区分を保持せず、現行`recall.CloseDecision`はこの受理済み本文を参照しないため、**「M0はnoneしかAdmitしない」から任意のLeaseがnoneと推論することもできない**。
+
+#### #745で採用候補となる最小のEffect出典境界
+
+1. 現在のAttempt／LeaseのTask ID、TaskIR digest、FenceEpochを確認し、同じTaskの`LoadAdmission`を読む。本文なし・読み取り失敗は「副作用なし」ではなく**不明**。
+2. 受理時の本文を`admission.ParseTaskRequest`で検証・正規化し、`RequestFingerprint()`・`TaskIRDigest()`を再計算して保存されたAdmission、Attempt、Leaseと照合する。本文のbyte一致だけで現在のAuthorityに昇格させず、必要なPolicy／Grantの有効性は独立に検証する。
+3. **現在のM0**では、この検証がすべて成立し`EffectMode=none`と証明できる場合に限って`claimreconcile.CloseLeaseExpired`の候補とする。非none・未対応・不明・不整合ならAttemptと台帳を保留・診断し、`PossibleExternalEffect=false`の定数による既定終了を許さない。
+4. Attemptを`lease_expired`で閉じたことは再投入の許可ではない。次Attemptの発行は`recoveryadmission`のContractSource・Budget・Policy・Ownerの独立判断で行う。将来Effect Modeを増やす際はProvider側のOperation ID／Intent digest／Receiptを追加受入条件とする。
+
+この境界は**実装案であり、現時点で回収コードがこの検証を行っているわけではない**。M0の通常受理Taskを停止させず、旧合成Taskや本文の欠落・破損を安全側に扱えるよう、既存の`conformance/process/lease_reclaim_test.go`（合成Taskを`CreateTask`で直接作る）と`service/recall_test.go`の正例・負例を分けてから実装する。新しい汎用Effect Registryは導入しない。
 
 ### 未実行の反証Fixture：Expectedは先に固定し、合否を後から記録する
 
 | Case | 最小入力と独立Expected（候補） | 所有Issue |
 | --- | --- | --- |
 | ES-01 | **権威ある`effect_mode=none`**、Claim無し、grace超過 → Attemptは`lease_expired`で閉じ得る。ただし次Attemptは別のRecovery Permitが必要 | #745 |
-| ES-02 | **非冪等な外部送出の可能性**、Claim無し、grace超過、Receipt無し → `Reconcile/UNKNOWN`相当で保持し、自動再投入しない | #745 |
+| ES-02 | **将来の契約拡張／合成負例：非冪等な外部送出の可能性**、Claim無し、grace超過、Receipt無し → `Reconcile/UNKNOWN`相当で保持し、自動再投入しない | #745 |
 | ES-03 | Effect情報が読めない、TaskIR本文と保存digestが不一致、またはProvider資格が変化 → `none`へ推定せず保留・診断 | #745 |
-| ES-04 | 冪等を申告しただけで安定Operation ID・Intent digest・Provider側のdedup証拠が無い → 申告だけを理由とする再送を拒否 | #745 |
+| ES-04 | **将来の契約拡張／合成負例：**冪等を申告しただけで安定Operation ID・Intent digest・Provider側のdedup証拠が無い → 申告だけを理由とする再送を拒否 | #745 |
 | ES-05 | Lease失効・通信断の後に遅延Claimが届く → staleな権限から新しいAttemptを発行せず、元のResult／Effectとの調停を区別 | #242・#745 |
 | ES-06 | Client APIで受理したTask `T` がDispatch、署名付きLease、Agent実行、Claim、検証、Accepted Resultに至る → **すべて同一Task/Attemptの実観測**が揃うまでE2E PASSを宣言しない | #242 |
 | ES-07 | 固定Eventの`observed_disposition`だけは正しいが、実Adapterの送受信・Consumer・現在Grantを観測できない → Trace比較は限定一致、配送／Effect E2EはNOT RUN | #753 |
@@ -47,6 +60,6 @@ Client APIで受理された**一つのTask**について、配置・署名・�
 2. **#242の既存試験を連結**：`conformance/process`のDispatch・Agent・Claim・結果受理テストに、同一Taskを追う観測を追加する。各段階で`NOT RUN`を許容し、テストの合成値を実発行済みEvidenceと記載しない。
 3. **#745のEffect Fenceを先に確認**：ES-01〜05の独立Expectedで、権威あるEffect状態が不明なときに暗黙の`none`へ落とさないことを反証する。現行の`PossibleExternalEffect:false`は未達として残す。
 4. **#753の配送比較に接続**：同一Taskと現在Grantを保持する実Data Adapterが見つかる場合のみ、Local IPC／Connectの生入力・実受信・Consumedを比較する。固定Fixtureの自己申告Trace一致だけではPASSにしない。実Adapter未存在なら`NOT SUPPORTED`／`NOT RUN`を記録。
-5. **#754の方式選定**：D1の実測と権限・Effectの独立検証を揃えてから判断する。Go 1.27指定の正本リポジトリでの試験は、実行可能な環境でcommitを固定して実施するまで**NOT RUN**と記録する。
+5. **#754の方式選定**：D1の実測と権限・Effectの独立検証を揃えてから判断する。[#753のD0-A実行記録](../../spikes/data-delivery-transport/RESULTS_2026-11-09.md)は**commit `972bc57`上のGo 1.27.0パッケージ試験PASS（26件PASS・2件SKIP）**である。後から追加されたTrace順序負例（PR #810）や本計画のケースES-01〜07を同じ正本revisionで実行した証拠ではないため、対象別に未実行を明示する。
 
 既存のM0/MVP優先順位を維持し、各ケースの正式な意味・実行許可はOwner／利用側の契約に残す。
