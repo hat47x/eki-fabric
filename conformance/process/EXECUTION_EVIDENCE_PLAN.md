@@ -63,3 +63,11 @@ Client APIで受理された**一つのTask**について、配置・署名・�
 5. **#754の方式選定**：D1の実測と権限・Effectの独立検証を揃えてから判断する。[#753のD0-A実行記録](../../spikes/data-delivery-transport/RESULTS_2026-11-09.md)は**commit `972bc57`上のGo 1.27.0パッケージ試験PASS（26件PASS・2件SKIP）**である。後から追加されたTrace順序負例（PR #810）や本計画のケースES-01〜07を同じ正本revisionで実行した証拠ではないため、対象別に未実行を明示する。
 
 既存のM0/MVP優先順位を維持し、各ケースの正式な意味・実行許可はOwner／利用側の契約に残す。
+
+## 2026-11-10 証明関数を分離した段階的な実装（#745）
+
+M0のClient APIは現在`effect_mode=none`だけを受理するが、**旧・合成Taskには保存済みのAdmission本文がない場合がある**。そこで[`claimreconcile.ProvenM0EffectNone`](../../internal/control/claimreconcile/effect_evidence.go)を、まだruntimeに接続しない純粋な確認関数として追加する。対象Task/Attempt/Lease、RequestFingerprint、TaskIR digest、MaxAttempts、Contentの再Parseをすべて照合する。省略・改変・不一致では「effectなし」と判定しない。
+
+この関数の`true`は**保存済み要求がM0契約に従ってEffectNoneを宣言している**という限定的な意味であり、現在のPolicy/GrantやProviderの実外部効果、回収後の再実行資格を証明しない。正しい`Admission`を`LoadAdmission`で読み取って`recallCloser`へ渡す実配線、旧合成Taskの保留、未知Effect時の診断と回復、実Go 1.27テストは次の#745の作業。現行`recall.go`の`PossibleExternalEffect:false`は**依然未解決**である。
+
+ES-01には「正本のEffectNoneと3種のdigest/ID bindingが一致する正例」、ES-03には「保存本文欠損、A→B→Aによる古い資格、別Attempt/Leaseの取り違え、Grant失効はEffectなしと推論しない負例」を追加の判断材料とする。独立Expectedの根拠は保存された要求と現在の認可であり、検証関数自身の出力から逆算しない。
