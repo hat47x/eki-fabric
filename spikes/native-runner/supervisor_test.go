@@ -41,7 +41,7 @@ func validSpec(now time.Time) executor.Spec {
 }
 
 func TestSupervisorCompletesNativeRunner(t *testing.T) {
-	now := time.Date(2026, 10, 29, 0, 0, 0, 0, time.UTC)
+	now := time.Now().UTC()
 	supervisor, err := executor.New(executor.Config{Clock: fixedClock{now: now}, StopGrace: time.Second})
 	if err != nil {
 		t.Fatal(err)
@@ -59,7 +59,7 @@ func TestSupervisorCompletesNativeRunner(t *testing.T) {
 }
 
 func TestSupervisorFailsNativeRunnerExit(t *testing.T) {
-	now := time.Date(2026, 10, 29, 0, 0, 0, 0, time.UTC)
+	now := time.Now().UTC()
 	supervisor, err := executor.New(executor.Config{Clock: fixedClock{now: now}, StopGrace: time.Second})
 	if err != nil {
 		t.Fatal(err)

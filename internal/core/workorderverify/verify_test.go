@@ -1,122 +1,51 @@
 package workorderverify
 
 import (
-	"bytes"
-	"crypto/ed25519"
 	"errors"
 	"testing"
 	"time"
 
-	fxcbor "github.com/fxamacker/cbor/v2"
-
-	cosecbor "github.com/hat47x/eki-fabric/internal/adapters/reference/cosedecoder/cbor"
-	payloadcbor "github.com/hat47x/eki-fabric/internal/adapters/reference/decisiondecoder/cbor"
 	"github.com/hat47x/eki-fabric/internal/core/authority"
 	"github.com/hat47x/eki-fabric/internal/core/contract"
 	"github.com/hat47x/eki-fabric/internal/core/decisionpayload"
 	"github.com/hat47x/eki-fabric/internal/core/decisiontrust"
 	"github.com/hat47x/eki-fabric/internal/core/ids"
+	wo "github.com/hat47x/eki-fabric/internal/testfixtures/workorder"
 )
 
 const (
-	testTrustDomain = "example.org"
-	testWorker      = "worker-a"
-	testPrincipal   = "control-plane/wor-1"
-	testPolicyRev   = "policy-42"
+	testTrustDomain = wo.TrustDomain
+	testWorker      = wo.Worker
+	testPrincipal   = wo.Principal
+	testPolicyRev   = wo.PolicyRevision
 )
 
 var (
-	testIssuedAt = time.UnixMilli(1_780_000_000_000).UTC()
-	testExpires  = testIssuedAt.Add(2 * time.Minute)
-	testNow      = testIssuedAt.Add(10 * time.Second)
-	testKeyID    = decisiontrust.KeyID("wor-key-1")
+	testIssuedAt = wo.IssuedAt
+	testExpires  = wo.Expires
+	testNow      = wo.Now
+	testKeyID    = wo.KeyID
 )
 
 type fixture struct {
 	t        *testing.T
-	registry *decisiontrust.Registry
-	signer   *decisiontrust.ReferenceSoftwareSigner
-	codec    *cosecbor.Codec
-	payload  *payloadcbor.Decoder
-	enc      fxcbor.EncMode
+	signing  *wo.Signing
 	bundle   decisiontrust.TrustBundleMetadata
 	verifier *Verifier
 }
 
 func newFixture(t *testing.T) *fixture {
 	t.Helper()
-	codec, err := cosecbor.New()
-	if err != nil {
-		t.Fatal(err)
-	}
-	payload, err := payloadcbor.New()
-	if err != nil {
-		t.Fatal(err)
-	}
-	enc, err := fxcbor.CoreDetEncOptions().EncMode()
-	if err != nil {
-		t.Fatal(err)
-	}
-	registry := decisiontrust.NewRegistry(testIssuedAt.Add(-time.Hour))
-	seed := make([]byte, ed25519.SeedSize)
-	seed[0] = 23
-	private := ed25519.NewKeyFromSeed(seed)
-	record, err := decisiontrust.NewKeyRecord(decisiontrust.KeyConfig{
-		ID:                 testKeyID,
-		AuthorityRole:      authority.RoleWorkOrder,
-		AuthorityPrincipal: testPrincipal,
-		TrustDomain:        testTrustDomain,
-		Algorithm:          decisiontrust.AlgorithmEdDSA,
-		KeyType:            decisiontrust.KeyTypeOKP,
-		Curve:              decisiontrust.CurveEd25519,
-		PublicKey:          private.Public(),
-		SigningNotBefore:   testIssuedAt.Add(-time.Hour),
-		SigningNotAfter:    testIssuedAt.Add(24 * time.Hour),
-		PolicyRevision:     "key-policy-1",
-	}, testIssuedAt.Add(-time.Hour))
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := registry.Register(record, testIssuedAt.Add(-time.Hour)); err != nil {
-		t.Fatal(err)
-	}
-	if err := registry.Activate(record.ID(), testIssuedAt.Add(-time.Hour)); err != nil {
-		t.Fatal(err)
-	}
-	if err := registry.SetPrimary(record.ID(), testIssuedAt.Add(-time.Hour)); err != nil {
-		t.Fatal(err)
-	}
-	signer, err := decisiontrust.NewReferenceSoftwareSigner(registry)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := signer.RegisterPrivateKey(record.ID(), private); err != nil {
-		t.Fatal(err)
-	}
-	policy, err := decisiontrust.NewVerificationPolicy(decisiontrust.VerificationPolicyConfig{
-		MaxClockSkew:            5 * time.Second,
-		MaxTrustBundleStaleness: time.Hour,
-		AllowedAlgorithms:       []decisiontrust.Algorithm{decisiontrust.AlgorithmEdDSA},
-		MaxDecisionLifetime: map[authority.DecisionKind]time.Duration{
-			authority.DecisionWorkOrder: 5 * time.Minute,
-		},
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
-	boundary, err := decisiontrust.NewVerifierBoundary(registry, policy)
-	if err != nil {
-		t.Fatal(err)
-	}
+	signing := wo.NewSigning(t, 23)
 	verifier, err := New(Config{
-		Codec: codec, Payload: payload, Boundary: boundary,
+		Codec: signing.Codec, Payload: signing.Payload, Boundary: signing.Boundary,
 		TrustDomain: testTrustDomain, WorkerIdentity: testWorker,
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
 	return &fixture{
-		t: t, registry: registry, signer: signer, codec: codec, payload: payload, enc: enc,
+		t: t, signing: signing,
 		bundle:   decisiontrust.TrustBundleMetadata{Revision: 3, ValidatedAt: testNow.Add(-time.Minute)},
 		verifier: verifier,
 	}
@@ -124,106 +53,17 @@ func newFixture(t *testing.T) *fixture {
 
 func (f *fixture) order(mutate func(*decisionpayload.WorkOrderConfig)) decisionpayload.WorkOrder {
 	f.t.Helper()
-	ref := func(kind authority.DecisionKind, id, seed string) decisionpayload.DecisionRef {
-		r, err := decisionpayload.NewDecisionRef(decisionpayload.DecisionRefConfig{
-			Kind: kind, DecisionID: id, PayloadDigest: contract.SHA256([]byte(seed)),
-		})
-		if err != nil {
-			f.t.Fatal(err)
-		}
-		return r
-	}
-	cfg := decisionpayload.WorkOrderConfig{
-		SchemaVersion:      decisionpayload.WorkOrderSchemaVersion,
-		DecisionKind:       authority.DecisionWorkOrder,
-		DecisionID:         "wor-decision-001",
-		AuthorityRole:      authority.RoleWorkOrder,
-		AuthorityPrincipal: testPrincipal,
-		IssuedAt:           testIssuedAt,
-		ExpiresAt:          testExpires,
-		PolicyRevision:     testPolicyRev,
-		WorkOrderID:        "work-order-001",
-		TaskID:             ids.TaskID("tsk_00000000000000000000000000000001"),
-		TaskIRDigest:       contract.SHA256([]byte("taskir")),
-		AttemptID:          ids.AttemptID("atm_00000000000000000000000000000001"),
-		WorkerIdentity:     testWorker,
-		PlacementRef:       ref(authority.DecisionPlacementApproval, "placement-001", "placement"),
-		LeaseRef:           ref(authority.DecisionLease, "lease-001", "lease"),
-		ExecutorApproval:   ref(authority.DecisionExecutorApproval, "executor-001", "executor"),
-		ExecutorDigest:     contract.SHA256([]byte("executable")),
-		ReadGrants:         []decisionpayload.DecisionRef{ref(authority.DecisionArtifactReadGrant, "read-001", "read")},
-		WriteGrants:        []decisionpayload.DecisionRef{ref(authority.DecisionArtifactWriteGrant, "write-001", "write")},
-		Limits: decisionpayload.ResourceLimits{
-			CPUMillis: 4000, MemoryBytes: 1 << 30, WallTimeMillis: 600_000,
-		},
-		Sandbox: decisionpayload.SandboxPolicy{Profile: "sandbox/container/v1"},
-		Nonce:   bytes.Repeat([]byte{0x5a}, 16),
-	}
-	if mutate != nil {
-		mutate(&cfg)
-	}
-	order, err := decisionpayload.NewWorkOrder(cfg)
-	if err != nil {
-		f.t.Fatal(err)
-	}
-	return order
+	return wo.Order(f.t, mutate)
 }
 
 func (f *fixture) signPayload(payload []byte) []byte {
 	f.t.Helper()
-	protected, err := f.enc.Marshal(map[int64]any{
-		1:      int64(-8),
-		2:      []int64{decisiontrust.COSEHeaderLabelEKIProfile},
-		4:      []byte(testKeyID),
-		-70000: decisiontrust.SignedDecisionProfileV1,
-	})
-	if err != nil {
-		f.t.Fatal(err)
-	}
-	sigStructure, err := f.codec.EncodeSignature1(protected, payload)
-	if err != nil {
-		f.t.Fatal(err)
-	}
-	signed, err := f.signer.SignCOSESigStructure(decisiontrust.COSESigningRequest{
-		Key: decisiontrust.SigningRequest{
-			TrustDomain:        testTrustDomain,
-			AuthorityRole:      authority.RoleWorkOrder,
-			AuthorityPrincipal: testPrincipal,
-			DecisionKind:       authority.DecisionWorkOrder,
-			Algorithm:          decisiontrust.AlgorithmEdDSA,
-		},
-		PolicyRevision: "key-policy-1",
-		SigStructure:   sigStructure,
-	}, testIssuedAt)
-	if err != nil {
-		f.t.Fatal(err)
-	}
-	out := []byte{0xd2, 0x84}
-	protectedBytes, err := f.enc.Marshal(protected)
-	if err != nil {
-		f.t.Fatal(err)
-	}
-	out = append(out, protectedBytes...)
-	out = append(out, 0xa0)
-	payloadBytes, err := f.enc.Marshal(payload)
-	if err != nil {
-		f.t.Fatal(err)
-	}
-	out = append(out, payloadBytes...)
-	sig, err := f.enc.Marshal(signed.Signature)
-	if err != nil {
-		f.t.Fatal(err)
-	}
-	return append(out, sig...)
+	return f.signing.SignPayload(payload)
 }
 
 func (f *fixture) signedWorkOrder(mutate func(*decisionpayload.WorkOrderConfig)) []byte {
 	f.t.Helper()
-	payload, err := f.payload.EncodeWorkOrder(f.order(mutate))
-	if err != nil {
-		f.t.Fatal(err)
-	}
-	return f.signPayload(payload)
+	return f.signing.SignedWorkOrder(mutate)
 }
 
 func (f *fixture) verify(raw []byte, now time.Time) (Verified, error) {
@@ -317,7 +157,7 @@ func TestVerifyRejectsLeasePayload(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	payload, err := fx.payload.EncodeLease(lease)
+	payload, err := fx.signing.Payload.EncodeLease(lease)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -331,7 +171,7 @@ func TestVerifyRejectsLeasePayload(t *testing.T) {
 func TestVerifyRejectsAnotherTrustDomain(t *testing.T) {
 	fx := newFixture(t)
 	other, err := New(Config{
-		Codec: fx.codec, Payload: fx.payload, Boundary: fx.verifier.cfg.Boundary,
+		Codec: fx.signing.Codec, Payload: fx.signing.Payload, Boundary: fx.verifier.cfg.Boundary,
 		TrustDomain: "other.example", WorkerIdentity: testWorker,
 	})
 	if err != nil {
@@ -363,7 +203,7 @@ func TestVerifyRejectsMissingInputs(t *testing.T) {
 
 func TestNewRejectsIncompleteConfig(t *testing.T) {
 	fx := newFixture(t)
-	base := Config{Codec: fx.codec, Payload: fx.payload, Boundary: fx.verifier.cfg.Boundary,
+	base := Config{Codec: fx.signing.Codec, Payload: fx.signing.Payload, Boundary: fx.verifier.cfg.Boundary,
 		TrustDomain: testTrustDomain, WorkerIdentity: testWorker}
 	cases := map[string]func(*Config){
 		"codec":    func(c *Config) { c.Codec = nil },

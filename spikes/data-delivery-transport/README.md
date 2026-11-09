@@ -146,3 +146,23 @@ EKI_TRANSPORT_TRACE_FILE=/path/to/observed-trace.json go test ./spikes/data-deli
 
 検証工程は、①正本Go 1.27環境で全Spikeテスト、②実際のEKI Producer/ConsumerとPrincipal・Lease/Grantを結ぶAdapterの確認、③Local IPCとConnectの同一Fixture観測、④実測を伴うD1、⑤#754の方式選定の順とする。通信の選択・実行資格・データの利用・外部効果を別票で観測し、既存Control Planeの権限を新たなTransportへ暗黙に広げない。新Hostや第二のRegistryを前提とせず、M0/MVPの優先順位を変えない。
 
+
+## 2026-11-09 実リポジトリのGo 1.27.0での形式チェック
+
+mainのこのパッケージを、`go.mod`が要求するGo 1.27.0（Linux x86_64、WSL）で実行した。`go test -count=1 -v`はPASS 26件・SKIP 2件、`go test -race -count=5 -v`もともに終了コード0だった。SKIPは、実Adapterの観測が無い`TestProvidedAdapterObservedTrace`（`NOT RUN`）と、別プロセス試験の補助プロセスである`TestUnixFixtureChildSender`である。実行条件、生ログ、一般化できる範囲は[RESULTS_2026-11-09.md](RESULTS_2026-11-09.md)を参照する。
+
+これで、2026-11-08の記録で未実行としていた「正本リポジトリのGo 1.27系での全試験」は埋まった。一方、実Adapterへの同一Fixture投入、実Lease・Grantによる認可、性能測定は今回も確認しておらず、#753は未完了のままである。
+
+## 2026-11-09 観測順序の反証と既存実行経路の再利用
+
+**観測Traceの比較で見つかった欠落**：`trace_compare_test.go`はこれまで、各`event_id`に添えられた判定と件数だけを照合していた。この方法だと、最初の二つの観測を入れ替え、各イベントに元の判定文字列を添え直したTraceが通過する。今回、既存`fixture.json`が定義する**単一Task・単一Trackの試験用イベント再生順序**と、観測列の順序を照合する。独立Expectedを変更せず、順序だけを入れ替えた負例を追加した。
+
+この順序検査は**固定された試験ケースの因果順序**であり、複数の独立したトラック間やネットワーク全体に全順序を要求するものではない。新しい一般のData/Delivery仕様に拡張するときは、系列ごとの順序・タイムスタンプの誤差・権限の世代・部分結果の関連を別途設計する。現行のTrace入力はAdapterの自己申告であり、**順序を照合できても、実際の送受信時刻や取得・消費・認可を実証したことにはならない**。
+
+**実装状況の再照合**：2026-11-09のmainでは、`internal/control/service/run.go`の設定`dispatch`による起動経路、`dispatch.go`の配置からLease/WorkOrderまでの部品配線、[`conformance/process/dispatch_loop_test.go`](../../conformance/process/dispatch_loop_test.go)の実Control Planeで署名付き割当を配るケースが存在する。[`execution_agent_test.go`](../../conformance/process/execution_agent_test.go)では試験内で用意した割当によるAgentの固定コマンド実行とClaim送信を確認するケースもある。ただし、VerificationとAccepted Resultはテスト内で明示的に合成した材料を用いて別途呼び出しており、**Client API→配置→実行→検証→受理が一つの本番起動設定で連続完了したことは未証明**。実際に動いたという証拠を増やす場合は、まず[`conformance/process`](../../conformance/process/README.md)の既存の署名・Principal／mTLS／実プロセス試験を再利用する。
+
+**次の#753の仕事**：試験専用Unixソケットの送受信テストを追加し続けない。現行のWorker Control、Artifact取得、データ配送を混同せず、Data Adapterの提供範囲と権限に基づいて、実際の観測・再接続・Lease失効を別票で検証する。正本Go 1.27のテストは、実行可能な環境で同一commitを対象に実施する。それまで既存の限定Go 1.23試験・Sourceの静的照合以上を主張しない。#754の追加方式選定は引き続き実測後とする。
+
+## 2026-11-09 外部Effectと配送Evidenceの境界を追加
+
+[conformance/processの同一Task証拠計画](../../conformance/process/EXECUTION_EVIDENCE_PLAN.md)のES-07で、Traceが独立Expectedと一致しても、実Data Adapterの送信・受信、現在Grant、利用側Consumed、Provider Effectを実証していない状態を明示した。#753はData/Delivery/Transportの比較と実観測を担当し、期限切れLease時の未知Effect（ES-01〜05）の実装判断は#745、同一Task E2E（ES-06）は#242が担当する。新しい通信方式やEffect Registryをここでは先取りしない。
