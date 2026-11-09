@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/hat47x/eki-fabric/internal/core/acceptedresult"
+	"github.com/hat47x/eki-fabric/internal/core/admission"
 	"github.com/hat47x/eki-fabric/internal/core/attemptstate"
 	"github.com/hat47x/eki-fabric/internal/core/contract"
 	"github.com/hat47x/eki-fabric/internal/core/ids"
@@ -456,5 +457,32 @@ func resultLeaseReservation(t testing.TB, task taskstate.TaskRecord, decisionID 
 		ExpectedPolicyEpoch:         1,
 		IssuedAt:                    now,
 		ExpiresAt:                   now.Add(time.Minute),
+	}
+}
+
+// A deployment that keeps artifact bodies lists the accepted output in the
+// result, so a Client can see its size and whether the body can still be fetched.
+func TestResultListsTheArtifactWhenBodiesAreKept(t *testing.T) {
+	results := newFakeResults()
+	source := fakeArtifacts{meta: ArtifactMeta{Owner: "alice", MediaType: "text/plain", DataClass: "internal", Size: 6, ExpiresAt: time.Now().Add(time.Hour)}, body: "output"}
+	e := newEnvWith(t, results, func(c *Config, _ *admission.Policy) { c.Artifacts = source })
+	id := submitFor(t, e, aliceToken, "key-00000001")
+	results.records[ids.TaskID(id)] = acceptedRecord(t, id)
+	e.finish(id, taskstate.TerminalOutcomeCompleted)
+
+	res := e.result(aliceToken, id)
+	if res.status != http.StatusOK {
+		t.Fatalf("status = %d\n%s", res.status, res.body)
+	}
+	body := decode(t, res)
+	checkAgainstSpec(t, "TaskResult", body)
+	arts, ok := body["artifacts"].([]any)
+	if !ok || len(arts) != 1 {
+		t.Fatalf("artifacts = %v, want one descriptor", body["artifacts"])
+	}
+	art := arts[0].(map[string]any)
+	want := results.records[ids.TaskID(id)].OutputDigest().Hex()
+	if art["available"] != true || art["artifact_id"] != want || art["size_bytes"] != float64(6) || art["media_type"] != "text/plain" || art["data_class"] != "internal" {
+		t.Fatalf("artifact = %v", art)
 	}
 }
