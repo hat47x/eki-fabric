@@ -33,6 +33,9 @@ type transportOracle struct {
 	Profiles []struct {
 		Name string `json:"name"`
 	} `json:"transport_profiles"`
+	Events []struct {
+		ID string `json:"id"`
+	} `json:"events"`
 	Expected map[string]string `json:"independent_expected"`
 }
 
@@ -60,11 +63,21 @@ func checkTrace(oracle transportOracle, fixtureRaw []byte, trace transportTrace)
 	if strings.TrimSpace(trace.RunID) == "" || strings.TrimSpace(trace.AdapterRevision) == "" || strings.TrimSpace(trace.CaptureMethod) == "" {
 		problems = append(problems, "missing trace provenance")
 	}
+	// The frozen, single-task fixture is an ordered causal replay. The
+	// reported events must preserve that replay order, even when every
+	// event_id and disposition is otherwise present. This is not a
+	// cross-track total-order requirement for general live media streams.
+	if len(oracle.Events) != len(oracle.Expected) {
+		problems = append(problems, "fixture event order incomplete")
+	}
 	if len(trace.Observations) != len(oracle.Expected) {
 		problems = append(problems, fmt.Sprintf("observed %d events; expected %d", len(trace.Observations), len(oracle.Expected)))
 	}
 	seen := map[string]bool{}
-	for _, event := range trace.Observations {
+	for index, event := range trace.Observations {
+		if index < len(oracle.Events) && event.EventID != oracle.Events[index].ID {
+			problems = append(problems, fmt.Sprintf("event order at %d: observed %q, expected %q", index, event.EventID, oracle.Events[index].ID))
+		}
 		if seen[event.EventID] {
 			problems = append(problems, "duplicate event_id: "+event.EventID)
 		}
@@ -95,7 +108,7 @@ func loadFrozenTransportOracle(t *testing.T) (transportOracle, []byte) {
 	if err := json.Unmarshal(raw, &oracle); err != nil {
 		t.Fatal(err)
 	}
-	if oracle.CaseID == "" || len(oracle.Profiles) == 0 || len(oracle.Expected) == 0 {
+	if oracle.CaseID == "" || len(oracle.Profiles) == 0 || len(oracle.Expected) == 0 || len(oracle.Events) != len(oracle.Expected) {
 		t.Fatal("frozen fixture lacks the required oracle metadata")
 	}
 	return oracle, raw
@@ -103,11 +116,10 @@ func loadFrozenTransportOracle(t *testing.T) (transportOracle, []byte) {
 
 func syntheticTraceForComparator(oracle transportOracle, raw []byte) transportTrace {
 	digest := sha256.Sum256(raw)
-	results := make([]traceObservation, 0, len(oracle.Expected))
-	for id, disposition := range oracle.Expected {
-		results = append(results, traceObservation{EventID: id, Disposition: disposition})
+	results := make([]traceObservation, 0, len(oracle.Events))
+	for _, event := range oracle.Events {
+		results = append(results, traceObservation{EventID: event.ID, Disposition: oracle.Expected[event.ID]})
 	}
-	sort.Slice(results, func(i, j int) bool { return results[i].EventID < results[j].EventID })
 	return transportTrace{
 		CaseID: oracle.CaseID, FixtureSHA256: hex.EncodeToString(digest[:]),
 		Profile: oracle.Profiles[0].Name, RunID: "synthetic-comparator-test",
@@ -128,6 +140,9 @@ func TestTraceComparatorRejectsInvalidEvidence(t *testing.T) {
 	}{
 		{"missing-event", func(x *transportTrace) { x.Observations = x.Observations[:len(x.Observations)-1] }},
 		{"duplicate-event", func(x *transportTrace) { x.Observations = append(x.Observations, x.Observations[0]) }},
+		{"reordered-events-same-dispositions", func(x *transportTrace) {
+			x.Observations[0], x.Observations[1] = x.Observations[1], x.Observations[0]
+		}},
 		{"wrong-disposition", func(x *transportTrace) { x.Observations[0].Disposition = "fabricated-accepted" }},
 		{"unknown-event", func(x *transportTrace) { x.Observations[0].EventID = "E-UNDECLARED" }},
 		{"wrong-fixture-digest", func(x *transportTrace) { x.FixtureSHA256 = strings.Repeat("0", 64) }},
