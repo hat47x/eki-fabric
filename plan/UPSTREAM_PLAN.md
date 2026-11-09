@@ -1779,3 +1779,7 @@ ADR に書いた決定が、**実装と試験のどこまで届いているか**
 次の順序は①Go 1.27が利用できる実リポジトリでFixture・Trace・`conformance/process`の対象試験を実行してcommit／観測を保存、②#242の既存起動経路から実Principal・Lease・Claimを取得できる範囲を確認、③#753に必要なData Adapterがあれば同じ独立ExpectedでLocal IPC/Connectを測定、無ければData/Delivery/Transport/Authorityの最小境界を設計、④D1の実測が揃った場合のみ[#754](https://github.com/hat47x/eki-fabric/issues/754)へ方式採否を渡す。試験用Unixソケットの複製はこれ以上増やさず、実行系の証拠へ進む。
 
 横断設計では、外部Sourceの宣言・実取得・Consumer消費と、EKIの配送・Claim・Accepted Resultを一つの「成功」としない。TEIの意味受理やProvider Commit、SEIの判断、ローカル安全停止は利用側に残す。**新たな中央Host/Registryや他製品固有の設計をEKIへ移さず、M0/MVPの優先順位を維持する。**
+
+### 2026-11-09 #242・#745・#753: 同一TaskのEvidenceとEffect Fenceを最小ゲートへ統合
+
+[conformance/process/EXECUTION_EVIDENCE_PLAN.md](../conformance/process/EXECUTION_EVIDENCE_PLAN.md)に、Client APIの実Task→現在のPlacement/Lease/WorkOrder→Agent実行→Claim→検証／受理→外部Effect/Consumerを一つの相関キーで追う最小計画（ES-01〜ES-07）を置いた。主な新規反例は、現行`internal/control/service/recall.go`が`PossibleExternalEffect: false`を固定しており、Effect情報が未取得でもgrace後に`CloseLeaseExpired`へ進み得ること。これはAttemptの終了と自動再投入を同一視するものではない。#745で権威あるContractSource／UNKNOWN時の停止条件を決めるまで、回収後に副作用無しと推定して安全なretryを主張しない。#242が同一Taskの実プロセス縦断E2E、#753が実Data Adapterの配送・Consumedを所有し、#754は実測後の方式選定とする。正本Go 1.27の実テストはNOT RUN、新Host／Registryは追加せず、M0/MVP優先順位は維持する。
