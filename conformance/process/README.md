@@ -87,3 +87,7 @@ Attemptを閉じたあとのTaskの扱いと、外部作用がありうるTask�
 このため、以前の説明にある「起動経路に配置・Lease発行が全く存在しない」という状態は、現行mainのコードには当てはまらない。一方、**各段階に試験コードがあることと、Client APIから同一TaskのAccepted Resultまで実プロセスを通して連続完了できることは別**である。[#242](https://github.com/hat47x/eki-fabric/issues/242)は、この未証明の連続経路と失敗時の復旧を残課題として追う。
 
 別件の[#753](https://github.com/hat47x/eki-fabric/issues/753)では、OSのUnixソケットで固定イベントを送受信したが、上記Worker制御／割当経路を新しいメディアData Adapterとして解釈しない。現行Worker listenerとData Adapterの権限・時刻・出力の証拠を分け、既存のプロセス試験の足場を再利用する。新しいHostや独自の権限管理を増やさず、利用側の意味受理や外部効果をEKIのClaim受理から推定しない。
+
+## 2026-11-09 同一Taskの実行証拠と未知Effectの停止条件
+
+[同一TaskのEvidence計画](EXECUTION_EVIDENCE_PLAN.md)に、Client API→Dispatch→Lease/WorkOrder→Agent→Claim→Verification/Acceptanceの一貫したID照合、独立Expectedを持つES-01〜ES-07、および期限切れ時の未知External Effectを扱うStop Gateをまとめた。既存の各テストの成功を継ぎ合わせても同一TaskのE2E実証にはならない。実装変更は#242／#745の所有Issueで判断し、本節はテスト条件を共有するのみ。
