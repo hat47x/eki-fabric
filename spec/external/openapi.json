@@ -1164,7 +1164,8 @@
               "completed",
               "cancelled",
               "failed"
-            ]
+            ],
+            "description": "Public projection of the Task state, not the Task result. completed means the Task reached its terminal state; it does not mean an accepted result exists or can be read. The result is available only when GET /v1/tasks/{task_id}/result answers 200. While no accepted result exists, that operation answers 409 with RESULT_NOT_READY (the Task has not finished, so waiting may succeed) or RESULT_NOT_AVAILABLE (the Task finished without an accepted result, so no result will be produced), and 501 when the deployment has no result read path. A client must not treat status alone as the result, and must read terminal_code to tell how a terminal Task ended."
           },
           "request_fingerprint": {
             "type": "string",
