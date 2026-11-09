@@ -162,3 +162,7 @@ mainのこのパッケージを、`go.mod`が要求するGo 1.27.0（Linux x86_6
 **実装状況の再照合**：2026-11-09のmainでは、`internal/control/service/run.go`の設定`dispatch`による起動経路、`dispatch.go`の配置からLease/WorkOrderまでの部品配線、[`conformance/process/dispatch_loop_test.go`](../../conformance/process/dispatch_loop_test.go)の実Control Planeで署名付き割当を配るケースが存在する。[`execution_agent_test.go`](../../conformance/process/execution_agent_test.go)では試験内で用意した割当によるAgentの固定コマンド実行とClaim送信を確認するケースもある。ただし、VerificationとAccepted Resultはテスト内で明示的に合成した材料を用いて別途呼び出しており、**Client API→配置→実行→検証→受理が一つの本番起動設定で連続完了したことは未証明**。実際に動いたという証拠を増やす場合は、まず[`conformance/process`](../../conformance/process/README.md)の既存の署名・Principal／mTLS／実プロセス試験を再利用する。
 
 **次の#753の仕事**：試験専用Unixソケットの送受信テストを追加し続けない。現行のWorker Control、Artifact取得、データ配送を混同せず、Data Adapterの提供範囲と権限に基づいて、実際の観測・再接続・Lease失効を別票で検証する。正本Go 1.27のテストは、実行可能な環境で同一commitを対象に実施する。それまで既存の限定Go 1.23試験・Sourceの静的照合以上を主張しない。#754の追加方式選定は引き続き実測後とする。
+
+## 2026-11-09 外部Effectと配送Evidenceの境界を追加
+
+[conformance/processの同一Task証拠計画](../../conformance/process/EXECUTION_EVIDENCE_PLAN.md)のES-07で、Traceが独立Expectedと一致しても、実Data Adapterの送信・受信、現在Grant、利用側Consumed、Provider Effectを実証していない状態を明示した。#753はData/Delivery/Transportの比較と実観測を担当し、期限切れLease時の未知Effect（ES-01〜05）の実装判断は#745、同一Task E2E（ES-06）は#242が担当する。新しい通信方式やEffect Registryをここでは先取りしない。
