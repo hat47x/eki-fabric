@@ -392,8 +392,9 @@ func (h *Handler) status(w http.ResponseWriter, r *http.Request, id Identity, ta
 }
 
 // taskResult is eki.task-result/v1. Artifacts is always present (the schema
-// requires it) and is empty: the AcceptedResult records no artifact size, media
-// type or data class, so no ArtifactDescriptor can be built from it truthfully.
+// requires it). artifactsOf builds it from the artifact store's metadata record:
+// one descriptor when the deployment keeps bodies, an empty array when it does
+// not (or when the AcceptedResult carries no output digest).
 // OutputDigest is the digest the durable AcceptedResult recorded.
 type taskResult struct {
 	Schema       string                 `json:"schema"`
