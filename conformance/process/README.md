@@ -45,6 +45,16 @@
 |---|---|
 | `TestAssignmentsReachOnlyTheWorkerThatHoldsTheAttempt` | 登録した2つのWorkerに別々のAttemptを署名つきで配置する。Aは、自分のAttemptの保存されたLeaseとWorkOrderのbytesをそのまま受け取り、Bの識別子を応答に含まない。2回目も同じbytes。Bは自分のbytes。Attemptを持たないWorkerは空の一覧。別のWorkerを名指す本文は400。証明書なしは401。失効したWorkerは次の要求で401になり何も受け取らない。Bは影響を受けない |
 
+## 期限切れLeaseの回収（#745）
+
+`lease_reclaim_test.go`は、`eki-control`を`lease_registry`つきで別プロセスとして起動し、Workerを動かさない状態で、回収ループが配線されていることを確かめます。
+
+| 試験 | 内容 |
+|---|---|
+| `TestControlClosesAttemptOfExpiredLeaseWithoutClaim` | 状態ファイルに、dispatchedのAttemptを二つ置き、そのLeaseを台帳に載せる。2時間前に失効したLeaseのAttemptは`closed`（`lease_expired`）になり、台帳から消え、ResultClaimは付かない。2秒前に失効したLease（猶予の30秒以内）のAttemptは`dispatched`のままで、台帳にも残る |
+
+Attemptを閉じたあとのTaskの扱いと、外部作用がありうるTaskの調停は確かめません。Taskのモデルに外部作用の印がないため、期限切れのAttemptは全て再試行可能として閉じます（#745の未決）。
+
 ## 割当の検証（MVP #57、Agent側）
 
 `assignment_agent_test.go`は、`eki-agent`がmTLSで割当を受け取り、ファイルから読んだ信頼の起点で検証し、nonceを耐久DBに登録し、開始の関門を通すことを、実際の署名で確かめます。Taskは実行しません。
