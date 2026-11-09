@@ -126,7 +126,7 @@ EKI_TRANSPORT_TRACE_FILE=/path/to/observed-trace.json go test ./spikes/data-deli
 
 **これはEKIの実Local IPC Adapterの試験ではない。** 送受信を行ったのは同一テストプロセスのgoroutineであり、権限管理を通した別プロセスの送受信やConnectデータ配送は未実施。Lease失効等は単なるJSONのイベント内容として配送しただけで、実際の認可・回収・結果受理は検証していない。
 
-したがって#753は未完了である。次は、実リポジトリのGo 1.27系で全パッケージテストを実行した後、**別プロセスの実Adapterと実権限の経路**を対象にする。新しい共通基盤や独自Hostを前提条件にはせず、TEIの意味・外部副作用やSEIの判断、VRクマの安全停止は別の検証票で扱う。
+したがって#753は未完了である。次は、[2026-11-09のGo 1.27.0パッケージ実行記録](RESULTS_2026-11-09.md)と**対象commit**を照合したうえで、**別プロセスの実Adapterと実権限の経路**を対象にする。新しい共通基盤や独自Hostを前提条件にはせず、TEIの意味・外部副作用やSEIの判断、VRクマの安全停止は別の検証票で扱う。
 
 ## 2026-11-08 別プロセスでの配送確認と実Adapterの棚卸し
 
@@ -149,7 +149,7 @@ EKI_TRANSPORT_TRACE_FILE=/path/to/observed-trace.json go test ./spikes/data-deli
 
 ## 2026-11-09 実リポジトリのGo 1.27.0での形式チェック
 
-mainのこのパッケージを、`go.mod`が要求するGo 1.27.0（Linux x86_64、WSL）で実行した。`go test -count=1 -v`はPASS 26件・SKIP 2件、`go test -race -count=5 -v`もともに終了コード0だった。SKIPは、実Adapterの観測が無い`TestProvidedAdapterObservedTrace`（`NOT RUN`）と、別プロセス試験の補助プロセスである`TestUnixFixtureChildSender`である。実行条件、生ログ、一般化できる範囲は[RESULTS_2026-11-09.md](RESULTS_2026-11-09.md)を参照する。
+**commit `972bc57ec64cf607488aec19cee62c1702dfe1f2`時点**のこのパッケージを、`go.mod`が要求するGo 1.27.0（Linux x86_64、WSL）で実行した。`go test -count=1 -v`はPASS 26件・SKIP 2件、`go test -race -count=5 -v`もともに終了コード0だった。SKIPは、実Adapterの観測が無い`TestProvidedAdapterObservedTrace`（`NOT RUN`）と、別プロセス試験の補助プロセスである`TestUnixFixtureChildSender`である。実行条件、生ログ、一般化できる範囲は[RESULTS_2026-11-09.md](RESULTS_2026-11-09.md)を参照する。
 
 これで、2026-11-08の記録で未実行としていた「正本リポジトリのGo 1.27系での全試験」は埋まった。一方、実Adapterへの同一Fixture投入、実Lease・Grantによる認可、性能測定は今回も確認しておらず、#753は未完了のままである。
 
@@ -161,8 +161,10 @@ mainのこのパッケージを、`go.mod`が要求するGo 1.27.0（Linux x86_6
 
 **実装状況の再照合**：2026-11-09のmainでは、`internal/control/service/run.go`の設定`dispatch`による起動経路、`dispatch.go`の配置からLease/WorkOrderまでの部品配線、[`conformance/process/dispatch_loop_test.go`](../../conformance/process/dispatch_loop_test.go)の実Control Planeで署名付き割当を配るケースが存在する。[`execution_agent_test.go`](../../conformance/process/execution_agent_test.go)では試験内で用意した割当によるAgentの固定コマンド実行とClaim送信を確認するケースもある。ただし、VerificationとAccepted Resultはテスト内で明示的に合成した材料を用いて別途呼び出しており、**Client API→配置→実行→検証→受理が一つの本番起動設定で連続完了したことは未証明**。実際に動いたという証拠を増やす場合は、まず[`conformance/process`](../../conformance/process/README.md)の既存の署名・Principal／mTLS／実プロセス試験を再利用する。
 
-**次の#753の仕事**：試験専用Unixソケットの送受信テストを追加し続けない。現行のWorker Control、Artifact取得、データ配送を混同せず、Data Adapterの提供範囲と権限に基づいて、実際の観測・再接続・Lease失効を別票で検証する。正本Go 1.27のテストは、実行可能な環境で同一commitを対象に実施する。それまで既存の限定Go 1.23試験・Sourceの静的照合以上を主張しない。#754の追加方式選定は引き続き実測後とする。
+**次の#753の仕事**：試験専用Unixソケットの送受信テストを追加し続けない。現行のWorker Control、Artifact取得、データ配送を混同せず、Data Adapterの提供範囲と権限に基づいて、実際の観測・再接続・Lease失効を別票で検証する。Go 1.27.0の正本パッケージ試験は**commit `972bc57`で実施済み**（[実行結果](RESULTS_2026-11-09.md)）。ただし本節のTrace順序負例（PR #810）はこの実行commitより後に追加されたため、**追加差分については再実行待ち**である。既存試験のPASSを、後続revision・実Adapter・認可のPASSへ一般化しない。#754の追加方式選定は引き続き実測後とする。
 
 ## 2026-11-09 外部Effectと配送Evidenceの境界を追加
 
 [conformance/processの同一Task証拠計画](../../conformance/process/EXECUTION_EVIDENCE_PLAN.md)のES-07で、Traceが独立Expectedと一致しても、実Data Adapterの送信・受信、現在Grant、利用側Consumed、Provider Effectを実証していない状態を明示した。#753はData/Delivery/Transportの比較と実観測を担当し、期限切れLease時の未知Effect（ES-01〜05）の実装判断は#745、同一Task E2E（ES-06）は#242が担当する。新しい通信方式やEffect Registryをここでは先取りしない。
+
+**M0の外部Effect前提を再照合**：`internal/core/admission/request.go`が現在受理する`reliability.effect_mode`は`none`のみ。一方、古い合成TaskやAdmission本文が欠落したTaskまで`none`と判定できるわけではない。回収経路の`PossibleExternalEffect: false`固定は[#745](https://github.com/hat47x/eki-fabric/issues/745)で、保存済みの受理本文とTaskIR digestの検証を経て見直す。[同一Task証拠計画](../../conformance/process/EXECUTION_EVIDENCE_PLAN.md)で、現行M0の正例と将来・合成用の副作用負例を分離した。
