@@ -16,6 +16,10 @@ const MediaTypeOctetStream = "application/octet-stream"
 // MaxKnownBodyBytes caps a claim body in flight. The test profile carries
 // outputs up to the WorkOrder's maximum (1 MiB unless declared); the cap is
 // the transport's guard, not the binding. The binding is the digest.
+//
+// This is distinct from the client upload limit (MaxIngestBytes = 64 MiB).
+// Input artifacts may be larger because they arrive over the Client API with
+// different timeout and memory characteristics (#816).
 const MaxKnownBodyBytes = 8 << 20
 
 // BodyEnvelope is the header a Worker sends before the body's bytes. The

@@ -20,6 +20,9 @@ import (
 // MaxIngestBytes is the largest body one ingest may declare. A Client that
 // declares more is refused at the declaration, before it sends anything
 // (#245, spec/external/openapi.json /v1/artifacts/ingest-intents).
+//
+// The default server ReadTimeout (15s) means a 64 MiB upload needs at least
+// ~4.3 MB/s. Deployments on slower networks should raise ReadTimeout (#816).
 const MaxIngestBytes int64 = 64 << 20
 
 // IngestSessionLifetime bounds how long an upload session stays usable. A session
@@ -70,14 +73,15 @@ type uploadSession struct {
 // not written until the upload arrives, so a session that is lost in a restart
 // costs the Client a new declaration and nothing else (#245).
 type ingestSession struct {
-	principal string
-	key       string
-	ingestID  string
-	uploadID  string
-	mediaType string
-	dataClass string
-	maxBytes  int64
-	expiresAt time.Time
+	principal      string
+	key            string
+	ingestID       string
+	uploadID       string
+	mediaType      string
+	dataClass      string
+	maxBytes       int64
+	expectedDigest *expectedDigest
+	expiresAt      time.Time
 	// answer is kept so a replayed Idempotency-Key returns the same session.
 	answer ingestResponse
 }
@@ -198,7 +202,8 @@ func (s *ingestSessions) open(principal, key string, req ingestRequest) (ingestR
 	s.byID[uploadID] = &ingestSession{
 		principal: principal, key: key, ingestID: ingestID, uploadID: uploadID,
 		mediaType: req.MediaType, dataClass: req.RequestedDataClass,
-		maxBytes: req.DeclaredSizeBytes, expiresAt: answer.Upload.ExpiresAt, answer: answer,
+		maxBytes: req.DeclaredSizeBytes, expectedDigest: req.ExpectedDigest,
+		expiresAt: answer.Upload.ExpiresAt, answer: answer,
 	}
 	return answer, false, nil
 }

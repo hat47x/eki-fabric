@@ -38,11 +38,12 @@ func (m *memSink) Put(r io.Reader, claimedHex string, maxBytes int64) (string, i
 	if maxBytes > 0 && int64(len(data)) > maxBytes {
 		return "", 0, errors.New("too large")
 	}
-	if got := contract.FromSHA256(sha256.Sum256(data)); got.Hex() != claimedHex {
+	digest := contract.FromSHA256(sha256.Sum256(data))
+	if claimedHex != "" && digest.Hex() != claimedHex {
 		return "", 0, ErrDigestMismatch
 	}
-	m.bodies[claimedHex] = data
-	return claimedHex, int64(len(data)), nil
+	m.bodies[digest.Hex()] = data
+	return digest.Hex(), int64(len(data)), nil
 }
 
 func (m *memSink) PutMeta(digestHex string, record UploadRecord) error {
