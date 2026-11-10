@@ -3,6 +3,7 @@ package clientapi
 import (
 	"encoding/json"
 	"net/http"
+	"strings"
 	"testing"
 
 	"github.com/hat47x/eki-fabric/internal/core/admission"
@@ -140,6 +141,35 @@ func TestAnExpectedDigestWithNonHexValueIsRefused(t *testing.T) {
 	res := postIngest(e, "key-ingest-expected-003", body)
 	if res.status != http.StatusBadRequest {
 		t.Fatalf("status = %d %s, want 400", res.status, res.body)
+	}
+}
+
+// A different declaration with the same Idempotency-Key is refused with 409.
+func TestADifferentDeclarationWithTheSameKeyIsRefused(t *testing.T) {
+	e := newEnvWithBodyStore(t)
+	postIngest(e, "key-ingest-conflict-001", validIntent)
+	different := `{"schema":"eki.artifact-ingest-intent-request/v1","declared_size_bytes":2048,"media_type":"image/png","requested_data_class":"internal"}`
+	res := postIngest(e, "key-ingest-conflict-001", different)
+	if res.status != http.StatusConflict {
+		t.Fatalf("status = %d %s, want 409", res.status, res.body)
+	}
+	if !strings.Contains(string(res.body), "IDEMPOTENCY_KEY_CONFLICT") {
+		t.Fatalf("body = %q, want IDEMPOTENCY_KEY_CONFLICT", res.body)
+	}
+}
+
+// Media type comparison is case-insensitive, so TEXT/PLAIN matches text/plain.
+func TestMediaTypeComparisonIsCaseInsensitive(t *testing.T) {
+	e := newEnvWithBodyStore(t)
+	first := decode(t, postIngest(e, "key-ingest-case-001", validIntent))
+	second := postIngest(e, "key-ingest-case-001", `{"schema":"eki.artifact-ingest-intent-request/v1","declared_size_bytes":1024,"media_type":"TEXT/PLAIN","requested_data_class":"internal"}`)
+	if second.status != http.StatusCreated {
+		t.Fatalf("status = %d %s, want 201", second.status, second.body)
+	}
+	a := first["upload"].(map[string]any)["upload_id"]
+	b := decode(t, second)["upload"].(map[string]any)["upload_id"]
+	if a != b {
+		t.Fatalf("upload ids differ: %v / %v", a, b)
 	}
 }
 

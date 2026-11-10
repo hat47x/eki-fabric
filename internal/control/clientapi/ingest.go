@@ -81,19 +81,18 @@ type ingestSession struct {
 
 // ingestSessions holds the open sessions and the idempotency records.
 type ingestSessions struct {
-	mu sync.Mutex
-	// byKey is keyed by principal and Idempotency-Key, which is the scope the
-	// contract gives the key.
-	byKey map[string]ingestResponse
-	byID  map[string]*ingestSession
-	now   func() time.Time
+	mu      sync.Mutex
+	byKey   map[string]ingestResponse
+	byKeyReq map[string]ingestRequest
+	byID    map[string]*ingestSession
+	now     func() time.Time
 }
 
 func newIngestSessions(now func() time.Time) *ingestSessions {
 	if now == nil {
 		now = time.Now
 	}
-	return &ingestSessions{byKey: map[string]ingestResponse{}, byID: map[string]*ingestSession{}, now: now}
+	return &ingestSessions{byKey: map[string]ingestResponse{}, byKeyReq: map[string]ingestRequest{}, byID: map[string]*ingestSession{}, now: now}
 }
 
 // validate checks a declaration before any session is created.
@@ -140,7 +139,7 @@ func validMediaType(mt string) bool {
 }
 
 // open returns the session for this declaration, creating one unless the same
-// Idempotency-Key was already used by this principal.
+// Idempotency-Key was already used by this principal with different content.
 func (s *ingestSessions) open(principal, key string, req ingestRequest) (ingestResponse, bool, error) {
 	scope := principal + "\x00" + key
 	now := s.now().UTC()
@@ -148,6 +147,9 @@ func (s *ingestSessions) open(principal, key string, req ingestRequest) (ingestR
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if answer, ok := s.byKey[scope]; ok {
+		if old, hasOld := s.byKeyReq[scope]; hasOld && !sameIngestRequest(old, req) {
+			return ingestResponse{}, false, &admission.Error{Kind: admission.KindConflict, Code: "IDEMPOTENCY_KEY_CONFLICT", Title: "The Idempotency-Key was already used with different content"}
+		}
 		return answer, true, nil
 	}
 	s.expire(now)
@@ -171,12 +173,40 @@ func (s *ingestSessions) open(principal, key string, req ingestRequest) (ingestR
 		},
 	}
 	s.byKey[scope] = answer
+	s.byKeyReq[scope] = req
 	s.byID[uploadID] = &ingestSession{
 		principal: principal, ingestID: ingestID, uploadID: uploadID,
 		mediaType: req.MediaType, dataClass: req.RequestedDataClass,
 		maxBytes: req.DeclaredSizeBytes, expiresAt: answer.Upload.ExpiresAt, answer: answer,
 	}
 	return answer, false, nil
+}
+
+// sameIngestRequest reports whether two declarations are the same for idempotency.
+// The comparison is case-insensitive for media_type because HTTP media types are
+// case-insensitive (RFC 6838 §4.2).
+func sameIngestRequest(a, b ingestRequest) bool {
+	if a.DeclaredSizeBytes != b.DeclaredSizeBytes {
+		return false
+	}
+	if !strings.EqualFold(a.MediaType, b.MediaType) {
+		return false
+	}
+	if a.RequestedDataClass != b.RequestedDataClass {
+		return false
+	}
+	if (a.ExpectedDigest == nil) != (b.ExpectedDigest == nil) {
+		return false
+	}
+	if a.ExpectedDigest != nil && b.ExpectedDigest != nil {
+		if a.ExpectedDigest.Algorithm != b.ExpectedDigest.Algorithm {
+			return false
+		}
+		if a.ExpectedDigest.Value != b.ExpectedDigest.Value {
+			return false
+		}
+	}
+	return true
 }
 
 // expire drops sessions whose window passed. It is called under the lock.
@@ -241,6 +271,11 @@ func (h *Handler) ingest(w http.ResponseWriter, r *http.Request, id Identity) {
 	}
 	answer, replayed, oerr := h.ingests.open(id.Principal.ID, key, req)
 	if oerr != nil {
+		var ae *admission.Error
+		if errors.As(oerr, &ae) && ae.Kind == admission.KindConflict {
+			writeProblem(w, statusFor(ae), ae)
+			return
+		}
 		writeProblem(w, http.StatusInternalServerError, &admission.Error{Kind: admission.KindInternal, Code: "INGEST_UNAVAILABLE", Title: "The ingest session could not be created"})
 		return
 	}
