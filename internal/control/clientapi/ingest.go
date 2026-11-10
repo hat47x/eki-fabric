@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"strings"
 	"sync"
 	"time"
 
@@ -103,10 +104,20 @@ func (s *ingestSessions) validate(body []byte) (ingestRequest, error) {
 		return req, fmt.Errorf("%w: declared_size_bytes exceeds %d", ErrInvalidIngest, MaxIngestBytes)
 	case req.MediaType == "" || len(req.MediaType) > 255:
 		return ingestRequest{}, fmt.Errorf("%w: media_type must be 1..255 bytes", ErrInvalidIngest)
+	case !validMediaType(req.MediaType):
+		return ingestRequest{}, fmt.Errorf("%w: media_type must be type/subtype", ErrInvalidIngest)
 	case req.RequestedDataClass == "" || !admission.ValidDataClass(req.RequestedDataClass):
 		return ingestRequest{}, fmt.Errorf("%w: requested_data_class is not in the vocabulary", ErrInvalidIngest)
 	}
 	return req, nil
+}
+
+// validMediaType reports whether the value looks like a MIME media type. The
+// declaration is a hint, not a security boundary: EKI never inspects the bytes,
+// so the check is only to catch obvious typos (RFC 6838 type/subtype).
+func validMediaType(mt string) bool {
+	parts := strings.SplitN(mt, "/", 2)
+	return len(parts) == 2 && parts[0] != "" && parts[1] != ""
 }
 
 // open returns the session for this declaration, creating one unless the same

@@ -75,6 +75,10 @@ func TestAnUnusableDeclarationIsRefused(t *testing.T) {
 		{"over the cap", `{"schema":"eki.artifact-ingest-intent-request/v1","declared_size_bytes":100000000,"media_type":"text/plain","requested_data_class":"internal"}`, http.StatusRequestEntityTooLarge},
 		{"unknown class", `{"schema":"eki.artifact-ingest-intent-request/v1","declared_size_bytes":1,"media_type":"text/plain","requested_data_class":"secret"}`, http.StatusBadRequest},
 		{"unknown field", `{"schema":"eki.artifact-ingest-intent-request/v1","declared_size_bytes":1,"media_type":"text/plain","requested_data_class":"internal","extra":1}`, http.StatusBadRequest},
+		{"empty media_type", `{"schema":"eki.artifact-ingest-intent-request/v1","declared_size_bytes":1,"media_type":"","requested_data_class":"internal"}`, http.StatusBadRequest},
+		{"missing media_type slash", `{"schema":"eki.artifact-ingest-intent-request/v1","declared_size_bytes":1,"media_type":"textplain","requested_data_class":"internal"}`, http.StatusBadRequest},
+		{"empty media_type type", `{"schema":"eki.artifact-ingest-intent-request/v1","declared_size_bytes":1,"media_type":"/plain","requested_data_class":"internal"}`, http.StatusBadRequest},
+		{"empty media_type subtype", `{"schema":"eki.artifact-ingest-intent-request/v1","declared_size_bytes":1,"media_type":"text/","requested_data_class":"internal"}`, http.StatusBadRequest},
 		{"not json", `hello`, http.StatusBadRequest},
 	} {
 		t.Run(c.name, func(t *testing.T) {
