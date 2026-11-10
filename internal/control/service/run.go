@@ -21,10 +21,13 @@ import (
 	"github.com/hat47x/eki-fabric/internal/control/clientapi"
 	"github.com/hat47x/eki-fabric/internal/control/leaserecall"
 	"github.com/hat47x/eki-fabric/internal/control/operatorapi"
+	"github.com/hat47x/eki-fabric/internal/control/resultacceptance"
 	"github.com/hat47x/eki-fabric/internal/control/workerplane"
 	"github.com/hat47x/eki-fabric/internal/core/admission"
 	"github.com/hat47x/eki-fabric/internal/core/ids"
 	"github.com/hat47x/eki-fabric/internal/core/measurement"
+	"github.com/hat47x/eki-fabric/internal/core/resultaccept"
+	"github.com/hat47x/eki-fabric/internal/core/resultclaim"
 	"github.com/hat47x/eki-fabric/internal/core/trustbundle"
 	"github.com/hat47x/eki-fabric/internal/core/workerenrollment"
 	"github.com/hat47x/eki-fabric/internal/spi/statestore"
@@ -342,12 +345,69 @@ func (s *Server) refreshReady() {
 	s.readyFlag.Store(s.workerConfigured == false || s.workerUp)
 }
 
+// defaultResultPolicy is the fallback policy when a deployment does not supply
+// one. It requires two independent verifications that differ in both principal
+// and operator (ADR-0032 §2.x). A deployment that needs a different policy
+// should make ResultPolicySource configurable.
+var defaultResultPolicy = resultacceptance.ResultPolicy{
+	Policy: resultaccept.Policy{
+		Level:              resultaccept.LevelRA2,
+		Threshold:          2,
+		DistinctDimensions: []resultaccept.Dimension{resultaccept.DimensionPrincipal, resultaccept.DimensionOperator},
+	},
+	Output: resultaccept.OutputMechanical,
+}
+
+// defaultProducers is the fallback producer source. It returns the Worker
+// identity as the principal and the claim's executor digest, which was already
+// verified against the WorkOrder when the claim was accepted. The same identity
+// is used for the operator dimension as a fallback; a deployment that needs
+// independent operator tracking should configure a custom ProducerSource.
+type defaultProducers struct{}
+
+func (defaultProducers) ProducerDimensions(_ context.Context, workerIdentity string, claim resultclaim.Claim) (map[resultaccept.Dimension]string, error) {
+	return map[resultaccept.Dimension]string{
+		resultaccept.DimensionPrincipal:      workerIdentity,
+		resultaccept.DimensionOperator:       workerIdentity,
+		resultaccept.DimensionExecutorDigest: claim.ExecutorDigest().Hex(),
+	}, nil
+}
+
+func (s *Server) resultAcceptance(store *sqlite.Store) (*resultacceptance.Service, error) {
+	svc, err := resultacceptance.New(resultacceptance.Config{
+		Attempts:   store,
+		Tasks:      store,
+		Claims:     store,
+		Results:    store,
+		Rejections: store,
+		Policies:   fixedPolicy{policy: defaultResultPolicy},
+		Producers:  defaultProducers{},
+		Clock:      systemClock{},
+	})
+	if err != nil {
+		return nil, err
+	}
+	return svc, nil
+}
+
+type fixedPolicy struct {
+	policy resultacceptance.ResultPolicy
+}
+
+func (f fixedPolicy) ResultPolicy(context.Context, ids.TaskID) (resultacceptance.ResultPolicy, error) {
+	return f.policy, nil
+}
+
 // startWorker opens the optional Worker listener (process-level test profile)
 // over the same state store as the Client API. Any failure is returned before
 // the process serves anything: a half-configured Worker listener is not a
 // reason to run without it.
 func (s *Server) startWorker(ctx context.Context, w *WorkerConfig, store *sqlite.Store) error {
-	accept, err := claimaccept.New(claimaccept.Config{Attempts: store, Leases: store, Claims: store, Clock: systemClock{}, Tasks: store})
+	resultAcceptance, err := s.resultAcceptance(store)
+	if err != nil {
+		return err
+	}
+	accept, err := claimaccept.New(claimaccept.Config{Attempts: store, Leases: store, Claims: store, Clock: systemClock{}, Tasks: store, ResultAcceptance: resultAcceptance})
 	if err != nil {
 		return err
 	}

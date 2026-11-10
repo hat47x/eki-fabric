@@ -17,6 +17,7 @@ import (
 	"github.com/hat47x/eki-fabric/internal/core/decisionpayload"
 	"github.com/hat47x/eki-fabric/internal/core/ids"
 	"github.com/hat47x/eki-fabric/internal/core/resultaccept"
+	"github.com/hat47x/eki-fabric/internal/core/resultclaim"
 )
 
 func TestAgentExecutesAndSubmitsResultClaim(t *testing.T) {
@@ -237,7 +238,7 @@ type fixedProducers struct {
 	executorDigest string
 }
 
-func (p fixedProducers) ProducerDimensions(context.Context, string) (map[resultaccept.Dimension]string, error) {
+func (p fixedProducers) ProducerDimensions(_ context.Context, _ string, _ resultclaim.Claim) (map[resultaccept.Dimension]string, error) {
 	return map[resultaccept.Dimension]string{
 		resultaccept.DimensionPrincipal:      "producer-principal",
 		resultaccept.DimensionOperator:       "producer-operator",

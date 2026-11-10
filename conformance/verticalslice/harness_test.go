@@ -570,7 +570,7 @@ func (p policySource) ResultPolicy(context.Context, ids.TaskID) (resultacceptanc
 // different Workers are independent of each other and of any verifier.
 type producers struct{}
 
-func (producers) ProducerDimensions(_ context.Context, worker string) (map[resultaccept.Dimension]string, error) {
+func (producers) ProducerDimensions(_ context.Context, worker string, _ resultclaim.Claim) (map[resultaccept.Dimension]string, error) {
 	return map[resultaccept.Dimension]string{
 		resultaccept.DimensionPrincipal:      "principal-of-" + worker,
 		resultaccept.DimensionOperator:       "operator-of-" + worker,
