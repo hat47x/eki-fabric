@@ -386,6 +386,60 @@ func TestTickKeepsTheWorkerOfAnExistingPlacingAttempt(t *testing.T) {
 	}
 }
 
+// A Task left active with a PLACING Attempt and no Lease by a previous tick
+// is resumed by the next tick, not stuck forever (#814).
+func TestTickResumesAStuckActiveTaskWithAPlacingAttempt(t *testing.T) {
+	store := memory.New()
+	if err := store.CompareAndSwapPolicy(context.Background(), 0, mustPolicy(t)); err != nil {
+		t.Fatal(err)
+	}
+	worker := seedWorker(t, store, 1)
+	taskID := seedTask(t, store, 1, taskstate.TaskPhaseReady)
+	// Simulate a previous tick that created the Attempt, marked the Task
+	// active, then died before placement completed.
+	task, err := store.LoadTask(context.Background(), taskID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	active := task
+	active.Phase = taskstate.TaskPhaseActive
+	active.Revision++
+	active.UpdatedAt = task.UpdatedAt.Add(time.Second)
+	if err := store.CompareAndSwapTask(context.Background(), task.ID, task.Revision, active); err != nil {
+		t.Fatalf("move Task to active: %v", err)
+	}
+	attempt, err := attemptstate.New(ids.AttemptID(mustNewAttemptID(t)), taskID, contract.SHA256([]byte{byte(1)}), 1, time.Now().UTC())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := store.CreateAttempt(context.Background(), attempt); err != nil {
+		t.Fatal(err)
+	}
+	placing := attempt
+	placing.Phase, placing.WorkerIdentity = attemptstate.AttemptPhasePlacing, worker
+	placing.Revision, placing.UpdatedAt = attempt.Revision+1, time.Now().UTC()
+	if err := store.CompareAndSwapAttempt(context.Background(), attempt.ID, attempt.Revision, placing); err != nil {
+		t.Fatal(err)
+	}
+
+	stub := &stubIssue{}
+	loop := newLoop(t, store, stub, nil)
+	result, err := loop.Tick(context.Background())
+	if err != nil {
+		t.Fatalf("Tick() error = %v", err)
+	}
+	if result.Dispatched != 1 {
+		t.Fatalf("Tick() = %+v, want one dispatched Task", result)
+	}
+	attempts, err := store.ListAttemptsByTask(context.Background(), taskID)
+	if err != nil || len(attempts) != 1 {
+		t.Fatalf("ListAttemptsByTask() = %d attempts (err %v), want the same Attempt", len(attempts), err)
+	}
+	if attempts[0].WorkerIdentity != worker || attempts[0].Phase != attemptstate.AttemptPhaseDispatched {
+		t.Fatalf("Attempt = phase %q worker %q, want the same Worker after assignment", attempts[0].Phase, attempts[0].WorkerIdentity)
+	}
+}
+
 func TestNewRejectsIncompleteConfig(t *testing.T) {
 	store := memory.New()
 	if _, err := New(Config{}); !errors.Is(err, ErrInvalidConfig) {

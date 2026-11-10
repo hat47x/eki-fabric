@@ -185,6 +185,23 @@ func (l *Loop) Tick(ctx context.Context) (TickResult, error) {
 		}
 		result.Dispatched++
 	}
+	// A previous tick may have left a Task active with a PLACING Attempt and
+	// no Lease (for example, placement failed after markActive). The loop
+	// resumes those Tasks here so they are not stuck forever (#814).
+	stuck, err := l.listStuckActiveTasks(ctx)
+	if err != nil {
+		return result, fmt.Errorf("list stuck active tasks: %w", err)
+	}
+	for _, task := range stuck {
+		if err := ctx.Err(); err != nil {
+			return result, err
+		}
+		if err := l.dispatchOne(ctx, task); err != nil {
+			result.Deferred = append(result.Deferred, DeferredTask{TaskID: task.ID, Reason: err.Error()})
+			continue
+		}
+		result.Dispatched++
+	}
 	return result, nil
 }
 
@@ -240,6 +257,29 @@ func (l *Loop) promoteAdmitted(ctx context.Context, result *TickResult) error {
 		result.Promoted++
 	}
 	return nil
+}
+
+// listStuckActiveTasks returns active Tasks whose open Attempt is PLACING and
+// has no LeaseID. These are Tasks a previous tick left mid-placement (#814).
+func (l *Loop) listStuckActiveTasks(ctx context.Context) ([]taskstate.TaskRecord, error) {
+	tasks, err := l.cfg.Tasks.ListTasksByPhase(ctx, taskstate.TaskPhaseActive, l.limit)
+	if err != nil {
+		return nil, fmt.Errorf("list active tasks: %w", err)
+	}
+	var stuck []taskstate.TaskRecord
+	for _, task := range tasks {
+		attempts, err := l.attempts.ListAttemptsByTask(ctx, task.ID)
+		if err != nil {
+			return nil, fmt.Errorf("list attempts for %s: %w", task.ID, err)
+		}
+		for _, a := range attempts {
+			if a.Phase == attemptstate.AttemptPhasePlacing && a.LeaseID == "" {
+				stuck = append(stuck, task)
+				break
+			}
+		}
+	}
+	return stuck, nil
 }
 
 func (l *Loop) dispatchOne(ctx context.Context, task taskstate.TaskRecord) error {
