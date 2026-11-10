@@ -237,7 +237,7 @@ type fixedProducers struct {
 	executorDigest string
 }
 
-func (p fixedProducers) ProducerDimensions(context.Context, string) (map[resultaccept.Dimension]string, error) {
+func (p fixedProducers) ProducerDimensions(_ context.Context, _ string, _ resultclaim.Claim) (map[resultaccept.Dimension]string, error) {
 	return map[resultaccept.Dimension]string{
 		resultaccept.DimensionPrincipal:      "producer-principal",
 		resultaccept.DimensionOperator:       "producer-operator",

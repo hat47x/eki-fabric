@@ -76,9 +76,11 @@ type PolicySource interface {
 
 // ProducerSource returns the independence dimension values of the Worker that
 // produced a result, from the trusted identity records and not from the Worker's
-// own words.
+// own words. The claim is the stored completed claim the decision is about, so
+// the source can use verified fields such as the executor digest that the
+// WorkOrder already bound.
 type ProducerSource interface {
-	ProducerDimensions(ctx context.Context, workerIdentity string) (map[resultaccept.Dimension]string, error)
+	ProducerDimensions(ctx context.Context, workerIdentity string, claim resultclaim.Claim) (map[resultaccept.Dimension]string, error)
 }
 
 type Clock interface{ Now() time.Time }
@@ -239,7 +241,7 @@ func (s *Service) Accept(ctx context.Context, req Request) (Result, error) {
 	if err != nil {
 		return Result{}, fmt.Errorf("%w: policy: %w", ErrPolicyUnavailable, err)
 	}
-	producer, err := s.producers.ProducerDimensions(ctx, attempt.WorkerIdentity)
+	producer, err := s.producers.ProducerDimensions(ctx, attempt.WorkerIdentity, claim)
 	if err != nil {
 		return Result{}, fmt.Errorf("%w: producer: %w", ErrPolicyUnavailable, err)
 	}

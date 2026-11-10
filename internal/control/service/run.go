@@ -27,6 +27,7 @@ import (
 	"github.com/hat47x/eki-fabric/internal/core/ids"
 	"github.com/hat47x/eki-fabric/internal/core/measurement"
 	"github.com/hat47x/eki-fabric/internal/core/resultaccept"
+	"github.com/hat47x/eki-fabric/internal/core/resultclaim"
 	"github.com/hat47x/eki-fabric/internal/core/trustbundle"
 	"github.com/hat47x/eki-fabric/internal/core/workerenrollment"
 	"github.com/hat47x/eki-fabric/internal/spi/statestore"
@@ -357,13 +358,18 @@ var defaultResultPolicy = resultacceptance.ResultPolicy{
 	Output: resultaccept.OutputMechanical,
 }
 
-// defaultProducers is the fallback producer source. It returns no dimensions,
-// which means verifications must still agree on the other distinct dimensions
-// to count as independent voices.
+// defaultProducers is the fallback producer source. It returns the Worker
+// identity as the principal and the claim's executor digest, which was already
+// verified against the WorkOrder when the claim was accepted. Other distinct
+// dimensions are left empty, so verifications must still agree on them to count
+// as independent voices.
 type defaultProducers struct{}
 
-func (defaultProducers) ProducerDimensions(context.Context, string) (map[resultaccept.Dimension]string, error) {
-	return map[resultaccept.Dimension]string{}, nil
+func (defaultProducers) ProducerDimensions(_ context.Context, workerIdentity string, claim resultclaim.Claim) (map[resultaccept.Dimension]string, error) {
+	return map[resultaccept.Dimension]string{
+		resultaccept.DimensionPrincipal:      workerIdentity,
+		resultaccept.DimensionExecutorDigest: claim.ExecutorDigest().Hex(),
+	}, nil
 }
 
 func (s *Server) resultAcceptance(store *sqlite.Store) (*resultacceptance.Service, error) {

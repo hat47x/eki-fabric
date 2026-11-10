@@ -42,7 +42,7 @@ type producerSource struct {
 	err  error
 }
 
-func (p producerSource) ProducerDimensions(context.Context, string) (map[resultaccept.Dimension]string, error) {
+func (p producerSource) ProducerDimensions(_ context.Context, _ string, _ resultclaim.Claim) (map[resultaccept.Dimension]string, error) {
 	return p.dims, p.err
 }
 
