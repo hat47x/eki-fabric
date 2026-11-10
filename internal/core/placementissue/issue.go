@@ -299,8 +299,8 @@ func (i *Issuer) now() (time.Time, error) {
 // claims time outside the moment the signature was produced.
 func (i *Issuer) window(now time.Time, requested time.Duration) (time.Time, time.Time, error) {
 	issuedAt := now.Truncate(time.Millisecond)
-	if issuedAt.Before(now) {
-		issuedAt = issuedAt.Add(time.Millisecond)
+	if issuedAt.After(now) {
+		issuedAt = now
 	}
 	validity := i.cfg.MaxValidity
 	if requested > 0 && requested < validity {

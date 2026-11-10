@@ -29,7 +29,11 @@ const IngestSessionLifetime = 15 * time.Minute
 // ErrInvalidIngest is the refusal of a declaration this deployment cannot honour.
 var ErrInvalidIngest = errors.New("clientapi: invalid ingest intent")
 
-const ingestIntentSchema = "eki.artifact-ingest-intent-request/v1"
+const (
+	ingestIntentSchema            = "eki.artifact-ingest-intent-request/v1"
+	ingestResponseSchema          = "eki.artifact-ingest-intent-response/v1"
+	MaxIngestSessionsPerPrincipal = 10
+)
 
 // ingestRequest is the declaration a Client makes before sending a body.
 type ingestRequest struct {
@@ -62,13 +66,12 @@ type uploadSession struct {
 	MaxBytes  int64     `json:"max_bytes"`
 }
 
-const ingestResponseSchema = "eki.artifact-ingest-intent-response/v1"
-
 // ingestSession is one open upload. It lives in memory on purpose: the bytes are
 // not written until the upload arrives, so a session that is lost in a restart
 // costs the Client a new declaration and nothing else (#245).
 type ingestSession struct {
 	principal string
+	key       string
 	ingestID  string
 	uploadID  string
 	mediaType string
@@ -81,18 +84,27 @@ type ingestSession struct {
 
 // ingestSessions holds the open sessions and the idempotency records.
 type ingestSessions struct {
-	mu      sync.Mutex
-	byKey   map[string]ingestResponse
+	mu       sync.Mutex
+	byKey    map[string]ingestResponse
 	byKeyReq map[string]ingestRequest
-	byID    map[string]*ingestSession
-	now     func() time.Time
+	byID     map[string]*ingestSession
+	now      func() time.Time
+	// perPrincipal counts open sessions per principal for rate limiting.
+	perPrincipal map[string]int
+	// maxSessionsPerPrincipal is the rate limit. 0 means unlimited.
+	maxSessionsPerPrincipal int
 }
 
 func newIngestSessions(now func() time.Time) *ingestSessions {
 	if now == nil {
 		now = time.Now
 	}
-	return &ingestSessions{byKey: map[string]ingestResponse{}, byKeyReq: map[string]ingestRequest{}, byID: map[string]*ingestSession{}, now: now}
+	return &ingestSessions{
+		byKey: map[string]ingestResponse{}, byKeyReq: map[string]ingestRequest{},
+		byID: map[string]*ingestSession{}, perPrincipal: map[string]int{},
+		maxSessionsPerPrincipal: MaxIngestSessionsPerPrincipal,
+		now:                     now,
+	}
 }
 
 // validate checks a declaration before any session is created.
@@ -140,19 +152,27 @@ func validMediaType(mt string) bool {
 
 // open returns the session for this declaration, creating one unless the same
 // Idempotency-Key was already used by this principal with different content.
+// An expired session replay is treated as a new declaration: the client gets
+// a fresh session rather than a 404 PUT (#806).
 func (s *ingestSessions) open(principal, key string, req ingestRequest) (ingestResponse, bool, error) {
 	scope := principal + "\x00" + key
 	now := s.now().UTC()
 
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	s.expire(now)
 	if answer, ok := s.byKey[scope]; ok {
 		if old, hasOld := s.byKeyReq[scope]; hasOld && !sameIngestRequest(old, req) {
 			return ingestResponse{}, false, &admission.Error{Kind: admission.KindConflict, Code: "IDEMPOTENCY_KEY_CONFLICT", Title: "The Idempotency-Key was already used with different content"}
 		}
+		// The session is still valid; return it.
 		return answer, true, nil
 	}
-	s.expire(now)
+	// Rate limit: reject new declarations when this principal already has the
+	// maximum number of open sessions.
+	if s.maxSessionsPerPrincipal > 0 && s.perPrincipal[principal] >= s.maxSessionsPerPrincipal {
+		return ingestResponse{}, false, &admission.Error{Kind: admission.KindTooManyRequests, Code: "INGEST_SESSION_LIMIT", Title: "The principal has reached the maximum number of open ingest sessions", Retryable: true}
+	}
 	ingestID, err := newOpaqueID()
 	if err != nil {
 		return ingestResponse{}, false, err
@@ -174,8 +194,9 @@ func (s *ingestSessions) open(principal, key string, req ingestRequest) (ingestR
 	}
 	s.byKey[scope] = answer
 	s.byKeyReq[scope] = req
+	s.perPrincipal[principal]++
 	s.byID[uploadID] = &ingestSession{
-		principal: principal, ingestID: ingestID, uploadID: uploadID,
+		principal: principal, key: key, ingestID: ingestID, uploadID: uploadID,
 		mediaType: req.MediaType, dataClass: req.RequestedDataClass,
 		maxBytes: req.DeclaredSizeBytes, expiresAt: answer.Upload.ExpiresAt, answer: answer,
 	}
@@ -213,7 +234,14 @@ func sameIngestRequest(a, b ingestRequest) bool {
 func (s *ingestSessions) expire(now time.Time) {
 	for id, session := range s.byID {
 		if now.After(session.expiresAt) {
+			scope := session.principal + "\x00" + session.key
 			delete(s.byID, id)
+			delete(s.byKey, scope)
+			delete(s.byKeyReq, scope)
+			s.perPrincipal[session.principal]--
+			if s.perPrincipal[session.principal] <= 0 {
+				delete(s.perPrincipal, session.principal)
+			}
 		}
 	}
 }
@@ -272,7 +300,7 @@ func (h *Handler) ingest(w http.ResponseWriter, r *http.Request, id Identity) {
 	answer, replayed, oerr := h.ingests.open(id.Principal.ID, key, req)
 	if oerr != nil {
 		var ae *admission.Error
-		if errors.As(oerr, &ae) && ae.Kind == admission.KindConflict {
+		if errors.As(oerr, &ae) && (ae.Kind == admission.KindConflict || ae.Kind == admission.KindTooManyRequests) {
 			writeProblem(w, statusFor(ae), ae)
 			return
 		}

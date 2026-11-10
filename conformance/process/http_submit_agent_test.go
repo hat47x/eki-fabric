@@ -173,6 +173,12 @@ func TestHTTPTaskSubmissionIsExecutedByTheAgent(t *testing.T) {
 	}
 	store.Close()
 
+	// Wait until the dispatch loop has created and dispatched an Attempt for
+	// this Task. Without this wait the test can race the loop: the Agent is
+	// already polling, but the placement has not been committed yet, and the
+	// 90 s poll deadline expires before the Agent ever sees an assignment.
+	_ = e.assignedAttempt(t, taskID)
+
 	waitFor(t, "agent execution and claim", func() (bool, string) {
 		executed, claimed := false, false
 		for _, ev := range readEvents(t, agentSide.events) {

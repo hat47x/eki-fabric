@@ -74,7 +74,14 @@ func (s *ingestSessions) take(principal, uploadID string) *ingestSession {
 		return nil
 	}
 	if s.now().UTC().After(session.expiresAt) {
+		scope := session.principal + "\x00" + session.key
 		delete(s.byID, uploadID)
+		delete(s.byKey, scope)
+		delete(s.byKeyReq, scope)
+		s.perPrincipal[session.principal]--
+		if s.perPrincipal[session.principal] <= 0 {
+			delete(s.perPrincipal, session.principal)
+		}
 		return nil
 	}
 	return session
@@ -84,7 +91,18 @@ func (s *ingestSessions) take(principal, uploadID string) *ingestSession {
 func (s *ingestSessions) finish(uploadID string) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	session, ok := s.byID[uploadID]
+	if !ok {
+		return
+	}
+	scope := session.principal + "\x00" + session.key
 	delete(s.byID, uploadID)
+	delete(s.byKey, scope)
+	delete(s.byKeyReq, scope)
+	s.perPrincipal[session.principal]--
+	if s.perPrincipal[session.principal] <= 0 {
+		delete(s.perPrincipal, session.principal)
+	}
 }
 
 // upload answers PUT /v1/artifact-uploads/{upload_id}. The bytes are measured

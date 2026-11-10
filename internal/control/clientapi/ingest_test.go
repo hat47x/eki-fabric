@@ -2,10 +2,12 @@ package clientapi
 
 import (
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/hat47x/eki-fabric/internal/core/admission"
 )
@@ -199,4 +201,79 @@ func newEnvWithBodyStore(t *testing.T) *env {
 	return newEnv(t, func(c *Config, _ *admission.Policy) {
 		c.Artifacts = fakeArtifacts{}
 	})
+}
+
+// An expired session replay gets a fresh session rather than a 404 PUT (#806).
+func TestAnExpiredSessionReplayGetsAFreshSession(t *testing.T) {
+	e := newEnvWithBodyStore(t)
+	first := decode(t, postIngest(e, "key-ingest-expiry-001", validIntent))
+	firstUploadID := first["upload"].(map[string]any)["upload_id"].(string)
+	// Advance the clock past the session lifetime.
+	e.handler.ingests.now = func() time.Time { return time.Now().Add(IngestSessionLifetime + time.Minute) }
+	second := decode(t, postIngest(e, "key-ingest-expiry-001", validIntent))
+	secondUploadID := second["upload"].(map[string]any)["upload_id"].(string)
+	if firstUploadID == secondUploadID {
+		t.Fatalf("upload ids are the same after expiry: %v", firstUploadID)
+	}
+}
+
+// When a session expires, its byKey entry is also removed so the same key can
+// be reused for a fresh declaration.
+func TestExpiredSessionsAreCleanedFromByKey(t *testing.T) {
+	e := newEnvWithBodyStore(t)
+	postIngest(e, "key-ingest-cleanup-001", validIntent)
+	if len(e.handler.ingests.byKey) != 1 {
+		t.Fatalf("byKey = %d, want 1", len(e.handler.ingests.byKey))
+	}
+	e.handler.ingests.now = func() time.Time { return time.Now().Add(IngestSessionLifetime + time.Minute) }
+	postIngest(e, "key-ingest-cleanup-001", validIntent)
+	if len(e.handler.ingests.byKey) != 1 {
+		t.Fatalf("byKey = %d after expiry replay, want 1", len(e.handler.ingests.byKey))
+	}
+}
+
+// A principal that has reached the maximum number of open sessions is refused
+// with 429 (#806).
+func TestAPrincipalAtTheSessionLimitIsRefusedWith429(t *testing.T) {
+	e := newEnvWithBodyStore(t)
+	for i := 0; i < MaxIngestSessionsPerPrincipal; i++ {
+		key := fmt.Sprintf("key-ingest-limit-%03d", i)
+		res := postIngest(e, key, validIntent)
+		if res.status != http.StatusCreated {
+			t.Fatalf("session %d: status = %d, want 201", i, res.status)
+		}
+	}
+	res := postIngest(e, "key-ingest-limit-over", validIntent)
+	if res.status != http.StatusTooManyRequests {
+		t.Fatalf("status = %d, want 429", res.status)
+	}
+	if !strings.Contains(string(res.body), "INGEST_SESSION_LIMIT") {
+		t.Fatalf("body = %q, want INGEST_SESSION_LIMIT", res.body)
+	}
+}
+
+// Finishing an upload releases the principal's session count so a new session
+// can be opened (#806).
+func TestFinishingAnUploadReleasesTheSessionCount(t *testing.T) {
+	e := newEnvWithBodyStore(t)
+	for i := 0; i < MaxIngestSessionsPerPrincipal; i++ {
+		key := fmt.Sprintf("key-ingest-release-%03d", i)
+		res := postIngest(e, key, validIntent)
+		if res.status != http.StatusCreated {
+			t.Fatalf("session %d: status = %d, want 201", i, res.status)
+		}
+	}
+	res := postIngest(e, "key-ingest-limit-over", validIntent)
+	if res.status != http.StatusTooManyRequests {
+		t.Fatalf("status = %d, want 429", res.status)
+	}
+	// Finish one of the sessions.
+	answer := decode(t, postIngest(e, "key-ingest-release-000", validIntent))
+	uploadID := answer["upload"].(map[string]any)["upload_id"].(string)
+	e.handler.ingests.finish(uploadID)
+	// Now a new session should be allowed.
+	res = postIngest(e, "key-ingest-release-new", validIntent)
+	if res.status != http.StatusCreated {
+		t.Fatalf("status = %d, want 201 after finish", res.status)
+	}
 }

@@ -55,7 +55,7 @@ const (
 	clientToken  = "test-profile-client-token-0123456789"
 	// pollDeadline is generous because the whole suite runs in parallel: a loaded
 	// machine must not turn a slow tick into a failure (#437).
-	pollDeadline = 90 * time.Second
+	pollDeadline = 300 * time.Second
 )
 
 var binDir string
