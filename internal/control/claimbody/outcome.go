@@ -8,6 +8,8 @@ func (o Outcome) Status() int {
 		return 410
 	case OutcomeDeliver:
 		return 200
+	case OutcomeUnreadable:
+		return 500
 	default:
 		return 404
 	}
@@ -21,6 +23,8 @@ func (o Outcome) Code() string {
 		return "artifact_expired"
 	case OutcomeWithdrawn:
 		return "artifact_withdrawn"
+	case OutcomeUnreadable:
+		return "artifact_unreadable"
 	case OutcomeDeliver:
 		return ""
 	default:
