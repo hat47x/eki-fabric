@@ -366,13 +366,11 @@ var defaultResultPolicy = resultacceptance.ResultPolicy{
 type defaultProducers struct{}
 
 func (defaultProducers) ProducerDimensions(_ context.Context, workerIdentity string, claim resultclaim.Claim) (map[resultaccept.Dimension]string, error) {
-	dims := map[resultaccept.Dimension]string{
+	return map[resultaccept.Dimension]string{
 		resultaccept.DimensionPrincipal:      workerIdentity,
 		resultaccept.DimensionOperator:       workerIdentity,
 		resultaccept.DimensionExecutorDigest: claim.ExecutorDigest().Hex(),
-	}
-	fmt.Printf("DEBUG defaultProducers: worker=%q executor=%q dims=%+v\n", workerIdentity, claim.ExecutorDigest().Hex(), dims)
-	return dims, nil
+	}, nil
 }
 
 func (s *Server) resultAcceptance(store *sqlite.Store) (*resultacceptance.Service, error) {
