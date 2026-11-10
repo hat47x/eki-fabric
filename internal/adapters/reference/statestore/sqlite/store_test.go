@@ -1196,6 +1196,21 @@ func TestAssignmentContract(t *testing.T) {
 	})
 }
 
+// TestAssignmentListingCarriesTaskID pins the TaskID the Worker delivery route
+// needs to resolve declared inputs (ADR-0029 §5.10).
+func TestAssignmentListingCarriesTaskID(t *testing.T) {
+	statestoretest.RunAssignmentInputDigestsContract(t, func(t testing.TB) statestoretest.AssignmentTestStore {
+		t.Helper()
+		store := openStore(t, filepath.Join(t.TempDir(), "state.db"))
+		t.Cleanup(func() {
+			if err := store.Close(); err != nil {
+				t.Errorf("Close() error = %v", err)
+			}
+		})
+		return store
+	})
+}
+
 // TestAssignmentListingDropsExpiredLeases pins the expiry filter the listing
 // applies: a Lease whose validity window closed on the wall clock is not
 // listed, because the Worker refuses expired material anyway and a stale row

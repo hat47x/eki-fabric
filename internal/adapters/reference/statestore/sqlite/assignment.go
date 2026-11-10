@@ -25,7 +25,7 @@ func (s *Store) ListEmittedAssignments(ctx context.Context, workerIdentity strin
 		limit = statestore.MaxAssignmentsPerList
 	}
 	rows, err := s.db.QueryContext(ctx, `
-SELECT l.lease_id, l.attempt_id, COALESCE(r.lease_id, '') <> '' AS revoked
+SELECT l.lease_id, l.attempt_id, COALESCE(r.lease_id, '') <> '' AS revoked, a.task_id
 FROM attempts a
 JOIN leases l ON l.lease_id = a.lease_id AND l.worker_identity = a.worker_identity
 JOIN lease_emissions e ON e.lease_id = l.lease_id AND e.status = 'emitted'
@@ -41,13 +41,13 @@ LIMIT ?`, workerIdentity, s.listingTime().UnixNano(), limit)
 		return nil, fmt.Errorf("list assignments: %w", err)
 	}
 	type pair struct {
-		lease, attempt string
-		revoked        bool
+		lease, attempt, task string
+		revoked              bool
 	}
 	var pairs []pair
 	for rows.Next() {
 		var p pair
-		if err := rows.Scan(&p.lease, &p.attempt, &p.revoked); err != nil {
+		if err := rows.Scan(&p.lease, &p.attempt, &p.revoked, &p.task); err != nil {
 			rows.Close()
 			return nil, fmt.Errorf("list assignments: %w", err)
 		}
@@ -66,6 +66,10 @@ LIMIT ?`, workerIdentity, s.listingTime().UnixNano(), limit)
 		if err != nil {
 			return nil, fmt.Errorf("%w: lease ID %q: %v", ErrCorruptRecord, p.lease, err)
 		}
+		taskID, err := ids.ParseTaskID(p.task)
+		if err != nil {
+			return nil, fmt.Errorf("%w: task ID %q: %v", ErrCorruptRecord, p.task, err)
+		}
 		attemptID, err := ids.ParseAttemptID(p.attempt)
 		if err != nil {
 			return nil, fmt.Errorf("%w: attempt ID %q: %v", ErrCorruptRecord, p.attempt, err)
@@ -82,7 +86,7 @@ LIMIT ?`, workerIdentity, s.listingTime().UnixNano(), limit)
 		if p.revoked {
 			leaseState = statestore.LeaseDeliveryRevoked
 		}
-		out = append(out, statestore.EmittedAssignment{LeaseID: leaseID, AttemptID: attemptID, Lease: le, WorkOrder: wo, LeaseState: leaseState})
+		out = append(out, statestore.EmittedAssignment{LeaseID: leaseID, AttemptID: attemptID, TaskID: taskID, Lease: le, WorkOrder: wo, LeaseState: leaseState})
 	}
 	return out, nil
 }
