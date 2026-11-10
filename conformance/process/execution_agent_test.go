@@ -17,6 +17,7 @@ import (
 	"github.com/hat47x/eki-fabric/internal/core/decisionpayload"
 	"github.com/hat47x/eki-fabric/internal/core/ids"
 	"github.com/hat47x/eki-fabric/internal/core/resultaccept"
+	"github.com/hat47x/eki-fabric/internal/core/resultclaim"
 )
 
 func TestAgentExecutesAndSubmitsResultClaim(t *testing.T) {
