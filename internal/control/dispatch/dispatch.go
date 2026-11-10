@@ -109,10 +109,11 @@ type ReservedLease struct {
 
 // Loop advances Ready Tasks through the issuing chain.
 type Loop struct {
-	cfg      Config
-	attempts AttemptSource
-	limit    int
-	now      func() time.Time
+	cfg          Config
+	attempts     AttemptSource
+	limit        int
+	now          func() time.Time
+	workerCursor int
 }
 
 // New validates the configuration.
@@ -407,18 +408,20 @@ func (l *Loop) reloadAttempt(ctx context.Context, taskID ids.TaskID, id ids.Atte
 	return attemptstate.AttemptRecord{}, fmt.Errorf("reload attempt: %s not found", id)
 }
 
-// pickWorker returns the first usable Worker, or an error naming the gap. The
-// fixed heuristic of this loop takes the first; the Scheduler still ranks the
-// one-element candidate list it produces.
+// pickWorker returns a usable Worker, rotating through the list so that Tasks
+// are distributed across registered Workers instead of always going to the
+// first one (#815).
 func (l *Loop) pickWorker(ctx context.Context, taskID ids.TaskID) (string, error) {
 	workers, err := l.cfg.Workers.ListWorkers(ctx)
 	if err != nil {
 		return "", fmt.Errorf("list workers: %w", err)
 	}
 	usable := l.pickWorkerWithHint(ctx, taskID, workers)
-	for _, w := range usable {
-		if w.Usable() {
-			return w.Identity.String(), nil
+	for i := range usable {
+		idx := (l.workerCursor + i) % len(usable)
+		if usable[idx].Usable() {
+			l.workerCursor = (idx + 1) % len(usable)
+			return usable[idx].Identity.String(), nil
 		}
 	}
 	return "", errors.New("no usable worker is registered")
