@@ -443,7 +443,7 @@ func (s *Server) mtlsHandler(w *WorkerConfig, store *sqlite.Store, plane *claimp
 	if err != nil {
 		return nil, err
 	}
-	assignments, err := workerplane.NewAssignmentService(store)
+	assignments, err := workerplane.NewAssignmentService(store, store)
 	if err != nil {
 		return nil, err
 	}

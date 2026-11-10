@@ -9,6 +9,8 @@ import (
 	"strings"
 	"time"
 
+	"github.com/hat47x/eki-fabric/internal/core/contract"
+	"github.com/hat47x/eki-fabric/internal/core/ids"
 	"github.com/hat47x/eki-fabric/internal/spi/statestore"
 	"github.com/hat47x/eki-fabric/internal/spi/workerplane"
 	"github.com/hat47x/eki-fabric/internal/spi/workerplane/testprofile"
@@ -21,29 +23,46 @@ import (
 // ErrInvalidAssignmentConfig is returned for an incomplete AssignmentService.
 var ErrInvalidAssignmentConfig = errors.New("invalid assignment service configuration")
 
+// TaskInputSource reads a Task's input digests in declaration order (ADR-0029
+// §5.10). The State Store implements it. The Worker needs the digests, not the
+// bytes: it fetches each body by digest from the artifact route.
+type TaskInputSource interface {
+	LoadTaskInputs(ctx context.Context, taskID ids.TaskID) ([]contract.Digest, error)
+}
+
 // AssignmentService serves the EMITTED Lease and WorkOrder bytes of one Worker
 // from the State Store. It re-signs nothing and changes nothing: the same call
 // returns the same bytes until the Attempt moves on.
 type AssignmentService struct {
-	store statestore.AssignmentStore
-	limit int
+	store  statestore.AssignmentStore
+	inputs TaskInputSource
+	limit  int
 }
 
 var _ workerplane.AssignmentSource = (*AssignmentService)(nil)
 
 // NewAssignmentService builds the service over a State Store.
-func NewAssignmentService(store statestore.AssignmentStore) (*AssignmentService, error) {
+//
+// The inputs source is not optional. A listing without input digests would tell
+// the Worker that an Attempt needs no inputs, and a Worker that starts without
+// reading its inputs produces a result about different data (ADR-0029 §5.7).
+// A deployment that cannot answer the question must not answer it wrongly, so
+// the missing source is a configuration error at start-up.
+func NewAssignmentService(store statestore.AssignmentStore, inputs TaskInputSource) (*AssignmentService, error) {
 	if store == nil {
 		return nil, fmt.Errorf("%w: state store is required", ErrInvalidAssignmentConfig)
 	}
-	return &AssignmentService{store: store, limit: statestore.MaxAssignmentsPerList}, nil
+	if inputs == nil {
+		return nil, fmt.Errorf("%w: task input source is required", ErrInvalidAssignmentConfig)
+	}
+	return &AssignmentService{store: store, inputs: inputs, limit: statestore.MaxAssignmentsPerList}, nil
 }
 
 // ListAssignments returns the assignments of the principal's Worker only. A
 // record whose recipient is not that Worker is a store invariant violation and
 // fails the call instead of being passed on.
 func (s *AssignmentService) ListAssignments(ctx context.Context, principal workerplane.Principal) ([]workerplane.Assignment, error) {
-	if s == nil || s.store == nil {
+	if s == nil || s.store == nil || s.inputs == nil {
 		return nil, fmt.Errorf("%w: service is not initialized", ErrInvalidAssignmentConfig)
 	}
 	if principal.WorkerIdentity == "" {
@@ -58,9 +77,17 @@ func (s *AssignmentService) ListAssignments(ctx context.Context, principal worke
 		if a.WorkOrder.WorkerIdentity() != principal.WorkerIdentity {
 			return nil, errors.New("assignment store returned another Worker's record")
 		}
+		// The inputs are read per Task, at listing time. A Task whose inputs
+		// cannot be read fails the listing: handing on the Lease without them
+		// would look like a Task with no inputs (ADR-0029 §5.10).
+		digests, err := s.inputs.LoadTaskInputs(ctx, a.TaskID)
+		if err != nil {
+			return nil, fmt.Errorf("load inputs of task %s: %w", a.TaskID, err)
+		}
 		out = append(out, workerplane.Assignment{
 			AttemptID: a.AttemptID.String(), LeaseID: a.LeaseID.String(), LeaseState: string(a.LeaseState),
 			LeaseEnvelope: a.Lease.SignedEnvelope(), WorkOrderEnvelope: a.WorkOrder.SignedEnvelope(),
+			InputDigests: digests,
 		})
 	}
 	return out, nil

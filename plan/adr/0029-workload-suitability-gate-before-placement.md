@@ -471,3 +471,16 @@ PAS-CAND-01（説明の並列探索）の受け入れ条件に、**「同じ入�
 **理由**: **「設定したつもりで効いていない」が一番見つけにくい**。実行時に「入力が取れない」と出ると、**配備の設定の誤りが、依頼の失敗として現れます**。**起動で断れば、設定を直せます**。
 
 この判断は §5.7・§5.10 の fail-closed と同じ向きです。
+### 5.18 割当の一覧は TaskID と InputDigests を運ぶ（2026-11-11、#763）
+
+**仮承認:** 本節は利用者の包括承認（2026-11-03）による仮承認です。
+
+**問題**: `AssignmentService.ListAssignments` は `InputDigests` を一度も埋めていなかった。`EmittedAssignment` には `TaskID` が無いので、**State Store に入力を問い合わせる術が無い**。結果として Worker は自分の Attempt が何を入力として要求しているか分からない。
+
+**決定**:
+- `statestore.EmittedAssignment` に `TaskID ids.TaskID` を追加する
+- `AssignmentService` が `TaskInputSource` を持ち、 listing ごとに `LoadTaskInputs` して `InputDigests` を埋める
+- `eki-control` 起動時に `NewAssignmentService(store, store)` を渡す
+- `inputs == nil` の配備では `AssignmentService` の起動が失敗する（fail-closed）
+
+**理由**: 入力を取得する経路は実装済みだったが、**誰も Worker に「何を取得すればよいか」を伝えていなかった**。`TaskID` なしでは State Store に入力を問い合わせられない。
