@@ -3,6 +3,7 @@ package clientapi
 import (
 	"encoding/json"
 	"net/http"
+	"net/http/httptest"
 	"strings"
 	"testing"
 
@@ -93,6 +94,24 @@ func TestAnUnusableDeclarationIsRefused(t *testing.T) {
 	}
 	if len(e.handler.ingests.byID) != 0 {
 		t.Fatalf("sessions = %d, want none created for refused declarations", len(e.handler.ingests.byID))
+	}
+}
+
+// A body that exceeds the configured max body size is refused with 413, the same
+// status the task route uses for an oversized body (#807).
+func TestAnOversizedIngestBodyIsRefusedWith413(t *testing.T) {
+	e := newEnvWithBodyStore(t)
+	big := strings.Repeat("a", int(e.handler.maxBody)+1)
+	headers := map[string]string{"Content-Type": jsonContentType, "Idempotency-Key": "key-ingest-big-001"}
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPost, "/v1/artifacts/ingest-intents", strings.NewReader(big))
+	for k, v := range headers {
+		req.Header.Set(k, v)
+	}
+	req.Header.Set("Authorization", "Bearer "+aliceToken)
+	e.handler.ingest(rec, req, Identity{Principal: admission.Principal{ID: "alice"}, Role: RoleClient})
+	if rec.Code != http.StatusRequestEntityTooLarge {
+		t.Fatalf("status = %d, want 413", rec.Code)
 	}
 }
 

@@ -249,7 +249,7 @@ func (h *Handler) ingest(w http.ResponseWriter, r *http.Request, id Identity) {
 	if err != nil {
 		var tooLarge *http.MaxBytesError
 		if errors.As(err, &tooLarge) {
-			writeProblem(w, http.StatusBadRequest, &admission.Error{Kind: admission.KindBadRequest, Code: "REQUEST_TOO_LARGE", Title: "The request exceeds the size limit"})
+			writeProblem(w, http.StatusRequestEntityTooLarge, &admission.Error{Kind: admission.KindBadRequest, Code: "REQUEST_TOO_LARGE", Title: "The request exceeds the size limit"})
 			return
 		}
 		writeProblem(w, http.StatusBadRequest, &admission.Error{Kind: admission.KindBadRequest, Code: "BODY_UNREADABLE", Title: "The request body could not be read"})
