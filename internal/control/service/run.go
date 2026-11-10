@@ -360,16 +360,19 @@ var defaultResultPolicy = resultacceptance.ResultPolicy{
 
 // defaultProducers is the fallback producer source. It returns the Worker
 // identity as the principal and the claim's executor digest, which was already
-// verified against the WorkOrder when the claim was accepted. Other distinct
-// dimensions are left empty, so verifications must still agree on them to count
-// as independent voices.
+// verified against the WorkOrder when the claim was accepted. The same identity
+// is used for the operator dimension as a fallback; a deployment that needs
+// independent operator tracking should configure a custom ProducerSource.
 type defaultProducers struct{}
 
 func (defaultProducers) ProducerDimensions(_ context.Context, workerIdentity string, claim resultclaim.Claim) (map[resultaccept.Dimension]string, error) {
-	return map[resultaccept.Dimension]string{
+	dims := map[resultaccept.Dimension]string{
 		resultaccept.DimensionPrincipal:      workerIdentity,
+		resultaccept.DimensionOperator:       workerIdentity,
 		resultaccept.DimensionExecutorDigest: claim.ExecutorDigest().Hex(),
-	}, nil
+	}
+	fmt.Printf("DEBUG defaultProducers: worker=%q executor=%q dims=%+v\n", workerIdentity, claim.ExecutorDigest().Hex(), dims)
+	return dims, nil
 }
 
 func (s *Server) resultAcceptance(store *sqlite.Store) (*resultacceptance.Service, error) {

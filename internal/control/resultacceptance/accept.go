@@ -245,6 +245,7 @@ func (s *Service) Accept(ctx context.Context, req Request) (Result, error) {
 	if err != nil {
 		return Result{}, fmt.Errorf("%w: producer: %w", ErrPolicyUnavailable, err)
 	}
+	fmt.Printf("DEBUG resultacceptance: worker=%q claimDims=%+v producer=%+v\n", attempt.WorkerIdentity, claim.Dimensions, producer)
 
 	decision, err := resultaccept.Decide(resultaccept.ResultClaim{
 		TaskID:       attempt.TaskID.String(),
