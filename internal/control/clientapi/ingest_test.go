@@ -10,6 +10,8 @@ import (
 
 const validIntent = `{"schema":"eki.artifact-ingest-intent-request/v1","declared_size_bytes":1024,"media_type":"text/plain","requested_data_class":"internal"}`
 
+const validIntentWithExpectedDigest = `{"schema":"eki.artifact-ingest-intent-request/v1","declared_size_bytes":1024,"media_type":"text/plain","requested_data_class":"internal","expected_digest":{"algorithm":"sha256","value":"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"}}`
+
 func postIngest(e *env, key, body string) response {
 	e.t.Helper()
 	headers := map[string]string{"Content-Type": jsonContentType}
@@ -109,6 +111,35 @@ func TestIngestNeedsAnIdempotencyKey(t *testing.T) {
 	res := postIngest(e, "", validIntent)
 	if res.status != http.StatusBadRequest {
 		t.Fatalf("status = %d, want 400", res.status)
+	}
+}
+
+// The spec example with expected_digest is accepted (#803).
+func TestTheSpecExampleWithExpectedDigestIsAccepted(t *testing.T) {
+	e := newEnvWithBodyStore(t)
+	res := postIngest(e, "key-ingest-expected-001", validIntentWithExpectedDigest)
+	if res.status != http.StatusCreated {
+		t.Fatalf("status = %d %s, want 201", res.status, res.body)
+	}
+}
+
+// An expected_digest with the wrong algorithm is refused.
+func TestAnExpectedDigestWithWrongAlgorithmIsRefused(t *testing.T) {
+	e := newEnvWithBodyStore(t)
+	body := `{"schema":"eki.artifact-ingest-intent-request/v1","declared_size_bytes":1024,"media_type":"text/plain","requested_data_class":"internal","expected_digest":{"algorithm":"sha1","value":"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"}}`
+	res := postIngest(e, "key-ingest-expected-002", body)
+	if res.status != http.StatusBadRequest {
+		t.Fatalf("status = %d %s, want 400", res.status, res.body)
+	}
+}
+
+// An expected_digest with a non-hex value is refused.
+func TestAnExpectedDigestWithNonHexValueIsRefused(t *testing.T) {
+	e := newEnvWithBodyStore(t)
+	body := `{"schema":"eki.artifact-ingest-intent-request/v1","declared_size_bytes":1024,"media_type":"text/plain","requested_data_class":"internal","expected_digest":{"algorithm":"sha256","value":"zzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzz"}}`
+	res := postIngest(e, "key-ingest-expected-003", body)
+	if res.status != http.StatusBadRequest {
+		t.Fatalf("status = %d %s, want 400", res.status, res.body)
 	}
 }
 

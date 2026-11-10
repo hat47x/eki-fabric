@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"crypto/rand"
 	"encoding/base64"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -36,6 +37,14 @@ type ingestRequest struct {
 	DeclaredSizeBytes  int64  `json:"declared_size_bytes"`
 	MediaType          string `json:"media_type"`
 	RequestedDataClass string `json:"requested_data_class"`
+	// ExpectedDigest is optional. When present, the uploaded body must match
+	// this digest (#803).
+	ExpectedDigest *expectedDigest `json:"expected_digest"`
+}
+
+type expectedDigest struct {
+	Algorithm string `json:"algorithm"`
+	Value     string `json:"value"`
 }
 
 // ingestResponse is the answer to a declaration: a named session to upload into.
@@ -108,6 +117,16 @@ func (s *ingestSessions) validate(body []byte) (ingestRequest, error) {
 		return ingestRequest{}, fmt.Errorf("%w: media_type must be type/subtype", ErrInvalidIngest)
 	case req.RequestedDataClass == "" || !admission.ValidDataClass(req.RequestedDataClass):
 		return ingestRequest{}, fmt.Errorf("%w: requested_data_class is not in the vocabulary", ErrInvalidIngest)
+	case req.ExpectedDigest != nil:
+		if req.ExpectedDigest.Algorithm != "sha256" {
+			return ingestRequest{}, fmt.Errorf("%w: expected_digest.algorithm must be sha256", ErrInvalidIngest)
+		}
+		if len(req.ExpectedDigest.Value) != 64 {
+			return ingestRequest{}, fmt.Errorf("%w: expected_digest.value must be 64 hex characters", ErrInvalidIngest)
+		}
+		if _, err := hex.DecodeString(req.ExpectedDigest.Value); err != nil {
+			return ingestRequest{}, fmt.Errorf("%w: expected_digest.value must be hex", ErrInvalidIngest)
+		}
 	}
 	return req, nil
 }
