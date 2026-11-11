@@ -26,12 +26,12 @@
 
 TEIのIssue [#4194](https://github.com/hat47x/tei-platform/issues/4194)のT1を「実行済み」とする条件を、次のD1〜D6に具体化します。**D1〜D4がすべて観測できたときだけ**、T1を実行済みと呼びます。
 
-- **D1 実際のAttempt**: 実EKIでTaskがWorkerへ配送され、Attemptが1件以上作られる。観測は`attempt_count >= 1`と、EKIの試験コードが読むAttemptレコードの存在。
-- **D2 実行結果の一致**: Workerが実行した`tei validate`の出力digest（stdoutとstderrを合わせたもの）が、同じ入力・同じ実行体でのローカル実行と一致する。
-- **D3 EKIの受理**: 独立した検証2件によりAcceptedResultが作られ、`GET /v1/tasks/{id}/result`が200と`output_digest`を返す。
-- **D4 Receipt**: TEIのReceiptが`accepted`になり、`basis`にD2とD3、`not_checked`に実行体・Toolchain・キャッシュの未固定が残る。
-- **D5 負例**: 重複・期限・結果未達・Lease失効・古いAttempt・部分Artifact・キャッシュ差異のそれぞれについて、実EKIで作れたものは実試験、作れないものは模擬と明記する。
-- **D6 契約乖離**: `expected_digest`、`ArtifactDescriptor.digest`の型、Problemコードの3件の扱いが決まり、試験またはIssueで追跡される。
+- **D1 実際のAttempt**: 実EKIでTaskがWorkerへ配送され、Attemptが1件以上作られる。観測は`attempt_count >= 1`と、EKIの試験コードが読むAttemptレコードの存在。**2026-11-11に満たした**（`conformance/process/tei_validation_test.go`）。
+- **D2 実行結果の一致**: Workerが実行した`tei validate`の出力digest（stdoutとstderrを合わせたもの）が、同じ入力・同じ実行体でのローカル実行と一致する。**2026-11-11に満たした**。
+- **D3 EKIの受理**: 独立した検証2件によりAcceptedResultが作られ、`GET /v1/tasks/{id}/result`が200と`output_digest`を返す。**未達**（WP-5、DR-3のOwner判断待ち）。
+- **D4 Receipt**: TEIのReceiptが`accepted`になり、`basis`にD2とD3、`not_checked`に実行体・Toolchain・キャッシュの未固定が残る。**未達**（D3に依存）。
+- **D5 負例**: 重複・期限・結果未達・Lease失効・古いAttempt・部分Artifact・キャッシュ差異のそれぞれについて、実EKIで作れたものは実試験、作れないものは模擬と明記する。**一部達した**（[RESULTS_2026-11-11_wp4](RESULTS_2026-11-11_wp4.md)の表）。
+- **D6 契約乖離**: `expected_digest`、`ArtifactDescriptor.digest`の型、Problemコードの3件の扱いが決まり、試験またはIssueで追跡される。**整理済み、Owner判断待ち**（#112・#245）。
 
 D1〜D6に含めないもの: ビルド・コード生成・テストの実行、本番配備、外部サービス、連合。これらはT1の後です。
 
@@ -217,16 +217,16 @@ D3は現行の起動経路では作れない。`resultacceptance`は既定で`RA
 
 | 事象 | 実EKIで作れるか | 現在の確かめ方 | 追加する試験 |
 |---|---|---|---|
-| 入力Artifactの往復 | 作れる | `delegate_test.go`（Mock）、`trace-1.json`（実） | WP-3の不一致停止 |
-| 重複実行（同じ冪等キー） | 作れる | `delegate_test.go`、`trace-2.json`（実） | なし |
-| 期限切れ（受理後に経過） | 作れる | `probe.json`（実） | なし |
+| 入力Artifactの往復 | 作れる | `delegate_test.go`（Mock）、`trace-1.json`（実）、`conformance/process/tei_validation_test.go`（実プロセス） | なし |
+| 重複実行（同じ冪等キー） | 作れる | `delegate_test.go`、`trace-2.json`（実） | Attemptがある状態での重複（WP-4の次の作業） |
+| 期限切れ（受理後に経過） | 作れる | `probe.json`（実） | Attemptがある状態での期限切れ |
 | 期限切れ（投入時に経過） | 作れる | `probe.json`（実） | なし |
-| 結果未到着 | 作れる | `trace-1.json`（実） | WP-4でAttempt後の`verifying`を追加 |
-| Lease失効 | 作れない（公開されない） | `simulate_test.go`（模擬） | 変更なし。実EKIで作れない理由をRESULTSへ |
+| 結果未到着 | 作れる | `trace-1.json`（実）、`conformance/process/tei_validation_test.go`（Attempt後の`verifying`） | なし |
+| Lease失効 | 作れない（公開されない） | `simulate_test.go`（模擬） | EKIの試験用profileでLeaseを失効させ、Attemptが閉じることを観測する試験 |
 | 古いAttempt | 作れない（公開されない） | `simulate_test.go`（模擬） | 同上 |
 | Fence不一致 | 作れない（公開されない） | `simulate_test.go`（模擬） | 同上 |
-| 部分的なArtifact受領 | 作れる（応答の形として） | `delegate_test.go`（Mock） | EKIの実応答で`available:false`を作れるかはWP-5後 |
-| キャッシュ差異 | 作れる（digest不一致として） | `delegate_test.go`、`simulate_test.go` | 実EKIで別実行体・別入力のdigest不一致を作る（任意） |
+| 部分的なArtifact受領 | 作れる（応答の形として） | `delegate_test.go`（Mock） | 実EKIの応答で`available:false`を作る試験 |
+| キャッシュ差異 | 作れる（digest不一致として） | `delegate_test.go`、`simulate_test.go` | 実EKIで別実行体・別入力のdigest不一致を作る試験（任意） |
 
 ## 6. 実行順序と停止点
 
