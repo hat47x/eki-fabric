@@ -56,6 +56,11 @@ type fakeEKI struct {
 	autoResult   *TaskResult
 	autoProblem  *Problem
 	autoDone     map[string]bool
+
+	// uploadArtifactIDOverride makes the upload answer name different bytes
+	// than the ones it measured. It exists to test the TEI-side check that
+	// stops before submitting a Task.
+	uploadArtifactIDOverride string
 }
 
 // putArtifact stores a body and returns the digest EKI would name it by.
@@ -189,9 +194,13 @@ func (f *fakeEKI) upload(w http.ResponseWriter, r *http.Request, uploadID string
 	}
 	delete(f.uploads, uploadID)
 	f.bodies[digest] = raw
+	artifactID := digest
+	if f.uploadArtifactIDOverride != "" {
+		artifactID = f.uploadArtifactIDOverride
+	}
 	f.meta[digest] = ArtifactDescriptor{
 		Schema:     "eki.artifact-descriptor/v1",
-		ArtifactID: digest,
+		ArtifactID: artifactID,
 		Digest:     &Digest{Algorithm: "sha256", Value: digest},
 		SizeBytes:  int64(len(raw)),
 		MediaType:  "application/gzip",

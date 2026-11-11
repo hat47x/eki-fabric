@@ -1,0 +1,106 @@
+{
+  "schema": "tei.eki-delegation-receipt-examples/v0",
+  "note": "Canonical shapes for the three outcomes. They are examples, not evidence: the values come from the Mock tests and the shape is checked by examples_test.go.",
+  "receipts": [
+    {
+      "schema": "tei.eki-delegation-receipt/v0",
+      "outcome": "accepted",
+      "reason": "EKI returned a result that matched TEI's local expectation",
+      "basis": [
+        "EKI admitted the request (202)",
+        "output_digest equals TEI's local expectation",
+        "artifact 4503dff3... fetched and re-hashed to its name"
+      ],
+      "not_checked": [
+        "whether EKI recomputed the result body (the AcceptedResult digest is a recorded value)",
+        "the Attempt, Lease and Fence identifiers (not exposed by the public status and result)",
+        "whether an independent verifier confirmed the result (#242)",
+        "whether the cache, toolchain and CPU matched the request (no fields pin them)"
+      ],
+      "admission": {
+        "status": 202,
+        "task_id": "tsk_01",
+        "request_fingerprint": "sha256:0000000000000000000000000000000000000000000000000000000000000000",
+        "client_request_id": "tei.eki-00000000000000000000000000000000",
+        "replayed": false
+      },
+      "attempt": {"observed_count": 1, "retried": false},
+      "result": {
+        "status": 200,
+        "output_digest": "4503dff3b38b21dc428f1842db86ab6ff5a748acf93cb9f5d0c1f61969776781",
+        "artifact_count": 1,
+        "available_count": 1,
+        "fetched_count": 1,
+        "fetched_digest_mismatch_count": 0
+      },
+      "local": {
+        "schema": "tei.eki-delegation-local-run/v0",
+        "command": ["validate", "-workspace", "reference/workspace", "-json"],
+        "exit_code": 0,
+        "duration_millis": 158,
+        "output_sha256": "4503dff3b38b21dc428f1842db86ab6ff5a748acf93cb9f5d0c1f61969776781",
+        "output_bytes": 2309,
+        "cache_state": "warm",
+        "source_revision": "b8cbd432a",
+        "executable_sha256": "673c511e362068874de192361bf4e96494720feb5a191d5bd4fb065cbfce6d75"
+      }
+    },
+    {
+      "schema": "tei.eki-delegation-receipt/v0",
+      "outcome": "rejected",
+      "reason": "The Task reached a terminal state without an accepted result (RESULT_NOT_AVAILABLE)",
+      "basis": [
+        "EKI admitted the request (202)",
+        "the result answer is a terminal Task without an accepted result (RESULT_NOT_AVAILABLE)"
+      ],
+      "not_checked": [
+        "the Attempt, Lease and Fence identifiers (not exposed by the public status and result)"
+      ],
+      "admission": {
+        "status": 202,
+        "task_id": "tsk_02",
+        "request_fingerprint": "sha256:1111111111111111111111111111111111111111111111111111111111111111",
+        "client_request_id": "tei.eki-11111111111111111111111111111111",
+        "replayed": true
+      },
+      "attempt": {"observed_count": 2, "retried": true},
+      "result": {
+        "status": 409,
+        "code": "RESULT_NOT_AVAILABLE",
+        "artifact_count": 0,
+        "available_count": 0,
+        "fetched_count": 0,
+        "fetched_digest_mismatch_count": 0
+      }
+    },
+    {
+      "schema": "tei.eki-delegation-receipt/v0",
+      "outcome": "undetermined",
+      "reason": "The deadline passed while RESULT_NOT_READY kept coming back; EKI does not move the Task to a terminal state (#111)",
+      "basis": [
+        "EKI admitted the request (202)",
+        "the result answer is retryable; no accepted result exists yet"
+      ],
+      "not_checked": [
+        "whether the Task will produce a result later",
+        "the Attempt, Lease and Fence identifiers (not exposed by the public status and result)"
+      ],
+      "admission": {
+        "status": 202,
+        "task_id": "tsk_03",
+        "request_fingerprint": "sha256:2222222222222222222222222222222222222222222222222222222222222222",
+        "client_request_id": "tei.eki-22222222222222222222222222222222",
+        "replayed": false
+      },
+      "attempt": {"observed_count": 0, "retried": false},
+      "result": {
+        "status": 409,
+        "code": "RESULT_NOT_READY",
+        "artifact_count": 0,
+        "available_count": 0,
+        "fetched_count": 0,
+        "fetched_digest_mismatch_count": 0
+      }
+    }
+  ]
+}

@@ -101,6 +101,11 @@ type Observation struct {
 	ClientRequestID    string  `json:"client_request_id,omitempty"`
 	Replayed           bool    `json:"replayed,omitempty"`
 
+	// InputError is set when the delegation stopped before submitting because
+	// the input EKI would hand to a Worker is not the input TEI asked for.
+	// A Task is never submitted in that state.
+	InputError string `json:"input_error,omitempty"`
+
 	Statuses []StatusSnapshot `json:"statuses,omitempty"`
 
 	ResultStatus  int         `json:"result_status,omitempty"`
@@ -175,6 +180,14 @@ func Evaluate(obs Observation) Receipt {
 			"EKIが結果の原データを再計算したか（AcceptedResult の digest は記録値であり、Client は再計算を強制できない）",
 			"Attempt・Lease・Fence の識別子との対応（公開の status と result には現れない。これらは EKI の責務のまま）",
 		},
+	}
+
+	// 0. The input path. A mismatch here stops the delegation before a Task is
+	// submitted, so there is nothing for EKI to refuse.
+	if obs.InputError != "" {
+		r.Outcome, r.Reason = OutcomeRejected, "入力Artifactの同一性を確かめられないため、Taskを送らなかった"
+		r.Basis = append(r.Basis, obs.InputError)
+		return r
 	}
 
 	// 1. Admission.

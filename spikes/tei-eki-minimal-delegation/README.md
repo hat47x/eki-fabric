@@ -21,8 +21,9 @@ TEIの副作用のない一件の処理を、EKIの公開Client APIだけを使�
 | ファイル | 内容 |
 |---|---|
 | `model.go` | EKIの外部契約に対応する型と、このSpikeの記録の型 |
+| `adapter.go` | TEI側の入口。`API` interfaceと`Adapter.Execute`、および委任の本体 |
 | `project.go` | TEIの操作をEKIの`TaskRequest`と`IngestIntent`へ投影する。対応表（Binding）を持つ |
-| `delegate.go` | 入力の持ち込み、Taskの投入、状態の観測、結果の取得、本文の再測定 |
+| `delegate.go` | 委任のオプションと記録の型、補助関数 |
 | `evaluate.go` | 公開APIで観測した事実から、TEI側のReceiptを組み立てる |
 | `simulate.go` | Lease・Fence・Attemptを含む**模擬**の負例を判定する（実EKIの観測ではない） |
 | `bundle.go` | 入力を決定的なtar.gzにする。置き場所や時刻でdigestが変わらない |
@@ -30,6 +31,8 @@ TEIの副作用のない一件の処理を、EKIの公開Client APIだけを使�
 | `trace.go` | 入力・実行体・条件・Task・Attempt数・結果・Receiptを一つの記録へ結ぶ |
 | `cmd/tei-eki-delegation/` | `offline`・`bundle`・`local`・`live`・`probe`のCLI |
 | `run_live.ps1` | 使い捨ての`eki-control`を起動し、ローカル実行とEKI委任を実行して証拠を残す |
+| `examples/receipts.json` | 三値それぞれのReceiptの形。後続の実装が読む例 |
+| `IMPLEMENTATION_PLAN.md` | 後続の実装者向けの作業計画、受入条件、判断記録、チェックリスト |
 | `*_test.go` | モックのEKIに対する試験と、契約・負例の試験 |
 | `RESULTS_2026-11-11.md` | 実行条件、観測、一般化できる範囲、未検証の範囲 |
 | `evidence/2026-11-11/` | 実行の生の出力（projection、trace、probe、local run） |
@@ -147,8 +150,11 @@ tei-eki-delegation probe    拒否経路を実EKIに対して確かめる
 - 時間は一台の開発PC上での値である。ローカル実行の時間は同じホストでも0.2秒から9秒まで変動した（`RESULTS`参照）。一件の比較から一般的な費用を結論にしない。
 - EKIの契約と実装の不一致（`expected_digest`の不強制、`digest`の型）は見つけたが、契約を変更していない。判断はIssueで行う。
 
-## このSpikeが変更しないもの
+## 次の実装
 
+後続の作業は[IMPLEMENTATION_PLAN.md](IMPLEMENTATION_PLAN.md)に、完了の定義（T1のD1〜D6）、作業パッケージ、Owner判断の記録、実行順序、チェックリストとして整理しています。WP-3（入力の不一致でTaskを送らない）は実装済みです。製品コードへ移す前に、少なくともWP-4（実際のAttemptをEKIの試験用profileで作る）を済ませてください。Receiptの形は[examples/receipts.json](examples/receipts.json)にあります。
+
+## このSpikeが変更しないもの
 - EKIの外部契約（`spec/external/openapi.json`）と実行保証。
 - TEIのProduct Contract。
 - 本番DB、外部サービス、実Provider。

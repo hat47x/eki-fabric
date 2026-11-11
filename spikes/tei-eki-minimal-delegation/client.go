@@ -52,8 +52,7 @@ func StatusOf(err error) int {
 
 // Client is a minimal EKI External Client Plane client. It sends only what the
 // external contract declares and never reads EKI's internal state.
-type Client struct {
-	// BaseURL is the Client API root, for example "http://127.0.0.1:18080".
+type Client struct { // BaseURL is the Client API root, for example "http://127.0.0.1:18080".
 	BaseURL string
 	// Token is the Bearer token of the principal.
 	Token string
@@ -73,6 +72,10 @@ func (c *Client) RequestCount() int {
 	defer c.mu.Unlock()
 	return c.requests
 }
+
+// Client is one implementation of the adapter's API. The assertion keeps the
+// two from drifting silently when either side changes.
+var _ API = (*Client)(nil)
 
 func (c *Client) httpClient() *http.Client {
 	if c.HTTP != nil {
