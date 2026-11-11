@@ -63,7 +63,7 @@ func TestAMissingInputsDirectoryIsRefusedAtStart(t *testing.T) {
 // sets both does not silently run unfetched assignments.
 func TestAUsablePairBuildsAFetcher(t *testing.T) {
 	dir := t.TempDir()
-	if inputFetcher("https://worker.test", dir) == nil {
+	if inputFetcher("https://worker.test", dir, nil) == nil {
 		t.Fatal("inputFetcher() returned nil for a usable pair")
 	}
 }
@@ -71,7 +71,7 @@ func TestAUsablePairBuildsAFetcher(t *testing.T) {
 // Neither setting leaves the Agent without a fetcher, and an assignment that
 // declares inputs is then refused rather than started unread.
 func TestNoSettingsLeavesNoFetcher(t *testing.T) {
-	if inputFetcher("", "") != nil {
+	if inputFetcher("", "", nil) != nil {
 		t.Fatal("inputFetcher() built a fetcher without settings")
 	}
 }

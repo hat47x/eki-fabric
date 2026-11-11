@@ -9,6 +9,8 @@
 //	bundle   pack a directory into a deterministic input artifact
 //	local    run the same operation locally and record the baseline
 //	live     delegate the operation to a running eki-control and write a trace
+//	probe    check the refusal paths against a running eki-control
+//	compare  assemble the local-vs-EKI cost report from the records above
 package main
 
 import (
@@ -48,6 +50,8 @@ func run(args []string) error {
 		return runLive(args[1:])
 	case "probe":
 		return runProbe(args[1:])
+	case "compare":
+		return runCompare(args[1:])
 	default:
 		return fmt.Errorf("unknown subcommand %q", args[0])
 	}

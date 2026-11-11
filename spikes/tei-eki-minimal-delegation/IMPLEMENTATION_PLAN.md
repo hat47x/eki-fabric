@@ -81,7 +81,7 @@ D1〜D6に含めないもの: ビルド・コード生成・テストの実行�
 - 受入: 不一致時に`SubmitTask`が一度も呼ばれない。Receiptの`reason`に、宣言digestと実測digestの両方が出る。
 - 依存: なし。Owner判断: なし（狭く安全な既定）。
 
-### WP-4: 実際のAttemptを作る（T1の中心）
+### WP-4: 実際のAttemptを作る（完了。D1・D2を満たす。2026-11-11の実測）
 
 EKIの`conformance/process`の既存の仕組みを使う。新しい共通RuntimeやRegistryは作らない。
 
@@ -142,6 +142,8 @@ EKIの`conformance/process`の既存の仕組みを使う。新しい共通Runti
   6. Taskの公開状態が`verifying`であることを確かめる。結果は`409 RESULT_NOT_READY`のまま（WP-5の範囲）。
   7. 可能なら、Runnerが保持した出力bodyがArtifactとして保管され、`GET /v1/artifacts/{id}`で取得できることも確かめる（`conformance/process/execution_body_test.go`の経路）。取得できた本文のdigestがClaimの`OutputDigest`と一致することを確認する。取得できない場合は、その事実を記録し、成功として扱わない。
 - 受入: 環境変数ありで試験が通り、D1とD2が観測できる。環境変数なしでは`t.Skip`し、他の開発者の実行を止めない。Claimのdigestが期待値と違う場合は、期待値を書き換えずに失敗させる。
+- 実測（2026-11-11、WSL2 Ubuntu 22.04）: 成功。Task `tsk_27e89d…` にAttempt `atm_858981…` が作られ、Agentの`OutputDigest`がTEIのローカル期待値`d1d220ad…`と一致した。詳細は[RESULTS_2026-11-11_wp4](RESULTS_2026-11-11_wp4.md)。
+- 実行の前提として、EKI側の未配線2件を直した（入力ArtifactをWorker Planeから配る口と、AgentのfetcherのmTLS）。この2件がなければ、Agentは`input_unavailable`で割当を拒否する。
 - 注意:
   - Runnerの出力digestは**stdoutとstderrを合わせたバイト列**のSHA-256（`internal/agent/nativerunner/runner.go`）。ローカル比較も同じ結合で測る。`validate`は通常stderrを出さないが、測り方を合わせる。
   - 展開先のパスが出力に混ざると、ローカルとWorkerでdigestが変わる。`tei.cli.validate/v0`の出力に絶対パスが入らないことは2026-11-11の手元の実行で確認したが、実装を変えたら必ず再確認する。混ざる場合は、同じパスで実行するか、比較前に正規化する。正規化を「同じ結果」の根拠にしない。
@@ -181,13 +183,14 @@ D3は現行の起動経路では作れない。`resultacceptance`は既定で`RA
 - `ArtifactDescriptor.digest`の型が契約と違う。既定は両形式を受け取る。契約を直す場合は`openapi.json`をOwnerが変え、Spikeの`Digest.UnmarshalJSON`を厳格化して試験を更新する。
 - Problemコードが契約に列挙されない。既定は`ARTIFACT_NOT_AVAILABLE`と`INPUT_ARTIFACT_UNRESOLVABLE`の両方を「入力が使えない」として扱う。列挙を足す場合は`client.go`の判定表と`probe.go`の期待を更新する。
 
-### WP-8: ローカル実行との比較を、判断できる形にする
+### WP-8: ローカル実行との比較を、判断できる形にする（完了）
 
 現状の比較は1回の実測で、ローカル実行の時間は同じホストでも0.15〜9秒台まで変動した。費用の結論には使えない。
 
-- 変更: `run_live.ps1`または`cmd/tei-eki-delegation`へ`compare`を足す。
-- 追加: ローカル5回以上と、EKIの往復（待ちを除く）5回以上の`min`・中央値・`max`、キャッシュ状態、ホストの負荷メモ。入力サイズとリクエスト数を併記する。
-- 受入: レポートに「EKIはこの操作を実行していない」と明記する。WP-4が完了するまでは、実行費用の比較として扱わない。
+- 変更: `compare.go`（`Comparison`・`Compare`）、`cmd/tei-eki-delegation/compare.go`（`compare`サブコマンド）、`compare_test.go`。
+- 形: ローカルのサンプル数・min・中央値・max・出力の安定性・終了コード・キャッシュ状態と、EKI往復のサンプル数・min・中央値・max・**待ちを除いた封筒の費用**・リクエスト数・receiptの内訳・観測したAttempt数を1つのJSONにする。
+- 受入: 空の入力では標本数を0とし、時間を発明しない。`caveat`が空でない。`attempts_observed`が0なら「EKIはこの操作を実行していない」と読める。
+- 実行: `tei-eki-delegation compare -local ... -trace ...`。既存の証拠から`evidence/2026-11-11/comparison.json`を作った。ローカルは3標本（158 / 398 / 836 ms、出力は一致）、EKI往復は2標本（中央値3,088 ms、待ち3,000 msを除いた封筒は88 ms、12リクエスト、Attemptは0）。
 - Owner判断: なし。
 
 ### WP-9: 製品化と後片付け
@@ -227,7 +230,7 @@ D3は現行の起動経路では作れない。`resultacceptance`は既定で`RA
 
 ## 6. 実行順序と停止点
 
-1. **Phase A（Owner判断不要）**: WP-3（完了）→ WP-8 → WP-2の維持。残りはWP-8。
+1. **Phase A（Owner判断不要）**: WP-3（完了）・WP-4（完了。D1・D2を満たす）・WP-8（完了）。残りはWP-2の維持。
 2. **Phase B（EKIの試験コード）**: WP-4。環境変数ありで実行し、D1・D2を観測する。Windowsで不安定ならLinuxで実行し、結果を記録する。
 3. **判断待ち（停止点）**: DR-1（#245）、DR-2（#112）、DR-3（#242）、DR-6（TEI #4194）。ここで製品の契約・保証に関わる実装を始めない。
 4. **Phase C（判断後）**: WP-5・WP-6・WP-7の該当部分。
