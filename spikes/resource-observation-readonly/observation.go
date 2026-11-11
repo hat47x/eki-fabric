@@ -11,25 +11,25 @@ const Schema = "eki.resource-observation/v0"
 // Observation is a read-only claim about a provider's current state.
 // It is not a placement decision.
 type Observation struct {
-	Schema       string
-	ProviderID   string
-	Capability   Capability
-	State        ProviderState
-	ObservedAt   time.Time
-	Staleness    time.Duration
-	CostCandidate CostCandidate
-	TrustLevel   string
-	DataClasses  []string
+	Schema         string
+	ProviderID     string
+	Capability     Capability
+	State          ProviderState
+	ObservedAt     time.Time
+	Staleness      time.Duration
+	CostCandidate  CostCandidate
+	TrustLevel     string
+	DataClasses    []string
 }
 
 // Capability describes what the provider can run.
 type Capability struct {
-	CPUMillis      int64
-	MemoryBytes    int64
+	CPUMillis       int64
+	MemoryBytes     int64
 	WallTimeSeconds int64
-	GPUCount       int64
-	CacheLocality  string
-	RuntimeClass   string
+	GPUCount        int64
+	CacheLocality   string
+	RuntimeClass    string
 }
 
 // ProviderState is the observed state.
@@ -74,6 +74,15 @@ func (s *SnapshotStore) Set(obs Observation) error {
 func (s *SnapshotStore) Get(providerID string) (Observation, bool) {
 	obs, ok := s.entries[providerID]
 	return obs, ok
+}
+
+// List returns all observations.
+func (s *SnapshotStore) List() []Observation {
+	out := make([]Observation, 0, len(s.entries))
+	for _, obs := range s.entries {
+		out = append(out, obs)
+	}
+	return out
 }
 
 // SetReadOnly makes the snapshot store read-only.

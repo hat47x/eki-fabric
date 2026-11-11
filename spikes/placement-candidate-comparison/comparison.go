@@ -46,9 +46,21 @@ func Compare(c Comparison) (Candidate, error) {
 			best = cand
 		} else if cand.Cost.Amount == best.Cost.Amount && cand.LatencyNanos < best.LatencyNanos {
 			best = cand
-		} else if cand.Cost.Amount == best.Cost.Amount && cand.LatencyNanos == best.LatencyNanos && cand.TrustLevel > best.TrustLevel {
+		} else if cand.Cost.Amount == best.Cost.Amount && cand.LatencyNanos == best.LatencyNanos && trustRank(cand.TrustLevel) > trustRank(best.TrustLevel) {
 			best = cand
 		}
 	}
 	return best, nil
+}
+
+func trustRank(level string) int {
+	switch level {
+	case "high":
+		return 3
+	case "medium":
+		return 2
+	case "low":
+		return 1
+	}
+	return 0
 }
