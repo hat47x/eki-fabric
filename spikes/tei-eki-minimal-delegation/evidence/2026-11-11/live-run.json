@@ -1,0 +1,265 @@
+{
+    "schema":  "tei.eki-delegation-live-run/v0",
+    "ran_at":  "2026-11-11T05:03:04.8941704Z",
+    "eki_revision":  "f3492f55bf0ec571f139d4b6153498d248c0d58d",
+    "tei_revision":  "b8cbd432a",
+    "tei_sha256":  "673c511e362068874de192361bf4e96494720feb5a191d5bd4fb065cbfce6d75",
+    "eki_control":  "eki-control.exe",
+    "tei":  "tei.exe",
+    "client_base":  "http://127.0.0.1:50461",
+    "input_bundle":  {
+                         "path":  "D:\\GIT\\hat47x\\eki-wt-teideleg\\spikes\\tei-eki-minimal-delegation\\evidence\\2026-11-11\\.work\\tei-eki-delegation-acc73a53f03942c99f8e7982d2c2ba2e\\workspace.tar.gz",
+                         "schema":  "tei.eki-input-bundle/v0",
+                         "sha256":  "4503dff3b38b21dc428f1842db86ab6ff5a748acf93cb9f5d0c1f61969776781",
+                         "size_bytes":  14507
+                     },
+    "local_exit_code":  0,
+    "local_sha256":  "d1d220ad36e48ca6a52e450027e1df524c509f0a9f07c3fccdd9ac4f2aa070b2",
+    "local_runs":  [
+                       {
+                           "schema":  "tei.eki-delegation-local-run/v0",
+                           "command":  [
+                                           "validate",
+                                           "-workspace",
+                                           "D:\\GIT\\hat47x\\.tmp_teideleg\\tei-src\\reference\\workspace",
+                                           "-json"
+                                       ],
+                           "exit_code":  0,
+                           "duration_millis":  836,
+                           "output_sha256":  "d1d220ad36e48ca6a52e450027e1df524c509f0a9f07c3fccdd9ac4f2aa070b2",
+                           "output_bytes":  2309,
+                           "cache_state":  "warm",
+                           "source_revision":  "b8cbd432a",
+                           "executable_sha256":  "673c511e362068874de192361bf4e96494720feb5a191d5bd4fb065cbfce6d75"
+                       },
+                       {
+                           "schema":  "tei.eki-delegation-local-run/v0",
+                           "command":  [
+                                           "validate",
+                                           "-workspace",
+                                           "D:\\GIT\\hat47x\\.tmp_teideleg\\tei-src\\reference\\workspace",
+                                           "-json"
+                                       ],
+                           "exit_code":  0,
+                           "duration_millis":  158,
+                           "output_sha256":  "d1d220ad36e48ca6a52e450027e1df524c509f0a9f07c3fccdd9ac4f2aa070b2",
+                           "output_bytes":  2309,
+                           "cache_state":  "warm",
+                           "source_revision":  "b8cbd432a",
+                           "executable_sha256":  "673c511e362068874de192361bf4e96494720feb5a191d5bd4fb065cbfce6d75"
+                       },
+                       {
+                           "schema":  "tei.eki-delegation-local-run/v0",
+                           "command":  [
+                                           "validate",
+                                           "-workspace",
+                                           "D:\\GIT\\hat47x\\.tmp_teideleg\\tei-src\\reference\\workspace",
+                                           "-json"
+                                       ],
+                           "exit_code":  0,
+                           "duration_millis":  398,
+                           "output_sha256":  "d1d220ad36e48ca6a52e450027e1df524c509f0a9f07c3fccdd9ac4f2aa070b2",
+                           "output_bytes":  2309,
+                           "cache_state":  "warm",
+                           "source_revision":  "b8cbd432a",
+                           "executable_sha256":  "673c511e362068874de192361bf4e96494720feb5a191d5bd4fb065cbfce6d75"
+                       }
+                   ],
+    "local_min_millis":  158,
+    "local_max_millis":  836,
+    "live_1_exit_code":  3,
+    "live_2_exit_code":  3,
+    "probe_exit_code":  0,
+    "probe_report":  {
+                         "schema":  "tei.eki-delegation-probe/v0",
+                         "base_url":  "http://127.0.0.1:50461",
+                         "ran_at":  "2026-11-11T05:02:54.0554606Z",
+                         "results":  [
+                                         {
+                                             "name":  "input not uploaded",
+                                             "expected":  "422 INPUT_ARTIFACT_UNRESOLVABLE",
+                                             "observed":  "422 INPUT_ARTIFACT_UNRESOLVABLE",
+                                             "passed":  true
+                                         },
+                                         {
+                                             "name":  "declared expected_digest is not enforced",
+                                             "expected":  "202, artifact_id equals the declared digest",
+                                             "observed":  "202 accepted with artifact_id=7d67252b4f1cd22fb18ed14f0f7262659226bcb5e2acb1ab920ec097fecba1f4 (declared 4503dff3b38b21dc428f1842db86ab6ff5a748acf93cb9f5d0c1f61969776781)",
+                                             "passed":  false
+                                         },
+                                         {
+                                             "name":  "failed upload leaves no body",
+                                             "expected":  "404 ARTIFACT_NOT_FOUND",
+                                             "observed":  "404 ",
+                                             "passed":  true
+                                         },
+                                         {
+                                             "name":  "first upload",
+                                             "expected":  "202",
+                                             "observed":  "ok",
+                                             "passed":  true
+                                         },
+                                         {
+                                             "name":  "second upload to the same session",
+                                             "expected":  "404 (no resume support)",
+                                             "observed":  "404 UPLOAD_NOT_FOUND",
+                                             "passed":  true
+                                         },
+                                         {
+                                             "name":  "same key and same body",
+                                             "expected":  "202 replayed=true, same task_id",
+                                             "observed":  "first=ok second=ok replayed=true",
+                                             "passed":  true
+                                         },
+                                         {
+                                             "name":  "same key with a different body",
+                                             "expected":  "409 IDEMPOTENCY_KEY_CONFLICT",
+                                             "observed":  "409 IDEMPOTENCY_KEY_CONFLICT",
+                                             "passed":  true
+                                         },
+                                         {
+                                             "name":  "deadline passes without dispatch",
+                                             "expected":  "still queued, no terminal_code",
+                                             "observed":  "status=queued terminal=\"\" err=ok",
+                                             "passed":  true
+                                         },
+                                         {
+                                             "name":  "cancel moves the task to terminal",
+                                             "expected":  "cancelled/CANCELLED",
+                                             "observed":  "cancelled/CANCELLED",
+                                             "passed":  true
+                                         },
+                                         {
+                                             "name":  "result after cancel",
+                                             "expected":  "409 RESULT_NOT_AVAILABLE",
+                                             "observed":  "409 RESULT_NOT_AVAILABLE",
+                                             "passed":  true
+                                         },
+                                         {
+                                             "name":  "result before acceptance",
+                                             "expected":  "409 RESULT_NOT_READY",
+                                             "observed":  "409 RESULT_NOT_READY",
+                                             "passed":  true
+                                         },
+                                         {
+                                             "name":  "deadline already passed",
+                                             "expected":  "422 DEADLINE_IN_PAST",
+                                             "observed":  "422 DEADLINE_IN_PAST",
+                                             "passed":  true
+                                         },
+                                         {
+                                             "name":  "unknown artifact",
+                                             "expected":  "404",
+                                             "observed":  "404 ",
+                                             "passed":  true
+                                         }
+                                     ],
+                         "pass_count":  12,
+                         "fail_count":  1
+                     },
+    "trace_1_receipt":  {
+                            "schema":  "tei.eki-delegation-receipt/v0",
+                            "outcome":  "undetermined",
+                            "reason":  "期限を過ぎても RESULT_NOT_READY のままで、EKI は終端状態にしていない（#111）",
+                            "basis":  [
+                                          "EKI admitted the request (202)",
+                                          "the result answer is retryable; no accepted result exists yet"
+                                      ],
+                            "not_checked":  [
+                                                "EKIが結果の原データを再計算したか（AcceptedResult の digest は記録値であり、Client は再計算を強制できない）",
+                                                "Attempt・Lease・Fence の識別子との対応（公開の status と result には現れない。これらは EKI の責務のまま）"
+                                            ],
+                            "admission":  {
+                                              "status":  202,
+                                              "task_id":  "tsk_71ccb1303fe8b9321447c05eda582734",
+                                              "request_fingerprint":  "sha256:7e7aebebafe7c9289992c5fafba71b3d7c16abc202d98f1525b645c382bd4a2c",
+                                              "client_request_id":  "tei.eki-f8592d97e40316c01590a74cd56d97cc",
+                                              "replayed":  false
+                                          },
+                            "attempt":  {
+                                            "observed_count":  0,
+                                            "retried":  false
+                                        },
+                            "result":  {
+                                           "status":  409,
+                                           "code":  "RESULT_NOT_READY",
+                                           "artifact_count":  0,
+                                           "available_count":  0,
+                                           "fetched_count":  0,
+                                           "fetched_digest_mismatch_count":  0
+                                       },
+                            "local":  {
+                                          "schema":  "tei.eki-delegation-local-run/v0",
+                                          "command":  [
+                                                          "validate",
+                                                          "-workspace",
+                                                          "D:\\GIT\\hat47x\\.tmp_teideleg\\tei-src\\reference\\workspace",
+                                                          "-json"
+                                                      ],
+                                          "exit_code":  0,
+                                          "duration_millis":  836,
+                                          "output_sha256":  "d1d220ad36e48ca6a52e450027e1df524c509f0a9f07c3fccdd9ac4f2aa070b2",
+                                          "output_bytes":  2309,
+                                          "cache_state":  "warm",
+                                          "source_revision":  "b8cbd432a",
+                                          "executable_sha256":  "673c511e362068874de192361bf4e96494720feb5a191d5bd4fb065cbfce6d75"
+                                      }
+                        },
+    "trace_2_receipt":  {
+                            "schema":  "tei.eki-delegation-receipt/v0",
+                            "outcome":  "undetermined",
+                            "reason":  "期限を過ぎても RESULT_NOT_READY のままで、EKI は終端状態にしていない（#111）",
+                            "basis":  [
+                                          "EKI admitted the request (202)",
+                                          "the result answer is retryable; no accepted result exists yet"
+                                      ],
+                            "not_checked":  [
+                                                "EKIが結果の原データを再計算したか（AcceptedResult の digest は記録値であり、Client は再計算を強制できない）",
+                                                "Attempt・Lease・Fence の識別子との対応（公開の status と result には現れない。これらは EKI の責務のまま）"
+                                            ],
+                            "admission":  {
+                                              "status":  202,
+                                              "task_id":  "tsk_71ccb1303fe8b9321447c05eda582734",
+                                              "request_fingerprint":  "sha256:7e7aebebafe7c9289992c5fafba71b3d7c16abc202d98f1525b645c382bd4a2c",
+                                              "client_request_id":  "tei.eki-f8592d97e40316c01590a74cd56d97cc",
+                                              "replayed":  true
+                                          },
+                            "attempt":  {
+                                            "observed_count":  0,
+                                            "retried":  false
+                                        },
+                            "result":  {
+                                           "status":  409,
+                                           "code":  "RESULT_NOT_READY",
+                                           "artifact_count":  0,
+                                           "available_count":  0,
+                                           "fetched_count":  0,
+                                           "fetched_digest_mismatch_count":  0
+                                       },
+                            "local":  {
+                                          "schema":  "tei.eki-delegation-local-run/v0",
+                                          "command":  [
+                                                          "validate",
+                                                          "-workspace",
+                                                          "D:\\GIT\\hat47x\\.tmp_teideleg\\tei-src\\reference\\workspace",
+                                                          "-json"
+                                                      ],
+                                          "exit_code":  0,
+                                          "duration_millis":  836,
+                                          "output_sha256":  "d1d220ad36e48ca6a52e450027e1df524c509f0a9f07c3fccdd9ac4f2aa070b2",
+                                          "output_bytes":  2309,
+                                          "cache_state":  "warm",
+                                          "source_revision":  "b8cbd432a",
+                                          "executable_sha256":  "673c511e362068874de192361bf4e96494720feb5a191d5bd4fb065cbfce6d75"
+                                      }
+                        },
+    "trace_1_timing":  {
+                           "started_at":  "2026-11-11T05:02:58.5693819Z",
+                           "finished_at":  "2026-11-11T05:03:01.6582519Z",
+                           "status_reads":  7,
+                           "requests":  12,
+                           "local_millis":  836
+                       },
+    "live_1_output":  "receipt: undetermined (期限を過ぎても RESULT_NOT_READY のままで、EKI は終端状態にしていない（#111）)",
+    "live_2_output":  "receipt: undetermined (期限を過ぎても RESULT_NOT_READY のままで、EKI は終端状態にしていない（#111）)"
+}

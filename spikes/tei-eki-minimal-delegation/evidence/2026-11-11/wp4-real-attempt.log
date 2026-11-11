@@ -1,0 +1,7 @@
+=== RUN   TestTEIValidationReachesARealAttempt
+    tei_validation_test.go:432: D1: task=tsk_27e89d10a8b225e30eec414af479e5b2 attempt=atm_85898112e9e60c75f8ce99fde3188423 worker=wrk_15b15744554adadeb5c73335a47e5585
+    tei_validation_test.go:457: D2: the Agent's digest equals TEI's local expectation (d1d220ad36e48ca6a52e450027e1df524c509f0a9f07c3fccdd9ac4f2aa070b2)
+    tei_validation_test.go:469: wrapper report: exit=0 entries=8
+--- PASS: TestTEIValidationReachesARealAttempt (3.97s)
+PASS
+ok  	github.com/hat47x/eki-fabric/conformance/process	4.083s

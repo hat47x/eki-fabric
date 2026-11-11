@@ -1,0 +1,6 @@
+=== RUN   TestTEIValidationResultIsAcceptedAndReadable
+    tei_result_acceptance_test.go:84: D3: AcceptedResult recorded d1d220ad36e48ca6a52e450027e1df524c509f0a9f07c3fccdd9ac4f2aa070b2 for attempt atm_9ab9505fad0ccaf3db2c37577bd9dd12
+    tei_result_acceptance_test.go:139: D4: GET result = 200, output_digest = d1d220ad36e48ca6a52e450027e1df524c509f0a9f07c3fccdd9ac4f2aa070b2, body re-hashes to its name
+--- PASS: TestTEIValidationResultIsAcceptedAndReadable (2.28s)
+PASS
+ok  	github.com/hat47x/eki-fabric/conformance/process	2.312s

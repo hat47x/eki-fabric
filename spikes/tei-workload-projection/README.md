@@ -1,5 +1,7 @@
 # TEIの仕事をEKIへ投げてみる（TEI Workload Projection Spike）
 
+> このSpikeの観測は2026-10-19のものであり、その後のEKIの実装で入力Artifactと結果取得の経路が加わった。入力Artifactの持ち込み、結果の取得、負例の判定までを扱う続きは[TEI→EKI Minimal Delegation Spike](../tei-eki-minimal-delegation/README.md)にある。以下は当時の記録として残す。
+
 ## このSpikeの役割
 
 TEIがEKIを実行基盤として使う場面を、文書上の想定ではなく、実際のコマンドと実際の`eki-control`で確かめるSpikeです。目的は、EKIの要件と設計に**利用者側から圧力をかけること**です。EKIを動かすことではありません。

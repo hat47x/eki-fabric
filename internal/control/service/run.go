@@ -532,6 +532,11 @@ func (s *Server) mtlsHandler(w *WorkerConfig, store *sqlite.Store, plane *claimp
 	}
 	handler, err := workerplane.NewMTLSHandler(workerplane.MTLSConfig{
 		Claims: api, Assignments: assignments, Heartbeats: store, BodyReceiver: bodyReceiver{receiver}, Registry: registry, WorkerCA: ca.Certificate(), TrustDomain: w.MTLS.TrustDomain,
+		// The Worker fetches a Task's inputs from this same store (#763,
+		// ADR-0029 §5.10). Without it the Agent's fetcher gets 501 and refuses
+		// the assignment as input_unavailable, so a Task with inputs is
+		// admitted and placed but never run.
+		Artifacts:    artifactSource{store: bodies},
 		MaxBodyBytes: w.MaxBodyBytes, Logger: s.log,
 		// The version the Control Plane holds is what Workers are given at
 		// enrollment and what their roots are checked against (ADR-0036 §2.1).
