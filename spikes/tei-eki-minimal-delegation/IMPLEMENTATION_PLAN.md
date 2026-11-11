@@ -101,7 +101,42 @@ EKIの`conformance/process`の既存の仕組みを使う。新しい共通Runti
   2. Agentの`ExecutionConfig`に、**入力を展開して`tei validate`を実行するラッパー**を指定する。`ControlURL`と`ArtifactBaseURL`はどちらも`e.workerURL`（Worker Planeのorigin）にする。`InputsDir`は一時ディレクトリ。Agentは入力を`<inputs_dir>/<digest>`へ0600で書く（`internal/agent/assignment/fetcher.go`・`assignment.DirSaver`）。
      - 既存の`assignmentAgentWithSigningKeys`は`ArtifactBaseURL`と`InputsDir`を設定しない。この試験用に同じ形のヘルパーを足すか、既存ヘルパーへ引数を追加する。既存の試験の挙動は変えない。
      - `ArtifactBaseURL`はoriginだけを渡す。`HTTPFetcher`が`<base>/test-profile/v1/artifacts/<digest>`を組み立てる。
-  3. ラッパーは小さなGo実行体にする（テストが`go build`で作る）。引数は`<archive path>`と`<tei binary>`。tar.gzを一時ディレクトリへ展開し、`tei validate -workspace <dir> -json`を実行して、stdoutとstderrをそのまま自分のstdout・stderrへ流す。終了コードを引き継ぐ。
+  3. ラッパーは小さなGo実行体にする（テストが`go build`で作る）。引数は`<archive path>`と`<tei binary>`。tar.gzを一時ディレクトリへ展開し、`tei validate -workspace <dir> -json`を実行して、stdoutとstderrをそのまま自分のstdout・stderrへ流す。終了コードを引き継ぐ。展開は、絶対パス・`..`・シンボリックリンクを拒否し、通常ファイルとディレクトリだけを書く。約40行で足りる。
+
+     ```go
+     // wrapper/main.go — the test builds this into a temp dir and names it in
+     // ExecutionConfig.Command.
+     func main() {
+         archive := flag.String("archive", "", "input tar.gz")
+         tei := flag.String("tei", "", "tei binary")
+         flag.Parse()
+         dir, err := os.MkdirTemp("", "tei-workspace-")
+         if err != nil { log.Fatal(err) }
+         defer os.RemoveAll(dir)
+         if err := extractTarGz(dir, *archive); err != nil { log.Fatal(err) }
+         cmd := exec.Command(*tei, "validate", "-workspace", dir, "-json")
+         cmd.Stdout, cmd.Stderr = os.Stdout, os.Stderr
+         if err := cmd.Run(); err != nil {
+             if exit, ok := err.(*exec.ExitError); ok { os.Exit(exit.ExitCode()) }
+             log.Fatal(err)
+         }
+     }
+     ```
+
+     `ExecutionConfig`の形は次のとおり。
+
+     ```go
+     inputsDir := t.TempDir()
+     execution := &agentservice.ExecutionConfig{
+         Command: wrapperPath,
+         Args: []string{
+             "-archive", filepath.Join(inputsDir, inputDigest),
+             "-tei", teiBinary,
+         },
+     }
+     // AssignmentConfig側: ArtifactBaseURL: e.workerURL, InputsDir: inputsDir,
+     // Execution: execution
+     ```
   4. Client APIからTaskを投入し、`assignedAttempt`でAttemptの存在を待つ。Agentのeventsで実行完了と`ResultClaim`送信を待つ。
   5. `attempt_count >= 1`、`LoadResultClaim`が成功、Claimの`OutputDigest`が`TEI_EKI_EXPECTED_SHA256`と一致することを確かめる。
   6. Taskの公開状態が`verifying`であることを確かめる。結果は`409 RESULT_NOT_READY`のまま（WP-5の範囲）。
@@ -109,8 +144,9 @@ EKIの`conformance/process`の既存の仕組みを使う。新しい共通Runti
 - 受入: 環境変数ありで試験が通り、D1とD2が観測できる。環境変数なしでは`t.Skip`し、他の開発者の実行を止めない。Claimのdigestが期待値と違う場合は、期待値を書き換えずに失敗させる。
 - 注意:
   - Runnerの出力digestは**stdoutとstderrを合わせたバイト列**のSHA-256（`internal/agent/nativerunner/runner.go`）。ローカル比較も同じ結合で測る。`validate`は通常stderrを出さないが、測り方を合わせる。
+  - 展開先のパスが出力に混ざると、ローカルとWorkerでdigestが変わる。`tei.cli.validate/v0`の出力に絶対パスが入らないことは2026-11-11の手元の実行で確認したが、実装を変えたら必ず再確認する。混ざる場合は、同じパスで実行するか、比較前に正規化する。正規化を「同じ結果」の根拠にしない。
   - 実行条件は`dispatch`の`Limits`とSandbox、Agentの`Machine`に合わせて広げる。既定値のままだと小さすぎる。
-  - Windowsではプロセスツリー停止の既知の失敗がある（[#312](https://github.com/hat47x/eki-fabric/issues/312)）。WP-4の試験は、まずLinux（WSLにGoを入れた環境）で実行し、Windowsでは結果を記録してから対応を決める。
+  - Windowsではプロセスツリー停止の既知の失敗がある（[#312](https://github.com/hat47x/eki-fabric/issues/312)）。WP-4の試験は、まずLinux（WSLにGoを入れた環境）で実行し、Windowsでは結果を記録してから対応を決める。2026-11-11にこのホスト（Windows）で既存の`TestHTTPTaskSubmissionIsExecutedByTheAgent`を10分の上限で試したが、完了しなかった（依存モジュールの取得を含む）。WP-4の実行環境はLinuxとする。
 - Owner判断: この試験をEKIの`conformance/process`へ置くこと自体はレビューで決める。製品コードは変えない。
 
 ### WP-5: EKIの結果受理をどう観測するか（Owner判断待ち）
