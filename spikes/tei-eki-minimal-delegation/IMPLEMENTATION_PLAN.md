@@ -193,6 +193,30 @@ D3は現行の起動経路では作れない。`resultacceptance`は既定で`RA
 - 実行: `tei-eki-delegation compare -local ... -trace ...`。既存の証拠から`evidence/2026-11-11/comparison.json`を作った。ローカルは3標本（158 / 398 / 836 ms、出力は一致）、EKI往復は2標本（中央値3,088 ms、待ち3,000 msを除いた封筒は88 ms、12リクエスト、Attemptは0）。
 - Owner判断: なし。
 
+### WP-10: Lease失効と古いAttemptを、実EKIで作る（次の中心作業）
+
+WP-4でAttemptが実在するようになったので、これまで模擬でしか確かめられなかった負例を、実EKIで作れるようになりました。EKIの試験用profileには、Leaseを回収するループ（`leaserecall`）と、期限切れのAttemptを閉じる`recallCloser`（`internal/control/service/recall.go`）が既にあります。
+
+- 追加: `conformance/process/tei_lease_loss_test.go`（EKI側）。
+- 手順:
+  1. WP-4と同じ手順でTaskを受理・配送し、Attemptを`dispatched`にする。
+  2. `eki-control`の設定に`lease_registry`を足して起動する（`run.go`の`recallCloser`が動く配備にする）。
+  3. `dispatch`の`LeaseLifetime`を短く（例: 2秒）し、Agentを起動しない、または起動して実行させない。Leaseが期限切れになるまで待つ。制約が2つある。`RecallGrace`は30秒（`internal/control/service/recall.go`）、回収ループの間隔は`time.Minute`固定（`run.go`の`leaserecall.Run`）である。したがって回収が走るまで最長で約90秒待つ。試験時間を短くしたい場合は、回収の間隔を設定にする変更が要る。これは起動経路の変更なので、EKIの実装者と相談する（Owner判断ではなく実装判断）。
+  4. `attempts`の`phase`が`closed`になり、`close_reason`が失効由来であることをState Storeで確かめる（試験コードは内部状態を読んでよい。製品のClientは読まない）。
+  5. そのあとAgentを起動し、失効したLeaseのAssignmentが`rejected`（`lease_expired`など）で拒否されることをeventsで確かめる。
+  6. 新しいAttemptが作られ、Taskが`ready`へ戻ることを確かめる（回復）。
+- 受入: 実EKIで「Leaseが失効すると、そのAttemptの結果は採用されない」ことが観測できる。観測できなければ、模擬のままであることをRESULTSへ明記する。
+- 関連: EKI #745（回収ループ）、#173（Outcomeの報告）、#155（回復の公平性）。
+- Owner判断: なし（試験用profileの範囲）。ただし製品の回復保証として扱わないことをRESULTSに書く。
+
+### WP-11: 部分的なArtifact受領を、実EKIの応答で作る
+
+`TaskResult.artifacts[].available`が`false`になる実例を作り、TEIのReceiptが`undetermined`になることを確かめます。EKIが受理した結果の本文を退役させたあとで取得する経路（ADR-0037の退役）が必要です。
+
+- 追加: `conformance/process/tei_partial_result_test.go`（EKI側）、またはSpike側のprobe。
+- 受入: 本文が取得できない状態で、Receiptが`accepted`にならないこと。
+- 依存: D3（結果受理）が先に必要。WP-5の後。
+
 ### WP-9: 製品化と後片付け
 
 - アダプターをTEIの`internal/execution/ekidelegation`へ移すか、Spikeのまま参照実装にするかをTEI Ownerが決める。
@@ -234,7 +258,8 @@ D3は現行の起動経路では作れない。`resultacceptance`は既定で`RA
 2. **Phase B（EKIの試験コード）**: WP-4。環境変数ありで実行し、D1・D2を観測する。Windowsで不安定ならLinuxで実行し、結果を記録する。
 3. **判断待ち（停止点）**: DR-1（#245）、DR-2（#112）、DR-3（#242）、DR-6（TEI #4194）。ここで製品の契約・保証に関わる実装を始めない。
 4. **Phase C（判断後）**: WP-5・WP-6・WP-7の該当部分。
-5. **Phase D**: WP-9の製品化。T1の受入は、D1〜D4が同じ実行で揃ったときに宣言する。
+5. **Phase E（Owner判断不要・WP-4の次）**: WP-10（Lease失効と古いAttemptを実EKIで作る）→ WP-11（D3の後）。
+6. **Phase D**: WP-9の製品化。T1の受入は、D1〜D4が同じ実行で揃ったときに宣言する。
 
 Phase AとBは並行できる。Phase BはEKIの`conformance/process`を触るので、EKIのレビューを先に依頼する。
 
