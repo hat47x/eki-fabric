@@ -1,0 +1,7 @@
+=== RUN   TestTEIResultWhoseBodyWasRetiredIsNotAccepted
+    tei_partial_result_test.go:119: after retirement: outcome=undetermined available=0 fetched=0
+    tei_partial_result_test.go:122: not checked: EKIが結果の原データを再計算したか（AcceptedResult の digest は記録値であり、Client は再計算を強制できない）
+    tei_partial_result_test.go:122: not checked: Attempt・Lease・Fence の識別子との対応（公開の status と result には現れない。これらは EKI の責務のまま）
+--- PASS: TestTEIResultWhoseBodyWasRetiredIsNotAccepted (1.99s)
+PASS
+ok  	github.com/hat47x/eki-fabric/conformance/process	2.023s

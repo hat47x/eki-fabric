@@ -28,10 +28,12 @@ TEIのIssue [#4194](https://github.com/hat47x/tei-platform/issues/4194)のT1を�
 
 - **D1 実際のAttempt**: 実EKIでTaskがWorkerへ配送され、Attemptが1件以上作られる。観測は`attempt_count >= 1`と、EKIの試験コードが読むAttemptレコードの存在。**2026-11-11に満たした**（`conformance/process/tei_validation_test.go`）。
 - **D2 実行結果の一致**: Workerが実行した`tei validate`の出力digest（stdoutとstderrを合わせたもの）が、同じ入力・同じ実行体でのローカル実行と一致する。**2026-11-11に満たした**。
-- **D3 EKIの受理**: 独立した検証2件によりAcceptedResultが作られ、`GET /v1/tasks/{id}/result`が200と`output_digest`を返す。**未達**（WP-5、DR-3のOwner判断待ち）。
-- **D4 Receipt**: TEIのReceiptが`accepted`になり、`basis`にD2とD3、`not_checked`に実行体・Toolchain・キャッシュの未固定が残る。**未達**（D3に依存）。
-- **D5 負例**: 重複・期限・結果未達・Lease失効・古いAttempt・部分Artifact・キャッシュ差異のそれぞれについて、実EKIで作れたものは実試験、作れないものは模擬と明記する。**一部達した**（[RESULTS_2026-11-11_wp4](RESULTS_2026-11-11_wp4.md)の表）。
+- **D3 EKIの受理**: 独立した検証2件によりAcceptedResultが作られ、`GET /v1/tasks/{id}/result`が200と`output_digest`を返す。**2026-11-11に満たした（ただし検証は試験が注入）**（`conformance/process/tei_result_acceptance_test.go`）。製品の受理経路が独立した検証者を得るのはDR-3のOwner判断待ち。
+- **D4 Receipt**: TEIのReceiptが`accepted`になり、`basis`にD2とD3、`not_checked`に実行体・Toolchain・キャッシュの未固定が残る。**2026-11-11に満たした**（D3と同じ制約下）。
+- **D5 負例**: 重複・期限・結果未達・Lease失効・古いAttempt・部分Artifact・キャッシュ差異のそれぞれについて、実EKIで作れたものは実試験、作れないものは模擬と明記する。**2026-11-11に到達**（[RESULTS_2026-11-11_wp5](RESULTS_2026-11-11_wp5.md)の表）。Fence不一致と古いAttemptの結果拒否は公開経路で作れないため模擬。
 - **D6 契約乖離**: `expected_digest`、`ArtifactDescriptor.digest`の型、Problemコードの3件の扱いが決まり、試験またはIssueで追跡される。**整理済み、Owner判断待ち**（#112・#245）。
+
+**結論（2026-11-11）**: D1〜D4は同じ経路で観測できた。ただしD3の受理は試験が検証を注入しており、製品の独立検証ではない。したがってT1は「**実行済み（受理は試験注入）**」と記録し、製品の受理経路が決まった時点で限定を外して再判定する。T1を無条件に実行済みとは宣言しない。
 
 D1〜D6に含めないもの: ビルド・コード生成・テストの実行、本番配備、外部サービス、連合。これらはT1の後です。
 
@@ -143,7 +145,9 @@ EKIの`conformance/process`の既存の仕組みを使う。新しい共通Runti
   7. 可能なら、Runnerが保持した出力bodyがArtifactとして保管され、`GET /v1/artifacts/{id}`で取得できることも確かめる（`conformance/process/execution_body_test.go`の経路）。取得できた本文のdigestがClaimの`OutputDigest`と一致することを確認する。取得できない場合は、その事実を記録し、成功として扱わない。
 - 受入: 環境変数ありで試験が通り、D1とD2が観測できる。環境変数なしでは`t.Skip`し、他の開発者の実行を止めない。Claimのdigestが期待値と違う場合は、期待値を書き換えずに失敗させる。
 - 実測（2026-11-11、WSL2 Ubuntu 22.04）: 成功。Task `tsk_27e89d…` にAttempt `atm_858981…` が作られ、Agentの`OutputDigest`がTEIのローカル期待値`d1d220ad…`と一致した。詳細は[RESULTS_2026-11-11_wp4](RESULTS_2026-11-11_wp4.md)。
+- 実装の実際の形（計画時の見積もりとの差）: ラッパーは`<archive> <tei binary> <report file>`の3引数を取り、実行後にreportへ`exit=`と展開したエントリ数を書く。試験は、ラッパーを`go build`で作り、`ExecutionConfig.Command`に渡す。`ArtifactBaseURL`と`InputsDir`は`AssignmentConfig`側に置く。
 - 実行の前提として、EKI側の未配線2件を直した（入力ArtifactをWorker Planeから配る口と、AgentのfetcherのmTLS）。この2件がなければ、Agentは`input_unavailable`で割当を拒否する。
+- 3つの試験（WP-4・WP-5・WP-11）が同じ経路を使うように、`conformance/process/tei_delegation_helpers_test.go`の`runTEIValidation`に共通化した。片方だけ別の経路を通ると、共通部分の変更でどちらが通るか分からなくなるため。
 - 注意:
   - Runnerの出力digestは**stdoutとstderrを合わせたバイト列**のSHA-256（`internal/agent/nativerunner/runner.go`）。ローカル比較も同じ結合で測る。`validate`は通常stderrを出さないが、測り方を合わせる。
   - 展開先のパスが出力に混ざると、ローカルとWorkerでdigestが変わる。`tei.cli.validate/v0`の出力に絶対パスが入らないことは2026-11-11の手元の実行で確認したが、実装を変えたら必ず再確認する。混ざる場合は、同じパスで実行するか、比較前に正規化する。正規化を「同じ結果」の根拠にしない。
@@ -151,7 +155,7 @@ EKIの`conformance/process`の既存の仕組みを使う。新しい共通Runti
   - Windowsではプロセスツリー停止の既知の失敗がある（[#312](https://github.com/hat47x/eki-fabric/issues/312)）。WP-4の試験は、まずLinux（WSLにGoを入れた環境）で実行し、Windowsでは結果を記録してから対応を決める。2026-11-11にこのホスト（Windows）で既存の`TestHTTPTaskSubmissionIsExecutedByTheAgent`を10分の上限で試したが、完了しなかった（依存モジュールの取得を含む）。WP-4の実行環境はLinuxとする。
 - Owner判断: この試験をEKIの`conformance/process`へ置くこと自体はレビューで決める。製品コードは変えない。
 
-### WP-5: EKIの結果受理をどう観測するか（Owner判断待ち）
+### WP-5: EKIの結果受理をどう観測するか（既定案Cで完了。Owner判断待ちは残る）
 
 D3は現行の起動経路では作れない。`resultacceptance`は既定で`RA2`・`threshold 2`・`principal`と`operator`の2次元を要求し、`defaultProducers`はどちらもWorker identityを返す。Claim 1件ではquorumに届かない（EKI #242）。
 
@@ -164,6 +168,9 @@ D3は現行の起動経路では作れない。`resultacceptance`は既定で`RA
 既定はC。WP-4の試験の続きとして、2件の合成Verificationで`Accept`を呼び、AcceptedResultを作り、動いている`eki-control`の`GET result`が200を返すことまで観測する。ラベルは「試験が受理を注入した」と明記する。AまたはBがOwnerに選ばれたら、Cを置き換える。
 
 覆す条件: 本番の結果保証をT1の受入に含める場合はAかBが必須。Cのまま「EKIが独立に受理した」と書かない。
+
+- 実装（2026-11-11）: `conformance/process/tei_result_acceptance_test.go`。`runTEIValidation`で実プロセスを回し、`resultacceptance.Accept`へ2件のVerificationを渡してAcceptedResultを記録し、`GET /v1/tasks/{id}/result`が200・`output_digest`一致・本文の再測定一致・Taskが`terminal/completed`であることを確かめた。実測は[RESULTS_2026-11-11_wp5](RESULTS_2026-11-11_wp5.md)。
+- 残るOwner判断: DR-3（#242）。AかBが選ばれたら、この試験の受理部分を製品の経路へ差し替え、D3の限定（「試験注入」）を外す。
 
 ### WP-6: 実行体digestとToolchain（Owner判断待ち）
 
@@ -193,7 +200,7 @@ D3は現行の起動経路では作れない。`resultacceptance`は既定で`RA
 - 実行: `tei-eki-delegation compare -local ... -trace ...`。既存の証拠から`evidence/2026-11-11/comparison.json`を作った。ローカルは3標本（158 / 398 / 836 ms、出力は一致）、EKI往復は2標本（中央値3,088 ms、待ち3,000 msを除いた封筒は88 ms、12リクエスト、Attemptは0）。
 - Owner判断: なし。
 
-### WP-10: Lease失効と古いAttemptを、実EKIで作る（次の中心作業）
+### WP-10: Lease失効と古いAttemptを、実EKIで作る（完了。回復は未達）
 
 WP-4でAttemptが実在するようになったので、これまで模擬でしか確かめられなかった負例を、実EKIで作れるようになりました。EKIの試験用profileには、Leaseを回収するループ（`leaserecall`）と、期限切れのAttemptを閉じる`recallCloser`（`internal/control/service/recall.go`）が既にあります。
 
@@ -203,19 +210,22 @@ WP-4でAttemptが実在するようになったので、これまで模擬でし
   2. `eki-control`の設定に`lease_registry`を足して起動する（`run.go`の`recallCloser`が動く配備にする）。
   3. `dispatch`の`LeaseLifetime`を短く（例: 2秒）し、Agentを起動しない、または起動して実行させない。Leaseが期限切れになるまで待つ。制約が2つある。`RecallGrace`は30秒（`internal/control/service/recall.go`）、回収ループの間隔は`time.Minute`固定（`run.go`の`leaserecall.Run`）である。したがって回収が走るまで最長で約90秒待つ。試験時間を短くしたい場合は、回収の間隔を設定にする変更が要る。これは起動経路の変更なので、EKIの実装者と相談する（Owner判断ではなく実装判断）。
   4. `attempts`の`phase`が`closed`になり、`close_reason`が失効由来であることをState Storeで確かめる（試験コードは内部状態を読んでよい。製品のClientは読まない）。
-  5. そのあとAgentを起動し、失効したLeaseのAssignmentが`rejected`（`lease_expired`など）で拒否されることをeventsで確かめる。
-  6. 新しいAttemptが作られ、Taskが`ready`へ戻ることを確かめる（回復）。
+  5. そのあとAgentを起動し、失効したLeaseのAssignmentが配られないことをeventsで確かめる（期限切れのLeaseはlistingから落ちる）。
+  6. 新しいAttemptが作られ、Taskが`ready`へ戻ることを確かめる（回復）。**このrevisionでは観測できなかった。**
 - 受入: 実EKIで「Leaseが失効すると、そのAttemptの結果は採用されない」ことが観測できる。観測できなければ、模擬のままであることをRESULTSへ明記する。
 - 関連: EKI #745（回収ループ）、#173（Outcomeの報告）、#155（回復の公平性）。
+- 実測（2026-11-11）: `conformance/process/tei_lease_loss_test.go`。Attemptが`lease_expired`で閉じ、Claimは無く、registryから除去された。閉鎖後に起動したAgentはそのAttemptのeventを一つも受けなかった。**Taskは`active`のまま、Attemptは1件のままで、新しいAttemptは作られなかった**（#745の回復は未達）。試験時間は約77秒。詳細は[RESULTS_2026-11-11_wp5](RESULTS_2026-11-11_wp5.md)。
 - Owner判断: なし（試験用profileの範囲）。ただし製品の回復保証として扱わないことをRESULTSに書く。
 
-### WP-11: 部分的なArtifact受領を、実EKIの応答で作る
+### WP-11: 部分的なArtifact受領を、実EKIの応答で作る（完了）
 
 `TaskResult.artifacts[].available`が`false`になる実例を作り、TEIのReceiptが`undetermined`になることを確かめます。EKIが受理した結果の本文を退役させたあとで取得する経路（ADR-0037の退役）が必要です。
 
 - 追加: `conformance/process/tei_partial_result_test.go`（EKI側）、またはSpike側のprobe。
 - 受入: 本文が取得できない状態で、Receiptが`accepted`にならないこと。
 - 依存: D3（結果受理）が先に必要。WP-5の後。
+- 実測（2026-11-11）: `conformance/process/tei_partial_result_test.go`。AcceptedResultを作ったあと、メタの`expires_at`を過去にし本文を削除すると、結果は`available:false`・`artifact_id`なし・`sha256`と`size_bytes`は残る形になった。取得は410/404。TEIのReceiptは`undetermined`（`available 0`、`fetched 0`）で、`accepted`にならなかった。詳細は[RESULTS_2026-11-11_wp5](RESULTS_2026-11-11_wp5.md)。
+- 注意: 退役は公開経路が無いため、試験が一時配備のメタを書き換えている。実配備の退役（ADR-0037）と同じ効果を狙ったものであり、Clientの能力ではないとRESULTSに明記した。
 
 ### WP-9: 製品化と後片付け
 
@@ -287,6 +297,31 @@ WP-4:
 - [ ] `attempt_count >= 1`、Claimの`OutputDigest`、Taskの`verifying`を確かめる。
 - [ ] 環境変数ありの実行結果を`spikes/tei-eki-minimal-delegation/evidence/YYYY-MM-DD/`へ保存し、日付入りのRESULTSを追加する（11-11の記録は書き換えない）。
 - [ ] 実行できなかった環境では、その理由と残る危険をRESULTSに書く。
+
+WP-5（完了）:
+
+- [x] `runTEIValidation`の経路を使い、`resultacceptance.Accept`へ2件のVerificationを渡す。
+- [x] `GET /v1/tasks/{id}/result`が200、`output_digest`が期待値と一致、本文が名前に一致することを確かめる。
+- [x] Taskが`terminal/completed`であることを確かめる。
+- [x] 「検証は試験が注入した」とRESULTSに明記する。
+
+WP-10（完了。回復は未達）:
+
+- [x] `lease_registry`を設定し、`lease_lifetime`を短くして起動する。
+- [x] Attemptが`lease_expired`で閉じ、Claimが無いことを確かめる。
+- [x] 閉鎖後に起動したAgentが、そのAttemptのeventを受けないことを確かめる。
+- [x] Taskが回復しないことを記録する（成功として扱わない）。
+
+WP-11（完了）:
+
+- [x] 受理後にメタの期限を過去にし、本文を削除する。
+- [x] 結果が`available:false`で、`sha256`と`size_bytes`は残ることを確かめる。
+- [x] Spikeの`EvaluateTask`でReceiptを読み、`accepted`にならないことを確かめる。
+
+次の作業（WP-10の回復、D3の製品化）:
+
+- [ ] 新しいAttemptが作られる経路をEKI #745で実装し、この試験に足す。
+- [ ] 製品の受理経路（#242）が決まったら、WP-5の試験の受理部分を差し替え、D3の限定を外す。
 
 Owner判断が出たとき:
 
