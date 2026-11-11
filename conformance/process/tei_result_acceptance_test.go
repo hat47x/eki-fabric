@@ -20,11 +20,10 @@ package process
 import (
 	"context"
 	"encoding/json"
-	"fmt"
 	"os"
 	"runtime"
+	"strings"
 	"testing"
-	"time"
 
 	"github.com/hat47x/eki-fabric/internal/control/resultacceptance"
 	"github.com/hat47x/eki-fabric/internal/core/contract"
@@ -144,28 +143,17 @@ func TestTEIValidationResultIsAcceptedAndReadable(t *testing.T) {
 		t.Fatalf("task phase = %s outcome = %s, want terminal/completed", task.Phase, task.TerminalOutcome)
 	}
 
-	// The wrapper's own report proves the operation ran and exited 0; a result
-	// can be accepted for a run that failed, so this is checked separately.
+	// The wrapper's own report proves the operation ran and exited 0. The
+	// digest alone cannot: a failed run also produces output bytes, and those
+	// bytes would match the expectation.
 	reportRaw, err := os.ReadFile(run.report)
 	must(t, err)
-	if !contains(string(reportRaw), "exit=0") {
-		t.Fatalf("the wrapper did not report a successful run: %s", reportRaw)
+	if !strings.Contains(string(reportRaw), "exit=0") {
+		t.Fatalf("the TEI operation failed inside the wrapper: %s", strings.TrimSpace(string(reportRaw)))
 	}
-	_ = fmt.Sprintf("%v", time.Now())
 }
 
 func fetchClientArtifact(t *testing.T, run teiRun, artifactID string) (int, []byte) {
 	t.Helper()
 	return run.get(t, "/v1/artifacts/"+artifactID)
-}
-
-// contains is a small helper so the assertion names what it looks for without
-// pulling in strings for one call.
-func contains(haystack, needle string) bool {
-	for i := 0; i+len(needle) <= len(haystack); i++ {
-		if haystack[i:i+len(needle)] == needle {
-			return true
-		}
-	}
-	return false
 }

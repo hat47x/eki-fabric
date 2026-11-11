@@ -27,7 +27,7 @@
 TEIのIssue [#4194](https://github.com/hat47x/tei-platform/issues/4194)のT1を「実行済み」とする条件を、次のD1〜D6に具体化します。**D1〜D4がすべて観測できたときだけ**、T1を実行済みと呼びます。
 
 - **D1 実際のAttempt**: 実EKIでTaskがWorkerへ配送され、Attemptが1件以上作られる。観測は`attempt_count >= 1`と、EKIの試験コードが読むAttemptレコードの存在。**2026-11-11に満たした**（`conformance/process/tei_validation_test.go`）。
-- **D2 実行結果の一致**: Workerが実行した`tei validate`の出力digest（stdoutとstderrを合わせたもの）が、同じ入力・同じ実行体でのローカル実行と一致する。**2026-11-11に満たした**。
+- **D2 実行結果の一致**: Workerが実行した`tei validate`の出力digest（stdoutとstderrを合わせたもの）が、同じ入力・同じ実行体でのローカル実行と一致する。**2026-11-11に満たした**。加えて、実行が失敗していないこと（ラッパーのreportが`exit=0`）を別に確かめている。digestだけでは、失敗した実行の出力も一致してしまう。
 - **D3 EKIの受理**: 独立した検証2件によりAcceptedResultが作られ、`GET /v1/tasks/{id}/result`が200と`output_digest`を返す。**2026-11-11に満たした（ただし検証は試験が注入）**（`conformance/process/tei_result_acceptance_test.go`）。製品の受理経路が独立した検証者を得るのはDR-3のOwner判断待ち。
 - **D4 Receipt**: TEIのReceiptが`accepted`になり、`basis`にD2とD3、`not_checked`に実行体・Toolchain・キャッシュの未固定が残る。**2026-11-11に満たした**（D3と同じ制約下）。
 - **D5 負例**: 重複・期限・結果未達・Lease失効・古いAttempt・部分Artifact・キャッシュ差異のそれぞれについて、実EKIで作れたものは実試験、作れないものは模擬と明記する。**2026-11-11に到達**（[RESULTS_2026-11-11_wp5](RESULTS_2026-11-11_wp5.md)の表）。Fence不一致と古いAttemptの結果拒否は公開経路で作れないため模擬。
@@ -44,12 +44,16 @@ D1〜D6に含めないもの: ビルド・コード生成・テストの実行�
 | `spikes/tei-eki-minimal-delegation/` | よい | この計画の主対象。EKIの内部パッケージはimportしない |
 | TEIの製品コード（提案先は`internal/execution/ekidelegation`） | 移す場合はTEI Ownerの承認 | 移動はWP-9。EKIのGoパッケージをimportしない |
 | `spec/external/openapi.json` | **Ownerのみ** | 契約変更はIssueで決める。Spikeからは変えない |
-| `internal/control`・`internal/core` | EKIの実装者 | 変更は既存Issue（#245・#242・#112）に紐づける |
-| `conformance/process` | レビュー付きでよい | 実際のAttemptを作る試験（WP-4）を追加する場所 |
-| EKIのSQLite・ログ・Workerの内部状態 | **いけない** | TEIは公開APIだけを読む。結果の判定に内部状態を使わない |
+| `internal/control`・`internal/core` | EKIの実装者。**変更は既存Issue（#245・#242・#112）に紐づける** | このPRの入力経路の配線は#763の完了条件（「入力の取得が、配備の設定から有効になる」）が満たされていなかったため |
+| `conformance/process` | レビュー付きでよい | 実際のAttemptを作る試験（WP-4）を追加する場所。EKIの内部状態は読める（製品のClientは読まない） |
+| EKIのSQLite・ログ・Workerの内部状態 | 試験コードはよい、TEIは**いけない** | TEIは公開APIだけを読む。結果の判定に内部状態を使わない |
 | 本番DB・外部サービス | **いけない** | 試験は一時DBとloopbackに限る |
 
 依存の向きはTEI → EKIです。SpikeのコードがEKIの`internal/`や`cmd/`をimportしたら、`conformance/productboundary`の検査と設計の両方に反します。
+
+なお、このPRにはEKIの製品コード（`internal/control/service`・`internal/agent`）の変更が4ファイル含まれます。これらは「入力ArtifactをWorker Planeから配る口」と「Agentの入力fetcherがWorkerのmTLS証明書を使う」ための配線で、どちらも#763の完了報告後に残っていた未配線です。Spikeの範囲を超えるため、分離の可否をレビューで判断してください。分離する場合、このPRの試験（WP-4・WP-5・WP-10・WP-11）は修正なしでは通りません。
+
+**判断（2026-11-11、オーナー代行）: このPRに含める。** 理由は二つです。第一に、この変更がなければ「TEIの入力をWorkerが読む」という最小経路そのものが成立せず、試験は`input_unavailable`で止まります。第二に、変更は既存の口（`workerplane.MTLSConfig.Artifacts`、`assignment.HTTPFetcher.Client`）を配線するだけの4ファイルで、新しい判断や保証を追加しません。ただし#763の完了報告との整合は取れていないため、Issueへ記録しました。レビューで分離を選ばれた場合は、先に配線だけのPRを出すか、このPRの試験を`t.Skip`する形に変える必要があります。
 
 ## 3. 作業パッケージ
 
@@ -169,6 +173,8 @@ D3は現行の起動経路では作れない。`resultacceptance`は既定で`RA
 
 覆す条件: 本番の結果保証をT1の受入に含める場合はAかBが必須。Cのまま「EKIが独立に受理した」と書かない。
 
+**判断（2026-11-11、オーナー代行）**: 既定Cのままにする。理由は二つです。第一に、このPRの目的は「TEIの委任経路が公開APIだけで成立するか」を確かめることであり、受理のポリシーを変えることではありません。第二に、Bは保証水準を下げる設定を製品へ追加する変更で、このPRの範囲を超えます。Aは「試験用の検証入力」という新しい経路を作る変更で、これも同じ理由で見送ります。D3は「試験注入」の限定付きで記録し、製品の受理は#242の判断後に改めて観測します。
+
 - 実装（2026-11-11）: `conformance/process/tei_result_acceptance_test.go`。`runTEIValidation`で実プロセスを回し、`resultacceptance.Accept`へ2件のVerificationを渡してAcceptedResultを記録し、`GET /v1/tasks/{id}/result`が200・`output_digest`一致・本文の再測定一致・Taskが`terminal/completed`であることを確かめた。実測は[RESULTS_2026-11-11_wp5](RESULTS_2026-11-11_wp5.md)。
 - 残るOwner判断: DR-3（#242）。AかBが選ばれたら、この試験の受理部分を製品の経路へ差し替え、D3の限定（「試験注入」）を外す。
 
@@ -214,8 +220,9 @@ WP-4でAttemptが実在するようになったので、これまで模擬でし
   6. 新しいAttemptが作られ、Taskが`ready`へ戻ることを確かめる（回復）。**このrevisionでは観測できなかった。**
 - 受入: 実EKIで「Leaseが失効すると、そのAttemptの結果は採用されない」ことが観測できる。観測できなければ、模擬のままであることをRESULTSへ明記する。
 - 関連: EKI #745（回収ループ）、#173（Outcomeの報告）、#155（回復の公平性）。
-- 実測（2026-11-11）: `conformance/process/tei_lease_loss_test.go`。Attemptが`lease_expired`で閉じ、Claimは無く、registryから除去された。閉鎖後に起動したAgentはそのAttemptのeventを一つも受けなかった。**Taskは`active`のまま、Attemptは1件のままで、新しいAttemptは作られなかった**（#745の回復は未達）。試験時間は約77秒。詳細は[RESULTS_2026-11-11_wp5](RESULTS_2026-11-11_wp5.md)。
-- Owner判断: なし（試験用profileの範囲）。ただし製品の回復保証として扱わないことをRESULTSに書く。
+- 実測（2026-11-11）: `conformance/process/tei_lease_loss_test.go`。Attemptが`lease_expired`で閉じ、Claimは無く、registryから除去された。閉鎖後に起動したAgentはそのAttemptのeventを一つも受けなかった。**Taskは`active`のまま、Attemptは1件のままで、新しいAttemptは作られなかった**（#745の回復は未達）。試験時間は約66〜77秒。詳細は[RESULTS_2026-11-11_wp5](RESULTS_2026-11-11_wp5.md)。
+- Owner判断: 回復については「実装するか、終端として知らせるか、回復しないことを契約に書くか」の判断が必要です。#57・#745へ記録しました。このPRの範囲ではどれも実装しません。試験は回復を「観測」として記録し、将来の実装でこの記録が変わるようにしてあります（`NOT RECOVERED`のログ）。
+- 代行した判断（2026-11-11）: このPRでは回復を実装しません。理由は二つです。第一に、回復の形（Taskを`ready`へ戻すのか、`terminal`として知らせるのか）はTask状態モデルの変更で、外部契約に触れます。第二に、TEI側から見ると、どちらの形でも「待つか諦めるか」の判断は同じで、違いは`terminal_code`の有無だけです。**EKIの実行保証に関わるため、Ownerの判断を待ちます。** 試験は現状を記録するだけに留め、`recovered`の判定を将来の実装が変えられる形にしてあります。
 
 ### WP-11: 部分的なArtifact受領を、実EKIの応答で作る（完了）
 
@@ -252,8 +259,8 @@ WP-4でAttemptが実在するようになったので、これまで模擬でし
 | 事象 | 実EKIで作れるか | 現在の確かめ方 | 追加する試験 |
 |---|---|---|---|
 | 入力Artifactの往復 | 作れる | `delegate_test.go`（Mock）、`trace-1.json`（実）、`conformance/process/tei_validation_test.go`（実プロセス） | なし |
-| 重複実行（同じ冪等キー） | 作れる | `delegate_test.go`、`trace-2.json`（実） | Attemptがある状態での重複（未実施） |
-| 期限切れ（受理後に経過） | 作れる | `probe.json`（実） | Attemptがある状態での期限切れ（未実施） |
+| 重複実行（同じ冪等キー） | 作れる | `delegate_test.go`、`trace-2.json`（実）、`tei_live_attempt_test.go`（Attemptがある状態） | なし |
+| 期限切れ（受理後に経過） | 作れる | `probe.json`（実）、`tei_live_attempt_test.go`（Attemptがある状態） | なし |
 | 期限切れ（投入時に経過） | 作れる | `probe.json`（実） | なし |
 | 結果未到着 | 作れる | `trace-1.json`（実）、`tei_validation_test.go`（Attempt後の`verifying`）、`tei_lease_loss_test.go`（失効後） | なし |
 | Lease失効 | 作れる（2026-11-11） | `tei_lease_loss_test.go`（実プロセス） | 回復（新しいAttemptの作成）は未達（#745） |
@@ -284,19 +291,20 @@ Phase AとBは並行できる。Phase BはEKIの`conformance/process`を触る�
 
 WP-3:
 
-- [ ] `adapter.go`の入力ループで、アップロード応答のdigestを要求digestと比較する。
-- [ ] 不一致なら`SubmitTask`を呼ばず、Receiptを`rejected`にする。
-- [ ] `TestUploadDigestMismatchStopsBeforeSubmit`を足し、POST回数0を確かめる。
-- [ ] Mock試験と実EKI試験のどちらで何を確かめたかをRESULTSへ追記する。
+- [x] `adapter.go`の入力ループで、アップロード応答のdigestを要求digestと比較する。
+- [x] 不一致なら`SubmitTask`を呼ばず、Receiptを`rejected`にする。
+- [x] `TestUploadDigestMismatchStopsBeforeSubmit`を足し、POST回数0を確かめる。
+- [x] Mock試験と実EKI試験のどちらで何を確かめたかをRESULTSへ追記する。
 
 WP-4:
 
-- [ ] `conformance/process/tei_validation_test.go`を、既存の`TestHTTPTaskSubmissionIsExecutedByTheAgent`を写して作る。
-- [ ] 環境変数3つを読み、未設定なら`t.Skip`する。
-- [ ] ラッパーをテスト内で`go build`し、`ExecutionConfig`と`ArtifactBaseURL`・`InputsDir`を設定する。
-- [ ] `attempt_count >= 1`、Claimの`OutputDigest`、Taskの`verifying`を確かめる。
-- [ ] 環境変数ありの実行結果を`spikes/tei-eki-minimal-delegation/evidence/YYYY-MM-DD/`へ保存し、日付入りのRESULTSを追加する（11-11の記録は書き換えない）。
-- [ ] 実行できなかった環境では、その理由と残る危険をRESULTSに書く。
+- [x] `conformance/process/tei_validation_test.go`を、既存の`TestHTTPTaskSubmissionIsExecutedByTheAgent`を写して作る。
+- [x] 環境変数3つを読み、未設定なら`t.Skip`する。
+- [x] ラッパーをテスト内で`go build`し、`ExecutionConfig`と`ArtifactBaseURL`・`InputsDir`を設定する。
+- [x] `attempt_count >= 1`、Claimの`OutputDigest`、Taskの`verifying`を確かめる。
+- [x] ラッパーのreportで`exit=0`を確かめる（digestだけでは失敗した実行の出力も一致する）。
+- [x] 環境変数ありの実行結果を`spikes/tei-eki-minimal-delegation/evidence/YYYY-MM-DD/`へ保存し、日付入りのRESULTSを追加する（11-11の記録は書き換えない）。
+- [x] 実行できなかった環境では、その理由と残る危険をRESULTSに書く。
 
 WP-5（完了）:
 
@@ -320,8 +328,9 @@ WP-11（完了）:
 
 次の作業（WP-10の回復、D3の製品化）:
 
-- [ ] 新しいAttemptが作られる経路をEKI #745で実装し、この試験に足す。
+- [ ] 新しいAttemptが作られる経路をEKI #745で実装し、この試験に足す。実装が入ったら、`tei_lease_loss_test.go`の「回復」の観測が変わることを確認する（現状は`NOT RECOVERED`をログに出す）。
 - [ ] 製品の受理経路（#242）が決まったら、WP-5の試験の受理部分を差し替え、D3の限定を外す。
+- [ ] キャッシュ差異を実EKIで作る試験（別実行体・別入力でdigest不一致を作る）は任意。現状はMockと模擬。
 
 Owner判断が出たとき:
 
@@ -359,7 +368,7 @@ PRを出すとき:
 ## 10. 参照
 
 - [README](README.md)、[RESULTS_2026-11-11](RESULTS_2026-11-11.md)、[Receiptの例](examples/receipts.json)
-- EKI: [PR #827](https://github.com/hat47x/eki-fabric/pull/827)、[#112](https://github.com/hat47x/eki-fabric/issues/112)、[#242](https://github.com/hat47x/eki-fabric/issues/242)、[#245](https://github.com/hat47x/eki-fabric/issues/245)、[#111](https://github.com/hat47x/eki-fabric/issues/111)、[#312](https://github.com/hat47x/eki-fabric/issues/312)
+- EKI: [PR #827](https://github.com/hat47x/eki-fabric/pull/827)、[#112](https://github.com/hat47x/eki-fabric/issues/112)、[#242](https://github.com/hat47x/eki-fabric/issues/242)、[#245](https://github.com/hat47x/eki-fabric/issues/245)、[#111](https://github.com/hat47x/eki-fabric/issues/111)、[#312](https://github.com/hat47x/eki-fabric/issues/312)、[#763](https://github.com/hat47x/eki-fabric/issues/763)、[#57](https://github.com/hat47x/eki-fabric/issues/57)、[#745](https://github.com/hat47x/eki-fabric/issues/745)
 - TEI: [#4194](https://github.com/hat47x/tei-platform/issues/4194)
-- EKIの実装: `internal/control/clientapi/upload.go`、`internal/agent/service/assignments.go`、`internal/agent/assignment/fetcher.go`、`internal/agent/nativerunner/runner.go`
-- EKIの試験: `conformance/process/http_submit_agent_test.go`、`conformance/process/dispatch_loop_test.go`、`conformance/process/execution_agent_test.go`
+- EKIの実装: `internal/control/clientapi/upload.go`、`internal/control/service/artifactfetch.go`（このPRで追加）、`internal/agent/service/assignments.go`、`internal/agent/assignment/fetcher.go`、`internal/agent/nativerunner/runner.go`
+- EKIの試験: `conformance/process/http_submit_agent_test.go`、`conformance/process/dispatch_loop_test.go`、`conformance/process/execution_agent_test.go`、`conformance/process/tei_*_test.go`（このPRで追加）

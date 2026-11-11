@@ -15,7 +15,6 @@ import (
 	"fmt"
 	"io"
 	"net/http"
-	"os"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -170,16 +169,6 @@ func (r teiRun) get(t *testing.T, path string) (int, []byte) {
 	return resp.StatusCode, raw
 }
 
-// hostSHA256 is the digest of a file on the host running the test. It stands in
-// for "what TEI computed locally" when the test needs to compare the accepted
-// output with something it produced itself.
-func hostSHA256(t *testing.T, path string) string {
-	t.Helper()
-	raw, err := os.ReadFile(path)
-	must(t, err)
-	return digestOf(raw)
-}
-
 // teiReceipt reads the Task through the public Client API and returns TEI's
 // receipt, using the spike package's own rules. The test does not decide the
 // outcome itself: that would be a second implementation of the rule under test.
@@ -190,4 +179,33 @@ func (r teiRun) teiReceipt(t *testing.T) (teideleg.Receipt, error) {
 		&teideleg.LocalRun{Schema: teideleg.LocalRunSchema, ExitCode: 0, OutputSHA256: r.expected},
 		0, 100*time.Millisecond, nil)
 	return receipt, err
+}
+
+// teiTaskStatus is the public status the tests read. The fields are only the
+// ones the contract projects: no Worker, Lease or Attempt identity.
+type teiTaskStatus struct {
+	Status       string `json:"status"`
+	TerminalCode string `json:"terminal_code"`
+	AttemptCount int    `json:"attempt_count"`
+}
+
+// taskStatus performs the authenticated Client API read of a Task's public
+// status. It is shared: a test that used its own read could disagree with the
+// others about what the Client sees.
+func (e *mtlsEnv) taskStatus(t *testing.T, taskID ids.TaskID) teiTaskStatus {
+	t.Helper()
+	req, err := http.NewRequest(http.MethodGet, "http://"+e.clientAddr+"/v1/tasks/"+taskID.String(), nil)
+	must(t, err)
+	req.Header.Set("Authorization", "Bearer "+clientToken)
+	resp, err := http.DefaultClient.Do(req)
+	must(t, err)
+	raw, err := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
+	resp.Body.Close()
+	must(t, err)
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("status = %d: %s", resp.StatusCode, raw)
+	}
+	var status teiTaskStatus
+	must(t, json.Unmarshal(raw, &status))
+	return status
 }

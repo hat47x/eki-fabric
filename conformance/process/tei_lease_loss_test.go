@@ -32,11 +32,14 @@ import (
 	"github.com/hat47x/eki-fabric/conformance/signedchain"
 	"github.com/hat47x/eki-fabric/internal/core/attemptstate"
 	"github.com/hat47x/eki-fabric/internal/core/ids"
-	"github.com/hat47x/eki-fabric/internal/core/taskstate"
 )
 
 // withLeaseRegistryOnControl adds lease_registry to the config an *mtlsEnv
-// wrote, so the started process runs the recall loop.
+// wrote, so the started process runs the recall loop. It is a generic map
+// rather than service.Config because this helper runs after enableDispatch has
+// written a dispatch section: decoding into the struct and re-encoding would
+// drop nothing today, but it would also mean the test silently depends on the
+// struct covering every field a later config adds.
 func (e *mtlsEnv) withLeaseRegistryOnControl(t *testing.T, path string) {
 	t.Helper()
 	raw, err := os.ReadFile(e.cfgPath)
@@ -50,7 +53,8 @@ func (e *mtlsEnv) withLeaseRegistryOnControl(t *testing.T, path string) {
 }
 
 // shortLeaseDispatch rewrites the dispatch settings the config already holds so
-// the Lease window closes quickly.
+// the Lease window closes quickly. The lifetime is written in nanoseconds,
+// which is how service.DispatchConfig.LeaseLifetime encodes a time.Duration.
 func (e *mtlsEnv) shortLeaseDispatch(t *testing.T, lifetime time.Duration) {
 	t.Helper()
 	raw, err := os.ReadFile(e.cfgPath)
@@ -71,11 +75,12 @@ func TestTEILeaseExpiryClosesTheAttempt(t *testing.T) {
 	if runtime.GOOS == "windows" {
 		t.Skip("the fixed command is a POSIX wrapper; see #312")
 	}
-	teiBinary, workspace, _ := teiEnvironment(t)
+	// The TEI binary is not needed: nothing runs in this test, because the
+	// Agent is enrolled but never started. The workspace is still bundled,
+	// because the Task must declare a real input for the input path to be
+	// exercised and for admission to accept it.
+	_, workspace, _ := teiEnvironment(t)
 	bundle, bundleDigest := teiWorkspaceBundle(t, workspace)
-	_ = bundle
-	_ = bundleDigest
-	_ = teiBinary
 
 	e := newMTLSEnv(t, 0)
 	e.seedPolicyNow(t)
@@ -93,8 +98,6 @@ func TestTEILeaseExpiryClosesTheAttempt(t *testing.T) {
 		}
 	}()
 
-	// An Agent is enrolled (so the Worker is usable and placement can pick it)
-	// but not started yet: no one executes, so no ResultClaim arrives.
 	now := time.Now().UTC()
 	auth := signedchain.New(t, now.Add(-2*time.Hour), 43)
 	silent := e.teiAgent(t, "silent", auth, now, controlKeys, nil)
@@ -171,43 +174,43 @@ func TestTEILeaseExpiryClosesTheAttempt(t *testing.T) {
 	// The registry no longer lists the reclaimed Lease.
 	raw, err := os.ReadFile(registryPath)
 	if err == nil && strings.Contains(string(raw), attempt.LeaseID.String()) {
-		t.Logf("the reclaimed Lease is still in the registry file: %s", registryPath)
+		t.Fatalf("the reclaimed Lease is still in the registry file:\n%s", raw)
 	}
 
 	// The public status: what does a Client see after the Lease is gone?
-	status := e.rawStatus(t, taskID)
+	status := e.taskStatus(t, taskID)
 	t.Logf("after the close: status=%s terminal_code=%q attempt_count=%d",
 		status.Status, status.TerminalCode, status.AttemptCount)
 
 	// The Task's own phase, read from the store by the test (not by the
-	// Client). This is the observation the plan calls "recovery", and this
-	// revision does not perform it.
+	// Client): this is what "recovery" would have to change. This revision has
+	// no path from an expired Lease back to a Ready Task, so the Task stays
+	// live and no second Attempt appears. The observation is recorded, not
+	// asserted as a pass: a future change that recovers the Task must make this
+	// test say so.
 	state := openState(t, e.controlDB)
 	task, err := state.LoadTask(context.Background(), taskID)
 	must(t, err)
-	_ = state.Close()
-	t.Logf("the Task is in phase %q after its Attempt was closed for an expired Lease", task.Phase)
-	if task.Phase == taskstate.TaskPhaseReady || task.Phase == taskstate.TaskPhaseActive {
-		t.Logf("note: the Task stayed in a live phase; check whether a new Attempt is created")
-	}
-
-	// A second Attempt would be the recovery. Observe it rather than assert it:
-	// this revision has no path from an expired Lease back to a Ready Task.
-	time.Sleep(10 * time.Second)
-	state = openState(t, e.controlDB)
 	attempts, err := state.ListAttemptsByTask(context.Background(), taskID)
 	must(t, err)
 	_ = state.Close()
-	t.Logf("attempts after the close: %d", len(attempts))
-	if len(attempts) < 2 {
-		t.Logf("NOT RECOVERED: no second Attempt was created after the Lease expired (#745 recovery gap)")
+	t.Logf("the Task is in phase %q with %d Attempt(s) after its Attempt was closed for an expired Lease",
+		task.Phase, len(attempts))
+	recovered := false
+	for _, a := range attempts {
+		if a.ID != attempt.ID && a.Phase != attemptstate.AttemptPhaseClosed {
+			recovered = true
+		}
+	}
+	if !recovered {
+		t.Logf("NOT RECOVERED: no live Attempt was created after the Lease expired (#745 recovery gap)")
 	}
 
 	// The stale Attempt must not be handed to a Worker: a Worker that started
 	// now would run under a Lease the Control Plane has already reclaimed. The
 	// listing drops Leases past their window, so the enrolled Agent sees
 	// nothing, and no Claim can arrive for the closed Attempt.
-	agent := silent.start(t)
+	silent.start(t)
 	time.Sleep(5 * time.Second)
 	events := readEvents(t, silent.events)
 	for _, ev := range events {
@@ -224,29 +227,4 @@ func TestTEILeaseExpiryClosesTheAttempt(t *testing.T) {
 	if claimed {
 		t.Fatal("a Claim arrived for an Attempt whose Lease was reclaimed")
 	}
-	_ = agent
-}
-
-type rawTaskStatus struct {
-	Status       string `json:"status"`
-	TerminalCode string `json:"terminal_code"`
-	AttemptCount int    `json:"attempt_count"`
-}
-
-func (e *mtlsEnv) rawStatus(t *testing.T, taskID ids.TaskID) rawTaskStatus {
-	t.Helper()
-	req, err := http.NewRequest(http.MethodGet, "http://"+e.clientAddr+"/v1/tasks/"+taskID.String(), nil)
-	must(t, err)
-	req.Header.Set("Authorization", "Bearer "+clientToken)
-	resp, err := http.DefaultClient.Do(req)
-	must(t, err)
-	raw, err := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
-	resp.Body.Close()
-	must(t, err)
-	if resp.StatusCode != http.StatusOK {
-		t.Fatalf("status = %d: %s", resp.StatusCode, raw)
-	}
-	var status rawTaskStatus
-	must(t, json.Unmarshal(raw, &status))
-	return status
 }

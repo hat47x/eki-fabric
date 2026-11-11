@@ -137,11 +137,11 @@ func TestTEIDuplicateAndDeadlineWithALiveAttempt(t *testing.T) {
 		}
 	}
 	t.Logf("replay with a live Attempt: still %d Attempt (%s), status %s",
-		len(attempts), attempt.ID, e.rawStatus(t, taskID).Status)
+		len(attempts), attempt.ID, e.taskStatus(t, taskID).Status)
 
 	// Let the deadline pass. The Attempt was dispatched before it.
 	time.Sleep(6 * time.Second)
-	status := e.rawStatus(t, taskID)
+	status := e.taskStatus(t, taskID)
 	if status.TerminalCode != "" {
 		t.Fatalf("a passing deadline produced terminal_code %q; #111 says it does not", status.TerminalCode)
 	}
@@ -160,18 +160,22 @@ func TestTEIDuplicateAndDeadlineWithALiveAttempt(t *testing.T) {
 		status.Status, status.TerminalCode, after.Phase, status.AttemptCount)
 
 	// The result is still not available, and the answer is the retryable one.
+	// 409 is the contract's answer; anything else means the Client API changed
+	// what it says about a Task that has not finished.
 	code, body := (teiRun{env: e, taskID: taskID}).get(t, "/v1/tasks/"+taskID.String()+"/result")
-	if code != http.StatusAlreadyReported && code != http.StatusConflict {
-		t.Logf("result after the deadline: %d (the contract says 409)", code)
+	if code != http.StatusConflict {
+		t.Fatalf("result after the deadline = %d, want 409: %s", code, body)
 	}
 	var problem struct {
 		Code      string `json:"code"`
 		Retryable bool   `json:"retryable"`
 	}
-	if err := json.Unmarshal(body, &problem); err == nil && problem.Code != "" {
-		t.Logf("result problem: code=%s retryable=%v", problem.Code, problem.Retryable)
-		if problem.Code != "RESULT_NOT_READY" {
-			t.Errorf("a dispatched Attempt that has not reported should answer RESULT_NOT_READY, got %s", problem.Code)
-		}
+	must(t, json.Unmarshal(body, &problem))
+	if problem.Code != "RESULT_NOT_READY" {
+		t.Errorf("a dispatched Attempt that has not reported should answer RESULT_NOT_READY, got %s", problem.Code)
 	}
+	if !problem.Retryable {
+		t.Error("RESULT_NOT_READY is documented as retryable; a non-retryable answer would tell the Client to give up on a running Task")
+	}
+	t.Logf("result after the deadline: code=%s retryable=%v", problem.Code, problem.Retryable)
 }

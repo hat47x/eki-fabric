@@ -35,7 +35,10 @@ func EvaluateTask(ctx context.Context, api API, taskID string, local *LocalRun, 
 	}
 
 	// Status polling. The public status carries attempt_count, not Attempt
-	// identity, so that is all the receipt can say about Attempts.
+	// identity, so that is all the receipt can say about Attempts. The loop
+	// stops on a terminal status, on an HTTP answer about the Task, or when the
+	// caller's wait limit passes: a non-terminal status is never waited out
+	// indefinitely, because the caller decides how long it waits.
 	for {
 		st, err := api.GetTaskStatus(ctx, taskID)
 		if err != nil {
@@ -65,10 +68,14 @@ func EvaluateTask(ctx context.Context, api API, taskID string, local *LocalRun, 
 	}
 
 	// A Task that someone else submitted still has to look admitted to the
-	// receipt. The public status is the only proof: a Task that answers a
-	// status read exists in this deployment and was accepted when it was
-	// created. A status that never answered leaves the admission unknown, and
-	// the receipt stays undetermined rather than assuming one.
+	// receipt. The public status is the only proof available here: a Task that
+	// answers a status read exists in this deployment and was accepted when it
+	// was created. A status that never answered leaves the admission unknown,
+	// and the receipt stays undetermined rather than assuming one.
+	//
+	// This is an inference, not a record of the submission: EvaluateTask does
+	// not have the 202 that the caller saw. It is recorded as 202 because the
+	// receipt's job here is to say what this Task means, not who submitted it.
 	if obs.StatusReads > 0 {
 		obs.SubmitStatus = 202
 	}

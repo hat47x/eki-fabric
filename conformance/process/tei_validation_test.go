@@ -288,7 +288,10 @@ func (e *mtlsEnv) teiAgent(t *testing.T, name string, auth *signedchain.Authorit
 }
 
 // approveExecutor rewrites the written config so the deployment admits the TEI
-// executor id and the resources the operation asks for.
+// executor id and the resources the operation asks for. The config is decoded
+// into service.Config, not a generic map, so a field that stops existing or is
+// renamed fails here rather than being silently dropped from the config the
+// test starts.
 func (e *mtlsEnv) approveExecutor(t *testing.T) {
 	t.Helper()
 	raw, err := os.ReadFile(e.cfgPath)
@@ -464,8 +467,15 @@ func TestTEIValidationReachesARealAttempt(t *testing.T) {
 	if task.Phase != taskstate.TaskPhaseVerifying {
 		t.Fatalf("task phase = %s, want %s after an accepted claim", task.Phase, taskstate.TaskPhaseVerifying)
 	}
+	// The wrapper reports the exit code and how many entries it unpacked, so a
+	// result can be accepted for a run that failed. The exit code is checked
+	// here rather than taken from the digest: a failed run can still produce
+	// output bytes, and those bytes would match.
 	rawReport, err := os.ReadFile(report)
 	must(t, err)
+	if !strings.Contains(string(rawReport), "exit=0") {
+		t.Fatalf("the TEI operation failed inside the wrapper: %s", strings.TrimSpace(string(rawReport)))
+	}
 	t.Logf("wrapper report: %s", strings.TrimSpace(string(rawReport)))
 }
 
@@ -507,24 +517,4 @@ func (e *mtlsEnv) releaseTask(t *testing.T, taskID ids.TaskID) {
 	t.Fatal("the Task was not released to the dispatch loop")
 }
 
-type teiTaskStatus struct {
-	AttemptCount int `json:"attempt_count"`
-}
-
-func (e *mtlsEnv) taskStatus(t *testing.T, taskID ids.TaskID) teiTaskStatus {
-	t.Helper()
-	req, err := http.NewRequest(http.MethodGet, "http://"+e.clientAddr+"/v1/tasks/"+taskID.String(), nil)
-	must(t, err)
-	req.Header.Set("Authorization", "Bearer "+clientToken)
-	resp, err := http.DefaultClient.Do(req)
-	must(t, err)
-	raw, err := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
-	resp.Body.Close()
-	must(t, err)
-	if resp.StatusCode != http.StatusOK {
-		t.Fatalf("status = %d: %s", resp.StatusCode, raw)
-	}
-	var status teiTaskStatus
-	must(t, json.Unmarshal(raw, &status))
-	return status
-}
+// teiReceipt is declared in tei_delegation_helpers_test.go.
