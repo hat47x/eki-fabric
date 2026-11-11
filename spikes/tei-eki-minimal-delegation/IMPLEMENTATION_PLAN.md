@@ -252,24 +252,24 @@ WP-4でAttemptが実在するようになったので、これまで模擬でし
 | 事象 | 実EKIで作れるか | 現在の確かめ方 | 追加する試験 |
 |---|---|---|---|
 | 入力Artifactの往復 | 作れる | `delegate_test.go`（Mock）、`trace-1.json`（実）、`conformance/process/tei_validation_test.go`（実プロセス） | なし |
-| 重複実行（同じ冪等キー） | 作れる | `delegate_test.go`、`trace-2.json`（実） | Attemptがある状態での重複（WP-4の次の作業） |
-| 期限切れ（受理後に経過） | 作れる | `probe.json`（実） | Attemptがある状態での期限切れ |
+| 重複実行（同じ冪等キー） | 作れる | `delegate_test.go`、`trace-2.json`（実） | Attemptがある状態での重複（未実施） |
+| 期限切れ（受理後に経過） | 作れる | `probe.json`（実） | Attemptがある状態での期限切れ（未実施） |
 | 期限切れ（投入時に経過） | 作れる | `probe.json`（実） | なし |
-| 結果未到着 | 作れる | `trace-1.json`（実）、`conformance/process/tei_validation_test.go`（Attempt後の`verifying`） | なし |
-| Lease失効 | 作れない（公開されない） | `simulate_test.go`（模擬） | EKIの試験用profileでLeaseを失効させ、Attemptが閉じることを観測する試験 |
-| 古いAttempt | 作れない（公開されない） | `simulate_test.go`（模擬） | 同上 |
-| Fence不一致 | 作れない（公開されない） | `simulate_test.go`（模擬） | 同上 |
-| 部分的なArtifact受領 | 作れる（応答の形として） | `delegate_test.go`（Mock） | 実EKIの応答で`available:false`を作る試験 |
+| 結果未到着 | 作れる | `trace-1.json`（実）、`tei_validation_test.go`（Attempt後の`verifying`）、`tei_lease_loss_test.go`（失効後） | なし |
+| Lease失効 | 作れる（2026-11-11） | `tei_lease_loss_test.go`（実プロセス） | 回復（新しいAttemptの作成）は未達（#745） |
+| 古いAttempt | 部分的に作れる | `tei_lease_loss_test.go`（閉じたAttemptにassignmentが配られない）、`simulate_test.go`（模擬） | 古いAttemptの結果拒否は公開経路が無いため模擬のみ |
+| Fence不一致 | 作れない（公開されない） | `simulate_test.go`（模擬） | なし（試験用の報告経路が必要） |
+| 部分的なArtifact受領 | 作れる（2026-11-11） | `tei_partial_result_test.go`（実プロセス） | なし |
 | キャッシュ差異 | 作れる（digest不一致として） | `delegate_test.go`、`simulate_test.go` | 実EKIで別実行体・別入力のdigest不一致を作る試験（任意） |
 
 ## 6. 実行順序と停止点
 
-1. **Phase A（Owner判断不要）**: WP-3（完了）・WP-4（完了。D1・D2を満たす）・WP-8（完了）。残りはWP-2の維持。
-2. **Phase B（EKIの試験コード）**: WP-4。環境変数ありで実行し、D1・D2を観測する。Windowsで不安定ならLinuxで実行し、結果を記録する。
-3. **判断待ち（停止点）**: DR-1（#245）、DR-2（#112）、DR-3（#242）、DR-6（TEI #4194）。ここで製品の契約・保証に関わる実装を始めない。
-4. **Phase C（判断後）**: WP-5・WP-6・WP-7の該当部分。
-5. **Phase E（Owner判断不要・WP-4の次）**: WP-10（Lease失効と古いAttemptを実EKIで作る）→ WP-11（D3の後）。
-6. **Phase D**: WP-9の製品化。T1の受入は、D1〜D4が同じ実行で揃ったときに宣言する。
+1. **Phase A（Owner判断不要）**: WP-1・WP-2・WP-3・WP-8（完了）。
+2. **Phase B（EKIの試験コード）**: WP-4（完了。D1・D2）、WP-5（完了。D3・D4。検証は試験注入）、WP-10（完了。Lease失効）、WP-11（完了。部分受領）。
+3. **判断待ち（停止点）**: DR-1（#245）、DR-2（#112）、DR-3（#242）、DR-6（TEI #4194）、回復（#57・#745）。ここで製品の契約・保証に関わる実装を始めない。
+4. **Phase C（判断後）**: WP-5の製品化（D3の限定を外す）・WP-6・WP-7の該当部分。
+5. **Phase E（未達）**: WP-10の回復（新しいAttemptの作成）。#745の実装を待つ。
+6. **Phase D**: WP-9の製品化。T1の受入は、D1〜D4が同じ実行で揃い、D3が製品の経路であるときに宣言する。
 
 Phase AとBは並行できる。Phase BはEKIの`conformance/process`を触るので、EKIのレビューを先に依頼する。
 
