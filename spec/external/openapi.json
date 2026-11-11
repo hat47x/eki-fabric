@@ -1199,6 +1199,11 @@
           "public_message": {
             "type": "string",
             "maxLength": 1024
+          },
+          "attempt_count": {
+            "type": "integer",
+            "minimum": 1,
+            "description": "Number of Attempts created for this Task so far. It lets the requester distinguish a first-attempt success from a retry without exposing Worker, Lease, or Attempt identifiers."
           }
         },
         "description": "Public projection only. It intentionally excludes worker identity, lease, attempt topology, policy revision and raw verification evidence."

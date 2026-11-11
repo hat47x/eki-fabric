@@ -10,6 +10,7 @@ import (
 	"github.com/hat47x/eki-fabric/internal/core/contract"
 	"github.com/hat47x/eki-fabric/internal/core/ids"
 	"github.com/hat47x/eki-fabric/internal/core/taskstate"
+	"github.com/hat47x/eki-fabric/internal/core/attemptstate"
 )
 
 var (
@@ -128,6 +129,10 @@ type Store interface {
 	// reference stores implement it; a store that does not keeps the old
 	// order (policy first, replay at the admission write).
 	ReplayLookup
+	// ListAttemptsByTask returns every Attempt of one Task in Attempt number
+	// order, lowest number first. Closed Attempts are included so the count
+	// is stable across retries.
+	ListAttemptsByTask(ctx context.Context, taskID ids.TaskID) ([]attemptstate.AttemptRecord, error)
 }
 
 // ValidIdempotencyKey reports whether key satisfies the P0 Idempotency-Key
