@@ -61,8 +61,8 @@ D1〜D6に含めないもの: ビルド・コード生成・テストの実行�
   - `func NewAdapter(api API, options DelegateOptions) (*Adapter, error)`
   - `func (a *Adapter) Execute(ctx, op Operation, uploads map[string][]byte) (Delegation, error)`
   - `func (a *Adapter) ExecuteProjection(ctx, projection Projection, uploads map[string][]byte) (Delegation, error)`
-- 試験: `TestNewAdapterRejectsNilAPI`、`TestAdapterExecuteRejectsIncompleteOperation`、`TestAdapterExecuteRunsTheProjectionAndReturnsTheTrace`、`TestAdapterExecuteProjectionReusesTheExactRequest`、`var _ API = (*Client)(nil)`
-- 受入: `go test ./spikes/tei-eki-minimal-delegation/...`が通り、`go list -deps`に`github.com/hat47x/eki-fabric/internal/`が出ない。
+- 試験: `TestNewAdapterRejectsNilAPI`、`TestAdapterExecuteRejectsIncompleteOperation`、`TestAdapterExecuteRunsTheProjectionAndReturnsTheTrace`、`TestAdapterExecuteProjectionReusesTheExactRequest`、`TestSpikeDoesNotImportEKIGoPackages`（依存の向きを構文木で検査する）、`var _ API = (*Client)(nil)`
+- 受入: `go test ./spikes/tei-eki-minimal-delegation/...`が通り、依存の向きの試験が通る。`go list -deps`に`github.com/hat47x/eki-fabric/internal/`が出ない。
 - 判断: 製品コードの置き場所はWP-9で決める。当面はSpikeに置く。
 
 ### WP-2: Receiptの形を固定する（完了）
@@ -98,11 +98,14 @@ EKIの`conformance/process`の既存の仕組みを使う。新しい共通Runti
   - `TEI_EKI_EXPECTED_SHA256`: ローカル実行の出力digest（stdout+stderr）
 - 手順:
   1. `newMTLSEnv`→`seedPolicyNow`→`writeConfig`→`writeSigningKeys`→`enableDispatch`→`startControl`は既存テストと同じ。
-  2. Agentの`ExecutionConfig`に、**入力を展開して`tei validate`を実行するラッパー**を指定する。`ArtifactBaseURL`はWorker Planeのorigin、`InputsDir`は一時ディレクトリ。Agentは入力を`<inputs_dir>/<digest>`へ0600で書く（`internal/agent/assignment/fetcher.go`・`assignment.DirSaver`）。
+  2. Agentの`ExecutionConfig`に、**入力を展開して`tei validate`を実行するラッパー**を指定する。`ControlURL`と`ArtifactBaseURL`はどちらも`e.workerURL`（Worker Planeのorigin）にする。`InputsDir`は一時ディレクトリ。Agentは入力を`<inputs_dir>/<digest>`へ0600で書く（`internal/agent/assignment/fetcher.go`・`assignment.DirSaver`）。
+     - 既存の`assignmentAgentWithSigningKeys`は`ArtifactBaseURL`と`InputsDir`を設定しない。この試験用に同じ形のヘルパーを足すか、既存ヘルパーへ引数を追加する。既存の試験の挙動は変えない。
+     - `ArtifactBaseURL`はoriginだけを渡す。`HTTPFetcher`が`<base>/test-profile/v1/artifacts/<digest>`を組み立てる。
   3. ラッパーは小さなGo実行体にする（テストが`go build`で作る）。引数は`<archive path>`と`<tei binary>`。tar.gzを一時ディレクトリへ展開し、`tei validate -workspace <dir> -json`を実行して、stdoutとstderrをそのまま自分のstdout・stderrへ流す。終了コードを引き継ぐ。
   4. Client APIからTaskを投入し、`assignedAttempt`でAttemptの存在を待つ。Agentのeventsで実行完了と`ResultClaim`送信を待つ。
   5. `attempt_count >= 1`、`LoadResultClaim`が成功、Claimの`OutputDigest`が`TEI_EKI_EXPECTED_SHA256`と一致することを確かめる。
   6. Taskの公開状態が`verifying`であることを確かめる。結果は`409 RESULT_NOT_READY`のまま（WP-5の範囲）。
+  7. 可能なら、Runnerが保持した出力bodyがArtifactとして保管され、`GET /v1/artifacts/{id}`で取得できることも確かめる（`conformance/process/execution_body_test.go`の経路）。取得できた本文のdigestがClaimの`OutputDigest`と一致することを確認する。取得できない場合は、その事実を記録し、成功として扱わない。
 - 受入: 環境変数ありで試験が通り、D1とD2が観測できる。環境変数なしでは`t.Skip`し、他の開発者の実行を止めない。Claimのdigestが期待値と違う場合は、期待値を書き換えずに失敗させる。
 - 注意:
   - Runnerの出力digestは**stdoutとstderrを合わせたバイト列**のSHA-256（`internal/agent/nativerunner/runner.go`）。ローカル比較も同じ結合で測る。`validate`は通常stderrを出さないが、測り方を合わせる。
