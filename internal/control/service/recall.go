@@ -98,10 +98,10 @@ func CloseDecision(attempt attemptstate.AttemptRecord, hasClaim bool, lease leas
 		return claimreconcile.NoAction, nil
 	}
 	return claimreconcile.Decide(now, claimreconcile.Input{
-		AttemptOpen:           true,
-		HasClaim:              hasClaim,
-		LeaseExpiresAt:        lease.ExpiresAt,
-		Grace:                 grace,
+		AttemptOpen:            true,
+		HasClaim:               hasClaim,
+		LeaseExpiresAt:         lease.ExpiresAt,
+		Grace:                  grace,
 		PossibleExternalEffect: possibleExternalEffect,
 	})
 }

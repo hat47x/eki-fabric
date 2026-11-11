@@ -124,7 +124,7 @@ func TestAnExpiredLeaseWithoutAClaimClosesTheAttempt(t *testing.T) {
 	lease.TaskID = taskID
 	lease.AttemptID = attemptID
 	lease.ID = leaseID
-	
+
 	if err := closer.Reclaim(context.Background(), lease, "expired"); err != nil {
 		t.Fatal(err)
 	}
@@ -203,11 +203,11 @@ func TestTheCloseDecisionFollowsTheClaimReconcileRules(t *testing.T) {
 	lease := testLease(t)
 	now := lease.ExpiresAt.Add(RecallGrace + time.Second)
 	cases := []struct {
-		name                string
-		attempt             attemptstate.AttemptRecord
-		claim               bool
+		name                   string
+		attempt                attemptstate.AttemptRecord
+		claim                  bool
 		possibleExternalEffect bool
-		want                claimreconcile.Decision
+		want                   claimreconcile.Decision
 	}{
 		{"closed", attemptstate.AttemptRecord{Phase: attemptstate.AttemptPhaseClosed}, false, false, claimreconcile.NoAction},
 		{"claim", dispatchedAttempt(t), true, false, claimreconcile.NoAction},
@@ -279,7 +279,7 @@ func m0Admission(t *testing.T, taskID ids.TaskID, attemptID ids.AttemptID, lease
 		PlacementTrustDomain: "local.example", PlacementAuthorityPrincipal: "control-plane/plc-1",
 		PlacementDecisionID: "placement-001", PlacementPayloadDigest: contract.SHA256([]byte("placement")),
 		PlacementExpiresAt: time.Date(2026, 11, 6, 12, 2, 0, 0, time.UTC),
-		PolicyRevision: "policy-42", PolicyEpoch: 1, FenceEpoch: 1,
+		PolicyRevision:     "policy-42", PolicyEpoch: 1, FenceEpoch: 1,
 		IssuedAt: time.Date(2026, 11, 6, 12, 0, 0, 0, time.UTC), ExpiresAt: time.Date(2026, 11, 6, 12, 1, 0, 0, time.UTC),
 	})
 	if err != nil {

@@ -338,7 +338,7 @@ func seedClaim(t *testing.T, s *statesqlite.Store, policy policystate.State, n i
 func seedClaimFor(t *testing.T, s *statesqlite.Store, policy policystate.State, n int, now time.Time, worker string) resultclaim.Claim {
 	t.Helper()
 	ctx := context.Background()
-	
+
 	// Create admission content and compute TaskIRDigest from it, matching the
 	// real admission flow (AdmitTask computes TaskIRDigest from the request).
 	content := []byte(fmt.Sprintf(`{
@@ -356,7 +356,7 @@ func seedClaimFor(t *testing.T, s *statesqlite.Store, policy policystate.State, 
 	must(t, err)
 	fingerprint, err := req.Fingerprint()
 	must(t, err)
-	
+
 	// AdmitTask creates the task and stores the admission atomically.
 	taskID := ids.TaskID(fmt.Sprintf("tsk_%032x", n))
 	_, err = s.AdmitTask(ctx, statestore.Admission{
@@ -375,7 +375,7 @@ func seedClaimFor(t *testing.T, s *statesqlite.Store, policy policystate.State, 
 		Content:            content,
 	}, statestore.AdmitLimit{})
 	must(t, err)
-	
+
 	// Load the admitted task and move it to ready (#365).
 	task, err := s.LoadTask(ctx, taskID)
 	must(t, err)
@@ -385,7 +385,7 @@ func seedClaimFor(t *testing.T, s *statesqlite.Store, policy policystate.State, 
 	ready.UpdatedAt = now.Add(-time.Second)
 	must(t, s.CompareAndSwapTask(ctx, task.ID, task.Revision, ready))
 	task = ready
-	
+
 	attempt, err := attemptstate.New(ids.AttemptID(fmt.Sprintf("atm_%032x", n)), task.ID, task.TaskIRDigest, 1, task.CreatedAt)
 	must(t, err)
 	must(t, s.CreateAttempt(ctx, attempt))
@@ -408,7 +408,7 @@ func seedClaimFor(t *testing.T, s *statesqlite.Store, policy policystate.State, 
 	dispatched.Phase, dispatched.LeaseID, dispatched.UpdatedAt = attemptstate.AttemptPhaseDispatched, reservation.Lease.ID, now
 	dispatched.Revision++
 	must(t, s.CompareAndSwapAttempt(ctx, attempt.ID, assigned.Revision, dispatched))
-	
+
 	claim, err := resultclaim.NewClaim(resultclaim.ClaimConfig{
 		TaskID: task.ID, TaskIRDigest: task.TaskIRDigest, AttemptID: attempt.ID, WorkerIdentity: worker,
 		LeaseID: reservation.Lease.ID, FenceEpoch: reservation.Lease.FenceEpoch, WorkOrderDecision: "workorder-1",
