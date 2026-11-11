@@ -61,9 +61,12 @@ func (s *Store) Root() string { return s.root }
 // renamed into place only after the digest matched, so a refused write leaves
 // nothing behind.
 func (s *Store) Put(r io.Reader, claimed string, maxBytes int64) (digestHex string, size int64, err error) {
-	digest, err := parseDigestHex(claimed)
-	if err != nil {
-		return "", 0, err
+	var expected string
+	if claimed != "" {
+		expected, err = parseDigestHex(claimed)
+		if err != nil {
+			return "", 0, err
+		}
 	}
 	if maxBytes < 0 {
 		return "", 0, fmt.Errorf("artifactstore: negative maximum %d", maxBytes)
@@ -88,15 +91,16 @@ func (s *Store) Put(r io.Reader, claimed string, maxBytes int64) (digestHex stri
 	if err := staging.Close(); err != nil {
 		return "", 0, fmt.Errorf("artifactstore: stage: %w", err)
 	}
-	if !strings.EqualFold(hex.EncodeToString(hash.Sum(nil)), digest) {
+	digestHex = strings.ToLower(hex.EncodeToString(hash.Sum(nil)))
+	if expected != "" && !strings.EqualFold(digestHex, expected) {
 		return "", 0, ErrDigestMismatch
 	}
 
-	final := s.path(digest)
+	final := s.path(digestHex)
 	if err := os.Rename(stagingName, final); err != nil {
 		return "", 0, fmt.Errorf("artifactstore: keep: %w", err)
 	}
-	return digest, measured, nil
+	return digestHex, measured, nil
 }
 
 // Open returns a reader over the body kept under digestHex. The caller

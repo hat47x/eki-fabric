@@ -244,7 +244,7 @@ func (s *Service) Submit(ctx context.Context, p Principal, idempotencyKey string
 }
 
 // PublicStatus is the Client-visible projection of a Task. It never carries
-// Worker identity, Attempts, Leases, or policy revisions.
+// Worker identity, Lease, or policy revisions.
 type PublicStatus struct {
 	TaskID        ids.TaskID
 	Status        string
@@ -252,6 +252,10 @@ type PublicStatus struct {
 	UpdatedAt     time.Time
 	TerminalCode  string
 	PublicMessage string
+	// AttemptCount is the number of Attempts this Task has created, counting
+	// from 1. It lets a requester distinguish a first-attempt success from a
+	// retry without exposing Worker, Lease, or Attempt identifiers.
+	AttemptCount int
 }
 
 // Status returns the public status of a Task the principal submitted. A Task
@@ -261,7 +265,14 @@ func (s *Service) Status(ctx context.Context, p Principal, taskID string) (Publi
 	if err != nil {
 		return PublicStatus{}, err
 	}
-	return s.project(admission.Task), nil
+	status := s.project(admission.Task)
+	if s.store != nil {
+		attempts, lerr := s.store.ListAttemptsByTask(ctx, admission.Task.ID)
+		if lerr == nil {
+			status.AttemptCount = len(attempts)
+		}
+	}
+	return status, nil
 }
 
 // CancelAccepted is the result of a successful Cancel.

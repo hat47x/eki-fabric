@@ -109,10 +109,11 @@ type ReservedLease struct {
 
 // Loop advances Ready Tasks through the issuing chain.
 type Loop struct {
-	cfg      Config
-	attempts AttemptSource
-	limit    int
-	now      func() time.Time
+	cfg          Config
+	attempts     AttemptSource
+	limit        int
+	now          func() time.Time
+	workerCursor int
 }
 
 // New validates the configuration.
@@ -185,6 +186,23 @@ func (l *Loop) Tick(ctx context.Context) (TickResult, error) {
 		}
 		result.Dispatched++
 	}
+	// A previous tick may have left a Task active with a PLACING Attempt and
+	// no Lease (for example, placement failed after markActive). The loop
+	// resumes those Tasks here so they are not stuck forever (#814).
+	stuck, err := l.listStuckActiveTasks(ctx)
+	if err != nil {
+		return result, fmt.Errorf("list stuck active tasks: %w", err)
+	}
+	for _, task := range stuck {
+		if err := ctx.Err(); err != nil {
+			return result, err
+		}
+		if err := l.dispatchOne(ctx, task); err != nil {
+			result.Deferred = append(result.Deferred, DeferredTask{TaskID: task.ID, Reason: err.Error()})
+			continue
+		}
+		result.Dispatched++
+	}
 	return result, nil
 }
 
@@ -240,6 +258,29 @@ func (l *Loop) promoteAdmitted(ctx context.Context, result *TickResult) error {
 		result.Promoted++
 	}
 	return nil
+}
+
+// listStuckActiveTasks returns active Tasks whose open Attempt is PLACING and
+// has no LeaseID. These are Tasks a previous tick left mid-placement (#814).
+func (l *Loop) listStuckActiveTasks(ctx context.Context) ([]taskstate.TaskRecord, error) {
+	tasks, err := l.cfg.Tasks.ListTasksByPhase(ctx, taskstate.TaskPhaseActive, l.limit)
+	if err != nil {
+		return nil, fmt.Errorf("list active tasks: %w", err)
+	}
+	var stuck []taskstate.TaskRecord
+	for _, task := range tasks {
+		attempts, err := l.attempts.ListAttemptsByTask(ctx, task.ID)
+		if err != nil {
+			return nil, fmt.Errorf("list attempts for %s: %w", task.ID, err)
+		}
+		for _, a := range attempts {
+			if a.Phase == attemptstate.AttemptPhasePlacing && a.LeaseID == "" {
+				stuck = append(stuck, task)
+				break
+			}
+		}
+	}
+	return stuck, nil
 }
 
 func (l *Loop) dispatchOne(ctx context.Context, task taskstate.TaskRecord) error {
@@ -367,18 +408,20 @@ func (l *Loop) reloadAttempt(ctx context.Context, taskID ids.TaskID, id ids.Atte
 	return attemptstate.AttemptRecord{}, fmt.Errorf("reload attempt: %s not found", id)
 }
 
-// pickWorker returns the first usable Worker, or an error naming the gap. The
-// fixed heuristic of this loop takes the first; the Scheduler still ranks the
-// one-element candidate list it produces.
+// pickWorker returns a usable Worker, rotating through the list so that Tasks
+// are distributed across registered Workers instead of always going to the
+// first one (#815).
 func (l *Loop) pickWorker(ctx context.Context, taskID ids.TaskID) (string, error) {
 	workers, err := l.cfg.Workers.ListWorkers(ctx)
 	if err != nil {
 		return "", fmt.Errorf("list workers: %w", err)
 	}
 	usable := l.pickWorkerWithHint(ctx, taskID, workers)
-	for _, w := range usable {
-		if w.Usable() {
-			return w.Identity.String(), nil
+	for i := range usable {
+		idx := (l.workerCursor + i) % len(usable)
+		if usable[idx].Usable() {
+			l.workerCursor = (idx + 1) % len(usable)
+			return usable[idx].Identity.String(), nil
 		}
 	}
 	return "", errors.New("no usable worker is registered")

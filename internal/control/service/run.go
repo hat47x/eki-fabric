@@ -183,7 +183,11 @@ func Start(ctx context.Context, cfg Config, log *slog.Logger) (*Server, error) {
 		return nil, fmt.Errorf("listen on %s: %w", cfg.Listen, err)
 	}
 
-	httpServer := clientapi.NewServer(cfg.Listen, handler)
+	httpServer := clientapi.NewServer(cfg.Listen, handler, clientapi.Timeouts{
+		Read:  cfg.ReadTimeout,
+		Write: cfg.WriteTimeout,
+		Idle:  cfg.IdleTimeout,
+	})
 	httpServer.ErrorLog = slog.NewLogLogger(log.Handler(), slog.LevelWarn)
 	if cfg.TLS != nil {
 		cert, err := tls.LoadX509KeyPair(cfg.TLS.CertFile, cfg.TLS.KeyFile)
@@ -220,7 +224,7 @@ func Start(ctx context.Context, cfg Config, log *slog.Logger) (*Server, error) {
 		// it from the registry, so an Attempt without a ResultClaim does not
 		// stay open forever (ADR-0037, #745).
 		closer := recallCloser{
-			attempts: store, claims: store, reclaimer: registry,
+			attempts: store, claims: store, admissions: store, reclaimer: registry,
 			grace: RecallGrace, now: time.Now,
 		}
 		if cerr := closer.validate(); cerr != nil {
@@ -459,7 +463,7 @@ func (s *Server) startWorker(ctx context.Context, w *WorkerConfig, store *sqlite
 	if tlsConfig != nil {
 		listener = tls.NewListener(listener, tlsConfig)
 	}
-	srv := clientapi.NewServer(w.Listen, handler)
+	srv := clientapi.NewServer(w.Listen, handler, clientapi.Timeouts{})
 	srv.ErrorLog = slog.NewLogLogger(s.log.Handler(), slog.LevelWarn)
 	s.workerHTTP, s.workerListener, s.workerDone = srv, listener, make(chan struct{})
 	s.workerUp = true

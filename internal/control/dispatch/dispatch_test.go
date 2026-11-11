@@ -14,6 +14,7 @@ import (
 	"github.com/hat47x/eki-fabric/internal/core/policystate"
 	"github.com/hat47x/eki-fabric/internal/core/taskstate"
 	"github.com/hat47x/eki-fabric/internal/core/workerenrollment"
+	"github.com/hat47x/eki-fabric/internal/core/workerregistry"
 )
 
 type fakeClock struct{ now time.Time }
@@ -383,6 +384,135 @@ func TestTickKeepsTheWorkerOfAnExistingPlacingAttempt(t *testing.T) {
 	}
 	if attempts[0].WorkerIdentity != worker || attempts[0].Phase != attemptstate.AttemptPhaseDispatched {
 		t.Fatalf("Attempt = phase %q worker %q, want the same Worker after assignment", attempts[0].Phase, attempts[0].WorkerIdentity)
+	}
+}
+
+// A Task left active with a PLACING Attempt and no Lease by a previous tick
+// is resumed by the next tick, not stuck forever (#814).
+func TestTickResumesAStuckActiveTaskWithAPlacingAttempt(t *testing.T) {
+	store := memory.New()
+	if err := store.CompareAndSwapPolicy(context.Background(), 0, mustPolicy(t)); err != nil {
+		t.Fatal(err)
+	}
+	worker := seedWorker(t, store, 1)
+	taskID := seedTask(t, store, 1, taskstate.TaskPhaseReady)
+	// Simulate a previous tick that created the Attempt, marked the Task
+	// active, then died before placement completed.
+	task, err := store.LoadTask(context.Background(), taskID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	active := task
+	active.Phase = taskstate.TaskPhaseActive
+	active.Revision++
+	active.UpdatedAt = task.UpdatedAt.Add(time.Second)
+	if err := store.CompareAndSwapTask(context.Background(), task.ID, task.Revision, active); err != nil {
+		t.Fatalf("move Task to active: %v", err)
+	}
+	attempt, err := attemptstate.New(ids.AttemptID(mustNewAttemptID(t)), taskID, contract.SHA256([]byte{byte(1)}), 1, time.Now().UTC())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := store.CreateAttempt(context.Background(), attempt); err != nil {
+		t.Fatal(err)
+	}
+	placing := attempt
+	placing.Phase, placing.WorkerIdentity = attemptstate.AttemptPhasePlacing, worker
+	placing.Revision, placing.UpdatedAt = attempt.Revision+1, time.Now().UTC()
+	if err := store.CompareAndSwapAttempt(context.Background(), attempt.ID, attempt.Revision, placing); err != nil {
+		t.Fatal(err)
+	}
+
+	stub := &stubIssue{}
+	loop := newLoop(t, store, stub, nil)
+	result, err := loop.Tick(context.Background())
+	if err != nil {
+		t.Fatalf("Tick() error = %v", err)
+	}
+	if result.Dispatched != 1 {
+		t.Fatalf("Tick() = %+v, want one dispatched Task", result)
+	}
+	attempts, err := store.ListAttemptsByTask(context.Background(), taskID)
+	if err != nil || len(attempts) != 1 {
+		t.Fatalf("ListAttemptsByTask() = %d attempts (err %v), want the same Attempt", len(attempts), err)
+	}
+	if attempts[0].WorkerIdentity != worker || attempts[0].Phase != attemptstate.AttemptPhaseDispatched {
+		t.Fatalf("Attempt = phase %q worker %q, want the same Worker after assignment", attempts[0].Phase, attempts[0].WorkerIdentity)
+	}
+}
+
+// With multiple usable Workers, the loop distributes Tasks across them instead
+// of always picking the first registered identity (#815).
+func TestTickDistributesTasksAcrossMultipleWorkers(t *testing.T) {
+	store := memory.New()
+	if err := store.CompareAndSwapPolicy(context.Background(), 0, mustPolicy(t)); err != nil {
+		t.Fatal(err)
+	}
+	workerA := seedWorker(t, store, 1)
+	workerB := seedWorker(t, store, 2)
+	taskIDs := []ids.TaskID{}
+	for i := 0; i < 4; i++ {
+		taskIDs = append(taskIDs, seedTask(t, store, i, taskstate.TaskPhaseReady))
+	}
+	loop := newLoop(t, store, &stubIssue{}, nil)
+
+	_, err := loop.Tick(context.Background())
+	if err != nil {
+		t.Fatalf("Tick() error = %v", err)
+	}
+	counts := map[string]int{}
+	for _, taskID := range taskIDs {
+		attempts, err := store.ListAttemptsByTask(context.Background(), taskID)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(attempts) != 1 {
+			t.Fatalf("Task %s has %d attempts, want 1", taskID, len(attempts))
+		}
+		counts[attempts[0].WorkerIdentity]++
+	}
+	if counts[workerA] != 2 || counts[workerB] != 2 {
+		t.Fatalf("worker counts = %v, want each 2", counts)
+	}
+}
+
+// A Worker that is not usable is skipped even if it appears first in the
+// registry order (#815).
+func TestTickSkipsAStoppedWorker(t *testing.T) {
+	store := memory.New()
+	if err := store.CompareAndSwapPolicy(context.Background(), 0, mustPolicy(t)); err != nil {
+		t.Fatal(err)
+	}
+	stopped := seedWorker(t, store, 1)
+	alive := seedWorker(t, store, 2)
+	// Disable the first Worker so it cannot act.
+	if _, err := store.TransitionWorker(context.Background(), ids.WorkerIdentity(stopped), workerregistry.StateDisabled, "admin:test", time.Now().UTC()); err != nil {
+		t.Fatal(err)
+	}
+	taskIDs := []ids.TaskID{}
+	for i := 0; i < 3; i++ {
+		taskIDs = append(taskIDs, seedTask(t, store, i, taskstate.TaskPhaseReady))
+	}
+	loop := newLoop(t, store, &stubIssue{}, nil)
+
+	_, err := loop.Tick(context.Background())
+	if err != nil {
+		t.Fatalf("Tick() error = %v", err)
+	}
+	dispatched := 0
+	for _, taskID := range taskIDs {
+		attempts, err := store.ListAttemptsByTask(context.Background(), taskID)
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, a := range attempts {
+			if a.Phase == attemptstate.AttemptPhaseDispatched && a.WorkerIdentity == alive {
+				dispatched++
+			}
+		}
+	}
+	if dispatched != 3 {
+		t.Fatalf("dispatched attempts on alive Worker = %d, want 3", dispatched)
 	}
 }
 

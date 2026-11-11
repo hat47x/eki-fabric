@@ -372,6 +372,7 @@ type taskPublicStatus struct {
 	UpdatedAt     string `json:"updated_at"`
 	TerminalCode  string `json:"terminal_code,omitempty"`
 	PublicMessage string `json:"public_message,omitempty"`
+	AttemptCount  int    `json:"attempt_count,omitempty"`
 }
 
 func (h *Handler) status(w http.ResponseWriter, r *http.Request, id Identity, taskID string) {
@@ -388,6 +389,7 @@ func (h *Handler) status(w http.ResponseWriter, r *http.Request, id Identity, ta
 		UpdatedAt:     status.UpdatedAt.UTC().Format(time.RFC3339Nano),
 		TerminalCode:  status.TerminalCode,
 		PublicMessage: status.PublicMessage,
+		AttemptCount:  status.AttemptCount,
 	})
 }
 

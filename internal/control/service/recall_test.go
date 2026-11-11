@@ -7,11 +7,13 @@ import (
 	"time"
 
 	"github.com/hat47x/eki-fabric/internal/control/claimreconcile"
+	"github.com/hat47x/eki-fabric/internal/core/admission"
 	"github.com/hat47x/eki-fabric/internal/core/attemptstate"
 	"github.com/hat47x/eki-fabric/internal/core/contract"
 	"github.com/hat47x/eki-fabric/internal/core/ids"
 	"github.com/hat47x/eki-fabric/internal/core/leasestate"
 	"github.com/hat47x/eki-fabric/internal/core/resultclaim"
+	"github.com/hat47x/eki-fabric/internal/core/taskstate"
 	"github.com/hat47x/eki-fabric/internal/spi/statestore"
 )
 
@@ -73,17 +75,17 @@ func (f *recallRegistry) Reclaim(_ context.Context, lease leasestate.LeaseRecord
 	return nil
 }
 
-func dispatchedAttempt(t *testing.T) attemptstate.AttemptRecord {
+func dispatchedAttempt(t *testing.T, taskID ...ids.TaskID) attemptstate.AttemptRecord {
 	t.Helper()
 	attemptID, err := ids.ParseAttemptID("atm_00000000000000000000000000000001")
 	if err != nil {
 		t.Fatal(err)
 	}
-	taskID, err := ids.ParseTaskID("tsk_00000000000000000000000000000001")
-	if err != nil {
-		t.Fatal(err)
+	id := ids.TaskID("tsk_00000000000000000000000000000001")
+	if len(taskID) > 0 {
+		id = taskID[0]
 	}
-	record, err := attemptstate.New(attemptID, taskID, contract.SHA256([]byte("task-ir")), 1, time.Date(2026, 11, 6, 11, 0, 0, 0, time.UTC))
+	record, err := attemptstate.New(attemptID, id, contract.SHA256([]byte("task-ir")), 1, time.Date(2026, 11, 6, 11, 0, 0, 0, time.UTC))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -91,21 +93,39 @@ func dispatchedAttempt(t *testing.T) attemptstate.AttemptRecord {
 	return record
 }
 
-func expiredCloser(t *testing.T, attempts *recallAttempts, claims recallClaims) (recallCloser, *recallRegistry) {
+func expiredCloser(t *testing.T, attempts *recallAttempts, claims recallClaims, admissions ...statestore.AdmissionStore) (recallCloser, *recallRegistry) {
 	t.Helper()
 	registry := &recallRegistry{}
-	return recallCloser{
+	closer := recallCloser{
 		attempts: attempts, claims: claims, reclaimer: registry,
 		grace: RecallGrace, now: func() time.Time { return time.Date(2026, 11, 6, 12, 5, 0, 0, time.UTC) },
-	}, registry
+	}
+	if len(admissions) > 0 {
+		closer.admissions = admissions[0]
+	}
+	return closer, registry
 }
 
 // An Attempt whose Lease expired without a claim is closed, and only then is the
 // Lease taken back (#745).
 func TestAnExpiredLeaseWithoutAClaimClosesTheAttempt(t *testing.T) {
-	attempts := &recallAttempts{record: dispatchedAttempt(t)}
-	closer, registry := expiredCloser(t, attempts, recallClaims{})
-	if err := closer.Reclaim(context.Background(), testLease(t), "expired"); err != nil {
+	taskID, _ := ids.ParseTaskID("tsk_00000000000000000000000000000001")
+	attemptID, _ := ids.ParseAttemptID("atm_00000000000000000000000000000001")
+	leaseID, _ := ids.ParseLeaseID("les_00000000000000000000000000000001")
+	admission := m0Admission(t, taskID, attemptID, leaseID)
+	taskIRDigest := admission.Task.TaskIRDigest
+	attempt := dispatchedAttempt(t, taskID)
+	attempt.TaskIRDigest = taskIRDigest
+	attempt.WorkerIdentity = "worker-a"
+	attempt.LeaseID = leaseID
+	attempts := &recallAttempts{record: attempt}
+	closer, registry := expiredCloser(t, attempts, recallClaims{}, recallAdmissions{admission: admission})
+	lease := testLease(t, taskIRDigest)
+	lease.TaskID = taskID
+	lease.AttemptID = attemptID
+	lease.ID = leaseID
+
+	if err := closer.Reclaim(context.Background(), lease, "expired"); err != nil {
 		t.Fatal(err)
 	}
 	if attempts.record.Phase != attemptstate.AttemptPhaseClosed {
@@ -183,17 +203,19 @@ func TestTheCloseDecisionFollowsTheClaimReconcileRules(t *testing.T) {
 	lease := testLease(t)
 	now := lease.ExpiresAt.Add(RecallGrace + time.Second)
 	cases := []struct {
-		name    string
-		attempt attemptstate.AttemptRecord
-		claim   bool
-		want    claimreconcile.Decision
+		name                   string
+		attempt                attemptstate.AttemptRecord
+		claim                  bool
+		possibleExternalEffect bool
+		want                   claimreconcile.Decision
 	}{
-		{"closed", attemptstate.AttemptRecord{Phase: attemptstate.AttemptPhaseClosed}, false, claimreconcile.NoAction},
-		{"claim", dispatchedAttempt(t), true, claimreconcile.NoAction},
-		{"open, no claim", dispatchedAttempt(t), false, claimreconcile.CloseLeaseExpired},
+		{"closed", attemptstate.AttemptRecord{Phase: attemptstate.AttemptPhaseClosed}, false, false, claimreconcile.NoAction},
+		{"claim", dispatchedAttempt(t), true, false, claimreconcile.NoAction},
+		{"open, no claim, no external effect", dispatchedAttempt(t), false, false, claimreconcile.CloseLeaseExpired},
+		{"open, no claim, possible external effect", dispatchedAttempt(t), false, true, claimreconcile.Reconcile},
 	}
 	for _, c := range cases {
-		got, err := CloseDecision(c.attempt, c.claim, lease, now, RecallGrace)
+		got, err := CloseDecision(c.attempt, c.claim, lease, now, RecallGrace, c.possibleExternalEffect)
 		if err != nil {
 			t.Errorf("%s: %v", c.name, err)
 			continue
@@ -201,5 +223,119 @@ func TestTheCloseDecisionFollowsTheClaimReconcileRules(t *testing.T) {
 		if got != c.want {
 			t.Errorf("%s: decision = %s, want %s", c.name, got, c.want)
 		}
+	}
+}
+
+// recallAdmissions is a stub AdmissionStore for recall tests.
+type recallAdmissions struct {
+	admission statestore.Admission
+}
+
+func (f recallAdmissions) LoadAdmission(context.Context, ids.TaskID) (statestore.Admission, error) {
+	return f.admission, nil
+}
+
+func (f recallAdmissions) AdmitTask(context.Context, statestore.Admission, statestore.AdmitLimit) (statestore.AdmitResult, error) {
+	return statestore.AdmitResult{}, nil
+}
+
+func m0Admission(t *testing.T, taskID ids.TaskID, attemptID ids.AttemptID, leaseID ids.LeaseID) statestore.Admission {
+	t.Helper()
+	content := []byte(`{
+		"schema":"eki.task-request/v1",
+		"executor":{"id":"dev.example.transform","version_constraint":"^1"},
+		"inputs":[{"name":"source","artifact_id":"art_01"}],
+		"parameters":{"mode":"normalize"},
+		"resources":{"cpu_millis":1000,"memory_bytes":268435456,"wall_time_seconds":300,"output_bytes_max":16777216,"network_bytes_max":134217728},
+		"reliability":{"retryable":true,"preemptible":true,"checkpointable":false,"deterministic":true,"max_attempts":3,"effect_mode":"none"},
+		"priority":"normal"
+	}`)
+	req, err := admission.ParseTaskRequest(content)
+	if err != nil {
+		t.Fatal(err)
+	}
+	fingerprint, err := req.Fingerprint()
+	if err != nil {
+		t.Fatal(err)
+	}
+	taskIRDigest, err := req.TaskIRDigest()
+	if err != nil {
+		t.Fatal(err)
+	}
+	task, err := taskstate.NewTask(taskID, taskIRDigest, time.Date(2026, 11, 6, 11, 0, 0, 0, time.UTC))
+	if err != nil {
+		t.Fatal(err)
+	}
+	attempt, err := attemptstate.New(attemptID, taskID, contract.SHA256([]byte("task-ir")), 1, time.Date(2026, 11, 6, 11, 0, 0, 0, time.UTC))
+	if err != nil {
+		t.Fatal(err)
+	}
+	attempt.Phase = attemptstate.AttemptPhaseDispatched
+	attempt.WorkerIdentity = "worker-a"
+	attempt.LeaseID = leaseID
+	_, err = leasestate.New(leasestate.Config{
+		ID: leaseID, TaskID: taskID, TaskIRDigest: contract.SHA256([]byte("task-ir")),
+		AttemptID: attemptID, WorkerIdentity: "worker-a",
+		PlacementTrustDomain: "local.example", PlacementAuthorityPrincipal: "control-plane/plc-1",
+		PlacementDecisionID: "placement-001", PlacementPayloadDigest: contract.SHA256([]byte("placement")),
+		PlacementExpiresAt: time.Date(2026, 11, 6, 12, 2, 0, 0, time.UTC),
+		PolicyRevision:     "policy-42", PolicyEpoch: 1, FenceEpoch: 1,
+		IssuedAt: time.Date(2026, 11, 6, 12, 0, 0, 0, time.UTC), ExpiresAt: time.Date(2026, 11, 6, 12, 1, 0, 0, time.UTC),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	return statestore.Admission{
+		Task:               task,
+		Principal:          "alice",
+		IdempotencyKey:     "key-001",
+		RequestFingerprint: fingerprint,
+		MaxAttempts:        3,
+		Content:            content,
+	}
+}
+
+// An Attempt with a proven M0 effect_mode=none is closed when its Lease expires
+// without a ResultClaim (#745).
+func TestAnExpiredLeaseWithM0EffectNoneClosesTheAttempt(t *testing.T) {
+	taskID, _ := ids.ParseTaskID("tsk_00000000000000000000000000000001")
+	attemptID, _ := ids.ParseAttemptID("atm_00000000000000000000000000000001")
+	leaseID, _ := ids.ParseLeaseID("les_00000000000000000000000000000001")
+	admission := m0Admission(t, taskID, attemptID, leaseID)
+	taskIRDigest := admission.Task.TaskIRDigest
+	attempt := dispatchedAttempt(t, taskID)
+	attempt.TaskIRDigest = taskIRDigest
+	attempt.WorkerIdentity = "worker-a"
+	attempt.LeaseID = leaseID
+	attempts := &recallAttempts{record: attempt}
+	closer, registry := expiredCloser(t, attempts, recallClaims{}, recallAdmissions{admission: admission})
+	lease := testLease(t, taskIRDigest)
+	lease.TaskID = taskID
+	lease.AttemptID = attemptID
+	lease.ID = leaseID
+	if err := closer.Reclaim(context.Background(), lease, "expired"); err != nil {
+		t.Fatal(err)
+	}
+	if attempts.record.Phase != attemptstate.AttemptPhaseClosed {
+		t.Fatalf("phase = %s, want closed", attempts.record.Phase)
+	}
+	if len(registry.taken) != 1 {
+		t.Fatalf("reclaimed leases = %d, want 1", len(registry.taken))
+	}
+}
+
+// An Attempt whose admission is missing or invalid is kept open for human
+// decision when its Lease expires, because the effect mode is unknown (#745).
+func TestAnExpiredLeaseWithMissingAdmissionKeepsTheAttemptOpen(t *testing.T) {
+	attempts := &recallAttempts{record: dispatchedAttempt(t)}
+	closer, registry := expiredCloser(t, attempts, recallClaims{}, recallAdmissions{})
+	if err := closer.Reclaim(context.Background(), testLease(t), "expired"); err != nil {
+		t.Fatal(err)
+	}
+	if attempts.record.Phase != attemptstate.AttemptPhaseDispatched {
+		t.Fatalf("phase = %s, want dispatched (kept open)", attempts.record.Phase)
+	}
+	if len(registry.taken) != 0 {
+		t.Fatalf("reclaimed leases = %d, want 0", len(registry.taken))
 	}
 }

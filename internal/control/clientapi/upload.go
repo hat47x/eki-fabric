@@ -1,10 +1,10 @@
 package clientapi
 
 import (
-	"bytes"
 	"crypto/sha256"
 	"errors"
 	"io"
+	"net"
 	"net/http"
 	"time"
 
@@ -19,6 +19,19 @@ const ArtifactRetention = 24 * time.Hour
 // ErrDigestMismatch means the bytes this handler measured are not the bytes the
 // sink kept. The upload is refused and nothing is kept.
 var ErrDigestMismatch = errors.New("clientapi: artifact body does not match its measured digest")
+
+// isTimeoutError reports whether err is a read timeout from the HTTP server.
+// It is used to distinguish a slow network from a corrupted body (#816).
+func isTimeoutError(err error) bool {
+	if err == nil {
+		return false
+	}
+	var netErr net.Error
+	if errors.As(err, &netErr) && netErr.Timeout() {
+		return true
+	}
+	return false
+}
 
 // ArtifactSink is where an uploaded body is kept. It is separate from
 // ArtifactSource so a deployment reads and writes through the same store without
@@ -74,7 +87,14 @@ func (s *ingestSessions) take(principal, uploadID string) *ingestSession {
 		return nil
 	}
 	if s.now().UTC().After(session.expiresAt) {
+		scope := session.principal + "\x00" + session.key
 		delete(s.byID, uploadID)
+		delete(s.byKey, scope)
+		delete(s.byKeyReq, scope)
+		s.perPrincipal[session.principal]--
+		if s.perPrincipal[session.principal] <= 0 {
+			delete(s.perPrincipal, session.principal)
+		}
 		return nil
 	}
 	return session
@@ -84,12 +104,31 @@ func (s *ingestSessions) take(principal, uploadID string) *ingestSession {
 func (s *ingestSessions) finish(uploadID string) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	session, ok := s.byID[uploadID]
+	if !ok {
+		return
+	}
+	scope := session.principal + "\x00" + session.key
 	delete(s.byID, uploadID)
+	delete(s.byKey, scope)
+	delete(s.byKeyReq, scope)
+	s.perPrincipal[session.principal]--
+	if s.perPrincipal[session.principal] <= 0 {
+		delete(s.perPrincipal, session.principal)
+	}
 }
 
-// upload answers PUT /v1/artifact-uploads/{upload_id}. The bytes are measured
-// here, kept under their own digest, and recorded with the session's owner,
-// media type and requested data class (#245).
+// upload answers PUT /v1/artifact-uploads/{upload_id}. The bytes are streamed
+// to the sink, measured there, and recorded with the session's owner, media type
+// and requested data class (#245, #816).
+//
+// The body is NOT buffered in memory: it is piped through an io.TeeReader into
+// the sink. This means the handler's memory footprint is bounded by the HTTP
+// buffer size, not the artifact size. The sink is responsible for enforcing
+// maxBytes and computing the digest.
+//
+// A read timeout from the server is reported as 504 UPLOAD_TIMEOUT so the
+// Client can distinguish "network too slow" from "body is corrupted" (#816).
 func (h *Handler) upload(w http.ResponseWriter, r *http.Request, id Identity, uploadID string) {
 	if h.artifacts == nil || h.sink == nil {
 		writeProblem(w, http.StatusNotImplemented, &admission.Error{Kind: admission.KindInternal, Code: "NOT_IMPLEMENTED", Title: "This operation is not available in this deployment"})
@@ -105,30 +144,40 @@ func (h *Handler) upload(w http.ResponseWriter, r *http.Request, id Identity, up
 		return
 	}
 	// The declared size is the bound the Client was given. Exceeding it refuses
-	// the upload and keeps nothing.
-	body, err := io.ReadAll(http.MaxBytesReader(w, r.Body, session.maxBytes))
-	if err != nil {
+	// the upload and keeps nothing. The body is streamed directly to the sink so
+	// the handler does not buffer the whole artifact in memory (#816).
+	hash := sha256.New()
+	limitedBody := http.MaxBytesReader(w, r.Body, session.maxBytes)
+	tee := io.TeeReader(limitedBody, hash)
+	kept, size, perr := h.sink.Put(tee, "", session.maxBytes)
+	if perr != nil {
 		var tooLarge *http.MaxBytesError
-		if errors.As(err, &tooLarge) {
+		if errors.As(perr, &tooLarge) {
 			writeProblem(w, http.StatusRequestEntityTooLarge, &admission.Error{Kind: admission.KindBadRequest, Code: "UPLOAD_TOO_LARGE", Title: "The body exceeds the declared size"})
 			return
 		}
-		writeProblem(w, http.StatusBadRequest, &admission.Error{Kind: admission.KindBadRequest, Code: "BODY_UNREADABLE", Title: "The request body could not be read"})
-		return
-	}
-	digest := contract.FromSHA256(sha256.Sum256(body))
-	kept, size, perr := h.sink.Put(bytes.NewReader(body), digest.Hex(), session.maxBytes)
-	if perr != nil {
+		if isTimeoutError(perr) {
+			// A read timeout is a transport failure, not a bad body. Separating
+			// it from BODY_UNREADABLE lets the Client retry without changing
+			// the artifact (#816).
+			h.log.Error("upload body read timed out", "error", perr.Error())
+			writeProblem(w, http.StatusGatewayTimeout, &admission.Error{Kind: admission.KindInternal, Code: "UPLOAD_TIMEOUT", Title: "The request body could not be read within the server timeout"})
+			return
+		}
 		if errors.Is(perr, ErrDigestMismatch) {
-			writeProblem(w, http.StatusUnprocessableEntity, &admission.Error{Kind: admission.KindInternal, Code: "CONTENT_IDENTITY_FAILED", Title: "The body does not match its measured digest"})
+			writeProblem(w, http.StatusUnprocessableEntity, &admission.Error{Kind: admission.KindUnprocessable, Code: "CONTENT_IDENTITY_FAILED", Title: "The body does not match its expected digest"})
 			return
 		}
 		h.log.Error("upload could not be kept", "error", perr.Error())
 		writeProblem(w, http.StatusInternalServerError, &admission.Error{Kind: admission.KindInternal, Code: "UPLOAD_FAILED", Title: "The body could not be kept"})
 		return
 	}
-	if size != int64(len(body)) {
-		writeProblem(w, http.StatusInternalServerError, &admission.Error{Kind: admission.KindInternal, Code: "UPLOAD_FAILED", Title: "The stored size disagrees with what was received"})
+	var sum [sha256.Size]byte
+	copy(sum[:], hash.Sum(nil))
+	measured := contract.FromSHA256(sum)
+	if measured.Hex() != kept {
+		h.log.Error("upload digest disagreement with sink", "measured", measured.Hex(), "kept", kept)
+		writeProblem(w, http.StatusInternalServerError, &admission.Error{Kind: admission.KindInternal, Code: "UPLOAD_FAILED", Title: "The body digest disagrees with the store"})
 		return
 	}
 	record := UploadRecord{
@@ -160,7 +209,7 @@ func (h *Handler) upload(w http.ResponseWriter, r *http.Request, id Identity, up
 			Schema: "eki.artifact-descriptor/v1", ArtifactID: kept, Digest: kept,
 			SizeBytes: size, MediaType: session.mediaType, DataClass: session.dataClass,
 			Facets: artifactFacets{
-				// The bytes were measured here and re-measured by the store
+				// The bytes were measured by the store and bound to the digest
 				// before they were kept: identity is settled.
 				ContentIdentity: "verified",
 				// This deployment does not interpret bodies, so there is
