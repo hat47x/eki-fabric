@@ -224,7 +224,7 @@ func Start(ctx context.Context, cfg Config, log *slog.Logger) (*Server, error) {
 		// it from the registry, so an Attempt without a ResultClaim does not
 		// stay open forever (ADR-0037, #745).
 		closer := recallCloser{
-			attempts: store, claims: store, reclaimer: registry,
+			attempts: store, claims: store, admissions: store, reclaimer: registry,
 			grace: RecallGrace, now: time.Now,
 		}
 		if cerr := closer.validate(); cerr != nil {

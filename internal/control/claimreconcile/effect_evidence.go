@@ -1,6 +1,8 @@
 package claimreconcile
 
 import (
+	"fmt"
+
 	"github.com/hat47x/eki-fabric/internal/core/admission"
 	"github.com/hat47x/eki-fabric/internal/core/attemptstate"
 	"github.com/hat47x/eki-fabric/internal/core/contract"
@@ -29,8 +31,14 @@ func ProvenM0EffectNone(e M0EffectEvidence) (bool, string) {
 	if len(e.Content) == 0 {
 		return false, "missing_content"
 	}
-	if e.AdmissionTask.Validate() != nil || e.Attempt.Validate() != nil || e.Lease.Validate() != nil {
-		return false, "invalid_persisted_record"
+	if err := e.AdmissionTask.Validate(); err != nil {
+		return false, fmt.Sprintf("invalid_admission_task: %v", err)
+	}
+	if err := e.Attempt.Validate(); err != nil {
+		return false, fmt.Sprintf("invalid_attempt: %v", err)
+	}
+	if err := e.Lease.Validate(); err != nil {
+		return false, fmt.Sprintf("invalid_lease: %v", err)
 	}
 	if e.AdmissionTask.ID == "" || e.AdmissionTask.ID != e.Attempt.TaskID || e.AdmissionTask.ID != e.Lease.TaskID {
 		return false, "task_binding_mismatch"

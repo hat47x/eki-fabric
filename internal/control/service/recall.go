@@ -28,9 +28,10 @@ const RecallGrace = 30 * time.Second
 // failed close leaves the registry entry in place, which reads as "still open" —
 // the safe direction.
 type recallCloser struct {
-	attempts  statestore.AttemptStore
-	claims    statestore.ResultClaimStore
-	reclaimer interface {
+	attempts   statestore.AttemptStore
+	claims     statestore.ResultClaimStore
+	admissions statestore.AdmissionStore
+	reclaimer  interface {
 		Reclaim(ctx context.Context, lease leasestate.LeaseRecord, reason string) error
 	}
 	grace time.Duration
@@ -51,7 +52,25 @@ func (c recallCloser) Reclaim(ctx context.Context, lease leasestate.LeaseRecord,
 			return fmt.Errorf("recall: claim of %s: %w", lease.AttemptID, err)
 		}
 	}
-	decision, err := CloseDecision(attempt, hasClaim, lease, c.now(), c.grace)
+	possibleExternalEffect := true
+	if c.admissions != nil {
+		admission, aerr := c.admissions.LoadAdmission(ctx, lease.TaskID)
+		if aerr == nil {
+			evidence := claimreconcile.M0EffectEvidence{
+				Content:              admission.Content,
+				RequestFingerprint:   admission.RequestFingerprint,
+				AdmissionTask:        admission.Task,
+				AdmissionMaxAttempts: admission.MaxAttempts,
+				Attempt:              attempt,
+				Lease:                lease,
+			}
+			proven, _ := claimreconcile.ProvenM0EffectNone(evidence)
+			possibleExternalEffect = !proven
+		}
+		// LoadAdmission failing (e.g. old Task without content) is fail-closed:
+		// we do not know the effect mode, so we keep the Attempt open.
+	}
+	decision, err := CloseDecision(attempt, hasClaim, lease, c.now(), c.grace, possibleExternalEffect)
 	if err != nil {
 		return err
 	}
@@ -74,26 +93,23 @@ func (c recallCloser) Reclaim(ctx context.Context, lease leasestate.LeaseRecord,
 
 // CloseDecision is the claimreconcile decision for one Attempt. It is exported so
 // the reading can be tested without storage.
-func CloseDecision(attempt attemptstate.AttemptRecord, hasClaim bool, lease leasestate.LeaseRecord, now time.Time, grace time.Duration) (claimreconcile.Decision, error) {
+func CloseDecision(attempt attemptstate.AttemptRecord, hasClaim bool, lease leasestate.LeaseRecord, now time.Time, grace time.Duration, possibleExternalEffect bool) (claimreconcile.Decision, error) {
 	if attempt.Phase == attemptstate.AttemptPhaseClosed {
 		return claimreconcile.NoAction, nil
 	}
 	return claimreconcile.Decide(now, claimreconcile.Input{
-		AttemptOpen:    true,
-		HasClaim:       hasClaim,
-		LeaseExpiresAt: lease.ExpiresAt,
-		Grace:          grace,
-		// No Task model carries an external-effect marker yet (#745 の未決).
-		// Every expired Attempt is therefore closed as retryable, and the
-		// recovery admission decides whether the Task runs again.
-		PossibleExternalEffect: false,
+		AttemptOpen:           true,
+		HasClaim:              hasClaim,
+		LeaseExpiresAt:        lease.ExpiresAt,
+		Grace:                 grace,
+		PossibleExternalEffect: possibleExternalEffect,
 	})
 }
 
 var errRecallStoreMissing = errors.New("recall: the state store is required")
 
 func (c recallCloser) validate() error {
-	if c.attempts == nil || c.claims == nil || c.reclaimer == nil {
+	if c.attempts == nil || c.claims == nil || c.admissions == nil || c.reclaimer == nil {
 		return errRecallStoreMissing
 	}
 	if c.grace < 0 {
