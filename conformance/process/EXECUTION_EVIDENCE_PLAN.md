@@ -62,7 +62,7 @@ Client APIで受理された**一つのTask**について、配置・署名・�
 2. **#242の既存試験を連結**：`conformance/process`のDispatch・Agent・Claim・結果受理テストに、同一Taskを追う観測を追加する。各段階で`NOT RUN`を許容し、テストの合成値を実発行済みEvidenceと記載しない。
 3. **#745の実装を回帰確認**：`recallCloser`の保存済みAdmission読込と`ProvenM0EffectNone`、欠損・不一致時の保留をES-01／03で確認する。ES-02／04は未対応Effect向けの負例、ES-05の遅延Claim・Task回復は#242で実プロセスを追う。これらを一件のUnit PASSだけで完了としない。
 4. **#753の配送比較に接続**：同一Taskと現在Grantを保持する実Data Adapterが見つかる場合のみ、Local IPC／Connectの生入力・実受信・Consumedを比較する。固定Fixtureの自己申告Trace一致だけではPASSにしない。実Adapter未存在なら`NOT SUPPORTED`／`NOT RUN`を記録。
-5. **#754の方式選定**：D1の実測と権限・Effectの独立検証を揃えてから判断する。[#753のD0-A実行記録](../../spikes/data-delivery-transport/RESULTS_2026-11-09.md)は**commit `972bc57`上のGo 1.27.0パッケージ試験PASS（26件PASS・2件SKIP）**である。後から追加されたTrace順序負例（PR #810）や本計画のケースES-01〜07を同じ正本revisionで実行した証拠ではないため、対象別に未実行を明示する。
+5. **#754の方式選定**：M0/MVPでの新しいWebRTC/WebTransport/WebSocket採用を見送る判断はADR-0041（Accepted・仮）で記録済み。D1実測後の新しい方式判断は**追加ADR**で行う。[#753のD0-A実行記録](../../spikes/data-delivery-transport/RESULTS_2026-11-09.md)は**commit `972bc57`上のGo 1.27.0パッケージ試験PASS（26件PASS・2件SKIP）**である。後から追加されたTrace順序負例（PR #810）や本計画のケースES-01〜07を同じ正本revisionで実行した証拠ではないため、対象別に未実行を明示する。
 
 既存のM0/MVP優先順位を維持し、各ケースの正式な意味・実行許可はOwner／利用側の契約に残す。
 
@@ -95,4 +95,10 @@ Evidenceの記録はGit commitと不変な入力・計画・結果の**参照情
 1. 最新main SHAを固定し、`go test ./internal/control/claimreconcile ./internal/control/service ./conformance/process ./spikes/data-delivery-transport`の結果とSKIP理由を保存する。過去のD0-Aを新しいrevisionのPASSに繰り上げない。
 2. ES-01／03を本番の`LoadAdmission`→`recallCloser`で追い、正本欠損・digest不一致時にAttempt・台帳が保留されることを確認する。同じTaskの期限切れ→回収後の**Task状態とRecovery**はES-05／06として別記録する。
 3. ES-06では一つのClient API受理Taskから同じTask/AttemptのDispatch、Agent実行、Claim、Verification、Accepted Resultを追い、途中に合成Verificationを挟む場合は合成と明示する。
-4. ES-07では現行Worker制御を汎用メディア配送に読み替えず、Local IPC／Connectの実Data Adapterが存在するかから確認する。実Connection・Consumer受領が揃うまでは`NOT RUN`。`#754`の採否は実測後。
+4. ES-07では現行Worker制御を汎用メディア配送に読み替えず、Local IPC／Connectの実Data Adapterが存在するかから確認する。実Connection・Consumer受領が揃うまでは`NOT RUN`。`#754`はADR-0041によるM0/MVPの暫定非採用決定としてclosed。D1実測後の判断は新ADRで再検討する。
+
+### 2026-11-12 ADR-0041の暫定判断をES-07の前提へ反映
+
+[ADR-0041](../../plan/adr/0041-data-transport-measurement-deferral.md)は**Accepted（仮）**で、M0/MVPにWebRTC／WebTransport／WebSocketを追加採用せず、既存ADR-0001の通信面を維持する。対応する[#754](https://github.com/hat47x/eki-fabric/issues/754)はcompletedで閉じられている。これは「Local IPCとConnectの実Adapter比較に合格した」「新規方式を永続的に棄却した」という判断ではない。
+
+#753のD0-B/C実Data Adapter、D1のp50/p95/p99・欠落・資源などは未実施であり、**実測が揃った場合の再判断は新しいADR**で行う。#754を再開して未実装コードを既採用と扱う必要はない。IssueコメントにはWSL Go1.27.3でD0-A PASSとの追記があるが、再現条件・SHA・ログを確認できた既存記録はcommit `972bc57`のGo1.27.0（26 PASS／2 SKIP）である。これらを混同せず、現行mainのテスト実行を別Gateとする。
