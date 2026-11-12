@@ -91,3 +91,9 @@ Attemptを閉じたあとのTaskの扱いと、外部作用がありうるTask�
 ## 2026-11-09 同一Taskの実行証拠と未知Effectの停止条件
 
 [同一TaskのEvidence計画](EXECUTION_EVIDENCE_PLAN.md)に、Client API→Dispatch→Lease/WorkOrder→Agent→Claim→Verification/Acceptanceの一貫したID照合、独立Expectedを持つES-01〜ES-07、および期限切れ時の未知External Effectを扱うStop Gateをまとめた。既存の各テストの成功を継ぎ合わせても同一TaskのE2E実証にはならない。実装変更は#242／#745の所有Issueで判断し、本節はテスト条件を共有するのみ。
+
+## 2026-11-12 #745完了後の同一Task E2E検証
+
+[#745](https://github.com/hat47x/eki-fabric/issues/745)の現行実装では、`recallCloser`が保存済みAdmissionのEffectNone宣言をTask／Attempt／Lease／Workerと照合し、証明できない期限切れAttemptを安全側に保留する。純粋な`ProvenM0EffectNone`のPASSは、現在のPolicy/Grant、実外部Effect、回収後の再投入の許可を意味しない。現行`recall_test.go`には正例・Admission欠損の保持負例がある。
+
+[同一TaskのEvidence計画](EXECUTION_EVIDENCE_PLAN.md)には、Client API→Dispatch→Agent実行→Claim→Result Verification/Acceptanceを**同じTaskとAttemptで追う**#242の残りと、既存の限定Go 1.27 D0-A結果と現行revisionの未実行を区別したステータスを記録する。実装済み部品を別々の合成Taskで試験した成功例を足してE2E PASSとはしない。
