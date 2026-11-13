@@ -4,7 +4,7 @@
 
 ## 適用範囲
 
-EKIをAI Harnessから操作する場合、ユーザーが選択した対象、製品側で再解決した対象、許可された情報、Transportで実際に送った内容、Consumerで読み込まれた内容、Tool呼出し、外部Providerの効果を、一つの「渡した／完了した」にまとめない。
+EKIをAI Harnessから操作する場合、プロンプトで対象を指定し、GUI等で選択を固定・訂正できる操作形態を想定する。そのうえで、ユーザーが選択した対象、製品側で再解決した対象、許可された情報、Transportで実際に送った内容、Consumerで読み込まれた内容、Tool呼出し、外部Providerの効果を、一つの「渡した／完了した」にまとめない。
 
 EKIが正本として扱うのは**Task／Attempt／Lease／実行資格／配送とResultの受理**に必要な範囲に限る。選択対象や意味、Product Projection、Toolの業務操作、Provider Commitの正本は、それぞれの製品・Consumer・Providerが持つ。HarnessやSkillの名称・接続状態は、現在の実行Grantではない。共通Host、第二Registry、汎用Activity状態機械を新設しない。
 
@@ -40,7 +40,7 @@ EKIが正本として扱うのは**Task／Attempt／Lease／実行資格／配�
 | HE-03 | 宣言済みSourceの一部しかDiscovered／Loadedでないとき、「存在しない」「全部受領した」と結論しない | Product／Consumer |
 | HE-04 | 送信側Ackだけで受信側の観測がない場合、配送とLoadedは未確認 | #753 |
 | HE-05 | 受信byteは揃ってもConsumerのLoadが失敗した場合、Consumedは未確認 | #753／Consumer |
-| HE-06 | Toolの応答が到着してもProviderのOperation Receiptが無い場合、業務EffectはUNKNOWN。非冪等操作を無断再試行しない | Harness／Provider |
+| HE-06 | 外部への書込みを要求したToolの応答が到着してもProviderのOperation Receiptが無い場合、業務EffectはUNKNOWN。非冪等操作を無断再試行しない | Harness／Provider |
 | HE-07 | Harness再起動・応答再送後に旧Operation IDだけが残る場合、現在の対象・Grantを再確認しないまま操作しない | Harness／Provider |
 | HE-08 | Task IDが同じでも別Attempt／Lease／FenceEpochの証拠をつぎ合わせず、Resultを誤受理しない | #242 |
 | HE-09 | 本物のread-only Consumer受領が確認できた場合でも、業務意味のOwner受理やWriteの実行を自動的に主張しない | #753／Consumer |
