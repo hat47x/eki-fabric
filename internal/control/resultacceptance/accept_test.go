@@ -379,6 +379,34 @@ func TestAcceptDoesNotCountTheProducerAsAVerifier(t *testing.T) {
 	f.assertUntouched(t)
 }
 
+// Two distinct verifier IDs and operators are not enough for RA2 if their
+// trusted principal is shared. A subsequent truly independent observation
+// can satisfy the quorum without promoting the earlier held decision.
+func TestAcceptRequiresDistinctPrincipalAndOperatorForRA2(t *testing.T) {
+	f := newFixture(t, fixtureOptions{})
+	ctx := context.Background()
+	sharedPrincipal := f.request(
+		f.reproduced("verifier-1", "principal-P1", "operator-O1"),
+		f.reproduced("verifier-2", "principal-P1", "operator-O2"),
+	)
+	held, err := f.service.Accept(ctx, sharedPrincipal)
+	if err != nil || held.Outcome() != resultaccept.OutcomeHeld {
+		t.Fatalf("same-principal verifiers = %+v, %v; want held", held, err)
+	}
+	f.assertUntouched(t)
+
+	accepted, err := f.service.Accept(ctx, f.request(
+		f.reproduced("verifier-1", "principal-P1", "operator-O1"),
+		f.reproduced("verifier-3", "principal-P3", "operator-O3"),
+	))
+	if err != nil || accepted.Outcome() != resultaccept.OutcomeAccepted {
+		t.Fatalf("independent verifiers = %+v, %v; want accepted", accepted, err)
+	}
+	if !accepted.Accepted.Valid() || accepted.Accepted.AttemptID() != f.attempt.ID {
+		t.Fatalf("accepted result does not belong to the original Attempt: %+v", accepted.Accepted)
+	}
+}
+
 func TestAcceptHoldsWhenVerificationsDisagree(t *testing.T) {
 	f := newFixture(t, fixtureOptions{})
 	result, err := f.service.Accept(context.Background(), f.request(
