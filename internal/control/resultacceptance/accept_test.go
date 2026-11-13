@@ -402,7 +402,7 @@ func TestAcceptRequiresDistinctPrincipalAndOperatorForRA2(t *testing.T) {
 	if err != nil || accepted.Outcome() != resultaccept.OutcomeAccepted {
 		t.Fatalf("independent verifiers = %+v, %v; want accepted", accepted, err)
 	}
-	if !accepted.Accepted.Valid() || accepted.Accepted.AttemptID() != f.attempt.ID {
+	if !accepted.Accepted.Valid() || accepted.Accepted.TaskID() != f.task.ID {
 		t.Fatalf("accepted result does not belong to the original Attempt: %+v", accepted.Accepted)
 	}
 }
