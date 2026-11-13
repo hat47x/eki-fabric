@@ -1843,3 +1843,9 @@ TEIや外部Harnessとの接続では、**Control（Attempt／Lease）・Deliver
 
 #753のData Adapter実配送、TEI/SHO/HarnessのConsumer Loaded、外部Provider Effectは引き続き別ゲート。新Host/Registry・新Transportを先行させず、#745/#754の完了判断を維持する。本更新は計画でありVA-01〜06の実テストは`NOT RUN`。
 
+### 2026-11-13 #242：VA-02の既存試験と追加負例の差分
+
+`internal/control/resultacceptance/accept_test.go`を再照合した。既に`TestAcceptHoldsWithNoVerification`、`TestAcceptDoesNotCountTheProducerAsAVerifier`、`TestAcceptRefusesEvidenceForAnotherAttemptWithoutChangingState`、`TestAcceptFailsClosedWhenTheTrustedInputsCannotBeRead`、`TestAcceptIsIdempotentAndReturnsTheStoredResult`等があり、VA-01・03・04・06の**純粋な受理Service単体**に相当する部分は実装済み。これらを新規課題として重複実装しない。
+
+追加した`TestAcceptRequiresDistinctPrincipalAndOperatorForRA2`は、異なるVerifier ID・異なるOperatorでも**Principalを共有する2件は保留**し、別Principal／Operatorの観測へ置き換えた場合に同一Taskの受理へ進める負例（VA-02）を固定する。独立性の判定自体は既存の`resultaccept.Decide`に委ね、試験が手作りしたdimensionを**本番の信頼済みIdentity記録**と混同しない。新規テストは現行Go 1.27環境で`NOT RUN`。次はこの試験と既存群を実行し、実Verifierの資格解決・Observation供給・Public Result APIまでを本番起動経路で検証する。
+
