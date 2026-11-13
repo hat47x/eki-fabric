@@ -130,3 +130,25 @@ TEI・SHO・SUI・外部Harnessで検討されている`Intent → Resolve → P
 **受渡しの最小相関値**は`TaskID / AttemptID / LeaseID / FenceEpoch / AcceptedResult digest / Consumer identity / Source revision / Grant or Policy revision / Operation ID / Receipt reference`のうち各境界に必要なものとする。全境界へ同じ巨大Envelopeを強制しない。`Observed / Asserted / Unavailable / Not Run`を区別し、Consumerが実際に受領したときだけ、その主体の証拠を追加する。
 
 **計画の優先順**：①#242で独立Verifierによる結果受理とPublic APIを実証、②#753で実Data Adapterの送受信・Consumer Loadedを測定、③利用製品側で固定Selection→再解決→実受領→必要ならProvider Receiptまで検証。①だけで②③をPASSにしない。Go 1.27の実試験、製品横断の実Consumer受領、Provider実効果は本追補では**NOT RUN**。ADR-0041のM0/MVP追加方式非採用判断を変更しない。
+
+### 2026-11-13 #242：独立Verificationの取得・認可・適用を三つの境界に分ける
+
+最新mainの`internal/control/service/run.go`を確認すると、Worker入口の`claimaccept`は`ResultAcceptance`を呼ぶが、`claimaccept.Accept`からの`resultacceptance.Request`には**AttemptIDだけ**を渡す。受理Serviceの`Accept`は`Verifications`または`Observations`を受け取れるが、起動経路には独立Verifierの実報告を取得してこの入力へ渡す処理が見当たらない。起動時の`defaultResultPolicy`はRA2／二つの独立Principal・Operatorを要求し、`defaultProducers`はWorker identityを両dimensionのfallbackとして用いる。**配線済みServiceがあることと独立検証を実施できることは別**である。
+
+ここで三つの境界を明示する。
+
+1. **取得**：Worker以外の実Verifierが、固定された同一Task／Attempt／TaskIR／Output digestに対して何を再実行・照合したかを観測する。試験が手で組み立てた`resultaccept.Verification`は`TEST_ONLY`。
+2. **資格と独立性**：Verifier principal／operator／実行基盤／使用Executorの独立性を**信頼できる記録から**解決する。Verifier自己申告のdimensionや、単にIDが異なることだけでRA2の独立性を証明しない。現在PolicyとRevocation、期限・対象範囲も確認する。取得不能なら`NOT PROVEN`。
+3. **適用と公開**：出典を検証した`resultverify.Observation`を既存`resultacceptance.Accept`へ渡し、同一Attemptの正本更新を確認する。Claim受付のACK、Verifierの送信ACK、Result AcceptanceのCAS、Client APIの`200`は別々に観測する。欠落・失効・競合は保留または拒否し、合成Evidenceで補完しない。
+
+| Case | 独立Expected候補 | 判定の所有先 |
+| --- | --- | --- |
+| VA-01 | Claimだけを受理し、Verificationが無い → Attemptは検証待ち、Public Resultは`409` | #242 |
+| VA-02 | 同じOutput digestに一致するがVerifier二件が同一Principal/Operator由来 → RA2を満たさず保留 | #242 |
+| VA-03 | 別Task／Attempt／TaskIR／Output digestに紐づくObservation → 正本Claimへの結合を拒否 | #242 |
+| VA-04 | 署名・Principal・Policy・Grantのいずれかを現在の正本から確認できない → 受理へ昇格しない | #242 |
+| VA-05 | 有効な独立Verifier二件を既存受理Serviceへ投入 → CASでAcceptedResultを確定後、同一TaskのClient APIが`200` | #242 |
+| VA-06 | 同じObservationを再送、または失効後に遅延投入 → 二重受理や旧Attemptの復活を許さない | #242 |
+
+**実装の最小単位**：既存`resultverify.NormalizeAll`と`resultacceptance.Accept`を再利用し、まずテストProfileで実VerifierのObservationを発生させる経路と資格検証を追加する。ProducerSourceとPolicySourceを固定fallbackのまま本番RA2の根拠にせず、どの信頼済み記録を読むかを先に確定する。外部製品のOwner意味受理、Provider Commit、#753の実Data Adapterは対象外。VA-01〜06は**実行前Expected候補**であり、今回の検証PASSではない。Go 1.27の実テストは`NOT RUN`。
+
