@@ -238,6 +238,12 @@ func TestHTTPTaskSubmissionIsExecutedByTheAgent(t *testing.T) {
 		claim.LeaseID() != found.LeaseID || claim.WorkerIdentity() != agentSide.worker {
 		t.Fatalf("the stored Claim is not bound to the issued Task/Attempt/Lease/Worker")
 	}
+	lease, err := finalStore.LoadLease(context.Background(), found.LeaseID)
+	must(t, err)
+	if lease.TaskID != taskID || lease.AttemptID != found.ID ||
+		lease.WorkerIdentity != agentSide.worker || lease.FenceEpoch != claim.FenceEpoch() {
+		t.Fatalf("the Claim and durable Lease do not describe the same Task/Attempt/Worker/FenceEpoch")
+	}
 	t.Logf("task=%s attempt=%s claim=%s", taskID, found.ID, claim.OutputDigest().Hex())
 
 	// A durable Claim and the automatically invoked acceptance service are
