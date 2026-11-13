@@ -253,6 +253,9 @@ func TestHTTPTaskSubmissionIsExecutedByTheAgent(t *testing.T) {
 	if status != http.StatusConflict || !bytes.Contains(resultBody, []byte("RESULT_NOT_READY")) {
 		t.Fatalf("unverified Claim exposed as a result: status=%d body=%s", status, resultBody)
 	}
+	if bytes.Contains(resultBody, []byte(claim.OutputDigest().Hex())) {
+		t.Fatal("the unverified output digest leaked through the public result endpoint")
+	}
 
 	// Verification by re-execution: run the same fixed command outside the
 	// Agent and compare the digest with the claim. This is reproducible on
