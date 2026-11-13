@@ -57,3 +57,9 @@ EKIが正本として扱うのは**Task／Attempt／Lease／実行資格／配�
 5. **外部Harnessの実受領は利用側で検証**：Pin→許可Projection→送出→Consumer実Load→Tool呼出し／応答を、それぞれの正本と照合する。読み取り専用Handoffの成立と、Tool実行・Write/Effectの実証は別の受入とする。
 
 実行環境が異なる過去のGoログを、現行mainや未実装AdapterのPASSへ読み替えない。現行mainのGo 1.27試験、Harness実Tool、Consumer実受領、Provider実Effectの証拠が揃うまでは該当項目を`NOT RUN`に保つ。M0/MVPの優先順位は変更しない。
+
+## 2026-11-13 同一Taskの結果公開と外部Harnessの受領を分ける
+
+[`http_submit_agent_test.go`](http_submit_agent_test.go)には、実Client API→同じTaskのAgent実行→Claim→テスト内の明示的Verification/Acceptanceという縦断経路が既にある。#242の次の検証では**Task/Attempt/Lease・FenceEpochの正本一致**、Claimだけの状態で`GET /v1/tasks/{id}/result`が`409 RESULT_NOT_READY`（未検証digestを返さない）、明示的な受理後のみ`200 eki.task-result/v1`となることを固定する。これは公開Result APIで結果を取り出せる条件の試験であり、Tool／Providerの実効果やConsumerの実Loadを意味しない。
+
+現行のClaim受付にはResult Acceptance Service自体が配線されているが、独立Verificationが揃わない場合は保留になる。テストが合成Verificationを直接渡して結果受理へ進める場合、その結果は**テスト専用の明示処理**として記録し、起動済みControl Planeの自動Verifierや外部Harnessからの完了として扱わない。HE-04／05／06／08を同じ「通信／結果成功」に畳まない。
