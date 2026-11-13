@@ -102,3 +102,7 @@ Evidenceの記録はGit commitと不変な入力・計画・結果の**参照情
 [ADR-0041](../../plan/adr/0041-data-transport-measurement-deferral.md)は**Accepted（仮）**で、M0/MVPにWebRTC／WebTransport／WebSocketを追加採用せず、既存ADR-0001の通信面を維持する。対応する[#754](https://github.com/hat47x/eki-fabric/issues/754)はcompletedで閉じられている。これは「Local IPCとConnectの実Adapter比較に合格した」「新規方式を永続的に棄却した」という判断ではない。
 
 #753のD0-B/C実Data Adapter、D1のp50/p95/p99・欠落・資源などは未実施であり、**実測が揃った場合の再判断は新しいADR**で行う。#754を再開して未実装コードを既採用と扱う必要はない。IssueコメントにはWSL Go1.27.3でD0-A PASSとの追記があるが、再現条件・SHA・ログを確認できた既存記録はcommit `972bc57`のGo1.27.0（26 PASS／2 SKIP）である。これらを混同せず、現行mainのテスト実行を別Gateとする。
+
+### 2026-11-13 AI Harnessへの受け渡しとEKIの証拠境界
+
+[HANDOFF_EVIDENCE_GATES.md](HANDOFF_EVIDENCE_GATES.md)で、プロンプトから固定した対象→Productの現在Revision再解決→許可されたProjection→実Transport→Consumer Load→Tool呼出し／応答→外部Provider Receiptを、同じ「成功」へまとめずに照合する。HE-01〜HE-10を独立Expected候補として置き、ES-06（同一Task E2E）・ES-07（実配送／実受領）の延長として扱う。対象の意味・選択・開示・Tool実行の正本をEKI Coreへ複製せず、各製品とHarnessの権限・出典を参照する。#745と#754はclosed、#242と#753はopen。現行mainのGo 1.27全対象試験、Harness実行、Consumer実Load、Provider Effectを未観測のままPASSにしない。
