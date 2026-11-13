@@ -1828,3 +1828,9 @@ TEIや外部Harnessとの接続では、**Control（Attempt／Lease）・Deliver
 ### 2026-11-13 EKI結果受理から製品Consumer・Provider効果への横断Evidence
 
 [同一TaskのEvidence計画](../conformance/process/EXECUTION_EVIDENCE_PLAN.md)にES-08〜12を追加。EKI Accepted Result／Data AdapterのDelivered／利用製品のLoaded・Invoked／外部Tool・ProviderのCommit Receiptを別票に分ける。TEI・SHO・SUI・HarnessのIntent→Resolve→Projection→Transport→Consumer→Harness/Effectは各製品の正本と権限を保持し、EKIに新しいHost・Registry・Owner判断を移さない。受渡しはTask/Attempt/Lease/FenceEpoch、結果digest、Consumer identity、Source/Grant revision、Operation ID・Receipt referenceの必要最小項目を照合し、巨大Envelopeを義務化しない。大容量EvidenceはGitへの全面アップロードを前提にせずManifest/digestと実体保管を分離する。#242の独立Verifier、#753の実Data AdapterとConsumer受領を先行し、製品の実Provider効果は後続の別ゲート。現時点でES-08〜12はNOT RUN、#745はM0限定実装でclosed、#754はADR-0041のM0/MVP暫定判断を維持。
+
+### 2026-11-13 #242・#753：証拠をどの成功主張に採用できるかを固定
+
+[HANDOFF_EVIDENCE_GATES.md](../conformance/process/HANDOFF_EVIDENCE_GATES.md)にEQ-01〜06を追加。Task/Attempt/Lease/FenceEpochの一致、実Verificationの出典、Public Result API、実送受信とConsumer Loader、Source/Grant失効、Provider Commit Receiptを、**主張ごとに必要な独立観測**として定義した。`NOT PROVEN`（証拠不足）・`NOT RUN`（未実行）・`NOT SUPPORTED`（Adapter不在）・`FAIL`（反例で不一致）を区別し、テスト内の合成Verification／seed／自己申告Traceを本番の実証へ昇格させない。A→B→Aやdigest一致は現在のGrantを復活させない。NAS/S3等に置く証拠はURIとdigestだけでなく、必要時に取得可能か・誰が観測したかを別に記録する。
+
+実装順は①#242の既存同一Taskテストを正本Go 1.27で再実行（EQ-01）、②別Attempt/旧FenceEpoch混入を拒否する負例（EQ-02）、③#753の実Data Adapterがある場合にのみConsumer実ログ欠落の負例（EQ-03）。EQ-04〜06は製品の正本・独立Verifier・Providerの利用可能性を確認してから行う。**この更新はConformance計画のみで、実行結果ではない。** 外部Harness/TEI/SHOの意味受理をEKIへ移管せず、#745/#754の完了判断やM0/MVP優先順位は変更しない。

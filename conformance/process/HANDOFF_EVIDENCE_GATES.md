@@ -63,3 +63,48 @@ EKIが正本として扱うのは**Task／Attempt／Lease／実行資格／配�
 [`http_submit_agent_test.go`](http_submit_agent_test.go)には、実Client API→同じTaskのAgent実行→Claim→テスト内の明示的Verification/Acceptanceという縦断経路が既にある。#242の次の検証では**Task/Attempt/Lease・FenceEpochの正本一致**、Claimだけの状態で`GET /v1/tasks/{id}/result`が`409 RESULT_NOT_READY`（未検証digestを返さない）、明示的な受理後のみ`200 eki.task-result/v1`となることを固定する。これは公開Result APIで結果を取り出せる条件の試験であり、Tool／Providerの実効果やConsumerの実Loadを意味しない。
 
 現行のClaim受付にはResult Acceptance Service自体が配線されているが、独立Verificationが揃わない場合は保留になる。テストが合成Verificationを直接渡して結果受理へ進める場合、その結果は**テスト専用の明示処理**として記録し、起動済みControl Planeの自動Verifierや外部Harnessからの完了として扱わない。HE-04／05／06／08を同じ「通信／結果成功」に畳まない。
+
+## 2026-11-13 証拠の適格性と失効を機械判定する最小手順
+
+ES-08〜12の追加だけでは、実際に集めたログを**どの成功判定に使ってよいか**が曖昧なままになる。ここではEKIの実行系を変更せず、試験Runnerが扱うEvidenceの**採用・拒否・保留条件**を固定する。既存の[同一TaskのEvidence計画](EXECUTION_EVIDENCE_PLAN.md)と共通の観測票を使用し、新たな本番Wire Schemaや中央台帳は導入しない。
+
+### 1. 各主張の成立条件
+
+| 主張 | 必須の独立観測 | 欠落したときの判定 |
+| --- | --- | --- |
+| `ClaimStored` | 現行State StoreのClaimと同一Task/Attempt/Lease/Worker/FenceEpoch | `NOT PROVEN`。Agentの送信ログだけでは不可 |
+| `ResultAccepted` | 同一Attemptの永続AcceptedResult、検証Policyと実Verificationの出典・主体 | `NOT PROVEN`。合成Verificationは`TEST_ONLY`として別区分 |
+| `ResultPublished` | 同一Taskを権限あるClientでGETし、`200`と受理済みdigestを照合 | `NOT PROVEN`。State Store上の受理だけでは不可 |
+| `Delivered` | 送信・受信の独立観測、byte長・digest・系列、送受信主体 | `NOT PROVEN`。送信ACKだけでは不可 |
+| `ConsumerLoaded` | Consumer自身のReader/Loader実行、受領範囲・digest・現在RevisionとGrant | `NOT PROVEN`。通信受信だけでは不可 |
+| `ProviderEffectCommitted` | Provider側のOperation ID／Intent digest／Commit Receipt、必要なら独立Read | `UNKNOWN`。Tool ACKやEKI AcceptedResultで代用不可 |
+
+`NOT PROVEN`は「失敗した」という意味ではなく、**その主張を成立させる観測が不足している**ことを表す。未実行なら`NOT RUN`、実Adapterが無ければ`NOT SUPPORTED`、実行して期待結果に反したなら`FAIL`とする。これらはConformance報告用の区分であり、EKI本番のTask状態を追加するものではない。
+
+### 2. 失効と証拠の再利用
+
+各観測には、実行commit／ビルド識別子、取得時刻、Producer/Consumer identity、対象Task/Attempt、Source/Contract revision、Grant/Policy revision、対象byte digest、証拠の所在と取得方法を、**観測できた範囲で**付ける。外部の署名やProvider Receiptは発行元の検証方法も記録する。証拠にURIがあるだけでは実体を確認したことにならない。
+
+- **内容変更**：同じIDでもSource byteや契約のrevisionが変われば、旧観測を新しい実行の根拠へ自動流用しない。
+- **資格失効**：A→B→Aで元のdigestへ戻っても、Lease／Grant／Policy／Plugin／Provider資格の失効は復活しない。
+- **部分取得・アクセス不能**：`0件`、`NULL`、`未取得`、`権限拒否`、`途中で失敗`を別々に記録する。空の受領票を完全受領へ変換しない。
+- **試験と本番の混同**：テストがseedしたREADY、合成Verification、自己申告Traceは、対応する**テスト内の観測**としてのみ再利用する。別のmain SHA、別の実装Profile、別の実ConsumerのPASSへ流用しない。
+
+### 3. 次に実行する最小の反証組
+
+| Case | 事前固定する操作 | 合格条件 |
+| --- | --- | --- |
+| EQ-01 | #242の同一TaskのClaim後、Verification前にPublic ResultをGET | `409 RESULT_NOT_READY`でdigest非公開。明示受理後のみ同じTaskが`200` |
+| EQ-02 | 既存の同一Taskの証拠に、別Attemptまたは旧FenceEpochのClaim/Leaseを混ぜる | 相関不一致として拒否。部分一致をAcceptedResultへ昇格させない |
+| EQ-03 | #753の固定Traceで送信ACKだけを与え、Consumer実ログを与えない | `Delivered`や`ConsumerLoaded`の実証を拒否 |
+| EQ-04 | 一度受領したSourceを変更後に元のdigestへ戻し、途中でGrantを撤回する | 過去の受領証拠で現在の権限を復活させない |
+| EQ-05 | Tool応答を与えるがProviderのCommit Receiptを欠落させる | Effectは`UNKNOWN`。自動再実行を許可しない |
+| EQ-06 | 既存の合成Verification付き成功ログを別commitの本番独立Verifierの証拠として入力 | 実行commit・Verificationの出典不一致を拒否 |
+
+**実施の優先順**はEQ-01（既存#242テストでコード化済み、正本Go 1.27実行は未確認）→EQ-02（#242の負例）→EQ-03（#753の実Adapterができた時点）とする。EQ-04〜06は利用側正本・独立Verifier・Providerが利用できるときだけ実行する。実行不能をPASSと記録しない。
+
+## 責務と非目標
+
+EKIが製品の意味やConsumerの内部状態を推測して判定するのではなく、**各正本が発行した証拠を適切な主張へ結び付けられるか**を試験する。TEI/SHO側の`selected → loaded → invoked → received`はEKIのClaim／AcceptedResultとは別の連鎖。各製品の正式受理はそれぞれのOwnerと既存の変更管理に委ねる。独自Harness、共通Registry、新しいAuthority、外部Providerの模擬成功をEKIの必須構成にしない。
+
+本追補は**計画のみ**。EQ-01〜06の実行、Go 1.27の正本テスト、実Consumer・ProviderのReceipt確認はここでは`NOT RUN`である。
