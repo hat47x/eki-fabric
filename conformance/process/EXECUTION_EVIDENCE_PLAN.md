@@ -114,3 +114,19 @@ Evidenceの記録はGit commitと不変な入力・計画・結果の**参照情
 今回の最小強化は、同じTask／Attempt／Worker／Lease・FenceEpochの**実State Store上の一致**と、Client APIの結果公開の境界（未検証Claimは`409 RESULT_NOT_READY`、テスト内の明示受理後だけ`200 eki.task-result/v1`で同じoutput digest）をアサーションに追加すること。これで**検証・受理が自動で行われたことは証明されない**。現行`internal/control/service/run.go`ではWorkerへのClaim受付に`ResultAcceptance` Serviceを接続済みだが、独立Verificationが無い場合は保留する。
 
 **実装可能な次の小単位（#242）**：①上記強化後の`TestHTTPTaskSubmissionIsExecutedByTheAgent`を正本Go 1.27で実行、同じSHAと失敗/成功ログを保存、②Agent以外の独立Verificationを実プロセス・信頼済みProviderから供給できる境界を確認、③Claim後の保留からAcceptedResultへの遷移と公開APIを同一Taskで観測、④失効・再起動・別Worker・不完全Evidenceで誤受理しない負例を追加。Stage①のPASSをStage②〜④へ昇格させない。#745のM0 EffectNone、#753の任意Data Adapter、外部Providerの業務効果は別証拠。
+
+### 2026-11-13 横断Consumer受領・Provider Effectの証拠ゲート（ES-08〜12）
+
+TEI・SHO・SUI・外部Harnessで検討されている`Intent → Resolve → Projection → Transport → Consumer → Harness/Effect`の区分を、EKIのTask/Result受理へ**別の成功判定として接続する**。EKIに製品の意味モデル、正本Registry、Owner判断、Provider Commitを移管しない。各段階のEvidenceはGitにすべての大容量byteを保存する前提にせず、Manifestとdigest／保管場所の参照を分離できる。保管先の存在やdigest一致だけで、現在の利用権限・実際のConsumer受領を主張しない。
+
+| Case | 事前固定する反例／独立Expected候補 | Owner |
+| --- | --- | --- |
+| ES-08 | `AcceptedResult`が存在するが、TEI/SHO/Harnessが結果を取得していない → EKI側Acceptedと利用側Consumedは**別票**。利用側E2Eは未達 | #242（EKI側の公開）＋利用製品 |
+| ES-09 | 結果digestが一致しても、取得対象のrevision／意味対応／現在の権限が失効 → Consumerの再解決とGrant再確認が必要。過去の成功Receiptは新しい資格にならない | 利用製品＋#753（配送契約） |
+| ES-10 | 結果が`Delivered`だが、Consumerの`Loaded/Invoked`を観測できない → 配送成功を実消費に昇格させない。実受領時のbyte digestとConsumer identityを別記録 | #753＋利用製品 |
+| ES-11 | Tool/Providerへの要求送出・通信ACKはあるが、ProviderのOperation IDとCommit Receiptが無い → 外部効果は`UNKNOWN`。新Attemptの再実行許可を推定しない | #745の既存Effect規則＋利用側Provider |
+| ES-12 | HarnessのSessionが再接続不能でTool実行結果が不明 → 新Sessionへの文脈縮退は可。ただし不明なTool副作用を成功扱いせず、独立照会と権限再確認まで保留 | Harness／利用製品。EKIは実行資格・Receipt境界のみ |
+
+**受渡しの最小相関値**は`TaskID / AttemptID / LeaseID / FenceEpoch / AcceptedResult digest / Consumer identity / Source revision / Grant or Policy revision / Operation ID / Receipt reference`のうち各境界に必要なものとする。全境界へ同じ巨大Envelopeを強制しない。`Observed / Asserted / Unavailable / Not Run`を区別し、Consumerが実際に受領したときだけ、その主体の証拠を追加する。
+
+**計画の優先順**：①#242で独立Verifierによる結果受理とPublic APIを実証、②#753で実Data Adapterの送受信・Consumer Loadedを測定、③利用製品側で固定Selection→再解決→実受領→必要ならProvider Receiptまで検証。①だけで②③をPASSにしない。Go 1.27の実試験、製品横断の実Consumer受領、Provider実効果は本追補では**NOT RUN**。ADR-0041のM0/MVP追加方式非採用判断を変更しない。
