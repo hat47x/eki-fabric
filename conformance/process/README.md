@@ -97,3 +97,7 @@ Attemptを閉じたあとのTaskの扱いと、外部作用がありうるTask�
 [#745](https://github.com/hat47x/eki-fabric/issues/745)の現行実装では、`recallCloser`が保存済みAdmissionのEffectNone宣言をTask／Attempt／Lease／Workerと照合し、証明できない期限切れAttemptを安全側に保留する。純粋な`ProvenM0EffectNone`のPASSは、現在のPolicy/Grant、実外部Effect、回収後の再投入の許可を意味しない。現行`recall_test.go`には正例・Admission欠損の保持負例がある。
 
 [同一TaskのEvidence計画](EXECUTION_EVIDENCE_PLAN.md)には、Client API→Dispatch→Agent実行→Claim→Result Verification/Acceptanceを**同じTaskとAttemptで追う**#242の残りと、既存の限定Go 1.27 D0-A結果と現行revisionの未実行を区別したステータスを記録する。実装済み部品を別々の合成Taskで試験した成功例を足してE2E PASSとはしない。
+
+## 2026-11-13 Harness連携を想定したEvidenceの受入条件
+
+[Harnessへの受け渡し証拠・負例](HANDOFF_EVIDENCE_GATES.md)に、固定対象の再解決・開示許可・EKIの実行資格・送受信・Consumer Load・外部Tool実行・Provider効果を分離したHE-01〜10を整理した。追加のruntime状態機械ではなく、既存の同一Task Conformanceの検証条件である。#745のM0回収の実装完了と#754のM0/MVP限定の方式判断は、#242の実行E2Eや#753の実Data Adapter比較の完了を意味しない。

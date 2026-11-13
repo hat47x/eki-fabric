@@ -1812,3 +1812,9 @@ TEIや外部Harnessとの接続では、**Control（Attempt／Lease）・Deliver
 [#754](https://github.com/hat47x/eki-fabric/issues/754)は2026-11-11にcompletedとして閉鎖され、[ADR-0041](adr/0041-data-transport-measurement-deferral.md)で**M0/MVPにはWebRTC・WebTransport・WebSocketを追加採用しない**という暫定判断を記録済み。既存ADR-0001のExternal HTTPS/JSON、Worker/Adapter Connect+Protobuf、Authority CBOR/COSEを維持する。Local IPCも候補であり、現在の本番既定経路と同一視しない。
 
 この判断は**測定不足を明示した保留付き非採用**である。#753のD0-B/C（Local IPC・Connect実Data Adapter）とD1（遅延・欠落・Backpressure・資源・失効）が揃った場合だけ、**新ADR**で追加採用／非採用を再評価する。旧D0-A記録を通信性能の根拠にしない。同一TaskのE2E（#242）やEffectNone出典確認（#745）を、Data Adapter実通信の証拠へ流用しない。
+
+### 2026-11-13 #242・#753: Harnessの対象選択から結果受領までを検証可能な境界に分ける
+
+[conformance/process/HANDOFF_EVIDENCE_GATES.md](../conformance/process/HANDOFF_EVIDENCE_GATES.md)にHE-01〜10の独立Expected候補を追加。AI Harnessを操作の入口とする際、プロンプトで指定して固定した対象をProductが現在のRevision・権限で再解決し、送出を許可したProjectionだけを配送する。EKIは同じTask／Attempt／Lease／FenceEpochに結び付く実行資格と実配送を観測する。受信側のLoad、Toolの実呼出し／応答、外部ProviderのOperation Receiptと意味の受理はそれぞれ別正本で確認する。選択ID、Skill名、通信Ack、AgentのResultClaim、固定Fixtureの自己申告Trace一致を、実Consumer受領や業務完了の証明としない。
+
+順序は①#242の実Client API→同一Taskの実行・Claim・受理を検証、②#753でLocal IPC／Connectの実Data AdapterとConsumer実受領・遅延等を実測、③利用側でHarnessのPin/Projection/Tool応答を独立照合。#745は保存Admissionを用いたM0回収判断をmainに実装済みでclosed、#754はADR-0041（M0/MVPで新Transport追加非採用）としてclosed。後者は実測合格を示さず、追加方式の再評価は新ADRで行う。大容量Evidenceは原則としてGitの外部保管を許し、URI・digest・長さ・出典・アクセス可能性を追跡する。新しい中央Host／Registryは導入せず、M0/MVPの優先順位を維持する。
