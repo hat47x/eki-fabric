@@ -1834,3 +1834,12 @@ TEIや外部Harnessとの接続では、**Control（Attempt／Lease）・Deliver
 [HANDOFF_EVIDENCE_GATES.md](../conformance/process/HANDOFF_EVIDENCE_GATES.md)にEQ-01〜06を追加。Task/Attempt/Lease/FenceEpochの一致、実Verificationの出典、Public Result API、実送受信とConsumer Loader、Source/Grant失効、Provider Commit Receiptを、**主張ごとに必要な独立観測**として定義した。`NOT PROVEN`（証拠不足）・`NOT RUN`（未実行）・`NOT SUPPORTED`（Adapter不在）・`FAIL`（反例で不一致）を区別し、テスト内の合成Verification／seed／自己申告Traceを本番の実証へ昇格させない。A→B→Aやdigest一致は現在のGrantを復活させない。NAS/S3等に置く証拠はURIとdigestだけでなく、必要時に取得可能か・誰が観測したかを別に記録する。
 
 実装順は①#242の既存同一Taskテストを正本Go 1.27で再実行（EQ-01）、②別Attempt/旧FenceEpoch混入を拒否する負例（EQ-02）、③#753の実Data Adapterがある場合にのみConsumer実ログ欠落の負例（EQ-03）。EQ-04〜06は製品の正本・独立Verifier・Providerの利用可能性を確認してから行う。**この更新はConformance計画のみで、実行結果ではない。** 外部Harness/TEI/SHOの意味受理をEKIへ移管せず、#745/#754の完了判断やM0/MVP優先順位は変更しない。
+
+### 2026-11-13 #242：独立Verifierの供給経路を実装ゲートへ具体化
+
+[同一Task Evidence計画](../conformance/process/EXECUTION_EVIDENCE_PLAN.md)にVA-01〜06を追加。現行WorkerのClaim受付は`ResultAcceptance`を呼ぶが、呼出しにはAttemptIDだけが渡され、実Verifierの`Observations`は供給されない。既定PolicyはRA2（二つの独立Principal/Operator）、既定ProducerSourceはWorker identityを両dimensionに用いるfallbackであり、**本番の独立検証を保証する構成ではない**。
+
+次の優先順を①現行Go 1.27で既存HTTP→Agent→Claim→明示受理の縦断テストを実行、②VA-01〜04のClaimのみ・同一Verifier・別Task/Attempt/Output・失効した資格の負例を固定、③既存`resultverify.NormalizeAll`と`resultacceptance.Accept`に**実Verifierの出典を検証したObservation**を渡す最小の起動経路を設ける、④VA-05〜06で独立検証後のAcceptedResult・Client API公開と再送／遅延の拒否を確認、とする。信頼済みPolicy/ProducerSourceの解決を同時に検討し、Verifierの自己申告やテスト合成Verificationを本番RA2と扱わない。
+
+#753のData Adapter実配送、TEI/SHO/HarnessのConsumer Loaded、外部Provider Effectは引き続き別ゲート。新Host/Registry・新Transportを先行させず、#745/#754の完了判断を維持する。本更新は計画でありVA-01〜06の実テストは`NOT RUN`。
+
