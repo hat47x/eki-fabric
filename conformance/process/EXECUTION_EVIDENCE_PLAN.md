@@ -106,3 +106,11 @@ Evidenceの記録はGit commitと不変な入力・計画・結果の**参照情
 ### 2026-11-13 AI Harnessへの受け渡しとEKIの証拠境界
 
 [HANDOFF_EVIDENCE_GATES.md](HANDOFF_EVIDENCE_GATES.md)で、プロンプトから固定した対象→Productの現在Revision再解決→許可されたProjection→実Transport→Consumer Load→Tool呼出し／応答→外部Provider Receiptを、同じ「成功」へまとめずに照合する。HE-01〜HE-10を独立Expected候補として置き、ES-06（同一Task E2E）・ES-07（実配送／実受領）の延長として扱う。対象の意味・選択・開示・Tool実行の正本をEKI Coreへ複製せず、各製品とHarnessの権限・出典を参照する。#745と#754はclosed、#242と#753はopen。現行mainのGo 1.27全対象試験、Harness実行、Consumer実Load、Provider Effectを未観測のままPASSにしない。
+
+### 2026-11-13 ES-06：Client API→Agent→Claim→公開結果までの既存テストを再評価
+
+最新mainの[`http_submit_agent_test.go`](http_submit_agent_test.go)には、**実Client APIのTask受付**から、Control Planeの設定付きDispatch、mTLS Agentの固定コマンド実行、Claim、テスト内で明示的に合成したVerificationによるResult Acceptanceまで、**同一Task**を追うテストが既に存在した。従来の「同一Taskの試験がまだない」は誤り。事前READY seedを使う別の`dispatch_loop_test.go`と混同しない。
+
+今回の最小強化は、同じTask／Attempt／Worker／Lease・FenceEpochの**実State Store上の一致**と、Client APIの結果公開の境界（未検証Claimは`409 RESULT_NOT_READY`、テスト内の明示受理後だけ`200 eki.task-result/v1`で同じoutput digest）をアサーションに追加すること。これで**検証・受理が自動で行われたことは証明されない**。現行`internal/control/service/run.go`ではWorkerへのClaim受付に`ResultAcceptance` Serviceを接続済みだが、独立Verificationが無い場合は保留する。
+
+**実装可能な次の小単位（#242）**：①上記強化後の`TestHTTPTaskSubmissionIsExecutedByTheAgent`を正本Go 1.27で実行、同じSHAと失敗/成功ログを保存、②Agent以外の独立Verificationを実プロセス・信頼済みProviderから供給できる境界を確認、③Claim後の保留からAcceptedResultへの遷移と公開APIを同一Taskで観測、④失効・再起動・別Worker・不完全Evidenceで誤受理しない負例を追加。Stage①のPASSをStage②〜④へ昇格させない。#745のM0 EffectNone、#753の任意Data Adapter、外部Providerの業務効果は別証拠。

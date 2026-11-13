@@ -84,7 +84,7 @@ Attemptを閉じたあとのTaskの扱いと、外部作用がありうるTask�
 | [`assignment_agent_test.go`](assignment_agent_test.go) | `eki-agent`が試験用割当経路から署名付きLeaseを受けて確認し、開始の関門を通すケースを記述 | 任意のData/Delivery契約を使った媒体ストリーム |
 | [`execution_agent_test.go`](execution_agent_test.go) | テストが別途用意した署名付き割当をAgentが受け、信頼済みの固定コマンドを実行し、ResultClaimを送る。テスト内で再実行のdigestを確認し、`resultacceptance.New`で作ったServiceに**合成Verificationを渡して明示的に`Accept`を呼ぶ** | 起動済みControl Planeが自動的にResult Verification／Acceptanceまで接続していること、実Providerの副作用 |
 
-このため、以前の説明にある「起動経路に配置・Lease発行が全く存在しない」という状態は、現行mainのコードには当てはまらない。一方、**各段階に試験コードがあることと、Client APIから同一TaskのAccepted Resultまで実プロセスを通して連続完了できることは別**である。[#242](https://github.com/hat47x/eki-fabric/issues/242)は、この未証明の連続経路と失敗時の復旧を残課題として追う。
+このため、以前の説明にある「起動経路に配置・Lease発行が全く存在しない」という状態は、現行mainには当てはまらない。さらに、後続の`http_submit_agent_test.go`は**Client APIで受理した同一Taskの実行・Claim・テスト内の明示的なResult Acceptance**を一連で検証する。ただし、TaskのREADYへの移行をテストが補助し、Verificationもテストが生成するため、**本番の自動検証・結果受理のE2Eは別の未達**である。[#242](https://github.com/hat47x/eki-fabric/issues/242)ではこの最後の境界と失敗時の復旧を追う。
 
 別件の[#753](https://github.com/hat47x/eki-fabric/issues/753)では、OSのUnixソケットで固定イベントを送受信したが、上記Worker制御／割当経路を新しいメディアData Adapterとして解釈しない。現行Worker listenerとData Adapterの権限・時刻・出力の証拠を分け、既存のプロセス試験の足場を再利用する。新しいHostや独自の権限管理を増やさず、利用側の意味受理や外部効果をEKIのClaim受理から推定しない。
 
@@ -96,8 +96,16 @@ Attemptを閉じたあとのTaskの扱いと、外部作用がありうるTask�
 
 [#745](https://github.com/hat47x/eki-fabric/issues/745)の現行実装では、`recallCloser`が保存済みAdmissionのEffectNone宣言をTask／Attempt／Lease／Workerと照合し、証明できない期限切れAttemptを安全側に保留する。純粋な`ProvenM0EffectNone`のPASSは、現在のPolicy/Grant、実外部Effect、回収後の再投入の許可を意味しない。現行`recall_test.go`には正例・Admission欠損の保持負例がある。
 
-[同一TaskのEvidence計画](EXECUTION_EVIDENCE_PLAN.md)には、Client API→Dispatch→Agent実行→Claim→Result Verification/Acceptanceを**同じTaskとAttemptで追う**#242の残りと、既存の限定Go 1.27 D0-A結果と現行revisionの未実行を区別したステータスを記録する。実装済み部品を別々の合成Taskで試験した成功例を足してE2E PASSとはしない。
+[同一TaskのEvidence計画](EXECUTION_EVIDENCE_PLAN.md)には、Client API→Dispatch→Agent実行→Claim→Result Verification/Acceptanceを**同じTaskとAttemptで追う**#242の残りと、既存の限定Go 1.27 D0-A結果と現行revisionの未実行を区別したステータスを記録する。`http_submit_agent_test.go`の同一Task縦断テストの存在を踏まえ、テストが補助したREADY遷移・合成Verification・明示的Acceptanceと、実起動構成の自動処理を区別する。別々の合成Taskの成功を足して、本番の自動E2EがPASSしたとはしない。
 
 ## 2026-11-13 Harness連携を想定したEvidenceの受入条件
 
 [Harnessへの受け渡し証拠・負例](HANDOFF_EVIDENCE_GATES.md)に、固定対象の再解決・開示許可・EKIの実行資格・送受信・Consumer Load・外部Tool実行・Provider効果を分離したHE-01〜10を整理した。追加のruntime状態機械ではなく、既存の同一Task Conformanceの検証条件である。#745のM0回収の実装完了と#754のM0/MVP限定の方式判断は、#242の実行E2Eや#753の実Data Adapter比較の完了を意味しない。
+
+## 2026-11-13 Client APIの結果公開Gateを縦断テストで確認
+
+[`TestHTTPTaskSubmissionIsExecutedByTheAgent`](http_submit_agent_test.go)は、Client APIから受理したTaskを使い、起動したControl／Agent間で署名付き割当から固定コマンド実行・ResultClaim保存まで進める。既存テストでも検証と受理はテスト内のServiceに明示的に証拠を渡して実行しており、独立した本番Verifierではない。
+
+今回、(1) Agentのイベントを発行した**同一Attempt**に限定、(2) 記録されたClaimとTask／Attempt／Worker／LeaseおよびFenceEpochの一致を正本State Storeで照合、(3) Claim記録後・明示的Verification前の`GET /v1/tasks/{id}/result`は**409 RESULT_NOT_READY**、(4) テスト内で明示的に受理した後には同じTaskのAPIが**200**を返し、出力digestがAcceptedResultと一致する、という検証を加えた。
+
+この追加テストは**現行mainのGo 1.27環境で未実行**。元のテストが存在することと、今回の追加アサーションがPASSしたことを混同しない。Claimを処理する本番Worker入口には`ResultAcceptance` Serviceが配線されているが、独立Verificationが不足していれば結果は保留される。次はテスト内の合成Verificationを本番Verifierの出典付き観測へ置き換え、結果受理後のPublic API確認まで同一Taskで証明する。外部ProviderのCommit、Consumer実受領、一般用途Data Adapterの配送は別の検証範囲。

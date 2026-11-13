@@ -1818,3 +1818,9 @@ TEIや外部Harnessとの接続では、**Control（Attempt／Lease）・Deliver
 [conformance/process/HANDOFF_EVIDENCE_GATES.md](../conformance/process/HANDOFF_EVIDENCE_GATES.md)にHE-01〜10の独立Expected候補を追加。AI Harnessを操作の入口とする際、プロンプトで指定して固定した対象をProductが現在のRevision・権限で再解決し、送出を許可したProjectionだけを配送する。EKIは同じTask／Attempt／Lease／FenceEpochに結び付く実行資格と実配送を観測する。受信側のLoad、Toolの実呼出し／応答、外部ProviderのOperation Receiptと意味の受理はそれぞれ別正本で確認する。選択ID、Skill名、通信Ack、AgentのResultClaim、固定Fixtureの自己申告Trace一致を、実Consumer受領や業務完了の証明としない。
 
 順序は①#242の実Client API→同一Taskの実行・Claim・受理を検証、②#753でLocal IPC／Connectの実Data AdapterとConsumer実受領・遅延等を実測、③利用側でHarnessのPin/Projection/Tool応答を独立照合。#745は保存Admissionを用いたM0回収判断をmainに実装済みでclosed、#754はADR-0041（M0/MVPで新Transport追加非採用）としてclosed。後者は実測合格を示さず、追加方式の再評価は新ADRで行う。大容量Evidenceは原則としてGitの外部保管を許し、URI・digest・長さ・出典・アクセス可能性を追跡する。新しい中央Host／Registryは導入せず、M0/MVPの優先順位を維持する。
+
+### 2026-11-13 #242：実Client APIからAgentまでの同一Task試験を活用し、結果の公開条件を固定
+
+ソース再照合により、[`conformance/process/http_submit_agent_test.go`](../conformance/process/http_submit_agent_test.go)が、Client API受付→起動ControlのDispatch→mTLS Agent固定コマンド実行→ResultClaim→**テスト内で明示的に行うResult Acceptance**まで、同一Taskを追っていることを確認した。以前の「別々の合成Taskしかない」という整理は修正する。現行`claimaccept`はWorker入口から`ResultAcceptance`を呼べるが、十分な独立Verificationが無ければ保留する。実自動Verifierの起動・証拠提供まで完成したわけではない。
+
+次の変更ではこの既存テストに、Task/Attempt/Worker/Lease・FenceEpochの一致とPublic Result APIの**Claim後409→明示受理後200**を加え、手動検証と自動検証を明確に区別する。正本Go 1.27での実テストは未実施（本セッションではGo 1.23.2のみ、プライベートRepo取得不可）。次は[#242](https://github.com/hat47x/eki-fabric/issues/242)の独立Verifier/Result Acceptance実起動と、失効・欠損・再起動の負例へ進む。[#745](https://github.com/hat47x/eki-fabric/issues/745)はM0回収の限定実装でclosed、[#753](https://github.com/hat47x/eki-fabric/issues/753)のLocal IPC/Connect実Data Adapterは未確認、[#754](https://github.com/hat47x/eki-fabric/issues/754)はADR-0041でM0/MVP追加方式非採用の判断済み。Harness選択→Product再解決→Consumerの実受領・Tool/Provider Receiptは別正本。新Host/Registryを増やさずM0/MVP優先順位を維持する。
