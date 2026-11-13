@@ -94,6 +94,21 @@ func (e *mtlsEnv) assignmentAgentWithSigningKeys(t *testing.T, name string, auth
 	return a
 }
 
+// clientTaskResult reads the public result API, not the State Store. A ResultClaim
+// must not be promoted to a client-visible AcceptedResult without verification.
+func clientTaskResult(t *testing.T, e *mtlsEnv, taskID ids.TaskID) (int, []byte) {
+	t.Helper()
+	request, err := http.NewRequest(http.MethodGet, "http://"+e.clientAddr+"/v1/tasks/"+taskID.String()+"/result", nil)
+	must(t, err)
+	request.Header.Set("Authorization", "Bearer "+clientToken)
+	response, err := http.DefaultClient.Do(request)
+	must(t, err)
+	defer response.Body.Close()
+	body, err := io.ReadAll(io.LimitReader(response.Body, 1<<20))
+	must(t, err)
+	return response.StatusCode, body
+}
+
 func TestHTTPTaskSubmissionIsExecutedByTheAgent(t *testing.T) {
 	e := newMTLSEnv(t, 0)
 	e.seedPolicyNow(t)
@@ -177,11 +192,17 @@ func TestHTTPTaskSubmissionIsExecutedByTheAgent(t *testing.T) {
 	// this Task. Without this wait the test can race the loop: the Agent is
 	// already polling, but the placement has not been committed yet, and the
 	// 90 s poll deadline expires before the Agent ever sees an assignment.
-	_ = e.assignedAttempt(t, taskID)
+	assigned := e.assignedAttempt(t, taskID)
+	if assigned.TaskID != taskID || assigned.WorkerIdentity != agentSide.worker {
+		t.Fatalf("issued Attempt does not match the submitted Task and enrolled Worker: %+v", assigned)
+	}
 
 	waitFor(t, "agent execution and claim", func() (bool, string) {
 		executed, claimed := false, false
 		for _, ev := range readEvents(t, agentSide.events) {
+			if ev.AttemptID != assigned.ID.String() {
+				continue
+			}
 			if ev.ExecutionStatus == "completed" {
 				executed = true
 			}
@@ -205,12 +226,27 @@ func TestHTTPTaskSubmissionIsExecutedByTheAgent(t *testing.T) {
 	if found.ID == "" {
 		t.Fatalf("the submitted Task was not assigned to the enrolled Agent: %+v", attempts)
 	}
+	if found.ID != assigned.ID || found.TaskID != taskID || found.LeaseID != assigned.LeaseID {
+		t.Fatalf("the executed Attempt differs from the issued Attempt: assigned=%+v executed=%+v", assigned, found)
+	}
 	claim, ok, err := finalStore.LoadResultClaim(context.Background(), found.ID)
 	must(t, err)
 	if !ok {
 		t.Fatal("the Agent's ResultClaim was not stored")
 	}
+	if claim.TaskID() != taskID || claim.AttemptID() != found.ID ||
+		claim.LeaseID() != found.LeaseID || claim.WorkerIdentity() != agentSide.worker {
+		t.Fatalf("the stored Claim is not bound to the issued Task/Attempt/Lease/Worker")
+	}
 	t.Logf("task=%s attempt=%s claim=%s", taskID, found.ID, claim.OutputDigest().Hex())
+
+	// A durable Claim and the automatically invoked acceptance service are
+	// insufficient without independent verification. The public result API
+	// must not return 200 or a result digest yet.
+	status, resultBody := clientTaskResult(t, e, taskID)
+	if status != http.StatusConflict || !bytes.Contains(resultBody, []byte("RESULT_NOT_READY")) {
+		t.Fatalf("unverified Claim exposed as a result: status=%d body=%s", status, resultBody)
+	}
 
 	// Verification by re-execution: run the same fixed command outside the
 	// Agent and compare the digest with the claim. This is reproducible on
@@ -257,4 +293,24 @@ func TestHTTPTaskSubmissionIsExecutedByTheAgent(t *testing.T) {
 		t.Fatalf("accepted result = %+v", acceptanceResult.Accepted)
 	}
 	t.Logf("accepted result digest=%s", acceptanceResult.Accepted.OutputDigest().Hex())
+
+	// This explicit test-only acceptance must now be visible through the
+	// Client API for the same Task. It does not prove automatic verification.
+	status, resultBody = clientTaskResult(t, e, taskID)
+	if status != http.StatusOK {
+		t.Fatalf("accepted result not visible through Client API: status=%d body=%s", status, resultBody)
+	}
+	var presented struct {
+		Schema       string `json:"schema"`
+		TaskID       string `json:"task_id"`
+		OutputDigest struct {
+			Algorithm string `json:"algorithm"`
+			Value     string `json:"value"`
+		} `json:"output_digest"`
+	}
+	must(t, json.Unmarshal(resultBody, &presented))
+	if presented.Schema != "eki.task-result/v1" || presented.TaskID != taskID.String() ||
+		presented.OutputDigest.Algorithm != "sha256" || presented.OutputDigest.Value != claim.OutputDigest().Hex() {
+		t.Fatalf("public result differs from the Claim accepted for this Task: %+v", presented)
+	}
 }
