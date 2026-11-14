@@ -168,3 +168,9 @@ EKI_TRANSPORT_TRACE_FILE=/path/to/observed-trace.json go test ./spikes/data-deli
 [conformance/processの同一Task証拠計画](../../conformance/process/EXECUTION_EVIDENCE_PLAN.md)のES-07で、Traceが独立Expectedと一致しても、実Data Adapterの送信・受信、現在Grant、利用側Consumed、Provider Effectを実証していない状態を明示した。#753はData/Delivery/Transportの比較と実観測を担当し、期限切れLease時の未知Effect（ES-01〜05）の実装判断は#745、同一Task E2E（ES-06）は#242が担当する。新しい通信方式やEffect Registryをここでは先取りしない。
 
 **M0の外部Effect前提を再照合**：`internal/core/admission/request.go`が現在受理する`reliability.effect_mode`は`none`のみ。一方、古い合成TaskやAdmission本文が欠落したTaskまで`none`と判定できるわけではない。回収経路の`PossibleExternalEffect: false`固定は[#745](https://github.com/hat47x/eki-fabric/issues/745)で、保存済みの受理本文とTaskIR digestの検証を経て見直す。[同一Task証拠計画](../../conformance/process/EXECUTION_EVIDENCE_PLAN.md)で、現行M0の正例と将来・合成用の副作用負例を分離した。
+
+## 2026-11-12 #745完了と実Data Adapterの未実施を切り分ける
+
+[#745](https://github.com/hat47x/eki-fabric/issues/745)のM0 EffectNone出典検証は現行mainの回収経路へ接続済みであり、以前の`PossibleExternalEffect:false`固定は現在のコードにはない。回収時のAdmission確認と、Data Adapterの実接続、Lease/Grantの現在性、Consumerの実受領は独立した証拠である。
+
+[D0-Aの既存実行記録](RESULTS_2026-11-09.md)はcommit `972bc57`のGo 1.27.0で26 PASS・2 SKIP。後続のTrace順序負例や今回の計画更新を同じcommitで再実行したものではない。D0-B/CのLocal IPC／Connect実Data Adapterの生観測は引き続きNOT RUN。[同一Task Evidence計画](../../conformance/process/EXECUTION_EVIDENCE_PLAN.md)のES-07を、実接続・実受信・Consumer受領・現在Grantの判定に利用する。単なるプロファイル宣言、固定選択ID、外部Harnessに渡しただけの情報、Ackを実Effect/業務完了としない。
