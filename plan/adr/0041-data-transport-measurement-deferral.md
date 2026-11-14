@@ -2,13 +2,13 @@
 
 ## 状態
 
-Accepted（仮）。測定完了後に再評価する。
+Accepted（M0/MVPに限る）。追加方式の採否は実測後の新ADRで再評価する。
 
 ## 背景
 
 - #753（`spikes/data-delivery-transport`）は、同一の Data/Delivery 契約を **Local IPC** と **Connect** で比較する Spike である。
 - 2026-11-11 時点での #753 の到達点：
-  - D0-A（Fixture の形式検査・参照意味テスト）は WSL Go 1.27.3 で PASS。
+  - D0-A（Fixture の形式検査・参照意味テスト）には、commit `972bc57`・Go 1.27.0で26件PASS／2件SKIPの実行記録がある。WSL Go 1.27.3との別記録はSHA・ログを区別する。
   - D0-B/C（Local IPC／Connect の本番 Data Adapter の実測）は **NOT RUN**。現状、Adapter の実装・配線が確認できていない。
   - D1（p50/p95/p99・欠落・転送量などの実測）は未着手。
 - #754 の完了条件は「spike の測定値か、測れなかった理由を引用した ADR」である。
@@ -28,7 +28,7 @@ Local IPC は同一ホストでの低遅延候補として位置付けるが、�
 ## 理由
 
 1. **測定が結論に合わされないようにする**（#754 の前提）。実測がない段階で特定のプロトコルを採択すると、Spike の設計が後追いになる。
-2. **既存経路で必要な性質が证明されていない**。Connect の継続通信や Unix ソケットの配送は、試験用の限定環境では成立しているが、本番の Data Adapter・Principal/Lease/Grant の実権限経路・Consumer の Consumed までは証拠がない。
+2. **既存経路で必要な性質が証明されていない**。Connect の継続通信や Unix ソケットの配送は、試験用の限定環境では成立しているが、本番の Data Adapter・Principal/Lease/Grant の実権限経路・Consumer の Consumed までは証拠がない。
 3. **新たな複雑性を M0/MVP に持ち込まない**。WebRTC はシグナリング・NAT/TURN・中継の運用費、企業プロキシ、欠落・順序の扱いを一括で増やす。これらは、同じ Data/Delivery 契約を Local IPC と Connect で満たせることが確認できた後に評価する。
 4. **M0/MVP の優先順位を変えない**。新しい Host/Registry/AI ゲートウェイを前提とせず、Worker 制御用 `WatchCommands` を汎用 Data Plane へ暗黙に拡張しない。
 

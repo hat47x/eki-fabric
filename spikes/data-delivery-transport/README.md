@@ -180,3 +180,11 @@ EKI_TRANSPORT_TRACE_FILE=/path/to/observed-trace.json go test ./spikes/data-deli
 [#754](https://github.com/hat47x/eki-fabric/issues/754)はcompleted。対応する[ADR-0041](../../plan/adr/0041-data-transport-measurement-deferral.md)（Accepted・仮）では、M0/MVPで**WebRTC／WebTransport／WebSocketを新たに採用しない**。既存のADR-0001の通信方式を維持し、Local IPCは本番Data Adapterが確認できるまで比較候補とする。
 
 これは**D0-B/CやD1の実測合格ではない**。本番Local IPC／Connect Data Adapter、現在Grant、実Consumer受領、p50/p95/p99・欠落・Backpressureは引き続き未実施。測定が揃ったら[#753](https://github.com/hat47x/eki-fabric/issues/753)の結果を使い、**新しいADR**を起票して再評価する。#754の済／未済判定と#753の実装・検証判定を別々に追跡する。
+
+## 2026-11-13 Harness・Consumerまでの受領証拠
+
+[HE-01〜HE-10の確認票](../../conformance/process/HANDOFF_EVIDENCE_GATES.md)を、#753のD0-B/C・D1で取得すべき証拠の境界として参照する。Traceの自己申告判定が一致しても、開示Grantの現在性、実送受信、Consumer Load、Tool Replyの完全性、Provider Receiptを推定しない。Local IPC／Connectの実Data Adapterは未確認ならNOT SUPPORTED／NOT RUN。#754はADR-0041によるM0/MVP限定の追加方式非採用を決定済みであり、測定後は新しいADRで再評価する。
+
+## 2026-11-13 Consumer受領は配送ACKとは別の証拠
+
+[同一TaskのEvidence計画](../../conformance/process/EXECUTION_EVIDENCE_PLAN.md)のES-08〜12を参照。EKIのAcceptedResult、Data Adapterの送信・ACK、Consumerの実Loaded/Invoked、外部ProviderのOperation ID／Commit Receiptを別に観測する。固定Selectionとdigest一致のみでは現在のSource revision、Grant、Consumerの受領を証明しない。#753のLocal IPC／Connect比較では、実Adapterがある場合にのみ同一Fixtureで送受信とConsumerのbyte受領を測定し、無ければNOT RUN／NOT SUPPORTEDと記録する。ADR-0041の新方式非採用判断を変更しない。
