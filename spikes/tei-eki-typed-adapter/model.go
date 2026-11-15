@@ -2,20 +2,20 @@ package teitypedadapter
 
 // Operation represents one TEI operation to be executed.
 type Operation struct {
-	ID                 string
-	SourceRevision     string
-	ExecutableSHA256   string
-	Toolchain          string
-	Command            string
-	ExecutorID         string
+	ID                        string
+	SourceRevision            string
+	ExecutableSHA256          string
+	Toolchain                 string
+	Command                   string
+	ExecutorID                string
 	ExecutorVersionConstraint string
-	Inputs             []ArtifactInput
-	Resources          ResourceRequest
-	Reliability        ReliabilityRequest
-	Deadline           string
-	Priority           string
-	ResultProfile      string
-	ClientRequestID    string
+	Inputs                    []ArtifactInput
+	Resources                 ResourceRequest
+	Reliability               ReliabilityRequest
+	Deadline                  string
+	Priority                  string
+	ResultProfile             string
+	ClientRequestID           string
 }
 
 // ArtifactInput describes one input artifact.
@@ -46,25 +46,25 @@ type ReliabilityRequest struct {
 
 // Projection is the result of projecting a TEI Operation onto EKI.
 type Projection struct {
-	Schema         string
-	IdempotencyKey string
+	Schema          string
+	IdempotencyKey  string
 	ClientRequestID string
-	Task           TaskRequest
-	Ingests        []IngestIntent
-	Bindings       []Binding
+	Task            TaskRequest
+	Ingests         []IngestIntent
+	Bindings        []Binding
 }
 
 // TaskRequest represents eki.task-request/v1.
 type TaskRequest struct {
-	Schema     string
-	Executor   ExecutorRequirement
-	Inputs     []ArtifactReference
-	Parameters map[string]any
-	Resources  ResourceRequest
-	Reliability ReliabilityRequest
-	Deadline   string
-	Priority   string
-	ResultProfile string
+	Schema          string
+	Executor        ExecutorRequirement
+	Inputs          []ArtifactReference
+	Parameters      map[string]any
+	Resources       ResourceRequest
+	Reliability     ReliabilityRequest
+	Deadline        string
+	Priority        string
+	ResultProfile   string
 	ClientRequestID string
 }
 
@@ -100,7 +100,7 @@ type Binding struct {
 }
 
 const (
-	SchemaTaskRequest       = "eki.task-request/v1"
-	SchemaIngestIntent      = "eki.artifact-ingest-intent-request/v1"
-	SchemaProjection        = "tei.eki-projection/v0"
+	SchemaTaskRequest  = "eki.task-request/v1"
+	SchemaIngestIntent = "eki.artifact-ingest-intent-request/v1"
+	SchemaProjection   = "tei.eki-projection/v0"
 )

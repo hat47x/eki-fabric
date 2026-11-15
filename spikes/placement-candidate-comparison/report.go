@@ -8,14 +8,14 @@ import (
 
 // Report is the comparison output for one pure computation.
 type Report struct {
-	Schema       string
-	FunctionID   string
-	InputSHA256  string
-	OutputSHA256 string
+	Schema        string
+	FunctionID    string
+	InputSHA256   string
+	OutputSHA256  string
 	WallTimeNanos int64
-	Paths        []Candidate
-	Best         Candidate
-	GeneratedAt  time.Time
+	Paths         []Candidate
+	Best          Candidate
+	GeneratedAt   time.Time
 }
 
 // NewReport builds a Report from a Comparison.
@@ -25,14 +25,14 @@ func NewReport(c Comparison) (Report, error) {
 		return Report{}, err
 	}
 	return Report{
-		Schema:         "tei.eki-comparison-report/v0",
-		FunctionID:     c.FunctionID,
-		InputSHA256:    c.InputSHA256,
-		OutputSHA256:   c.OutputSHA256,
-		WallTimeNanos:  c.WallTimeNanos,
-		Paths:          c.Candidates,
-		Best:           best,
-		GeneratedAt:    time.Now().UTC(),
+		Schema:        "tei.eki-comparison-report/v0",
+		FunctionID:    c.FunctionID,
+		InputSHA256:   c.InputSHA256,
+		OutputSHA256:  c.OutputSHA256,
+		WallTimeNanos: c.WallTimeNanos,
+		Paths:         c.Candidates,
+		Best:          best,
+		GeneratedAt:   time.Now().UTC(),
 	}, nil
 }
 
