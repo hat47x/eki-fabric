@@ -1,0 +1,87 @@
+{
+  "schema": "tei.eki-delegation-probe/v0",
+  "base_url": "http://127.0.0.1:50461",
+  "ran_at": "2026-11-11T05:02:54.0554606Z",
+  "results": [
+    {
+      "name": "input not uploaded",
+      "expected": "422 INPUT_ARTIFACT_UNRESOLVABLE",
+      "observed": "422 INPUT_ARTIFACT_UNRESOLVABLE",
+      "passed": true
+    },
+    {
+      "name": "declared expected_digest is not enforced",
+      "expected": "202, artifact_id equals the declared digest",
+      "observed": "202 accepted with artifact_id=7d67252b4f1cd22fb18ed14f0f7262659226bcb5e2acb1ab920ec097fecba1f4 (declared 4503dff3b38b21dc428f1842db86ab6ff5a748acf93cb9f5d0c1f61969776781)",
+      "passed": false
+    },
+    {
+      "name": "failed upload leaves no body",
+      "expected": "404 ARTIFACT_NOT_FOUND",
+      "observed": "404 ",
+      "passed": true
+    },
+    {
+      "name": "first upload",
+      "expected": "202",
+      "observed": "ok",
+      "passed": true
+    },
+    {
+      "name": "second upload to the same session",
+      "expected": "404 (no resume support)",
+      "observed": "404 UPLOAD_NOT_FOUND",
+      "passed": true
+    },
+    {
+      "name": "same key and same body",
+      "expected": "202 replayed=true, same task_id",
+      "observed": "first=ok second=ok replayed=true",
+      "passed": true
+    },
+    {
+      "name": "same key with a different body",
+      "expected": "409 IDEMPOTENCY_KEY_CONFLICT",
+      "observed": "409 IDEMPOTENCY_KEY_CONFLICT",
+      "passed": true
+    },
+    {
+      "name": "deadline passes without dispatch",
+      "expected": "still queued, no terminal_code",
+      "observed": "status=queued terminal=\"\" err=ok",
+      "passed": true
+    },
+    {
+      "name": "cancel moves the task to terminal",
+      "expected": "cancelled/CANCELLED",
+      "observed": "cancelled/CANCELLED",
+      "passed": true
+    },
+    {
+      "name": "result after cancel",
+      "expected": "409 RESULT_NOT_AVAILABLE",
+      "observed": "409 RESULT_NOT_AVAILABLE",
+      "passed": true
+    },
+    {
+      "name": "result before acceptance",
+      "expected": "409 RESULT_NOT_READY",
+      "observed": "409 RESULT_NOT_READY",
+      "passed": true
+    },
+    {
+      "name": "deadline already passed",
+      "expected": "422 DEADLINE_IN_PAST",
+      "observed": "422 DEADLINE_IN_PAST",
+      "passed": true
+    },
+    {
+      "name": "unknown artifact",
+      "expected": "404",
+      "observed": "404 ",
+      "passed": true
+    }
+  ],
+  "pass_count": 12,
+  "fail_count": 1
+}

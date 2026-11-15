@@ -1,0 +1,16 @@
+{
+  "schema": "tei.eki-delegation-local-run/v0",
+  "command": [
+    "validate",
+    "-workspace",
+    "D:\\GIT\\hat47x\\.tmp_teideleg\\tei-src\\reference\\workspace",
+    "-json"
+  ],
+  "exit_code": 0,
+  "duration_millis": 398,
+  "output_sha256": "d1d220ad36e48ca6a52e450027e1df524c509f0a9f07c3fccdd9ac4f2aa070b2",
+  "output_bytes": 2309,
+  "cache_state": "warm",
+  "source_revision": "b8cbd432a",
+  "executable_sha256": "673c511e362068874de192361bf4e96494720feb5a191d5bd4fb065cbfce6d75"
+}

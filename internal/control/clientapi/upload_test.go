@@ -38,11 +38,12 @@ func (m *memSink) Put(r io.Reader, claimedHex string, maxBytes int64) (string, i
 	if maxBytes > 0 && int64(len(data)) > maxBytes {
 		return "", 0, errors.New("too large")
 	}
-	if got := contract.FromSHA256(sha256.Sum256(data)); got.Hex() != claimedHex {
+	digest := contract.FromSHA256(sha256.Sum256(data))
+	if claimedHex != "" && digest.Hex() != claimedHex {
 		return "", 0, ErrDigestMismatch
 	}
-	m.bodies[claimedHex] = data
-	return claimedHex, int64(len(data)), nil
+	m.bodies[digest.Hex()] = data
+	return digest.Hex(), int64(len(data)), nil
 }
 
 func (m *memSink) PutMeta(digestHex string, record UploadRecord) error {
@@ -111,6 +112,24 @@ func TestAnUploadIsKeptUnderItsDigest(t *testing.T) {
 	}
 	if facets["safe_processing"] != "not-required" {
 		t.Fatalf("safe_processing = %v: this deployment does not interpret bodies", facets["safe_processing"])
+	}
+}
+
+// A body whose record could not be written is dropped: nobody could be served
+// it and nobody could retire it (#805).
+func TestABodyWithoutItsRecordIsRemoved(t *testing.T) {
+	e, sink := newEnvWithSink(t)
+	sink.failMeta = true
+	answer := decode(t, postIngest(e, "key-upload-805", validIntent))
+	uploadID := answer["upload"].(map[string]any)["upload_id"].(string)
+	body := "hello ingest"
+	res := putUpload(e, aliceToken, uploadID, body)
+	if res.status != http.StatusInternalServerError {
+		t.Fatalf("status = %d %s, want 500", res.status, res.body)
+	}
+	digest := contract.FromSHA256(sha256.Sum256([]byte(body))).Hex()
+	if _, kept := sink.bodies[digest]; kept {
+		t.Fatal("the body stayed in the store although its record was never written")
 	}
 }
 

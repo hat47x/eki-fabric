@@ -20,6 +20,11 @@ const (
 	// #588). Only a requester with a right to see it gets this answer: the body may
 	// still exist for an investigation, but it cannot be fetched.
 	OutcomeWithdrawn
+	// OutcomeUnreadable is the answer when the artifact exists but its metadata
+	// cannot be read (I/O error, JSON corruption). It is separated from
+	// OutcomeNotFound so audit can distinguish "does not exist" from "exists but
+	// unreadable" (#809).
+	OutcomeUnreadable
 	// OutcomeDeliver means the body may be streamed to the requester.
 	OutcomeDeliver
 )

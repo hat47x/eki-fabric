@@ -48,8 +48,10 @@ func (h *Handler) artifact(w http.ResponseWriter, r *http.Request, id Identity, 
 			h.writeArtifactFailure(w, claimbody.OutcomeNotFound, digest)
 			return
 		}
+		// 保存先の読取失敗（JSON 破損、I/O 障害）は 500 で応答する。
+		// 404 にまとめると「存在しない」と「読めない」が監査記録で区別できなくなる。
 		h.log.Error("artifact metadata not read", "error", err.Error())
-		h.writeArtifactFailure(w, claimbody.OutcomeNotFound, digest)
+		h.writeArtifactFailure(w, claimbody.OutcomeUnreadable, digest)
 		return
 	}
 	outcome := claimbody.Decide(string(id.Principal.ID), meta.Owner, true, !time.Now().UTC().Before(meta.ExpiresAt), meta.Withdrawn)
@@ -81,8 +83,11 @@ func (h *Handler) artifact(w http.ResponseWriter, r *http.Request, id Identity, 
 // body carries nothing about the artifact or the Task it came from (#494).
 func (h *Handler) writeArtifactFailure(w http.ResponseWriter, outcome claimbody.Outcome, digest string) {
 	outcomeName := ArtifactNotFound
-	if outcome == claimbody.OutcomeExpired {
+	switch outcome {
+	case claimbody.OutcomeExpired:
 		outcomeName = ArtifactExpired
+	case claimbody.OutcomeUnreadable:
+		outcomeName = ArtifactUnreadable
 	}
 	h.audit("", digest, outcomeName)
 	writeJSON(w, outcome.Status(), map[string]any{

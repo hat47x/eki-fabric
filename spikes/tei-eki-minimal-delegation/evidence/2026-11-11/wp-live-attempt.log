@@ -1,0 +1,7 @@
+=== RUN   TestTEIDuplicateAndDeadlineWithALiveAttempt
+    tei_live_attempt_test.go:139: replay with a live Attempt: still 1 Attempt (atm_34b99295f85c88f22314c25b200480ed), status running
+    tei_live_attempt_test.go:159: after the deadline: status=running terminal_code="" attempt_phase=dispatched attempt_count=1
+    tei_live_attempt_test.go:172: result problem: code=RESULT_NOT_READY retryable=true
+--- PASS: TestTEIDuplicateAndDeadlineWithALiveAttempt (9.97s)
+PASS
+ok  	github.com/hat47x/eki-fabric/conformance/process	10.020s

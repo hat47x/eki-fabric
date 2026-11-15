@@ -41,7 +41,15 @@ func Serve(addr string, handler *Handler, tlsConfig *tls.Config, log *slog.Logge
 		return nil, fmt.Errorf("operatorapi: listen: %w", err)
 	}
 	srv := &Server{
-		http:   &http.Server{Handler: handler, TLSConfig: tlsConfig, ReadHeaderTimeout: 10 * time.Second},
+		http: &http.Server{
+			Handler:           handler,
+			TLSConfig:         tlsConfig,
+			ReadHeaderTimeout: 10 * time.Second,
+			ReadTimeout:       15 * time.Second,
+			WriteTimeout:      30 * time.Second,
+			IdleTimeout:       60 * time.Second,
+			MaxHeaderBytes:    16 * 1024,
+		},
 		ln:     tls.NewListener(raw, tlsConfig),
 		logger: log,
 	}

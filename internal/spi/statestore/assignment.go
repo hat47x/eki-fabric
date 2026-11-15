@@ -24,8 +24,13 @@ const MaxAssignmentsPerList = 64
 // expired entries entirely; revoked ones are still listed so the Worker learns
 // the revocation on its next poll instead of hearing silence.
 type EmittedAssignment struct {
-	LeaseID    ids.LeaseID
-	AttemptID  ids.AttemptID
+	LeaseID   ids.LeaseID
+	AttemptID ids.AttemptID
+	// TaskID names the Task the Attempt runs. The delivery route needs it to
+	// resolve the Task's declared inputs into the digests the Worker fetches
+	// (ADR-0029 §5.10). It carries no authority: the Worker still verifies the
+	// Lease and the WorkOrder.
+	TaskID     ids.TaskID
 	Lease      leaseemission.Record
 	WorkOrder  workorderemission.Record
 	LeaseState LeaseDeliveryState

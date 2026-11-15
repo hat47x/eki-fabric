@@ -4,7 +4,7 @@
 
 カメラ等の観測は古くなると捨ててもよい一方、Leaseの失効や結果の確定は、通信が速いことだけでは代替できない。別の通信方式を採っても、同じ入力に対する「古い」「新しい世代」「失効した出力」という意味が変わらないことを先に確認する。
 
-このSpikeは、[RQ-064](../../requirements/PRODUCT_REQUIREMENTS.md)と[QA-13](../../requirements/QUALITY_ATTRIBUTES.md)、[PAS-CAND-31〜37](../../requirements/ACCEPTANCE_SCENARIOS.md)の検証に使う。採否は[#754](https://github.com/hat47x/eki-fabric/issues/754)で、測定後に判断する。
+このSpikeは、[RQ-064](../../requirements/PRODUCT_REQUIREMENTS.md)と[QA-13](../../requirements/QUALITY_ATTRIBUTES.md)、[PAS-CAND-31〜37](../../requirements/ACCEPTANCE_SCENARIOS.md)の検証に使う。M0/MVPでの新しいWebRTC/WebTransport/WebSocketの追加非採用は、完了済み[#754](https://github.com/hat47x/eki-fabric/issues/754)と[ADR-0041](../../plan/adr/0041-data-transport-measurement-deferral.md)で仮承認済み。実測後に新ADRで再評価する。
 
 **現状は契約Fixtureを作成した段階で、実際のLocal IPC／Connectによるデータ配送の実装・動作・性能は確認していない。** `WorkerPlaneService.WatchCommands` はWorkerへの制御命令の片方向streamであり、汎用メディア／センサー配送の実装証拠とはならない。
 
@@ -27,11 +27,11 @@
 
 | Gate | 合否に必要なもの | 現状 |
 | --- | --- | --- |
-| D0-A | Fixtureの形式・系列世代・epoch・Expectedの組が成立する | 定義済み。別途静的テストで確認 |
+| D0-A | Fixtureの形式・系列世代・epoch・Expectedの組が成立する | Go 1.27.0の旧commit `972bc57`で26 PASS／2 SKIP。後続revisionは別途再実行 |
 | D0-B | Local IPC Adapterが同じ6出来事の観測結果を出す | NOT RUN |
 | D0-C | Connect**データ配送**Adapterが同じ6出来事の観測結果を出す | NOT RUN |
 | D1 | 同条件でp50/p95/p99、期限超過、古い応答の採用、Backpressure、転送・CPU負荷を測る | NOT RUN |
-| D2 | D1結果を根拠に方式の採否をADRへまとめる | NOT RUN |
+| D2 | 実測後に新ADRで方式の採否を再評価する | M0/MVPの追加非採用はADR-0041で仮承認済み。実測による再評価はNOT RUN |
 
 D0-AのPASSはD0-B/CやD1のPASSを意味しない。存在しないAdapter、未配線の起動経路、試験できなかったTransportを、`PASS`や「比較した結果、同じ」と表示しない。既存のActor認可・契約版・Data Class・予算・現在のLease確認を通過していないMockも、実行資格の検証には数えない。
 
@@ -126,7 +126,7 @@ EKI_TRANSPORT_TRACE_FILE=/path/to/observed-trace.json go test ./spikes/data-deli
 
 **これはEKIの実Local IPC Adapterの試験ではない。** 送受信を行ったのは同一テストプロセスのgoroutineであり、権限管理を通した別プロセスの送受信やConnectデータ配送は未実施。Lease失効等は単なるJSONのイベント内容として配送しただけで、実際の認可・回収・結果受理は検証していない。
 
-したがって#753は未完了である。次は、実リポジトリのGo 1.27系で全パッケージテストを実行した後、**別プロセスの実Adapterと実権限の経路**を対象にする。新しい共通基盤や独自Hostを前提条件にはせず、TEIの意味・外部副作用やSEIの判断、VRクマの安全停止は別の検証票で扱う。
+したがって#753は未完了である。次は、[2026-11-09のGo 1.27.0パッケージ実行記録](RESULTS_2026-11-09.md)と**対象commit**を照合したうえで、**別プロセスの実Adapterと実権限の経路**を対象にする。新しい共通基盤や独自Hostを前提条件にはせず、TEIの意味・外部副作用やSEIの判断、VRクマの安全停止は別の検証票で扱う。
 
 ## 2026-11-08 別プロセスでの配送確認と実Adapterの棚卸し
 
@@ -149,7 +149,7 @@ EKI_TRANSPORT_TRACE_FILE=/path/to/observed-trace.json go test ./spikes/data-deli
 
 ## 2026-11-09 実リポジトリのGo 1.27.0での形式チェック
 
-mainのこのパッケージを、`go.mod`が要求するGo 1.27.0（Linux x86_64、WSL）で実行した。`go test -count=1 -v`はPASS 26件・SKIP 2件、`go test -race -count=5 -v`もともに終了コード0だった。SKIPは、実Adapterの観測が無い`TestProvidedAdapterObservedTrace`（`NOT RUN`）と、別プロセス試験の補助プロセスである`TestUnixFixtureChildSender`である。実行条件、生ログ、一般化できる範囲は[RESULTS_2026-11-09.md](RESULTS_2026-11-09.md)を参照する。
+**commit `972bc57ec64cf607488aec19cee62c1702dfe1f2`時点**のこのパッケージを、`go.mod`が要求するGo 1.27.0（Linux x86_64、WSL）で実行した。`go test -count=1 -v`はPASS 26件・SKIP 2件、`go test -race -count=5 -v`もともに終了コード0だった。SKIPは、実Adapterの観測が無い`TestProvidedAdapterObservedTrace`（`NOT RUN`）と、別プロセス試験の補助プロセスである`TestUnixFixtureChildSender`である。実行条件、生ログ、一般化できる範囲は[RESULTS_2026-11-09.md](RESULTS_2026-11-09.md)を参照する。
 
 これで、2026-11-08の記録で未実行としていた「正本リポジトリのGo 1.27系での全試験」は埋まった。一方、実Adapterへの同一Fixture投入、実Lease・Grantによる認可、性能測定は今回も確認しておらず、#753は未完了のままである。
 
@@ -161,8 +161,30 @@ mainのこのパッケージを、`go.mod`が要求するGo 1.27.0（Linux x86_6
 
 **実装状況の再照合**：2026-11-09のmainでは、`internal/control/service/run.go`の設定`dispatch`による起動経路、`dispatch.go`の配置からLease/WorkOrderまでの部品配線、[`conformance/process/dispatch_loop_test.go`](../../conformance/process/dispatch_loop_test.go)の実Control Planeで署名付き割当を配るケースが存在する。[`execution_agent_test.go`](../../conformance/process/execution_agent_test.go)では試験内で用意した割当によるAgentの固定コマンド実行とClaim送信を確認するケースもある。ただし、VerificationとAccepted Resultはテスト内で明示的に合成した材料を用いて別途呼び出しており、**Client API→配置→実行→検証→受理が一つの本番起動設定で連続完了したことは未証明**。実際に動いたという証拠を増やす場合は、まず[`conformance/process`](../../conformance/process/README.md)の既存の署名・Principal／mTLS／実プロセス試験を再利用する。
 
-**次の#753の仕事**：試験専用Unixソケットの送受信テストを追加し続けない。現行のWorker Control、Artifact取得、データ配送を混同せず、Data Adapterの提供範囲と権限に基づいて、実際の観測・再接続・Lease失効を別票で検証する。正本Go 1.27のテストは、実行可能な環境で同一commitを対象に実施する。それまで既存の限定Go 1.23試験・Sourceの静的照合以上を主張しない。#754の追加方式選定は引き続き実測後とする。
+**次の#753の仕事**：試験専用Unixソケットの送受信テストを追加し続けない。現行のWorker Control、Artifact取得、データ配送を混同せず、Data Adapterの提供範囲と権限に基づいて、実際の観測・再接続・Lease失効を別票で検証する。Go 1.27.0の正本パッケージ試験は**commit `972bc57`で実施済み**（[実行結果](RESULTS_2026-11-09.md)）。ただし本節のTrace順序負例（PR #810）はこの実行commitより後に追加されたため、**追加差分については再実行待ち**である。既存試験のPASSを、後続revision・実Adapter・認可のPASSへ一般化しない。#754はM0/MVPの暫定判断をADR-0041で完了済み。実測後の再評価は新しいADRで扱う。
 
 ## 2026-11-09 外部Effectと配送Evidenceの境界を追加
 
 [conformance/processの同一Task証拠計画](../../conformance/process/EXECUTION_EVIDENCE_PLAN.md)のES-07で、Traceが独立Expectedと一致しても、実Data Adapterの送信・受信、現在Grant、利用側Consumed、Provider Effectを実証していない状態を明示した。#753はData/Delivery/Transportの比較と実観測を担当し、期限切れLease時の未知Effect（ES-01〜05）の実装判断は#745、同一Task E2E（ES-06）は#242が担当する。新しい通信方式やEffect Registryをここでは先取りしない。
+
+**M0の外部Effect前提を再照合**：`internal/core/admission/request.go`が現在受理する`reliability.effect_mode`は`none`のみ。一方、古い合成TaskやAdmission本文が欠落したTaskまで`none`と判定できるわけではない。回収経路の`PossibleExternalEffect: false`固定は[#745](https://github.com/hat47x/eki-fabric/issues/745)で、保存済みの受理本文とTaskIR digestの検証を経て見直す。[同一Task証拠計画](../../conformance/process/EXECUTION_EVIDENCE_PLAN.md)で、現行M0の正例と将来・合成用の副作用負例を分離した。
+
+## 2026-11-12 #745完了と実Data Adapterの未実施を切り分ける
+
+[#745](https://github.com/hat47x/eki-fabric/issues/745)のM0 EffectNone出典検証は現行mainの回収経路へ接続済みであり、以前の`PossibleExternalEffect:false`固定は現在のコードにはない。回収時のAdmission確認と、Data Adapterの実接続、Lease/Grantの現在性、Consumerの実受領は独立した証拠である。
+
+[D0-Aの既存実行記録](RESULTS_2026-11-09.md)はcommit `972bc57`のGo 1.27.0で26 PASS・2 SKIP。後続のTrace順序負例や今回の計画更新を同じcommitで再実行したものではない。D0-B/CのLocal IPC／Connect実Data Adapterの生観測は引き続きNOT RUN。[同一Task Evidence計画](../../conformance/process/EXECUTION_EVIDENCE_PLAN.md)のES-07を、実接続・実受信・Consumer受領・現在Grantの判定に利用する。単なるプロファイル宣言、固定選択ID、外部Harnessに渡しただけの情報、Ackを実Effect/業務完了としない。
+
+## 2026-11-12 ADR-0041による暫定非採用の確定範囲
+
+[#754](https://github.com/hat47x/eki-fabric/issues/754)はcompleted。対応する[ADR-0041](../../plan/adr/0041-data-transport-measurement-deferral.md)（Accepted・仮）では、M0/MVPで**WebRTC／WebTransport／WebSocketを新たに採用しない**。既存のADR-0001の通信方式を維持し、Local IPCは本番Data Adapterが確認できるまで比較候補とする。
+
+これは**D0-B/CやD1の実測合格ではない**。本番Local IPC／Connect Data Adapter、現在Grant、実Consumer受領、p50/p95/p99・欠落・Backpressureは引き続き未実施。測定が揃ったら[#753](https://github.com/hat47x/eki-fabric/issues/753)の結果を使い、**新しいADR**を起票して再評価する。#754の済／未済判定と#753の実装・検証判定を別々に追跡する。
+
+## 2026-11-13 Harness・Consumerまでの受領証拠
+
+[HE-01〜HE-10の確認票](../../conformance/process/HANDOFF_EVIDENCE_GATES.md)を、#753のD0-B/C・D1で取得すべき証拠の境界として参照する。Traceの自己申告判定が一致しても、開示Grantの現在性、実送受信、Consumer Load、Tool Replyの完全性、Provider Receiptを推定しない。Local IPC／Connectの実Data Adapterは未確認ならNOT SUPPORTED／NOT RUN。#754はADR-0041によるM0/MVP限定の追加方式非採用を決定済みであり、測定後は新しいADRで再評価する。
+
+## 2026-11-13 Consumer受領は配送ACKとは別の証拠
+
+[同一TaskのEvidence計画](../../conformance/process/EXECUTION_EVIDENCE_PLAN.md)のES-08〜12を参照。EKIのAcceptedResult、Data Adapterの送信・ACK、Consumerの実Loaded/Invoked、外部ProviderのOperation ID／Commit Receiptを別に観測する。固定Selectionとdigest一致のみでは現在のSource revision、Grant、Consumerの受領を証明しない。#753のLocal IPC／Connect比較では、実Adapterがある場合にのみ同一Fixtureで送受信とConsumerのbyte受領を測定し、無ければNOT RUN／NOT SUPPORTEDと記録する。ADR-0041の新方式非採用判断を変更しない。

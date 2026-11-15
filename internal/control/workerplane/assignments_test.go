@@ -7,9 +7,16 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 
 	server "github.com/hat47x/eki-fabric/internal/control/workerplane"
+	"github.com/hat47x/eki-fabric/internal/core/contract"
+	"github.com/hat47x/eki-fabric/internal/core/decisiontrust"
+	"github.com/hat47x/eki-fabric/internal/core/ids"
+	"github.com/hat47x/eki-fabric/internal/core/leaseemission"
 	"github.com/hat47x/eki-fabric/internal/core/workerregistry"
+	"github.com/hat47x/eki-fabric/internal/core/workorderemission"
+	"github.com/hat47x/eki-fabric/internal/spi/statestore"
 	spi "github.com/hat47x/eki-fabric/internal/spi/workerplane"
 	"github.com/hat47x/eki-fabric/internal/spi/workerplane/testprofile"
 )
@@ -133,7 +140,122 @@ func TestMTLSAssignmentsRouteIsAbsentWithoutASource(t *testing.T) {
 }
 
 func TestAssignmentServiceNeedsAStore(t *testing.T) {
-	if _, err := server.NewAssignmentService(nil); err == nil {
+	if _, err := server.NewAssignmentService(nil, nil); err == nil {
 		t.Fatal("a nil store was accepted")
 	}
+}
+
+func TestAssignmentServiceNeedsAnInputSource(t *testing.T) {
+	if _, err := server.NewAssignmentService(&fakeAssignmentStore{}, nil); err == nil {
+		t.Fatal("a nil input source was accepted")
+	}
+}
+
+type fakeAssignmentStore struct{}
+
+func (fakeAssignmentStore) ListEmittedAssignments(ctx context.Context, worker string, limit int) ([]statestore.EmittedAssignment, error) {
+	return nil, nil
+}
+
+// A listing includes the Task's declared input digests, in declaration order.
+func TestListAssignmentsFillsInputDigests(t *testing.T) {
+	digest := contract.SHA256([]byte("input-a"))
+	taskID, err := ids.ParseTaskID("tsk_" + strings.Repeat("1", 32))
+	if err != nil {
+		t.Fatal(err)
+	}
+	leaseID, err := ids.ParseLeaseID("les_" + strings.Repeat("1", 32))
+	if err != nil {
+		t.Fatal(err)
+	}
+	now := time.Date(2026, 11, 7, 0, 0, 0, 0, time.UTC)
+	leaseEnv := []byte("lease-envelope-bytes")
+	le, err := leaseemission.NewEmitted(leaseemission.EmittedConfig{
+		LeaseID:            leaseID,
+		DecisionID:         "lease-decision-1",
+		TrustDomain:        "local.example",
+		AuthorityPrincipal: "control-plane/lse-1",
+		KeyID:              decisiontrust.KeyID("kid-lse-1"),
+		Algorithm:          decisiontrust.AlgorithmEdDSA,
+		PayloadDigest:      contract.SHA256([]byte("lease-payload")),
+		EnvelopeDigest:     contract.SHA256(leaseEnv),
+		SignedEnvelope:     leaseEnv,
+		PolicyRevision:     "policy-1",
+		PolicyEpoch:        1,
+		CommittedAt:        now,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	orderEnv := []byte("order-envelope-bytes")
+	wo, err := workorderemission.NewEmitted(workorderemission.EmittedConfig{
+		LeaseID:            leaseID,
+		DecisionID:         "work-order-decision-1",
+		WorkOrderID:        "work-order-1",
+		TrustDomain:        "local.example",
+		AuthorityPrincipal: "control-plane/wor-1",
+		KeyID:              decisiontrust.KeyID("kid-wor-1"),
+		Algorithm:          decisiontrust.AlgorithmEdDSA,
+		PayloadDigest:      contract.SHA256([]byte("order-payload")),
+		EnvelopeDigest:     contract.SHA256(orderEnv),
+		SignedEnvelope:     orderEnv,
+		PolicyRevision:     "policy-1",
+		PolicyEpoch:        1,
+		FenceEpoch:         1,
+		WorkerIdentity:     "worker_1",
+		CommittedAt:        now,
+		ExpiresAt:          now.Add(time.Hour),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	fakeStore := &fakeEmittedAssignmentStore{
+		assignments: []statestore.EmittedAssignment{{
+			AttemptID:  "atm_1",
+			LeaseID:    leaseID,
+			TaskID:     taskID,
+			Lease:      le,
+			WorkOrder:  wo,
+			LeaseState: statestore.LeaseDeliveryCurrent,
+		}},
+	}
+	fakeInputs := &fakeTaskInputs{
+		digests: []contract.Digest{digest},
+		taskID:  taskID,
+	}
+	svc, err := server.NewAssignmentService(fakeStore, fakeInputs)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got, err := svc.ListAssignments(context.Background(), spi.Principal{WorkerIdentity: "worker_1"})
+	if err != nil {
+		t.Fatalf("ListAssignments() = %v", err)
+	}
+	if len(got) != 1 {
+		t.Fatalf("len = %d, want 1 assignment", len(got))
+	}
+	if len(got[0].InputDigests) != 1 {
+		t.Fatalf("InputDigests len = %d, want 1", len(got[0].InputDigests))
+	}
+	if got[0].InputDigests[0].Hex() != digest.Hex() {
+		t.Fatalf("InputDigests = %v, want input-a digest", got[0].InputDigests)
+	}
+}
+
+type fakeEmittedAssignmentStore struct {
+	assignments []statestore.EmittedAssignment
+}
+
+func (f *fakeEmittedAssignmentStore) ListEmittedAssignments(ctx context.Context, worker string, limit int) ([]statestore.EmittedAssignment, error) {
+	return f.assignments, nil
+}
+
+type fakeTaskInputs struct {
+	digests []contract.Digest
+	taskID  ids.TaskID
+	loadErr error
+}
+
+func (f *fakeTaskInputs) LoadTaskInputs(ctx context.Context, taskID ids.TaskID) ([]contract.Digest, error) {
+	return f.digests, f.loadErr
 }

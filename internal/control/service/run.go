@@ -21,10 +21,13 @@ import (
 	"github.com/hat47x/eki-fabric/internal/control/clientapi"
 	"github.com/hat47x/eki-fabric/internal/control/leaserecall"
 	"github.com/hat47x/eki-fabric/internal/control/operatorapi"
+	"github.com/hat47x/eki-fabric/internal/control/resultacceptance"
 	"github.com/hat47x/eki-fabric/internal/control/workerplane"
 	"github.com/hat47x/eki-fabric/internal/core/admission"
 	"github.com/hat47x/eki-fabric/internal/core/ids"
 	"github.com/hat47x/eki-fabric/internal/core/measurement"
+	"github.com/hat47x/eki-fabric/internal/core/resultaccept"
+	"github.com/hat47x/eki-fabric/internal/core/resultclaim"
 	"github.com/hat47x/eki-fabric/internal/core/trustbundle"
 	"github.com/hat47x/eki-fabric/internal/core/workerenrollment"
 	"github.com/hat47x/eki-fabric/internal/spi/statestore"
@@ -180,7 +183,11 @@ func Start(ctx context.Context, cfg Config, log *slog.Logger) (*Server, error) {
 		return nil, fmt.Errorf("listen on %s: %w", cfg.Listen, err)
 	}
 
-	httpServer := clientapi.NewServer(cfg.Listen, handler)
+	httpServer := clientapi.NewServer(cfg.Listen, handler, clientapi.Timeouts{
+		Read:  cfg.ReadTimeout,
+		Write: cfg.WriteTimeout,
+		Idle:  cfg.IdleTimeout,
+	})
 	httpServer.ErrorLog = slog.NewLogLogger(log.Handler(), slog.LevelWarn)
 	if cfg.TLS != nil {
 		cert, err := tls.LoadX509KeyPair(cfg.TLS.CertFile, cfg.TLS.KeyFile)
@@ -217,7 +224,7 @@ func Start(ctx context.Context, cfg Config, log *slog.Logger) (*Server, error) {
 		// it from the registry, so an Attempt without a ResultClaim does not
 		// stay open forever (ADR-0037, #745).
 		closer := recallCloser{
-			attempts: store, claims: store, reclaimer: registry,
+			attempts: store, claims: store, admissions: store, reclaimer: registry,
 			grace: RecallGrace, now: time.Now,
 		}
 		if cerr := closer.validate(); cerr != nil {
@@ -342,12 +349,69 @@ func (s *Server) refreshReady() {
 	s.readyFlag.Store(s.workerConfigured == false || s.workerUp)
 }
 
+// defaultResultPolicy is the fallback policy when a deployment does not supply
+// one. It requires two independent verifications that differ in both principal
+// and operator (ADR-0032 §2.x). A deployment that needs a different policy
+// should make ResultPolicySource configurable.
+var defaultResultPolicy = resultacceptance.ResultPolicy{
+	Policy: resultaccept.Policy{
+		Level:              resultaccept.LevelRA2,
+		Threshold:          2,
+		DistinctDimensions: []resultaccept.Dimension{resultaccept.DimensionPrincipal, resultaccept.DimensionOperator},
+	},
+	Output: resultaccept.OutputMechanical,
+}
+
+// defaultProducers is the fallback producer source. It returns the Worker
+// identity as the principal and the claim's executor digest, which was already
+// verified against the WorkOrder when the claim was accepted. The same identity
+// is used for the operator dimension as a fallback; a deployment that needs
+// independent operator tracking should configure a custom ProducerSource.
+type defaultProducers struct{}
+
+func (defaultProducers) ProducerDimensions(_ context.Context, workerIdentity string, claim resultclaim.Claim) (map[resultaccept.Dimension]string, error) {
+	return map[resultaccept.Dimension]string{
+		resultaccept.DimensionPrincipal:      workerIdentity,
+		resultaccept.DimensionOperator:       workerIdentity,
+		resultaccept.DimensionExecutorDigest: claim.ExecutorDigest().Hex(),
+	}, nil
+}
+
+func (s *Server) resultAcceptance(store *sqlite.Store) (*resultacceptance.Service, error) {
+	svc, err := resultacceptance.New(resultacceptance.Config{
+		Attempts:   store,
+		Tasks:      store,
+		Claims:     store,
+		Results:    store,
+		Rejections: store,
+		Policies:   fixedPolicy{policy: defaultResultPolicy},
+		Producers:  defaultProducers{},
+		Clock:      systemClock{},
+	})
+	if err != nil {
+		return nil, err
+	}
+	return svc, nil
+}
+
+type fixedPolicy struct {
+	policy resultacceptance.ResultPolicy
+}
+
+func (f fixedPolicy) ResultPolicy(context.Context, ids.TaskID) (resultacceptance.ResultPolicy, error) {
+	return f.policy, nil
+}
+
 // startWorker opens the optional Worker listener (process-level test profile)
 // over the same state store as the Client API. Any failure is returned before
 // the process serves anything: a half-configured Worker listener is not a
 // reason to run without it.
 func (s *Server) startWorker(ctx context.Context, w *WorkerConfig, store *sqlite.Store) error {
-	accept, err := claimaccept.New(claimaccept.Config{Attempts: store, Leases: store, Claims: store, Clock: systemClock{}, Tasks: store})
+	resultAcceptance, err := s.resultAcceptance(store)
+	if err != nil {
+		return err
+	}
+	accept, err := claimaccept.New(claimaccept.Config{Attempts: store, Leases: store, Claims: store, Clock: systemClock{}, Tasks: store, ResultAcceptance: resultAcceptance})
 	if err != nil {
 		return err
 	}
@@ -399,7 +463,7 @@ func (s *Server) startWorker(ctx context.Context, w *WorkerConfig, store *sqlite
 	if tlsConfig != nil {
 		listener = tls.NewListener(listener, tlsConfig)
 	}
-	srv := clientapi.NewServer(w.Listen, handler)
+	srv := clientapi.NewServer(w.Listen, handler, clientapi.Timeouts{})
 	srv.ErrorLog = slog.NewLogLogger(s.log.Handler(), slog.LevelWarn)
 	s.workerHTTP, s.workerListener, s.workerDone = srv, listener, make(chan struct{})
 	s.workerUp = true
@@ -443,7 +507,7 @@ func (s *Server) mtlsHandler(w *WorkerConfig, store *sqlite.Store, plane *claimp
 	if err != nil {
 		return nil, err
 	}
-	assignments, err := workerplane.NewAssignmentService(store)
+	assignments, err := workerplane.NewAssignmentService(store, store)
 	if err != nil {
 		return nil, err
 	}
@@ -468,6 +532,11 @@ func (s *Server) mtlsHandler(w *WorkerConfig, store *sqlite.Store, plane *claimp
 	}
 	handler, err := workerplane.NewMTLSHandler(workerplane.MTLSConfig{
 		Claims: api, Assignments: assignments, Heartbeats: store, BodyReceiver: bodyReceiver{receiver}, Registry: registry, WorkerCA: ca.Certificate(), TrustDomain: w.MTLS.TrustDomain,
+		// The Worker fetches a Task's inputs from this same store (#763,
+		// ADR-0029 §5.10). Without it the Agent's fetcher gets 501 and refuses
+		// the assignment as input_unavailable, so a Task with inputs is
+		// admitted and placed but never run.
+		Artifacts:    artifactSource{store: bodies},
 		MaxBodyBytes: w.MaxBodyBytes, Logger: s.log,
 		// The version the Control Plane holds is what Workers are given at
 		// enrollment and what their roots are checked against (ADR-0036 §2.1).

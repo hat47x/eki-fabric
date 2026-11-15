@@ -11,6 +11,7 @@ import (
 
 	"github.com/hat47x/eki-fabric/internal/control/leaserecall"
 	"github.com/hat47x/eki-fabric/internal/core/attemptstate"
+	"github.com/hat47x/eki-fabric/internal/core/contract"
 	"github.com/hat47x/eki-fabric/internal/core/leasestate"
 	"github.com/hat47x/eki-fabric/internal/core/resultclaim"
 )
@@ -19,10 +20,21 @@ import (
 // seedClaimFor issues the Lease one second before `now` and lets it run one hour.
 func leaseRecordOf(claim resultclaim.Claim, now time.Time) leasestate.LeaseRecord {
 	return leasestate.LeaseRecord{
-		ID: claim.LeaseID(), TaskID: claim.TaskID(), TaskIRDigest: claim.TaskIRDigest(),
-		AttemptID: claim.AttemptID(), WorkerIdentity: claim.WorkerIdentity(),
-		FenceEpoch: claim.FenceEpoch(),
-		IssuedAt:   now.Add(-time.Second), ExpiresAt: now.Add(time.Hour),
+		ID:                          claim.LeaseID(),
+		TaskID:                      claim.TaskID(),
+		TaskIRDigest:                claim.TaskIRDigest(),
+		AttemptID:                   claim.AttemptID(),
+		WorkerIdentity:              claim.WorkerIdentity(),
+		PlacementTrustDomain:        "example.org",
+		PlacementAuthorityPrincipal: "placement-1",
+		PlacementDecisionID:         "decision-1",
+		PlacementPayloadDigest:      contract.SHA256([]byte("placement")),
+		PlacementExpiresAt:          now.Add(2 * time.Hour),
+		PolicyRevision:              "policy-1",
+		PolicyEpoch:                 1,
+		FenceEpoch:                  claim.FenceEpoch(),
+		IssuedAt:                    now.Add(-time.Second),
+		ExpiresAt:                   now.Add(time.Hour),
 	}
 }
 

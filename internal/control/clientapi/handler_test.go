@@ -657,7 +657,7 @@ func TestStaticTokensConfiguration(t *testing.T) {
 }
 
 func TestServerTimeoutsAreSet(t *testing.T) {
-	s := NewServer("127.0.0.1:0", http.NotFoundHandler())
+	s := NewServer("127.0.0.1:0", http.NotFoundHandler(), Timeouts{})
 	if s.ReadHeaderTimeout == 0 || s.ReadTimeout == 0 || s.WriteTimeout == 0 || s.IdleTimeout == 0 || s.MaxHeaderBytes == 0 {
 		t.Fatalf("an unbounded server setting remains: %+v", s)
 	}

@@ -1,0 +1,28 @@
+=== RUN   TestTEILeaseExpiryClosesTheAttempt
+    tei_lease_loss_test.go:140: the Task was dispatched to wrk_4add8fe195bec5f5b82adbdaee38b3c9: attempt=atm_968033f31857d8b2ae78ee783480650f
+    tei_lease_loss_test.go:182: after the close: status=running terminal_code="" attempt_count=1
+    tei_lease_loss_test.go:197: the Task is in phase "active" with 1 Attempt(s) after its Attempt was closed for an expired Lease
+    tei_lease_loss_test.go:206: NOT RECOVERED: no live Attempt was created after the Lease expired (#745 recovery gap)
+    tei_lease_loss_test.go:221: the Agent that started after the close received 0 assignment events, none for atm_968033f31857d8b2ae78ee783480650f
+--- PASS: TestTEILeaseExpiryClosesTheAttempt (66.39s)
+=== RUN   TestTEIDuplicateAndDeadlineWithALiveAttempt
+    tei_live_attempt_test.go:139: replay with a live Attempt: still 1 Attempt (atm_674c6a68fa7c9b2c7804416efac548b2), status running
+    tei_live_attempt_test.go:159: after the deadline: status=running terminal_code="" attempt_phase=dispatched attempt_count=1
+    tei_live_attempt_test.go:180: result after the deadline: code=RESULT_NOT_READY retryable=true
+--- PASS: TestTEIDuplicateAndDeadlineWithALiveAttempt (9.88s)
+=== RUN   TestTEIResultWhoseBodyWasRetiredIsNotAccepted
+    tei_partial_result_test.go:119: after retirement: outcome=undetermined available=0 fetched=0
+    tei_partial_result_test.go:122: not checked: EKIが結果の原データを再計算したか（AcceptedResult の digest は記録値であり、Client は再計算を強制できない）
+    tei_partial_result_test.go:122: not checked: Attempt・Lease・Fence の識別子との対応（公開の status と result には現れない。これらは EKI の責務のまま）
+--- PASS: TestTEIResultWhoseBodyWasRetiredIsNotAccepted (1.46s)
+=== RUN   TestTEIValidationResultIsAcceptedAndReadable
+    tei_result_acceptance_test.go:83: D3: AcceptedResult recorded d1d220ad36e48ca6a52e450027e1df524c509f0a9f07c3fccdd9ac4f2aa070b2 for attempt atm_d62e03524098154feff925716e4d47a1
+    tei_result_acceptance_test.go:138: D4: GET result = 200, output_digest = d1d220ad36e48ca6a52e450027e1df524c509f0a9f07c3fccdd9ac4f2aa070b2, body re-hashes to its name
+--- PASS: TestTEIValidationResultIsAcceptedAndReadable (2.27s)
+=== RUN   TestTEIValidationReachesARealAttempt
+    tei_validation_test.go:435: D1: task=tsk_f340b0db0daa912810a4b66c00ef956d attempt=atm_6ca3fbef30b12523de979d3d790bc9f4 worker=wrk_ef925e27e3fe66cbe1e60f768aa88cc9
+    tei_validation_test.go:460: D2: the Agent's digest equals TEI's local expectation (d1d220ad36e48ca6a52e450027e1df524c509f0a9f07c3fccdd9ac4f2aa070b2)
+    tei_validation_test.go:479: wrapper report: exit=0 entries=8
+--- PASS: TestTEIValidationReachesARealAttempt (1.46s)
+PASS
+ok  	github.com/hat47x/eki-fabric/conformance/process	81.514s

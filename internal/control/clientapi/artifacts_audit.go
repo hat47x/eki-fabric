@@ -18,16 +18,17 @@ type ArtifactAccess struct {
 	Principal string `json:"principal"`
 	// Artifact is the digest the caller asked for.
 	Artifact string `json:"artifact"`
-	// Outcome is "served", "not_found" or "expired". It is a closed set so a
-	// log reader does not have to parse prose.
+	// Outcome is "served", "not_found", "expired" or "unreadable". It is a closed
+	// set so a log reader does not have to parse prose.
 	Outcome string `json:"outcome"`
 }
 
 // The outcomes an audit line can carry.
 const (
-	ArtifactServed   = "served"
-	ArtifactNotFound = "not_found"
-	ArtifactExpired  = "expired"
+	ArtifactServed     = "served"
+	ArtifactNotFound   = "not_found"
+	ArtifactExpired    = "expired"
+	ArtifactUnreadable = "unreadable"
 )
 
 // audit records one access. A configured sink is used when there is one;

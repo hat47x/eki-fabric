@@ -1782,4 +1782,69 @@ ADR に書いた決定が、**実装と試験のどこまで届いているか**
 
 ### 2026-11-09 #242・#745・#753: 同一TaskのEvidenceとEffect Fenceを最小ゲートへ統合
 
-[conformance/process/EXECUTION_EVIDENCE_PLAN.md](../conformance/process/EXECUTION_EVIDENCE_PLAN.md)に、Client APIの実Task→現在のPlacement/Lease/WorkOrder→Agent実行→Claim→検証／受理→外部Effect/Consumerを一つの相関キーで追う最小計画（ES-01〜ES-07）を置いた。主な新規反例は、現行`internal/control/service/recall.go`が`PossibleExternalEffect: false`を固定しており、Effect情報が未取得でもgrace後に`CloseLeaseExpired`へ進み得ること。これはAttemptの終了と自動再投入を同一視するものではない。#745で権威あるContractSource／UNKNOWN時の停止条件を決めるまで、回収後に副作用無しと推定して安全なretryを主張しない。#242が同一Taskの実プロセス縦断E2E、#753が実Data Adapterの配送・Consumedを所有し、#754は実測後の方式選定とする。正本Go 1.27の実テストはNOT RUN、新Host／Registryは追加せず、M0/MVP優先順位は維持する。
+[conformance/process/EXECUTION_EVIDENCE_PLAN.md](../conformance/process/EXECUTION_EVIDENCE_PLAN.md)に、Client APIの実Task→現在のPlacement/Lease/WorkOrder→Agent実行→Claim→検証／受理→外部Effect/Consumerを一つの相関キーで追う最小計画（ES-01〜ES-07）を置いた。2026-11-09時点の主な新規反例は、当時の`internal/control/service/recall.go`が`PossibleExternalEffect: false`を固定しており、Effect情報が未取得でもgrace後に`CloseLeaseExpired`へ進み得たこと（2026-11-12現在の実装では修正済み）。これはAttemptの終了と自動再投入を同一視するものではない。#745で保存済みAdmissionの出典検証は実装されたが、回収後の自動retryや外部Provider効果の安全性は引き続き別の証拠で判断する。#242が同一Taskの実プロセス縦断E2E、#753が実Data Adapterの配送・Consumedを所有し、実測後の追加ADRは#753の結果を使う（#754はADR-0041の暫定判断として完了済み）の方式選定とする。[#753のD0-A](../spikes/data-delivery-transport/RESULTS_2026-11-09.md)は**commit `972bc57`のGo 1.27.0パッケージ試験PASS（26 PASS／2 SKIP）**まで確認済み。ただしPR #810のTrace順序負例や#242/#745の縦断／外部Effect負例は、その実行commitの対象外として再実行・実装待ちに残す。現行`admission.ParseTaskRequest`は`effect_mode=none`のみ受理するため、ES-02/04は将来契約・合成負例であり、M0で非冪等Taskを正式に受理済みとは扱わない。古い合成Taskや受理本文欠損を`none`へ推定せず、`LoadAdmission(Content)`の正本とTaskIR digestを照合する最小のEffect出典境界は#745で実装済み。新Host／Registryは追加せず、M0/MVP優先順位は維持する。
+
+### 2026-11-10 #745: 保存されたM0のEffect区分を実行資格から分離して検証する
+
+[`claimreconcile.ProvenM0EffectNone`](../internal/control/claimreconcile/effect_evidence.go)に、Admission Content再解析・Fingerprint・TaskIR digest・Task/Attempt/Lease/Workerの束縛を確認する**純粋な検査関数**と正常系／11負例のテストを追加。Go 1.27の正本テストは未実施。通信Spikeの旧revision Go1.27 D0-A PASS（#813）は、この新関数・回収ロジックへの合格証拠ではない。
+
+#745の次工程として2026-11-10時点で計画した`recallCloser`への`LoadAdmission`配線は、**2026-11-12に確認したmainでは実装済み**。真正のM0 Admissionを使う回収正例と、保存本文を取得できない際の保留負例のテストコードも存在する。ただし現行mainのGo 1.27での実行記録、同じTaskの失効→Task状態→Recovery Permit、外部Provider Receiptは別の受入対象として残す。#242同一Task縦断と#753実Data Adapter比較を先行して混ぜず、M0/MVPの優先順位・Everything is Plugin／新Host無しの方針は維持する。
+
+### 2026-11-12 #242・#753: #745完了後の実行・配送Evidenceを再優先付け
+
+[#745](https://github.com/hat47x/eki-fabric/issues/745)は完了済み。現行mainの`recallCloser`は`LoadAdmission`で保存されたM0要求を読み、`ProvenM0EffectNone`でRequestFingerprint／TaskIR digest／Task・Attempt・Lease・Workerの束縛を確認してから`PossibleExternalEffect`を選ぶ。読取不能や証明できない場合は「副作用なし」とみなさない。一方、この検証が証明するのは**正本M0要求の宣言**であり、現在のGrant／Policyや外部Providerの無作用・Receiptではない。
+
+新規の中心仕様を増やさず、[同一Task Evidence計画](../conformance/process/EXECUTION_EVIDENCE_PLAN.md)のES-01〜07を次の順に実証する。
+
+| 既存担当 | 次のGate | 今回の状態 |
+| --- | --- | --- |
+| **#242** | Client APIで受理した同一Task／Attemptを、署名付きDispatch・Agent実行・Claim・Verification・Accepted Resultまで追う。回収後のTask状態・Recoveryは別票 | 部品・テストコードあり、同一Taskの連続E2Eは未確認 |
+| **#753** | 固定Fixtureと同じ契約を、実Data AdapterのLocal IPC／Connectで配送し、現在Grant・送信・受信・利用側Consumedの各証拠を確かめる | Go 1.27 D0-Aは旧commit `972bc57`の26 PASS／2 SKIP。後続revと実Adapterは未確認 |
+| **#754／ADR-0041** | M0/MVPはWebRTC・WebTransport・WebSocketを追加採用しない仮判断済み。D1の実測後は新ADRで再評価 | #754はcompleted。実Adapterの測定は未実施 |
+| **外部Provider／利用側** | Operation ID・Intent digest・Commit Receipt・独立Read、および意味受理を別確認 | EKIのAttempt／Ack／Accepted Resultからは自動的に証明できない |
+
+TEIや外部Harnessとの接続では、**Control（Attempt／Lease）・Delivery（実Tool応答）・Business Operation（実Provider／Receipt）・Decision（根拠とOwnerの受理）**を混同しない。Intent→Resolve→Projection→Transport→Consumer→Harnessの各段階は、それぞれの資格・受領・版を検証するための照合項目であり、EKI Coreに新しい汎用Host・意味正本・権限Registryを作る仕様ではない。大容量EvidenceはGitに一括格納せず、不変な参照／digest／権限状態を記録する方式を併用する。
+
+**完了を取り違えない**：#745のM0失効処理を修正できたことと、同一TaskのRecoveryや外部Effectの確定、Local IPC/Connectの比較、AIハーネスの実行受領は独立。現行mainの実Go 1.27テストとOwner受理はEvidenceが確認できるまで未実施とする。M0/MVP優先順位を変更しない。
+
+### 2026-11-12 #754完了・ADR-0041仮承認と測定Gateの分離
+
+[#754](https://github.com/hat47x/eki-fabric/issues/754)は2026-11-11にcompletedとして閉鎖され、[ADR-0041](adr/0041-data-transport-measurement-deferral.md)で**M0/MVPにはWebRTC・WebTransport・WebSocketを追加採用しない**という暫定判断を記録済み。既存ADR-0001のExternal HTTPS/JSON、Worker/Adapter Connect+Protobuf、Authority CBOR/COSEを維持する。Local IPCも候補であり、現在の本番既定経路と同一視しない。
+
+この判断は**測定不足を明示した保留付き非採用**である。#753のD0-B/C（Local IPC・Connect実Data Adapter）とD1（遅延・欠落・Backpressure・資源・失効）が揃った場合だけ、**新ADR**で追加採用／非採用を再評価する。旧D0-A記録を通信性能の根拠にしない。同一TaskのE2E（#242）やEffectNone出典確認（#745）を、Data Adapter実通信の証拠へ流用しない。
+
+### 2026-11-13 #242・#753: Harnessの対象選択から結果受領までを検証可能な境界に分ける
+
+[conformance/process/HANDOFF_EVIDENCE_GATES.md](../conformance/process/HANDOFF_EVIDENCE_GATES.md)にHE-01〜10の独立Expected候補を追加。AI Harnessを操作の入口とする際、プロンプトで指定して固定した対象をProductが現在のRevision・権限で再解決し、送出を許可したProjectionだけを配送する。EKIは同じTask／Attempt／Lease／FenceEpochに結び付く実行資格と実配送を観測する。受信側のLoad、Toolの実呼出し／応答、外部ProviderのOperation Receiptと意味の受理はそれぞれ別正本で確認する。選択ID、Skill名、通信Ack、AgentのResultClaim、固定Fixtureの自己申告Trace一致を、実Consumer受領や業務完了の証明としない。
+
+順序は①#242の実Client API→同一Taskの実行・Claim・受理を検証、②#753でLocal IPC／Connectの実Data AdapterとConsumer実受領・遅延等を実測、③利用側でHarnessのPin/Projection/Tool応答を独立照合。#745は保存Admissionを用いたM0回収判断をmainに実装済みでclosed、#754はADR-0041（M0/MVPで新Transport追加非採用）としてclosed。後者は実測合格を示さず、追加方式の再評価は新ADRで行う。大容量Evidenceは原則としてGitの外部保管を許し、URI・digest・長さ・出典・アクセス可能性を追跡する。新しい中央Host／Registryは導入せず、M0/MVPの優先順位を維持する。
+
+### 2026-11-13 #242：実Client APIからAgentまでの同一Task試験を活用し、結果の公開条件を固定
+
+ソース再照合により、[`conformance/process/http_submit_agent_test.go`](../conformance/process/http_submit_agent_test.go)が、Client API受付→起動ControlのDispatch→mTLS Agent固定コマンド実行→ResultClaim→**テスト内で明示的に行うResult Acceptance**まで、同一Taskを追っていることを確認した。以前の「別々の合成Taskしかない」という整理は修正する。現行`claimaccept`はWorker入口から`ResultAcceptance`を呼べるが、十分な独立Verificationが無ければ保留する。実自動Verifierの起動・証拠提供まで完成したわけではない。
+
+次の変更ではこの既存テストに、Task/Attempt/Worker/Lease・FenceEpochの一致とPublic Result APIの**Claim後409→明示受理後200**を加え、手動検証と自動検証を明確に区別する。正本Go 1.27での実テストは未実施（本セッションではGo 1.23.2のみ、プライベートRepo取得不可）。次は[#242](https://github.com/hat47x/eki-fabric/issues/242)の独立Verifier/Result Acceptance実起動と、失効・欠損・再起動の負例へ進む。[#745](https://github.com/hat47x/eki-fabric/issues/745)はM0回収の限定実装でclosed、[#753](https://github.com/hat47x/eki-fabric/issues/753)のLocal IPC/Connect実Data Adapterは未確認、[#754](https://github.com/hat47x/eki-fabric/issues/754)はADR-0041でM0/MVP追加方式非採用の判断済み。Harness選択→Product再解決→Consumerの実受領・Tool/Provider Receiptは別正本。新Host/Registryを増やさずM0/MVP優先順位を維持する。
+
+### 2026-11-13 EKI結果受理から製品Consumer・Provider効果への横断Evidence
+
+[同一TaskのEvidence計画](../conformance/process/EXECUTION_EVIDENCE_PLAN.md)にES-08〜12を追加。EKI Accepted Result／Data AdapterのDelivered／利用製品のLoaded・Invoked／外部Tool・ProviderのCommit Receiptを別票に分ける。TEI・SHO・SUI・HarnessのIntent→Resolve→Projection→Transport→Consumer→Harness/Effectは各製品の正本と権限を保持し、EKIに新しいHost・Registry・Owner判断を移さない。受渡しはTask/Attempt/Lease/FenceEpoch、結果digest、Consumer identity、Source/Grant revision、Operation ID・Receipt referenceの必要最小項目を照合し、巨大Envelopeを義務化しない。大容量EvidenceはGitへの全面アップロードを前提にせずManifest/digestと実体保管を分離する。#242の独立Verifier、#753の実Data AdapterとConsumer受領を先行し、製品の実Provider効果は後続の別ゲート。現時点でES-08〜12はNOT RUN、#745はM0限定実装でclosed、#754はADR-0041のM0/MVP暫定判断を維持。
+
+### 2026-11-13 #242・#753：証拠をどの成功主張に採用できるかを固定
+
+[HANDOFF_EVIDENCE_GATES.md](../conformance/process/HANDOFF_EVIDENCE_GATES.md)にEQ-01〜06を追加。Task/Attempt/Lease/FenceEpochの一致、実Verificationの出典、Public Result API、実送受信とConsumer Loader、Source/Grant失効、Provider Commit Receiptを、**主張ごとに必要な独立観測**として定義した。`NOT PROVEN`（証拠不足）・`NOT RUN`（未実行）・`NOT SUPPORTED`（Adapter不在）・`FAIL`（反例で不一致）を区別し、テスト内の合成Verification／seed／自己申告Traceを本番の実証へ昇格させない。A→B→Aやdigest一致は現在のGrantを復活させない。NAS/S3等に置く証拠はURIとdigestだけでなく、必要時に取得可能か・誰が観測したかを別に記録する。
+
+実装順は①#242の既存同一Taskテストを正本Go 1.27で再実行（EQ-01）、②別Attempt/旧FenceEpoch混入を拒否する負例（EQ-02）、③#753の実Data Adapterがある場合にのみConsumer実ログ欠落の負例（EQ-03）。EQ-04〜06は製品の正本・独立Verifier・Providerの利用可能性を確認してから行う。**この更新はConformance計画のみで、実行結果ではない。** 外部Harness/TEI/SHOの意味受理をEKIへ移管せず、#745/#754の完了判断やM0/MVP優先順位は変更しない。
+
+### 2026-11-13 #242：独立Verifierの供給経路を実装ゲートへ具体化
+
+[同一Task Evidence計画](../conformance/process/EXECUTION_EVIDENCE_PLAN.md)にVA-01〜06を追加。現行WorkerのClaim受付は`ResultAcceptance`を呼ぶが、呼出しにはAttemptIDだけが渡され、実Verifierの`Observations`は供給されない。既定PolicyはRA2（二つの独立Principal/Operator）、既定ProducerSourceはWorker identityを両dimensionに用いるfallbackであり、**本番の独立検証を保証する構成ではない**。
+
+次の優先順を①現行Go 1.27で既存HTTP→Agent→Claim→明示受理の縦断テストを実行、②VA-01〜04のClaimのみ・同一Verifier・別Task/Attempt/Output・失効した資格の負例を固定、③既存`resultverify.NormalizeAll`と`resultacceptance.Accept`に**実Verifierの出典を検証したObservation**を渡す最小の起動経路を設ける、④VA-05〜06で独立検証後のAcceptedResult・Client API公開と再送／遅延の拒否を確認、とする。信頼済みPolicy/ProducerSourceの解決を同時に検討し、Verifierの自己申告やテスト合成Verificationを本番RA2と扱わない。
+
+#753のData Adapter実配送、TEI/SHO/HarnessのConsumer Loaded、外部Provider Effectは引き続き別ゲート。新Host/Registry・新Transportを先行させず、#745/#754の完了判断を維持する。本更新は計画でありVA-01〜06の実テストは`NOT RUN`。
+
+### 2026-11-13 #242：VA-02の既存試験と追加負例の差分
+
+`internal/control/resultacceptance/accept_test.go`を再照合した。既に`TestAcceptHoldsWithNoVerification`、`TestAcceptDoesNotCountTheProducerAsAVerifier`、`TestAcceptRefusesEvidenceForAnotherAttemptWithoutChangingState`、`TestAcceptFailsClosedWhenTheTrustedInputsCannotBeRead`、`TestAcceptIsIdempotentAndReturnsTheStoredResult`等があり、VA-01・03・04・06の**純粋な受理Service単体**に相当する部分は実装済み。これらを新規課題として重複実装しない。
+
+追加した`TestAcceptRequiresDistinctPrincipalAndOperatorForRA2`は、異なるVerifier ID・異なるOperatorでも**Principalを共有する2件は保留**し、別Principal／Operatorの観測へ置き換えた場合に同一Taskの受理へ進める負例（VA-02）を固定する。独立性の判定自体は既存の`resultaccept.Decide`に委ね、試験が手作りしたdimensionを**本番の信頼済みIdentity記録**と混同しない。新規テストは現行Go 1.27環境で`NOT RUN`。次はこの試験と既存群を実行し、実Verifierの資格解決・Observation供給・Public Result APIまでを本番起動経路で検証する。

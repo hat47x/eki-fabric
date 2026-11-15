@@ -1,0 +1,349 @@
+{
+  "schema": "tei.eki-delegation-trace/v0",
+  "recorded_at": "2026-11-11T05:03:04.7952002Z",
+  "projection": {
+    "schema": "tei.eki-delegation-projection/v0",
+    "operation": {
+      "id": "tei.validate",
+      "source_revision": "b8cbd432a",
+      "command": [
+        "validate",
+        "-workspace",
+        "reference/workspace",
+        "-json"
+      ],
+      "executable_sha256": "673c511e362068874de192361bf4e96494720feb5a191d5bd4fb065cbfce6d75",
+      "toolchain": "go1.26.10",
+      "executor_id": "tei.validate",
+      "inputs": [
+        {
+          "Name": "workspace",
+          "SHA256Hex": "4503dff3b38b21dc428f1842db86ab6ff5a748acf93cb9f5d0c1f61969776781",
+          "SizeBytes": 14507,
+          "MediaType": "application/gzip",
+          "DataClass": "internal"
+        }
+      ],
+      "resources": {
+        "cpu_millis": 4000,
+        "memory_bytes": 1073741824,
+        "wall_time_seconds": 600,
+        "output_bytes_max": 67108864,
+        "network_bytes_max": 0
+      },
+      "deadline": "2026-11-11T05:07:52Z",
+      "expected_output_sha256": "d1d220ad36e48ca6a52e450027e1df524c509f0a9f07c3fccdd9ac4f2aa070b2",
+      "priority": "normal"
+    },
+    "idempotency_key": "tei-eki:f8592d97e40316c01590a74cd56d97ccfc133ab52d8d4a33",
+    "client_request_id": "tei.eki-f8592d97e40316c01590a74cd56d97cc",
+    "ingest_intents": [
+      {
+        "schema": "eki.artifact-ingest-intent-request/v1",
+        "declared_size_bytes": 14507,
+        "media_type": "application/gzip",
+        "requested_data_class": "internal",
+        "expected_digest": {
+          "algorithm": "sha256",
+          "value": "4503dff3b38b21dc428f1842db86ab6ff5a748acf93cb9f5d0c1f61969776781"
+        }
+      }
+    ],
+    "task_request": {
+      "schema": "eki.task-request/v1",
+      "executor": {
+        "id": "tei.validate"
+      },
+      "inputs": [
+        {
+          "name": "workspace",
+          "artifact_id": "4503dff3b38b21dc428f1842db86ab6ff5a748acf93cb9f5d0c1f61969776781"
+        }
+      ],
+      "parameters": {
+        "tei": {
+          "command": [
+            "validate",
+            "-workspace",
+            "reference/workspace",
+            "-json"
+          ],
+          "executable_sha256": "673c511e362068874de192361bf4e96494720feb5a191d5bd4fb065cbfce6d75",
+          "operation": "tei.validate",
+          "source_revision": "b8cbd432a",
+          "toolchain": "go1.26.10"
+        }
+      },
+      "resources": {
+        "cpu_millis": 4000,
+        "memory_bytes": 1073741824,
+        "wall_time_seconds": 600,
+        "output_bytes_max": 67108864,
+        "network_bytes_max": 0
+      },
+      "reliability": {
+        "retryable": true,
+        "preemptible": true,
+        "checkpointable": false,
+        "deterministic": true,
+        "max_attempts": 2,
+        "effect_mode": "none"
+      },
+      "deadline": "2026-11-11T05:07:52Z",
+      "priority": "normal",
+      "client_request_id": "tei.eki-f8592d97e40316c01590a74cd56d97cc"
+    },
+    "bindings": [
+      {
+        "tei_field": "入力の内容同一性（入力Artifactのdigest）",
+        "eki_field": "task_request.inputs[].artifact_id（SHA-256 hex）",
+        "status": "enforced",
+        "note": "Admission refuses an input unless the deployment keeps a body under that digest (#763). The upload route re-measures the digest while writing (#245), so the name and the bytes agree."
+      },
+      {
+        "tei_field": "実行体のdigest",
+        "eki_field": "task_request.parameters.tei.executable_sha256（TaskRequest.executor に digest の欄はない）",
+        "status": "recorded-only",
+        "note": "EKI's ExecutorRequirement carries only id and version_constraint. Parameters are not passed to Workers (openapi.json, TaskRequest.parameters), so the digest records what TEI asked for, not what ran."
+      },
+      {
+        "tei_field": "executorの版",
+        "eki_field": "task_request.executor.version_constraint",
+        "status": "recorded-only",
+        "note": "The contract records the constraint into the request fingerprint and does not evaluate it; a fleet that cannot satisfy it fails later, at execution."
+      },
+      {
+        "tei_field": "executorの選択",
+        "eki_field": "task_request.executor.id",
+        "status": "enforced",
+        "note": "Admission refuses an executor that the deployment did not approve (approved_executors)."
+      },
+      {
+        "tei_field": "toolchain",
+        "eki_field": "task_request.parameters.tei.toolchain",
+        "status": "recorded-only",
+        "note": "No field places a toolchain. EKI's P0 execution is a fixed command from the Worker's trusted configuration, not a command built from Task fields."
+      },
+      {
+        "tei_field": "実行条件（CPU・メモリ・disk・出力・network・wall time）",
+        "eki_field": "task_request.resources",
+        "status": "enforced",
+        "note": "Admission checks the per-task ceiling; the Worker watches CPU, memory and temporary disk and stops the process tree on a breach. network is not enforced and GPU is unsupported at this revision."
+      },
+      {
+        "tei_field": "期限",
+        "eki_field": "task_request.deadline",
+        "status": "recorded-only",
+        "note": "The deadline is admitted, but a Task is not moved to a terminal state when it passes (#111). A client must impose its own wait limit; TEI treats the absence of a result as undetermined."
+      },
+      {
+        "tei_field": "副作用の不在",
+        "eki_field": "task_request.reliability.effect_mode",
+        "status": "enforced",
+        "note": "P0 admits only effect_mode \"none\". This is what makes a duplicate or retried execution safe for this operation."
+      },
+      {
+        "tei_field": "再実行の予算",
+        "eki_field": "task_request.reliability.max_attempts",
+        "status": "recorded-only",
+        "note": "Policy sets the effective retry budget; the requested value is not a guarantee."
+      },
+      {
+        "tei_field": "実際のAttempt",
+        "eki_field": "task_public_status.attempt_count（Attempt・Lease・Fenceの識別子は公開されない）",
+        "status": "recorded-only",
+        "note": "The public projection excludes Worker, Lease and Attempt topology by design, so TEI can count Attempts but cannot correlate a result with one. Lease and Fence remain EKI's responsibility and are not delegated."
+      },
+      {
+        "tei_field": "結果Artifactの取得",
+        "eki_field": "task_result.artifacts[]・GET /v1/artifacts/{artifact_id}",
+        "status": "enforced",
+        "note": "A result entry says whether the body is fetchable now. An accepted result exists only after EKI's Result Acceptance, which at this revision still lacks the independent verifiers the default policy requires (#242)."
+      },
+      {
+        "tei_field": "結果のdigest",
+        "eki_field": "task_result.output_digest",
+        "status": "recorded-only",
+        "note": "The field is optional and is the digest recorded in the durable AcceptedResult, never recomputed by the Client. TEI must compare it with its own expected digest; a missing value is unverifiable, not a match."
+      },
+      {
+        "tei_field": "キャッシュの局所性・配置の希望",
+        "eki_field": "（要求に欄がない）",
+        "status": "unavailable",
+        "note": "Placement is EKI's decision. The only deployment-level hint is public_inputs; TEI cannot ask for a warm build cache, which is what makes a distributed build slower than a local one."
+      },
+      {
+        "tei_field": "結果のReceipt（独立した検証）",
+        "eki_field": "（TEI側で構成する。EKIのAcceptedResultとは別物）",
+        "status": "unavailable",
+        "note": "EKI does not issue a TEI-readable receipt. The receipt in this spike is assembled by TEI from what it observed, and says what was checked and what was not."
+      }
+    ]
+  },
+  "observation": {
+    "now": "2026-11-11T05:03:04.7952002Z",
+    "deadline": "2026-11-11T05:03:04.7145532Z",
+    "started_at": "2026-11-11T05:03:01.7145532Z",
+    "finished_at": "2026-11-11T05:03:04.7952002Z",
+    "status_reads": 7,
+    "requests": 12,
+    "timings": [
+      {
+        "name": "ingest-and-upload",
+        "duration_millis": 27
+      },
+      {
+        "name": "submit",
+        "duration_millis": 2
+      },
+      {
+        "name": "status",
+        "duration_millis": 3049
+      },
+      {
+        "name": "result",
+        "duration_millis": 1
+      }
+    ],
+    "waited_millis": 3000,
+    "submit_status": 202,
+    "submit_problem": {},
+    "task_id": "tsk_71ccb1303fe8b9321447c05eda582734",
+    "request_fingerprint": "sha256:7e7aebebafe7c9289992c5fafba71b3d7c16abc202d98f1525b645c382bd4a2c",
+    "client_request_id": "tei.eki-f8592d97e40316c01590a74cd56d97cc",
+    "replayed": true,
+    "statuses": [
+      {
+        "at": "2026-11-11T05:03:01.7462432Z",
+        "status": "queued"
+      },
+      {
+        "at": "2026-11-11T05:03:02.2539747Z",
+        "status": "queued"
+      },
+      {
+        "at": "2026-11-11T05:03:02.7756295Z",
+        "status": "queued"
+      },
+      {
+        "at": "2026-11-11T05:03:03.281392Z",
+        "status": "queued"
+      },
+      {
+        "at": "2026-11-11T05:03:03.7862964Z",
+        "status": "queued"
+      },
+      {
+        "at": "2026-11-11T05:03:04.291917Z",
+        "status": "queued"
+      },
+      {
+        "at": "2026-11-11T05:03:04.7936595Z",
+        "status": "queued"
+      }
+    ],
+    "result_status": 409,
+    "result_problem": {
+      "type": "urn:eki:problem:result-not-ready",
+      "title": "The task has not produced an accepted result yet",
+      "status": 409,
+      "code": "RESULT_NOT_READY",
+      "retryable": true,
+      "task_id": "tsk_71ccb1303fe8b9321447c05eda582734"
+    },
+    "local": {
+      "schema": "tei.eki-delegation-local-run/v0",
+      "command": [
+        "validate",
+        "-workspace",
+        "D:\\GIT\\hat47x\\.tmp_teideleg\\tei-src\\reference\\workspace",
+        "-json"
+      ],
+      "exit_code": 0,
+      "duration_millis": 836,
+      "output_sha256": "d1d220ad36e48ca6a52e450027e1df524c509f0a9f07c3fccdd9ac4f2aa070b2",
+      "output_bytes": 2309,
+      "cache_state": "warm",
+      "source_revision": "b8cbd432a",
+      "executable_sha256": "673c511e362068874de192361bf4e96494720feb5a191d5bd4fb065cbfce6d75"
+    }
+  },
+  "links": {
+    "operation_id": "tei.validate",
+    "source_revision": "b8cbd432a",
+    "executor_id": "tei.validate",
+    "executor_sha256": "673c511e362068874de192361bf4e96494720feb5a191d5bd4fb065cbfce6d75",
+    "toolchain": "go1.26.10",
+    "requested_resources": {
+      "cpu_millis": 4000,
+      "memory_bytes": 1073741824,
+      "wall_time_seconds": 600,
+      "output_bytes_max": 67108864,
+      "network_bytes_max": 0
+    },
+    "requested_deadline": "2026-11-11T05:07:52Z",
+    "inputs": [
+      {
+        "name": "workspace",
+        "requested_sha256": "4503dff3b38b21dc428f1842db86ab6ff5a748acf93cb9f5d0c1f61969776781",
+        "eki_sha256": "4503dff3b38b21dc428f1842db86ab6ff5a748acf93cb9f5d0c1f61969776781",
+        "size_bytes": 14507,
+        "digest_agreed": true
+      }
+    ],
+    "idempotency_key": "tei-eki:f8592d97e40316c01590a74cd56d97ccfc133ab52d8d4a33",
+    "client_request_id": "tei.eki-f8592d97e40316c01590a74cd56d97cc",
+    "task_id": "tsk_71ccb1303fe8b9321447c05eda582734",
+    "request_fingerprint": "sha256:7e7aebebafe7c9289992c5fafba71b3d7c16abc202d98f1525b645c382bd4a2c",
+    "attempt_count": 0,
+    "receipt_outcome": "undetermined"
+  },
+  "receipt": {
+    "schema": "tei.eki-delegation-receipt/v0",
+    "outcome": "undetermined",
+    "reason": "期限を過ぎても RESULT_NOT_READY のままで、EKI は終端状態にしていない（#111）",
+    "basis": [
+      "EKI admitted the request (202)",
+      "the result answer is retryable; no accepted result exists yet"
+    ],
+    "not_checked": [
+      "EKIが結果の原データを再計算したか（AcceptedResult の digest は記録値であり、Client は再計算を強制できない）",
+      "Attempt・Lease・Fence の識別子との対応（公開の status と result には現れない。これらは EKI の責務のまま）"
+    ],
+    "admission": {
+      "status": 202,
+      "task_id": "tsk_71ccb1303fe8b9321447c05eda582734",
+      "request_fingerprint": "sha256:7e7aebebafe7c9289992c5fafba71b3d7c16abc202d98f1525b645c382bd4a2c",
+      "client_request_id": "tei.eki-f8592d97e40316c01590a74cd56d97cc",
+      "replayed": true
+    },
+    "attempt": {
+      "observed_count": 0,
+      "retried": false
+    },
+    "result": {
+      "status": 409,
+      "code": "RESULT_NOT_READY",
+      "artifact_count": 0,
+      "available_count": 0,
+      "fetched_count": 0,
+      "fetched_digest_mismatch_count": 0
+    },
+    "local": {
+      "schema": "tei.eki-delegation-local-run/v0",
+      "command": [
+        "validate",
+        "-workspace",
+        "D:\\GIT\\hat47x\\.tmp_teideleg\\tei-src\\reference\\workspace",
+        "-json"
+      ],
+      "exit_code": 0,
+      "duration_millis": 836,
+      "output_sha256": "d1d220ad36e48ca6a52e450027e1df524c509f0a9f07c3fccdd9ac4f2aa070b2",
+      "output_bytes": 2309,
+      "cache_state": "warm",
+      "source_revision": "b8cbd432a",
+      "executable_sha256": "673c511e362068874de192361bf4e96494720feb5a191d5bd4fb065cbfce6d75"
+    }
+  }
+}

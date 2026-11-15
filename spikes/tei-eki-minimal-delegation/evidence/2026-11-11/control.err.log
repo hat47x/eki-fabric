@@ -1,0 +1,52 @@
+time=2026-11-11T14:02:32.978+09:00 level=WARN msg="lease reclaim is disabled: no lease_registry is configured, so expired leases are only found by whoever looks"
+time=2026-11-11T14:02:33.477+09:00 level=INFO msg="control plane worker listener" addr=127.0.0.1:50462 tls=false auth=static_token
+time=2026-11-11T14:02:33.487+09:00 level=INFO msg="control plane listening" addr=127.0.0.1:50461 tls=false
+time=2026-11-11T14:02:54.063+09:00 level=INFO msg=request method=POST path=/v1/tasks status=422 principal=tei-spike duration_ms=1 client_request_id=""
+time=2026-11-11T14:02:54.068+09:00 level=INFO msg=request method=POST path=/v1/artifacts/ingest-intents status=201 principal=tei-spike duration_ms=0 client_request_id=""
+time=2026-11-11T14:02:54.082+09:00 level=INFO msg=request method=PUT path=/v1/artifact-uploads/ing_kyzjjE5sUB_E80bsw3PEKw status=202 principal=tei-spike duration_ms=10 client_request_id=""
+time=2026-11-11T14:02:54.122+09:00 level=INFO msg="artifact access" principal="" artifact=4503dff3b38b21dc428f1842db86ab6ff5a748acf93cb9f5d0c1f61969776781 outcome=not_found
+time=2026-11-11T14:02:54.141+09:00 level=INFO msg=request method=GET path=/v1/artifacts/4503dff3b38b21dc428f1842db86ab6ff5a748acf93cb9f5d0c1f61969776781 status=404 principal=tei-spike duration_ms=20 client_request_id=""
+time=2026-11-11T14:02:54.172+09:00 level=INFO msg=request method=POST path=/v1/artifacts/ingest-intents status=201 principal=tei-spike duration_ms=0 client_request_id=""
+time=2026-11-11T14:02:54.207+09:00 level=INFO msg=request method=PUT path=/v1/artifact-uploads/ing_yEyCcINBbqO2hs41hvCfgg status=202 principal=tei-spike duration_ms=3 client_request_id=""
+time=2026-11-11T14:02:54.224+09:00 level=INFO msg=request method=PUT path=/v1/artifact-uploads/ing_yEyCcINBbqO2hs41hvCfgg status=404 principal=tei-spike duration_ms=0 client_request_id=""
+time=2026-11-11T14:02:54.243+09:00 level=INFO msg=request method=POST path=/v1/artifacts/ingest-intents status=201 principal=tei-spike duration_ms=0 client_request_id=""
+time=2026-11-11T14:02:54.257+09:00 level=INFO msg=request method=PUT path=/v1/artifact-uploads/ing_hGEWE66L4IXUgcLvvUrSfA status=202 principal=tei-spike duration_ms=4 client_request_id=""
+time=2026-11-11T14:02:54.301+09:00 level=INFO msg=request method=POST path=/v1/tasks status=202 principal=tei-spike duration_ms=3 client_request_id=tei.eki-f8592d97e40316c01590a74cd56d97cc
+time=2026-11-11T14:02:54.323+09:00 level=INFO msg=request method=POST path=/v1/tasks status=202 principal=tei-spike duration_ms=0 client_request_id=tei.eki-f8592d97e40316c01590a74cd56d97cc
+time=2026-11-11T14:02:54.347+09:00 level=INFO msg=request method=POST path=/v1/tasks status=409 principal=tei-spike duration_ms=0 client_request_id=tei.eki-f8592d97e40316c01590a74cd56d97cc
+time=2026-11-11T14:02:54.369+09:00 level=INFO msg=request method=POST path=/v1/tasks status=202 principal=tei-spike duration_ms=9 client_request_id=""
+time=2026-11-11T14:02:58.406+09:00 level=INFO msg=request method=GET path=/v1/tasks/tsk_9704271690ece70ad22662fc26c3ff86 status=200 principal=tei-spike duration_ms=0 client_request_id=""
+time=2026-11-11T14:02:58.419+09:00 level=INFO msg=request method=POST path=/v1/tasks/tsk_9704271690ece70ad22662fc26c3ff86/cancel status=202 principal=tei-spike duration_ms=3 client_request_id=""
+time=2026-11-11T14:02:58.426+09:00 level=INFO msg=request method=GET path=/v1/tasks/tsk_9704271690ece70ad22662fc26c3ff86 status=200 principal=tei-spike duration_ms=1 client_request_id=""
+time=2026-11-11T14:02:58.436+09:00 level=INFO msg=request method=GET path=/v1/tasks/tsk_9704271690ece70ad22662fc26c3ff86/result status=409 principal=tei-spike duration_ms=0 client_request_id=""
+time=2026-11-11T14:02:58.453+09:00 level=INFO msg=request method=POST path=/v1/tasks status=202 principal=tei-spike duration_ms=8 client_request_id=""
+time=2026-11-11T14:02:58.459+09:00 level=INFO msg=request method=GET path=/v1/tasks/tsk_677a287f582b0eed848b772e32911bc9/result status=409 principal=tei-spike duration_ms=1 client_request_id=""
+time=2026-11-11T14:02:58.463+09:00 level=INFO msg=request method=POST path=/v1/tasks status=422 principal=tei-spike duration_ms=1 client_request_id=""
+time=2026-11-11T14:02:58.469+09:00 level=INFO msg="artifact access" principal="" artifact=1111111111111111111111111111111111111111111111111111111111111111 outcome=not_found
+time=2026-11-11T14:02:58.470+09:00 level=INFO msg=request method=GET path=/v1/artifacts/1111111111111111111111111111111111111111111111111111111111111111 status=404 principal=tei-spike duration_ms=1 client_request_id=""
+time=2026-11-11T14:02:58.577+09:00 level=INFO msg=request method=POST path=/v1/artifacts/ingest-intents status=201 principal=tei-spike duration_ms=1 client_request_id=""
+time=2026-11-11T14:02:58.586+09:00 level=INFO msg=request method=PUT path=/v1/artifact-uploads/ing_96yRUhB79C7USOjePwdz9A status=202 principal=tei-spike duration_ms=3 client_request_id=""
+time=2026-11-11T14:02:58.612+09:00 level=INFO msg="artifact access" principal=tei-spike artifact=4503dff3b38b21dc428f1842db86ab6ff5a748acf93cb9f5d0c1f61969776781 outcome=served
+time=2026-11-11T14:02:58.612+09:00 level=INFO msg=request method=GET path=/v1/artifacts/4503dff3b38b21dc428f1842db86ab6ff5a748acf93cb9f5d0c1f61969776781 status=200 principal=tei-spike duration_ms=22 client_request_id=""
+time=2026-11-11T14:02:58.617+09:00 level=INFO msg=request method=POST path=/v1/tasks status=202 principal=tei-spike duration_ms=3 client_request_id=tei.eki-f8592d97e40316c01590a74cd56d97cc
+time=2026-11-11T14:02:58.619+09:00 level=INFO msg=request method=GET path=/v1/tasks/tsk_71ccb1303fe8b9321447c05eda582734 status=200 principal=tei-spike duration_ms=0 client_request_id=""
+time=2026-11-11T14:02:59.124+09:00 level=INFO msg=request method=GET path=/v1/tasks/tsk_71ccb1303fe8b9321447c05eda582734 status=200 principal=tei-spike duration_ms=0 client_request_id=""
+time=2026-11-11T14:02:59.631+09:00 level=INFO msg=request method=GET path=/v1/tasks/tsk_71ccb1303fe8b9321447c05eda582734 status=200 principal=tei-spike duration_ms=0 client_request_id=""
+time=2026-11-11T14:03:00.134+09:00 level=INFO msg=request method=GET path=/v1/tasks/tsk_71ccb1303fe8b9321447c05eda582734 status=200 principal=tei-spike duration_ms=0 client_request_id=""
+time=2026-11-11T14:03:00.641+09:00 level=INFO msg=request method=GET path=/v1/tasks/tsk_71ccb1303fe8b9321447c05eda582734 status=200 principal=tei-spike duration_ms=0 client_request_id=""
+time=2026-11-11T14:03:01.148+09:00 level=INFO msg=request method=GET path=/v1/tasks/tsk_71ccb1303fe8b9321447c05eda582734 status=200 principal=tei-spike duration_ms=1 client_request_id=""
+time=2026-11-11T14:03:01.652+09:00 level=INFO msg=request method=GET path=/v1/tasks/tsk_71ccb1303fe8b9321447c05eda582734 status=200 principal=tei-spike duration_ms=0 client_request_id=""
+time=2026-11-11T14:03:01.656+09:00 level=INFO msg=request method=GET path=/v1/tasks/tsk_71ccb1303fe8b9321447c05eda582734/result status=409 principal=tei-spike duration_ms=0 client_request_id=""
+time=2026-11-11T14:03:01.721+09:00 level=INFO msg=request method=POST path=/v1/artifacts/ingest-intents status=201 principal=tei-spike duration_ms=0 client_request_id=""
+time=2026-11-11T14:03:01.727+09:00 level=INFO msg=request method=PUT path=/v1/artifact-uploads/ing_FANfR7U2mqPh-8eE6p9GwA status=202 principal=tei-spike duration_ms=4 client_request_id=""
+time=2026-11-11T14:03:01.741+09:00 level=INFO msg="artifact access" principal=tei-spike artifact=4503dff3b38b21dc428f1842db86ab6ff5a748acf93cb9f5d0c1f61969776781 outcome=served
+time=2026-11-11T14:03:01.742+09:00 level=INFO msg=request method=GET path=/v1/artifacts/4503dff3b38b21dc428f1842db86ab6ff5a748acf93cb9f5d0c1f61969776781 status=200 principal=tei-spike duration_ms=13 client_request_id=""
+time=2026-11-11T14:03:01.743+09:00 level=INFO msg=request method=POST path=/v1/tasks status=202 principal=tei-spike duration_ms=0 client_request_id=tei.eki-f8592d97e40316c01590a74cd56d97cc
+time=2026-11-11T14:03:01.744+09:00 level=INFO msg=request method=GET path=/v1/tasks/tsk_71ccb1303fe8b9321447c05eda582734 status=200 principal=tei-spike duration_ms=0 client_request_id=""
+time=2026-11-11T14:03:02.248+09:00 level=INFO msg=request method=GET path=/v1/tasks/tsk_71ccb1303fe8b9321447c05eda582734 status=200 principal=tei-spike duration_ms=0 client_request_id=""
+time=2026-11-11T14:03:02.761+09:00 level=INFO msg=request method=GET path=/v1/tasks/tsk_71ccb1303fe8b9321447c05eda582734 status=200 principal=tei-spike duration_ms=1 client_request_id=""
+time=2026-11-11T14:03:03.276+09:00 level=INFO msg=request method=GET path=/v1/tasks/tsk_71ccb1303fe8b9321447c05eda582734 status=200 principal=tei-spike duration_ms=0 client_request_id=""
+time=2026-11-11T14:03:03.784+09:00 level=INFO msg=request method=GET path=/v1/tasks/tsk_71ccb1303fe8b9321447c05eda582734 status=200 principal=tei-spike duration_ms=0 client_request_id=""
+time=2026-11-11T14:03:04.288+09:00 level=INFO msg=request method=GET path=/v1/tasks/tsk_71ccb1303fe8b9321447c05eda582734 status=200 principal=tei-spike duration_ms=0 client_request_id=""
+time=2026-11-11T14:03:04.793+09:00 level=INFO msg=request method=GET path=/v1/tasks/tsk_71ccb1303fe8b9321447c05eda582734 status=200 principal=tei-spike duration_ms=0 client_request_id=""
+time=2026-11-11T14:03:04.793+09:00 level=INFO msg=request method=GET path=/v1/tasks/tsk_71ccb1303fe8b9321447c05eda582734/result status=409 principal=tei-spike duration_ms=0 client_request_id=""

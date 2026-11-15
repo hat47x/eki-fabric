@@ -1,0 +1,39 @@
+{
+  "schema": "tei.eki-delegation-comparison/v0",
+  "operation": "tei.validate",
+  "measured_at": "2026-11-11T07:05:46.2408581Z",
+  "local": {
+    "samples": 3,
+    "min_millis": 158,
+    "median_millis": 398,
+    "max_millis": 836,
+    "output_sha256": "d1d220ad36e48ca6a52e450027e1df524c509f0a9f07c3fccdd9ac4f2aa070b2",
+    "output_stable": true,
+    "exit_codes": [
+      0,
+      0,
+      0
+    ],
+    "cache_state": "warm",
+    "executable_sha256": "673c511e362068874de192361bf4e96494720feb5a191d5bd4fb065cbfce6d75"
+  },
+  "eki_round_trip": {
+    "samples": 2,
+    "min_millis": 3080,
+    "median_millis": 3088,
+    "max_millis": 3088,
+    "envelope_min_millis": 80,
+    "envelope_median_millis": 88,
+    "envelope_max_millis": 88,
+    "median_wait_millis": 3000,
+    "median_requests": 12,
+    "outcomes": {
+      "undetermined": 2
+    }
+  },
+  "caveat": [
+    "EKI did not execute this operation in this measurement unless attempts_observed is greater than 0: the round trip covers the input upload, admission, status polling and the result answer only.",
+    "The local numbers are wall-clock times of one process on one host; the same command varied by more than an order of magnitude during this work.",
+    "The two paths are not interchangeable: a local run produces the output here, while a delegation only produces it if a Worker is placed and the result is accepted."
+  ]
+}

@@ -17,6 +17,7 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/hat47x/eki-fabric/internal/control/resultacceptance"
 	"github.com/hat47x/eki-fabric/internal/core/attemptstate"
 	"github.com/hat47x/eki-fabric/internal/core/ids"
 	"github.com/hat47x/eki-fabric/internal/core/leasestate"
@@ -56,6 +57,12 @@ type Config struct {
 	// MaxAttempts caps the retries of one Task (ADR-0032 §2.5). Zero means
 	// defaultMaxAttempts.
 	MaxAttempts uint64
+	// ResultAcceptance is the optional result acceptance service. When it is
+	// set, a claim that opens the Verification step also triggers result
+	// acceptance with the verifications the service can read. Nil leaves the
+	// old behaviour: the claim is recorded and the Attempt moves to verifying,
+	// but nothing evaluates the result.
+	ResultAcceptance *resultacceptance.Service
 }
 
 type Service struct {
@@ -64,6 +71,7 @@ type Service struct {
 	claims   statestore.ResultClaimStore
 	clock    Clock
 	tasks    statestore.TaskStore
+	accept   *resultacceptance.Service
 	maxTries uint64
 }
 
@@ -82,7 +90,7 @@ func New(cfg Config) (*Service, error) {
 	if maxTries == 0 {
 		maxTries = defaultMaxAttempts
 	}
-	return &Service{attempts: cfg.Attempts, leases: cfg.Leases, claims: cfg.Claims, clock: cfg.Clock, tasks: cfg.Tasks, maxTries: maxTries}, nil
+	return &Service{attempts: cfg.Attempts, leases: cfg.Leases, claims: cfg.Claims, clock: cfg.Clock, tasks: cfg.Tasks, accept: cfg.ResultAcceptance, maxTries: maxTries}, nil
 }
 
 // Result reports what happened to one claim. VerificationRequired is true only
@@ -221,6 +229,18 @@ func (s *Service) Accept(ctx context.Context, claim resultclaim.Claim) (Result, 
 	resultAttempt := attempt
 	if needsTransition {
 		resultAttempt = next
+	}
+	// A completed claim that opens Verification also triggers result
+	// acceptance. The service reads the verifications it knows about; with
+	// none yet, it holds the Attempt in verifying until enough independent
+	// voices agree. A failure here is a store error, not a claim error, so
+	// the claim and the Attempt transition are already durable.
+	if s.accept != nil && resultAttempt.Phase == attemptstate.AttemptPhaseVerifying {
+		if _, err := s.accept.Accept(ctx, resultacceptance.Request{
+			AttemptID: claim.AttemptID(),
+		}); err != nil {
+			return Result{}, fmt.Errorf("result acceptance: %w", err)
+		}
 	}
 	return Result{
 		Decision:             decision,

@@ -170,6 +170,31 @@ func RunAssignmentExpiryProbe(t *testing.T, newStore AssignmentFactory) {
 	})
 }
 
+// RunAssignmentInputDigestsContract pins the TaskID the Worker delivery route
+// needs to resolve an Attempt's declared inputs (ADR-0029 §5.10). Without it
+// the listing cannot carry InputDigests, so the Worker never learns what to
+// fetch.
+func RunAssignmentInputDigestsContract(t *testing.T, newStore AssignmentFactory) {
+	t.Helper()
+	ctx := context.Background()
+
+	t.Run("list-assignments-carries-the-task-id", func(t *testing.T) {
+		store := newListingStore(t, newStore)
+		fx := newWorkOrderFixture(t, store)
+		lease, _ := fx.emittedLease("input-digest-task-id")
+		if _, err := fx.issuer.Issue(ctx, fx.request(lease)); err != nil {
+			t.Fatal(err)
+		}
+		got, err := store.ListEmittedAssignments(ctx, lease.WorkerIdentity, 0)
+		if err != nil || len(got) != 1 {
+			t.Fatalf("ListEmittedAssignments() = %+v, %v, want 1", got, err)
+		}
+		if got[0].TaskID != lease.TaskID {
+			t.Fatalf("TaskID = %s, want %s", got[0].TaskID, lease.TaskID)
+		}
+	})
+}
+
 // RevocationTestStore is a State Store that can also revoke a delivered
 // assignment (ADR-0030 §2.2).
 type RevocationTestStore interface {

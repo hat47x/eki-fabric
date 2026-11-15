@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"log/slog"
+	"net/http"
 	"os"
 	"sync"
 	"time"
@@ -173,8 +174,11 @@ func (l *eventLog) write(e event) error {
 }
 
 // runAssignments polls until ctx ends. It returns when the loop has stopped.
+//
+// httpClient is the Worker's authenticated client. The input fetcher uses it
+// because the artifact route is on the Worker's mTLS listener (#763).
 func runAssignments(ctx context.Context, c *AssignmentConfig, anchor *trustanchor.Anchor, execs []assignment.ExecutorApproval,
-	source workerplane.AssignmentSource, claims claimEnqueuer, events *eventLog, holds *bodyHold, principal workerplane.Principal, interval time.Duration, log *slog.Logger) error {
+	source workerplane.AssignmentSource, claims claimEnqueuer, events *eventLog, holds *bodyHold, principal workerplane.Principal, interval time.Duration, httpClient *http.Client, log *slog.Logger) error {
 	guard, err := replaysqlite.Open(ctx, c.ReplayDB, systemClock{}, 4096)
 	if err != nil {
 		return fmt.Errorf("open replay guard: %w", err)
@@ -231,7 +235,7 @@ func runAssignments(ctx context.Context, c *AssignmentConfig, anchor *trustancho
 		Host:    resourcemap.Host{CPUMillis: int64(c.Machine.CPUMillis), MemoryBytes: int64(c.Machine.MemoryBytes), DiskBytes: int64(c.Machine.DiskBytes)},
 		Handler: handler,
 		Logger:  log,
-		Inputs:  inputFetcher(c.ArtifactBaseURL, c.InputsDir),
+		Inputs:  inputFetcher(c.ArtifactBaseURL, c.InputsDir, httpClient),
 	})
 	if err != nil {
 		return err
@@ -296,7 +300,12 @@ func (r *leaseReporter) report(leaseID string) {
 // inputFetcher builds the input fetcher a deployment asked for, or nil when it did
 // not ask. An empty directory with a base URL is a configuration error, not a
 // silent discard: the handler needs the bytes on disk.
-func inputFetcher(baseURL, dir string) assignment.Fetcher {
+//
+// The fetcher must authenticate as the Worker. The artifact route lives on the
+// same mTLS listener as the assignment route, so a fetcher without the Worker's
+// client certificate is refused before the digest is looked at, and the
+// assignment is rejected as input_unavailable (#763).
+func inputFetcher(baseURL, dir string, client *http.Client) assignment.Fetcher {
 	if baseURL == "" {
 		return nil
 	}
@@ -304,5 +313,5 @@ func inputFetcher(baseURL, dir string) assignment.Fetcher {
 		return nil
 	}
 	saver := assignment.DirSaver{Dir: dir}
-	return assignment.HTTPFetcher{BaseURL: baseURL, Save: saver.Save}
+	return assignment.HTTPFetcher{BaseURL: baseURL, Client: client, Save: saver.Save}
 }

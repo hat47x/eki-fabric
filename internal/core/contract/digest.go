@@ -61,3 +61,30 @@ func (d Digest) String() string {
 func (d Digest) IsZero() bool {
 	return !d.set
 }
+
+// MarshalJSON encodes the Digest as a JSON string holding its hex representation.
+// A zero Digest is encoded as null.
+func (d Digest) MarshalJSON() ([]byte, error) {
+	if !d.set {
+		return []byte("null"), nil
+	}
+	return []byte(`"` + d.Hex() + `"`), nil
+}
+
+// UnmarshalJSON decodes a JSON null or hex string into the Digest.
+func (d *Digest) UnmarshalJSON(data []byte) error {
+	if string(data) == "null" {
+		d.set = false
+		d.value = [sha256.Size]byte{}
+		return nil
+	}
+	if len(data) < 2 || data[0] != '"' || data[len(data)-1] != '"' {
+		return fmt.Errorf("%w: expected a JSON string or null", ErrInvalidDigest)
+	}
+	parsed, err := ParseSHA256(string(data[1 : len(data)-1]))
+	if err != nil {
+		return err
+	}
+	*d = parsed
+	return nil
+}

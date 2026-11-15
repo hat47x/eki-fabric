@@ -81,11 +81,22 @@ func TestAMissingMetadataRecordIsA404(t *testing.T) {
 	}
 }
 
-func TestAnUnreadableStoreIsTreatedAsNotFoundRatherThan500(t *testing.T) {
+func TestAnUnreadableStoreIsAnsweredWith500AndAuditedAsUnreadable(t *testing.T) {
+	var entries []ArtifactAccess
 	source := fakeArtifacts{metaErr: errors.New("disk on fire")}
-	rec := artifactRequest(t, source, strings.Repeat("a", 64))
-	if rec.Code != http.StatusNotFound {
-		t.Fatalf("status = %d, want 404", rec.Code)
+	handler := &Handler{artifacts: source, log: slog.New(slog.NewTextHandler(io.Discard, nil)), artifactAudit: func(a ArtifactAccess) { entries = append(entries, a) }}
+	digest := strings.Repeat("a", 64)
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/v1/artifacts/"+digest, nil)
+	handler.artifact(rec, req, Identity{Principal: admission.Principal{ID: "alice"}, Role: RoleClient}, digest)
+	if rec.Code != http.StatusInternalServerError {
+		t.Fatalf("status = %d, want 500", rec.Code)
+	}
+	if !strings.Contains(rec.Body.String(), "artifact_unreadable") {
+		t.Fatalf("body = %q", rec.Body.String())
+	}
+	if len(entries) != 1 || entries[0].Outcome != ArtifactUnreadable {
+		t.Fatalf("entries = %+v", entries)
 	}
 }
 

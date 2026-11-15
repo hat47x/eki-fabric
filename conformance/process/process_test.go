@@ -40,6 +40,7 @@ import (
 	"github.com/hat47x/eki-fabric/internal/agent/claimqueue"
 	"github.com/hat47x/eki-fabric/internal/control/clientapi"
 	"github.com/hat47x/eki-fabric/internal/control/service"
+	"github.com/hat47x/eki-fabric/internal/core/admission"
 	"github.com/hat47x/eki-fabric/internal/core/attemptstate"
 	"github.com/hat47x/eki-fabric/internal/core/contract"
 	"github.com/hat47x/eki-fabric/internal/core/ids"
@@ -55,7 +56,7 @@ const (
 	clientToken  = "test-profile-client-token-0123456789"
 	// pollDeadline is generous because the whole suite runs in parallel: a loaded
 	// machine must not turn a slow tick into a failure (#437).
-	pollDeadline = 90 * time.Second
+	pollDeadline = 300 * time.Second
 )
 
 var binDir string
@@ -337,16 +338,54 @@ func seedClaim(t *testing.T, s *statesqlite.Store, policy policystate.State, n i
 func seedClaimFor(t *testing.T, s *statesqlite.Store, policy policystate.State, n int, now time.Time, worker string) resultclaim.Claim {
 	t.Helper()
 	ctx := context.Background()
-	task, err := taskstate.NewTask(ids.TaskID(fmt.Sprintf("tsk_%032x", n)), contract.SHA256([]byte(fmt.Sprintf("taskir-%d", n))), now.Add(-time.Minute))
+
+	// Create admission content and compute TaskIRDigest from it, matching the
+	// real admission flow (AdmitTask computes TaskIRDigest from the request).
+	content := []byte(fmt.Sprintf(`{
+		"schema":"eki.task-request/v1",
+		"executor":{"id":"dev.example.transform","version_constraint":"^1"},
+		"inputs":[{"name":"source","artifact_id":"art_%d"}],
+		"parameters":{"mode":"normalize"},
+		"resources":{"cpu_millis":1000,"memory_bytes":268435456,"wall_time_seconds":300,"output_bytes_max":16777216,"network_bytes_max":134217728},
+		"reliability":{"retryable":true,"preemptible":true,"checkpointable":false,"deterministic":true,"max_attempts":3,"effect_mode":"none"},
+		"priority":"normal"
+	}`, n))
+	req, err := admission.ParseTaskRequest(content)
 	must(t, err)
-	// A Task is created admitted and moved to ready by a separate write (#365).
-	must(t, s.CreateTask(ctx, task))
+	taskIRDigest, err := req.TaskIRDigest()
+	must(t, err)
+	fingerprint, err := req.Fingerprint()
+	must(t, err)
+
+	// AdmitTask creates the task and stores the admission atomically.
+	taskID := ids.TaskID(fmt.Sprintf("tsk_%032x", n))
+	_, err = s.AdmitTask(ctx, statestore.Admission{
+		Task: taskstate.TaskRecord{
+			ID:           taskID,
+			TaskIRDigest: taskIRDigest,
+			Phase:        taskstate.TaskPhaseAdmitted,
+			Revision:     1,
+			CreatedAt:    now.Add(-time.Minute).UTC(),
+			UpdatedAt:    now.Add(-time.Minute).UTC(),
+		},
+		Principal:          fmt.Sprintf("principal-%d", n),
+		IdempotencyKey:     fmt.Sprintf("idempotency-%d", n),
+		RequestFingerprint: fingerprint,
+		MaxAttempts:        3,
+		Content:            content,
+	}, statestore.AdmitLimit{})
+	must(t, err)
+
+	// Load the admitted task and move it to ready (#365).
+	task, err := s.LoadTask(ctx, taskID)
+	must(t, err)
 	ready := task
 	ready.Phase = taskstate.TaskPhaseReady
 	ready.Revision++
-	ready.UpdatedAt = task.CreatedAt.Add(time.Second)
+	ready.UpdatedAt = now.Add(-time.Second)
 	must(t, s.CompareAndSwapTask(ctx, task.ID, task.Revision, ready))
 	task = ready
+
 	attempt, err := attemptstate.New(ids.AttemptID(fmt.Sprintf("atm_%032x", n)), task.ID, task.TaskIRDigest, 1, task.CreatedAt)
 	must(t, err)
 	must(t, s.CreateAttempt(ctx, attempt))
@@ -366,7 +405,7 @@ func seedClaimFor(t *testing.T, s *statesqlite.Store, policy policystate.State, 
 	assigned, err := s.LoadAttempt(ctx, attempt.ID)
 	must(t, err)
 	dispatched := assigned
-	dispatched.Phase, dispatched.UpdatedAt = attemptstate.AttemptPhaseDispatched, now
+	dispatched.Phase, dispatched.LeaseID, dispatched.UpdatedAt = attemptstate.AttemptPhaseDispatched, reservation.Lease.ID, now
 	dispatched.Revision++
 	must(t, s.CompareAndSwapAttempt(ctx, attempt.ID, assigned.Revision, dispatched))
 

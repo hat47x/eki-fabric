@@ -1,0 +1,11 @@
+=== RUN   TestTEILeaseExpiryClosesTheAttempt
+    tei_lease_loss_test.go:137: the Task was dispatched to wrk_026bcc458f344a2f23c4071ef0d7cf9a: attempt=atm_05e48e53e3c86c6839cb7401f1f4d02a
+    tei_lease_loss_test.go:179: after the close: status=running terminal_code="" attempt_count=1
+    tei_lease_loss_test.go:189: the Task is in phase "active" after its Attempt was closed for an expired Lease
+    tei_lease_loss_test.go:191: note: the Task stayed in a live phase; check whether a new Attempt is created
+    tei_lease_loss_test.go:201: attempts after the close: 1
+    tei_lease_loss_test.go:203: NOT RECOVERED: no second Attempt was created after the Lease expired (#745 recovery gap)
+    tei_lease_loss_test.go:218: the Agent that started after the close received 0 assignment events, none for atm_05e48e53e3c86c6839cb7401f1f4d02a
+--- PASS: TestTEILeaseExpiryClosesTheAttempt (76.68s)
+PASS
+ok  	github.com/hat47x/eki-fabric/conformance/process	76.731s

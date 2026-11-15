@@ -51,6 +51,17 @@ type Config struct {
 	// MaxBodyBytes bounds a request body. Zero means the default.
 	MaxBodyBytes int64 `json:"max_body_bytes,omitempty"`
 
+	// ReadTimeout is the maximum duration for reading the request, including
+	// the body. Zero means 15s. Larger artifacts or slower networks may need
+	// a larger value (#816).
+	ReadTimeout time.Duration `json:"read_timeout,omitempty"`
+	// WriteTimeout is the maximum duration for writing the response. Zero
+	// means 30s.
+	WriteTimeout time.Duration `json:"write_timeout,omitempty"`
+	// IdleTimeout is the maximum duration for an idle keep-alive connection.
+	// Zero means 60s.
+	IdleTimeout time.Duration `json:"idle_timeout,omitempty"`
+
 	// Tokens are the static credentials. Only SHA-256 hashes are stored.
 	Tokens []TokenConfig `json:"tokens"`
 

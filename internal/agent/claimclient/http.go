@@ -94,6 +94,13 @@ func NewHTTP(cfg HTTPConfig) (*HTTPClient, error) {
 	}, nil
 }
 
+// RequestClient returns the HTTP client this Worker already authenticates
+// with. The input fetcher needs it because the Worker Plane's artifact route
+// is on the same mTLS listener: a fetch through http.DefaultClient carries no
+// client certificate and is refused before the digest is even looked at
+// (ADR-0029 §5.10, #763).
+func (c *HTTPClient) RequestClient() *http.Client { return c.http }
+
 func isLoopbackHost(host string) bool {
 	if host == "localhost" {
 		return true

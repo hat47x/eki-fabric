@@ -12,7 +12,7 @@ import (
 	"github.com/hat47x/eki-fabric/internal/core/leasestate"
 )
 
-func testLease(t *testing.T) leasestate.LeaseRecord {
+func testLease(t *testing.T, taskIRDigest ...contract.Digest) leasestate.LeaseRecord {
 	t.Helper()
 	leaseID, err := ids.ParseLeaseID("les_00000000000000000000000000000001")
 	if err != nil {
@@ -26,9 +26,13 @@ func testLease(t *testing.T) leasestate.LeaseRecord {
 	if err != nil {
 		t.Fatal(err)
 	}
+	digest := contract.SHA256([]byte("task-ir"))
+	if len(taskIRDigest) > 0 {
+		digest = taskIRDigest[0]
+	}
 	issued := time.Date(2026, 11, 6, 12, 0, 0, 0, time.UTC)
 	lease, err := leasestate.New(leasestate.Config{
-		ID: leaseID, TaskID: taskID, TaskIRDigest: contract.SHA256([]byte("task-ir")),
+		ID: leaseID, TaskID: taskID, TaskIRDigest: digest,
 		AttemptID: attemptID, WorkerIdentity: "worker-a",
 		PlacementTrustDomain: "local.example", PlacementAuthorityPrincipal: "control-plane/plc-1",
 		PlacementDecisionID: "placement-001", PlacementPayloadDigest: contract.SHA256([]byte("placement")),

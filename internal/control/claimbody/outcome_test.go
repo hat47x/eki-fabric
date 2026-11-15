@@ -11,6 +11,8 @@ func TestTheOutcomeMapsToTheContract(t *testing.T) {
 		{OutcomeDeliver, 200, ""},
 		{OutcomeNotFound, 404, "artifact_not_found"},
 		{OutcomeExpired, 410, "artifact_expired"},
+		{OutcomeWithdrawn, 410, "artifact_withdrawn"},
+		{OutcomeUnreadable, 500, "artifact_unreadable"},
 	}
 	for _, c := range cases {
 		if got := c.outcome.Status(); got != c.status {

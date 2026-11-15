@@ -162,9 +162,13 @@ func TestAMissingBodyIsNotFoundNotAnErrorToHide(t *testing.T) {
 func TestADigestThatIsNotHexSHA256IsRejectedBeforeAnyIO(t *testing.T) {
 	s := newStore(t)
 	body := []byte("body")
-	for _, claimed := range []string{"", "abc", strings.ToUpper(digestOf(body)) + "0", "gisterminal"} {
+	for _, claimed := range []string{"abc", strings.ToUpper(digestOf(body)) + "0", "gisterminal"} {
 		if _, _, err := s.Put(bytes.NewReader(body), claimed, 0); err == nil || errors.Is(err, ErrDigestMismatch) {
 			t.Fatalf("Put(%q) error = %v; want a digest shape rejection", claimed, err)
 		}
+	}
+	// Empty claimed digest is allowed: the store measures the body itself.
+	if _, _, err := s.Put(bytes.NewReader(body), "", 0); err != nil {
+		t.Fatalf("Put(%q) error = %v; want success", "", err)
 	}
 }
