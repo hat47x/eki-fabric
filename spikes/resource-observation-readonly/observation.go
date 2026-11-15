@@ -11,15 +11,15 @@ const Schema = "eki.resource-observation/v0"
 // Observation is a read-only claim about a provider's current state.
 // It is not a placement decision.
 type Observation struct {
-	Schema         string
-	ProviderID     string
-	Capability     Capability
-	State          ProviderState
-	ObservedAt     time.Time
-	Staleness      time.Duration
-	CostCandidate  CostCandidate
-	TrustLevel     string
-	DataClasses    []string
+	Schema        string
+	ProviderID    string
+	Capability    Capability
+	State         ProviderState
+	ObservedAt    time.Time
+	Staleness     time.Duration
+	CostCandidate CostCandidate
+	TrustLevel    string
+	DataClasses   []string
 }
 
 // Capability describes what the provider can run.

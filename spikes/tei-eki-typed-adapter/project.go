@@ -54,10 +54,10 @@ func Project(op Operation) (Projection, error) {
 	}
 
 	projection := Projection{
-		Schema:         SchemaProjection,
-		IdempotencyKey: "tei-eki:" + hexDigest[:48],
+		Schema:          SchemaProjection,
+		IdempotencyKey:  "tei-eki:" + hexDigest[:48],
 		ClientRequestID: "tei.eki-" + hexDigest[:32],
-		Ingests:        ingests,
+		Ingests:         ingests,
 		Task: TaskRequest{
 			Schema:     SchemaTaskRequest,
 			Executor:   ExecutorRequirement{ID: op.ExecutorID, VersionConstraint: op.ExecutorVersionConstraint},
