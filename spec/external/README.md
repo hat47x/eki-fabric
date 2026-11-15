@@ -176,6 +176,8 @@ External Clientへ返す候補:
 
 **`admitted`と`ready`は公開状態で分けません**（#249の判断）。どちらも「まだ実行が始まっていない」であり、依頼元にとって次にできることは同じ（待つ・取り消す）だからです。分けると、依頼元が内部の配置の都合（Workerが居ない、policyが止まっている）に依存した振る舞いをする誘因になります。内部では区別を保ち、運用者向けの状態と`Deferred`の理由で見せます。
 
+**`completed`は状態であって、結果ではありません**（#112の「公開状態とTEIの三値の対応」）。`completed`のTaskでも、受理された結果を読めるとは限りません。結果は`GET /v1/tasks/{task_id}/result`が`200`を返したときだけ得られます。`409`の`RESULT_NOT_READY`は待てば得られる場合、`RESULT_NOT_AVAILABLE`は結果が作られない場合です。結果の読み出し口を持たない構成では`501`を返します。状態だけを読むClientは、`completed`を「結果を受け取った」と扱わず、終端の経緯は`terminal_code`で確認します。`openapi.json`の`TaskPublicStatus.status`の説明にも同じ内容を書いています。
+
 この表は案であり、契約（`openapi.json`の`status`）の値そのものは変えていません。
 - failed
 
