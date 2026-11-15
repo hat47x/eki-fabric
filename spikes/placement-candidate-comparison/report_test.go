@@ -10,9 +10,9 @@ import (
 
 func TestNewReportBuildsBestPath(t *testing.T) {
 	c := placementcandidatecomparison.Comparison{
-		FunctionID:   "pure-compute-v1",
-		InputSHA256:  "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
-		OutputSHA256: "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+		FunctionID:    "pure-compute-v1",
+		InputSHA256:   "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+		OutputSHA256:  "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
 		WallTimeNanos: 100000000,
 		Candidates: []placementcandidatecomparison.Candidate{
 			{Path: "T0 Direct", ProviderID: "local", Cost: placementcandidatecomparison.Cost{Amount: 0.01}, LatencyNanos: 50000000, TrustLevel: "high"},

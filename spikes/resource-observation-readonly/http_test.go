@@ -14,12 +14,12 @@ func TestHTTPHandlerReadOnly(t *testing.T) {
 	now := time.Now()
 	store := resourceobservationreadonly.NewSnapshotStore(func() time.Time { return now })
 	store.Set(resourceobservationreadonly.Observation{
-		Schema:       resourceobservationreadonly.Schema,
-		ProviderID:   "P1",
-		ObservedAt:   now,
-		Staleness:    time.Minute,
-		Capability:   resourceobservationreadonly.Capability{CPUMillis: 1000},
-		State:        resourceobservationreadonly.ProviderState{AvailableSlots: 1},
+		Schema:     resourceobservationreadonly.Schema,
+		ProviderID: "P1",
+		ObservedAt: now,
+		Staleness:  time.Minute,
+		Capability: resourceobservationreadonly.Capability{CPUMillis: 1000},
+		State:      resourceobservationreadonly.ProviderState{AvailableSlots: 1},
 	})
 	handler := resourceobservationreadonly.NewHandler(store)
 
